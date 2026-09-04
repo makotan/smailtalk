@@ -1,0 +1,7 @@
+{
+  "diff_id": "d-0002",
+  "intent": "マニフェスト全体をまるごと差し替えたい",
+  "operations": [
+    { "op": "patch_manifest" }
+  ]
+}

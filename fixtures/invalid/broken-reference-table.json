@@ -1,0 +1,19 @@
+{
+  "app": {
+    "id": "library",
+    "name": "図書館",
+    "tables": [
+      {
+        "id": "books",
+        "name": "書籍",
+        "fields": [
+          { "id": "title", "name": "タイトル", "type": "text", "required": true },
+          { "id": "author", "name": "著者", "type": "reference", "reference_table": "authors" }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "book-detail", "type": "detail_view", "table": "books" }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "diff_id": "d-0100",
+  "intent": "貸出管理をしたいという要望。誰にいつまで貸したかを記録し、期限順に並べて見られるようにする",
+  "operations": [
+    { "op": "add_table",
+      "table": {
+        "id": "loans",
+        "name": "貸出",
+        "fields": [
+          { "id": "borrower", "name": "借り手", "type": "text", "required": true }
+        ]
+      } },
+    { "op": "add_field", "table": "loans",
+      "field": { "id": "due_on", "name": "返却期限", "type": "date" } },
+    { "op": "add_view",
+      "view": { "id": "loan-list", "type": "list_view", "table": "loans",
+        "columns": ["borrower", "due_on"] } },
+    { "op": "update_view", "view": "loan-list",
+      "changes": { "sort": { "field": "due_on", "order": "asc" } } }
+  ]
+}

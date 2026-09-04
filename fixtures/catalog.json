@@ -1,0 +1,383 @@
+{
+  "$comment": "フィクスチャカタログ (V0-P1-T05)。以降の全フェーズが共有するテストデータの目録。invalid の各エントリには期待エラー (path / メッセージ断片 / 該当時は許可値) を必ず書くこと。期待は実装の出力をコピーするのではなく、仕様から先に書いてからテストを回すこと。",
+  "fixtures": [
+    {
+      "file": "valid/book-tracker.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "蔵書管理 (handover 3.4 原文)",
+      "description": "改変しないこと。text / select / date を含む"
+    },
+    {
+      "file": "valid/library-with-reference.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "図書館 (reference 型)",
+      "description": "著者テーブルと書籍テーブルを reference 型で関連付ける。text / long_text / reference を含む"
+    },
+    {
+      "file": "valid/inventory-all-field-types.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "備品管理 (フィールド型網羅)"
+    },
+    {
+      "file": "valid/loan-tracker-with-workflows.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "貸出管理 (ワークフロー網羅)",
+      "description": "**valid 側にワークフローを持つマニフェストの見本が1本も無かった** —— 新語彙が正準スキーマと参照整合性の両方を通ることを、共有コーパス側で確かめる入力が無いという穴だったので埋めた (inventory-all-field-types.json がフィールド型7種に対して果たしている役割と同じ)。トリガー3種すべて (on_create / on_update / schedule) とアクション2種すべて (create_record / update_record) を網羅する。**システムテーブルは1箇所も参照していない** (限定10)。"
+    },
+    {
+      "file": "valid/cp6-bootstrap-book-log.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "読書記録 (CP-6 ブートストラップ成果物の実物)",
+      "description": "AI が実地で作ったマニフェストであり、3つのビューはいずれも name を持たない。整形 (インデント) 以外の改変をしてはならない"
+    },
+    {
+      "file": "valid/diff-handover-sample.json",
+      "kind": "diff",
+      "expect": "valid",
+      "name": "差分パッチ (handover 3.5 原文)",
+      "description": "add_field + update_view"
+    },
+    {
+      "file": "valid/diff-all-ops.json",
+      "kind": "diff",
+      "expect": "valid",
+      "name": "差分パッチ (additive 4種すべて)",
+      "description": "add_table / add_field / add_view / update_view を1つの diff に含む。**足さないのが意図的な選択であることをここに書いておく** (名前だけを見て「12 op 揃っているはず」と読まれ、次の改訂で機械的に追記されるのを防ぐため)。理由は2つ: (1) 語彙内であることは各 op の専用テストが直接固定しており、ここに並べても検査の強度は上がらない (2) このフィクスチャの役割は「1つの diff に複数 op を混ぜても通る」ことの見本であって、語彙の目録ではない —— 目録は src/kernel/types.ts の DIFF_OPS と schemas/diff.schema.json の $defs/op_name であり、その一致は validate.test.ts が機械的に固定している。2026-07-25 の追記): 本エントリの op を1つも追加していない —— set_theme も追加しない。**「12 op 揃っているはず」の 12 は書かれた当時の総数であり、現在の総数 (16) の主張ではない。** 追記であって既存文の書き換えではない。"
+    },
+    {
+      "file": "invalid/broken-view-table.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "参照切れ: view.table",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/table",
+          "message_contains": "テーブル \"book\" は存在しません",
+          "allowed_values": [
+            "books",
+            "_apps",
+            "_changelog",
+            "_ai_usage"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/broken-reference-table.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "参照切れ: reference_table",
+      "expected_errors": [
+        {
+          "path": "/app/tables/0/fields/1/reference_table",
+          "message_contains": "参照先のテーブル \"authors\" は存在しません",
+          "allowed_values": [
+            "books"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/broken-view-columns.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "参照切れ: list_view.columns",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/columns/1",
+          "message_contains": "\"author\" はテーブル \"books\" に存在しません",
+          "allowed_values": [
+            "title",
+            "status"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/broken-sort-field.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "参照切れ: list_view.sort.field",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/sort/field",
+          "message_contains": "\"published_at\" はテーブル \"books\" に存在しません",
+          "allowed_values": [
+            "title"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/broken-filter-field.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "参照切れ: list_view.filter[].field",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/filter/0/field",
+          "message_contains": "\"archived\" はテーブル \"books\" に存在しません",
+          "allowed_values": [
+            "title"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/broken-form-fields.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "参照切れ: form.fields",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/fields/1",
+          "message_contains": "\"memo\" はテーブル \"books\" に存在しません",
+          "allowed_values": [
+            "title"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/unknown-field-type.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: フィールド型",
+      "expected_errors": [
+        {
+          "path": "/app/tables/0/fields/1/type",
+          "message_contains": "語彙にありません",
+          "allowed_values": [
+            "text",
+            "long_text",
+            "number",
+            "boolean",
+            "date",
+            "select",
+            "reference",
+            "image",
+            "file"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/unknown-view-type.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: リソース種 (ビュー種別)",
+      "description": "allowed_values に4種目 report_view (集計表) を足した。旧の逐語は form / list_view / detail_view の3本である。期待は invalid のまま反転していない —— 題材の型名は今日も語彙外である。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/type",
+          "message_contains": "語彙にありません",
+          "allowed_values": [
+            "form",
+            "list_view",
+            "detail_view",
+            "report_view"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/unknown-property.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "未知プロパティ: app.dark_mode",
+      "description": "theme は依然として語彙外である。変わったのは allowed_values に workflows が加わったことだけで、path もメッセージ断片も同じである。**workflows は required には入らない** (入れると既存マニフェストが全部 invalid になる) が、許可プロパティには入る。**期待は invalid のまま反転していない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない。****user_kinds を allowed_values から取り除いた。許可プロパティは 9 → 8 になった。****旧の allowed_values の逐語は id / name / tables / views / workflows / functions / theme / user_kinds / roles の9本である。****このファイルで allowed_values が減ったことで動くのは初めてである** —— 上の記述はすべて増えたことしか書いていない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない** —— **反転していないことがこの差し替えの要点である。",
+      "expected_errors": [
+        {
+          "path": "/app",
+          "message_contains": "未知のプロパティ \"dark_mode\" は指定できません",
+          "allowed_values": [
+            "id",
+            "name",
+            "tables",
+            "views",
+            "workflows",
+            "functions",
+            "theme",
+            "roles"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/invalid-resource-id.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "ID規約違反: 大文字を含むテーブルID",
+      "expected_errors": [
+        {
+          "path": "/app/tables/0/id",
+          "message_contains": "識別子の規約に合いません"
+        }
+      ]
+    },
+    {
+      "file": "invalid/duplicate-table-id.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "ID重複: テーブル",
+      "expected_errors": [
+        {
+          "path": "/app/tables/1/id",
+          "message_contains": "テーブルID \"books\" が重複しています"
+        }
+      ]
+    },
+    {
+      "file": "invalid/duplicate-view-id.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "ID重複: ビュー",
+      "expected_errors": [
+        {
+          "path": "/app/views/1/id",
+          "message_contains": "ビューID \"book-list\" が重複しています"
+        }
+      ]
+    },
+    {
+      "file": "invalid/duplicate-field-id.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "ID重複: フィールド",
+      "expected_errors": [
+        {
+          "path": "/app/tables/0/fields/1/id",
+          "message_contains": "フィールドID \"title\" がテーブル \"books\" 内で重複しています"
+        }
+      ]
+    },
+    {
+      "file": "invalid/select-without-options.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "属性欠落: select 型に options がない",
+      "expected_errors": [
+        {
+          "path": "/app/tables/0/fields/0",
+          "message_contains": "必須プロパティ \"options\" がありません"
+        }
+      ]
+    },
+    {
+      "file": "invalid/reference-without-reference-table.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "属性欠落: reference 型に reference_table がない",
+      "expected_errors": [
+        {
+          "path": "/app/tables/0/fields/0",
+          "message_contains": "必須プロパティ \"reference_table\" がありません"
+        }
+      ]
+    },
+    {
+      "file": "invalid/diff-missing-intent.json",
+      "kind": "diff",
+      "expect": "invalid",
+      "name": "intent 欠落",
+      "expected_errors": [
+        {
+          "path": "",
+          "message_contains": "必須プロパティ \"intent\" がありません"
+        }
+      ]
+    },
+    {
+      "file": "invalid/diff-unknown-op.json",
+      "kind": "diff",
+      "expect": "invalid",
+      "name": "語彙外: 未知の op",
+      "description": "patch_manifest を選んだのは、types.ts の DIFF_OPS の doc コメントと diff.schema.json の $defs/op_name の $comment が名指しで「足してはならない」と止めている3つ (copy_field / remove_app / patch_manifest) のうち、**他のテストが題材として使っていない唯一のもの**だからである (copy_field は ajv-error-adapter.test.ts が、remove_app は destructive-rejection.test.ts が既に使っている)。**3つの禁止 op がそれぞれ別の検査で見張られる形になり、1つが黙って語彙に入った場合に必ずどこかが赤くなる。**変わったのは allowed_values が9種から12種になったことだけで、path もメッセージ断片も同じである。題材 (patch_manifest) は依然として語彙外のまま変えていない。題材 (patch_manifest) は依然として語彙外のまま変えていない。****題材の差し替えは1度も要らなかった** —— 3つの禁止 op (copy_field / remove_app / patch_manifest) は今日も1つも語彙に入っていない。**set_user_kinds を allowed_values から取り除いた。差分操作は 18 → 17 になった。****旧の allowed_values の逐語は末尾が set_theme / set_user_kinds / set_roles の18本である。****この配列が減ったことで動くのは初めてである。****題材 (patch_manifest) は依然として語彙外のまま変えていない。",
+      "expected_errors": [
+        {
+          "path": "/operations/0/op",
+          "message_contains": "語彙にありません",
+          "allowed_values": [
+            "add_table",
+            "add_field",
+            "add_view",
+            "update_view",
+            "remove_field",
+            "remove_table",
+            "change_table",
+            "change_field",
+            "remove_view",
+            "add_workflow",
+            "update_workflow",
+            "remove_workflow",
+            "add_function",
+            "update_function",
+            "remove_function",
+            "set_theme",
+            "set_roles"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/diff-destructive-remove-field.json",
+      "kind": "diff",
+      "expect": "invalid",
+      "name": "型の非対称: remove_field の field はフィールド定義ではなくID",
+      "description": "**期待は invalid のまま反転していない。** 旧: op remove_field が語彙外だから (/operations/0/op の enum 違反)。新: remove_field は語彙内になったが、このフィクスチャの field はフィールド定義オブジェクトであり、remove_field が要求するのはフィールドIDの文字列である (/operations/0/field の型違反)。削除そのものが通る形の受理は src/kernel/apply-diff.test.ts の完了条件A が固定している (カタログに valid な破壊的 diff は足していない。理由は記録 §9)",
+      "expected_errors": [
+        {
+          "path": "/operations/0/field",
+          "message_contains": "string を指定してください"
+        }
+      ]
+    },
+    {
+      "file": "invalid/diff-update-view-forbidden-change.json",
+      "kind": "diff",
+      "expect": "invalid",
+      "name": "update_view で許可外プロパティを変更",
+      "description": "name は限定採用で受理側へ移ったので、例を description に差し替えてある。update_view にも19キー目 page_size (1ページに出す件数) が加わったので allowed_values の列挙に1本足した。update_view にも20キー目 preset_density (画面の詰まり具合) が加わったので allowed_values の列挙に1本足した。3種すべてに書けるキーである。本 ADR の増分ではない。2回目の審査。判定 = 限定採用)が update_view にも21キー目 after_save (保存が成立したあとに行く画面のID) を足したので allowed_values の列挙に1本足した。form 型のビューでだけ書けるキーである。本 ADR の増分ではない。4回目の審査。判定 = 限定採用)が update_view にも22キー目 sum_field (合計を出す列。list_view でだけ書ける) を足したので allowed_values の列挙に1本足した。update_view にも25キー目 report (集計表の中身。report_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも26キー目 after_delete (削除が成立したあとの行き先。detail_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも27キー目 flow (一続きの流れの中の段。list_view / form / detail_view の3種別で書け、report_view には書けない) が加わったので allowed_values の列挙に1本足した。",
+      "expected_errors": [
+        {
+          "path": "/operations/0/changes",
+          "message_contains": "未知のプロパティ \"description\" は指定できません",
+          "allowed_values": [
+            "name",
+            "columns",
+            "sort",
+            "filter",
+            "fields",
+            "preset_column_align",
+            "preset_column_width",
+            "preset_pager_position",
+            "preset_label_placement",
+            "preset_field_columns",
+            "preset_image_size",
+            "preset_text_preview",
+            "custom_css",
+            "menu_listed",
+            "field_groups",
+            "preset_list_shape",
+            "modal",
+            "search_fields",
+            "page_size",
+            "preset_density",
+            "after_save",
+            "sum_field",
+            "actions",
+            "reference_pickers",
+            "report",
+            "after_delete",
+            "flow"
+          ]
+        }
+      ]
+    }
+  ]
+}

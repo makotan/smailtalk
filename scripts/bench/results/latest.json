@@ -1,0 +1,856 @@
+{
+  "task": "V1-M1-T05",
+  "generated_at": "2026-07-19T11:39:17.405Z",
+  "seed": 20260719,
+  "reps": 3,
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "os_release": "25.5.0",
+    "os_product": "macOS 26.5.2",
+    "cpu_model": "Apple M4",
+    "cpu_count": 10,
+    "total_memory_bytes": 34359738368,
+    "bun_version": "1.3.14",
+    "filesystem": "APFS",
+    "solid_state": true
+  },
+  "scenarios": ["snapshot", "mutation", "copies", "journal"],
+  "results": {
+    "snapshot": {
+      "sweeps": [
+        {
+          "rows_per_table": 1000,
+          "tables": 1,
+          "apps": 1,
+          "app_db_bytes": 225280,
+          "timing": {
+            "samples_ms": [1.771, 1.165, 0.881],
+            "median_ms": 1.165,
+            "min_ms": 0.881,
+            "max_ms": 1.771
+          },
+          "snapshot_bytes_per_round": 222272
+        },
+        {
+          "rows_per_table": 10000,
+          "tables": 1,
+          "apps": 1,
+          "app_db_bytes": 2101248,
+          "timing": {
+            "samples_ms": [4.589, 3.315, 3.781],
+            "median_ms": 3.781,
+            "min_ms": 3.315,
+            "max_ms": 4.589
+          },
+          "snapshot_bytes_per_round": 2073664
+        },
+        {
+          "rows_per_table": 100000,
+          "tables": 1,
+          "apps": 1,
+          "app_db_bytes": 21123072,
+          "timing": {
+            "samples_ms": [28.748, 26.546, 26.553],
+            "median_ms": 26.553,
+            "min_ms": 26.546,
+            "max_ms": 28.748
+          },
+          "snapshot_bytes_per_round": 20837440
+        },
+        {
+          "rows_per_table": 1000000,
+          "tables": 1,
+          "apps": 1,
+          "app_db_bytes": 211738624,
+          "timing": {
+            "samples_ms": [284.172, 277.627, 281.56],
+            "median_ms": 281.56,
+            "min_ms": 277.627,
+            "max_ms": 284.172
+          },
+          "snapshot_bytes_per_round": 208761920
+        },
+        {
+          "rows_per_table": 10000,
+          "tables": 3,
+          "apps": 1,
+          "app_db_bytes": 6299648,
+          "timing": {
+            "samples_ms": [10.593, 8.951, 9.133],
+            "median_ms": 9.133,
+            "min_ms": 8.951,
+            "max_ms": 10.593
+          },
+          "snapshot_bytes_per_round": 6216674
+        },
+        {
+          "rows_per_table": 10000,
+          "tables": 10,
+          "apps": 1,
+          "app_db_bytes": 21028864,
+          "timing": {
+            "samples_ms": [28.736, 27.257, 28.294],
+            "median_ms": 28.294,
+            "min_ms": 27.257,
+            "max_ms": 28.736
+          },
+          "snapshot_bytes_per_round": 20752029
+        },
+        {
+          "rows_per_table": 100000,
+          "tables": 1,
+          "apps": 10,
+          "app_db_bytes": 21123072,
+          "timing": {
+            "samples_ms": [288.029, 278.224, 279.629],
+            "median_ms": 279.629,
+            "min_ms": 278.224,
+            "max_ms": 288.029
+          },
+          "snapshot_bytes_per_round": 208390786
+        }
+      ],
+      "accumulation": {
+        "rows_per_table": 100000,
+        "app_db_bytes": 21123072,
+        "rounds": 10,
+        "total_snapshot_bytes": 208378555,
+        "bytes_per_snapshot": 20837856
+      }
+    },
+    "mutation": [
+      {
+        "rows": 1000,
+        "apply_layer1": {
+          "samples_ms": [6.032, 5.422, 5.147],
+          "median_ms": 5.422,
+          "min_ms": 5.147,
+          "max_ms": 6.032
+        },
+        "apply_layer2": {
+          "samples_ms": [9.446, 9.249, 9.223],
+          "median_ms": 9.249,
+          "min_ms": 9.223,
+          "max_ms": 9.446
+        },
+        "dry_run_layer2": {
+          "samples_ms": [13.867, 13.756, 13.931],
+          "median_ms": 13.867,
+          "min_ms": 13.756,
+          "max_ms": 13.931
+        },
+        "undo_after_layer2": {
+          "samples_ms": [6.302, 6.198, 6.329],
+          "median_ms": 6.302,
+          "min_ms": 6.198,
+          "max_ms": 6.329
+        },
+        "snapshot_only": {
+          "samples_ms": [1.884, 0.931, 0.936],
+          "median_ms": 0.936,
+          "min_ms": 0.931,
+          "max_ms": 1.884
+        },
+        "app_db_bytes": 225280
+      },
+      {
+        "rows": 10000,
+        "apply_layer1": {
+          "samples_ms": [9.793, 9.47, 8.965],
+          "median_ms": 9.47,
+          "min_ms": 8.965,
+          "max_ms": 9.793
+        },
+        "apply_layer2": {
+          "samples_ms": [30.244, 31.49, 28.677],
+          "median_ms": 30.244,
+          "min_ms": 28.677,
+          "max_ms": 31.49
+        },
+        "dry_run_layer2": {
+          "samples_ms": [41.436, 38.726, 40.276],
+          "median_ms": 40.276,
+          "min_ms": 38.726,
+          "max_ms": 41.436
+        },
+        "undo_after_layer2": {
+          "samples_ms": [9.055, 10.305, 9.855],
+          "median_ms": 9.855,
+          "min_ms": 9.055,
+          "max_ms": 10.305
+        },
+        "snapshot_only": {
+          "samples_ms": [4.611, 3.467, 3.525],
+          "median_ms": 3.525,
+          "min_ms": 3.467,
+          "max_ms": 4.611
+        },
+        "app_db_bytes": 2101248
+      },
+      {
+        "rows": 100000,
+        "apply_layer1": {
+          "samples_ms": [34.527, 34.869, 35.235],
+          "median_ms": 34.869,
+          "min_ms": 34.527,
+          "max_ms": 35.235
+        },
+        "apply_layer2": {
+          "samples_ms": [250.391, 244.044, 260.182],
+          "median_ms": 250.391,
+          "min_ms": 244.044,
+          "max_ms": 260.182
+        },
+        "dry_run_layer2": {
+          "samples_ms": [282.692, 286.453, 315.342],
+          "median_ms": 286.453,
+          "min_ms": 282.692,
+          "max_ms": 315.342
+        },
+        "undo_after_layer2": {
+          "samples_ms": [34.395, 35.078, 35.018],
+          "median_ms": 35.018,
+          "min_ms": 34.395,
+          "max_ms": 35.078
+        },
+        "snapshot_only": {
+          "samples_ms": [29.104, 28.585, 28.871],
+          "median_ms": 28.871,
+          "min_ms": 28.585,
+          "max_ms": 29.104
+        },
+        "app_db_bytes": 21123072
+      },
+      {
+        "rows": 1000000,
+        "apply_layer1": {
+          "samples_ms": [293.287, 295.081, 293.011],
+          "median_ms": 293.287,
+          "min_ms": 293.011,
+          "max_ms": 295.081
+        },
+        "apply_layer2": {
+          "samples_ms": [2407.282, 2511.17, 2347.756],
+          "median_ms": 2407.282,
+          "min_ms": 2347.756,
+          "max_ms": 2511.17
+        },
+        "dry_run_layer2": {
+          "samples_ms": [3090.741, 2998.897, 2821.623],
+          "median_ms": 2998.897,
+          "min_ms": 2821.623,
+          "max_ms": 3090.741
+        },
+        "undo_after_layer2": {
+          "samples_ms": [307.409, 365.172, 362.11],
+          "median_ms": 362.11,
+          "min_ms": 307.409,
+          "max_ms": 365.172
+        },
+        "snapshot_only": {
+          "samples_ms": [293.896, 284.279, 286.38],
+          "median_ms": 286.38,
+          "min_ms": 284.279,
+          "max_ms": 293.896
+        },
+        "app_db_bytes": 211738624
+      }
+    ],
+    "copies": {
+      "rows": 10000,
+      "rows_small": 100,
+      "table": [
+        {
+          "flow": "apply_only",
+          "layer": 1,
+          "app_db_full_copies": 1,
+          "kernel_db_full_copies": 0,
+          "table_full_copies": 0,
+          "full_scans": 0,
+          "total_copy_operations": 1,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_only",
+          "layer": 1,
+          "app_db_full_copies": 2,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 0,
+          "full_scans": 2,
+          "total_copy_operations": 3,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_then_apply",
+          "layer": 1,
+          "app_db_full_copies": 3,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 0,
+          "full_scans": 2,
+          "total_copy_operations": 4,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            }
+          ]
+        },
+        {
+          "flow": "apply_only",
+          "layer": 2,
+          "app_db_full_copies": 1,
+          "kernel_db_full_copies": 0,
+          "table_full_copies": 1,
+          "full_scans": 2,
+          "total_copy_operations": 2,
+          "events": [
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_only",
+          "layer": 2,
+          "app_db_full_copies": 2,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 1,
+          "full_scans": 4,
+          "total_copy_operations": 4,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_then_apply",
+          "layer": 2,
+          "app_db_full_copies": 3,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 2,
+          "full_scans": 6,
+          "total_copy_operations": 6,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            }
+          ]
+        }
+      ],
+      "table_small": [
+        {
+          "flow": "apply_only",
+          "layer": 1,
+          "app_db_full_copies": 1,
+          "kernel_db_full_copies": 0,
+          "table_full_copies": 0,
+          "full_scans": 0,
+          "total_copy_operations": 1,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_only",
+          "layer": 1,
+          "app_db_full_copies": 2,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 0,
+          "full_scans": 2,
+          "total_copy_operations": 3,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_then_apply",
+          "layer": 1,
+          "app_db_full_copies": 3,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 0,
+          "full_scans": 2,
+          "total_copy_operations": 4,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            }
+          ]
+        },
+        {
+          "flow": "apply_only",
+          "layer": 2,
+          "app_db_full_copies": 1,
+          "kernel_db_full_copies": 0,
+          "table_full_copies": 1,
+          "full_scans": 2,
+          "total_copy_operations": 2,
+          "events": [
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_only",
+          "layer": 2,
+          "app_db_full_copies": 2,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 1,
+          "full_scans": 4,
+          "total_copy_operations": 4,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            }
+          ]
+        },
+        {
+          "flow": "dry_run_then_apply",
+          "layer": 2,
+          "app_db_full_copies": 3,
+          "kernel_db_full_copies": 1,
+          "table_full_copies": 2,
+          "full_scans": 6,
+          "total_copy_operations": 6,
+          "events": [
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/kernel.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<dry-run-shadow>/data/apps/c/app.sqlite",
+              "sql": "SELECT COUNT(*) AS \"n\" FROM \"t1\""
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"id\", \"qty\" AS \"value\" FROM \"t1\" ORDER BY \"_id\""
+            },
+            {
+              "kind": "vacuum_into",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "VACUUM INTO ?"
+            },
+            {
+              "kind": "full_scan",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "SELECT \"_id\" AS \"c0\", \"_created_at\" AS \"c1\", \"_updated_at\" AS \"c2\", \"title\" AS \"c3\", \"memo\" AS \"c4\", \"qty\" AS \"c5\", \"sta"
+            },
+            {
+              "kind": "rebuild_create",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "CREATE TABLE \"gp-rebuild-t1\" ( \"_id\" TEXT PRIMARY KEY, \"_created_at\" TEXT NOT NULL, \"_updated_at\" TEXT NOT NULL, \"title\""
+            },
+            {
+              "kind": "rebuild_insert",
+              "filename": "<data-root>/apps/c/app.sqlite",
+              "sql": "INSERT INTO \"gp-rebuild-t1\" (\"_id\", \"_created_at\", \"_updated_at\", \"title\", \"memo\", \"qty\", \"status\", \"due\") VALUES (?, ?,"
+            }
+          ]
+        }
+      ]
+    },
+    "journal": [
+      {
+        "journal_mode": "delete",
+        "insert_one_by_one": {
+          "samples_ms": [791.186, 643.338, 687.974],
+          "median_ms": 687.974,
+          "min_ms": 643.338,
+          "max_ms": 791.186
+        },
+        "insert_single_transaction": {
+          "samples_ms": [10.582, 10.028, 9.913],
+          "median_ms": 10.028,
+          "min_ms": 9.913,
+          "max_ms": 10.582
+        },
+        "snapshot": {
+          "samples_ms": [1.624, 1.196, 1.175],
+          "median_ms": 1.196,
+          "min_ms": 1.175,
+          "max_ms": 1.624
+        },
+        "records": 2000,
+        "effective_journal_mode": "delete"
+      },
+      {
+        "journal_mode": "wal",
+        "insert_one_by_one": {
+          "samples_ms": [46.564, 46.299, 46.449],
+          "median_ms": 46.449,
+          "min_ms": 46.299,
+          "max_ms": 46.564
+        },
+        "insert_single_transaction": {
+          "samples_ms": [10.434, 11.51, 10.609],
+          "median_ms": 10.609,
+          "min_ms": 10.434,
+          "max_ms": 11.51
+        },
+        "snapshot": {
+          "samples_ms": [2.275, 2.003, 1.837],
+          "median_ms": 2.003,
+          "min_ms": 1.837,
+          "max_ms": 2.275
+        },
+        "records": 2000,
+        "effective_journal_mode": "wal"
+      }
+    ]
+  },
+  "caveats": [
+    "すべて実測値である。推定値はこの JSON に入っていない(推定は記録文書 / ADR の側で「推定」と明示して書く)。",
+    "ディスク量(バイト)と SQL 発行回数は同一シードで完全に再現する。所要時間は再現しない(同一マシンでもばらつく)。",
+    "単一プロセス・単一接続でのみ測っている。journal_mode = DELETE の『書き込み中に読み取りがブロックされる』側面は複数接続でしか現れないため測っていない(V1-M9-T03 の担当)。",
+    "OS のページキャッシュを制御していない。コールドスタートは遅い方向に外れる。",
+    "environment と切り離して数値を引用しないこと。別環境で再現しない可能性がある。"
+  ]
+}

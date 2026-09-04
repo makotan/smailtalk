@@ -1,0 +1,19 @@
+{
+  "app": {
+    "id": "book-tracker",
+    "name": "蔵書管理",
+    "tables": [
+      {
+        "id": "books",
+        "name": "書籍",
+        "fields": [
+          { "id": "title", "name": "タイトル", "type": "text", "required": true },
+          { "id": "status", "name": "状態", "type": "select", "options": ["未読", "読了"] }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "book-list", "type": "list_view", "table": "books", "columns": ["title", "author"] }
+    ]
+  }
+}

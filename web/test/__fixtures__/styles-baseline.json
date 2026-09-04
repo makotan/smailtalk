@@ -1,0 +1,837 @@
+[
+  {
+    "selector": ".app-header .current-user",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".app-header .current-user",
+    "property": "margin-left",
+    "value": "auto"
+  },
+  {
+    "selector": ".app-header h2",
+    "property": "margin",
+    "value": "0"
+  },
+  {
+    "selector": ".app-header",
+    "property": "align-items",
+    "value": "center"
+  },
+  {
+    "selector": ".app-header",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".app-header",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".app-theme",
+    "property": "background-color",
+    "value": "#fff"
+  },
+  {
+    "selector": ".app-theme",
+    "property": "color",
+    "value": "#000"
+  },
+  {
+    "selector": ".app-theme",
+    "property": "font-family",
+    "value": "system-ui, sans-serif"
+  },
+  {
+    "selector": ".app-theme",
+    "property": "line-height",
+    "value": "1.6"
+  },
+  {
+    "selector": ".detail-actions p",
+    "property": "margin",
+    "value": "0 0 0.5rem"
+  },
+  {
+    "selector": ".detail-actions",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".detail-actions",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".detail-actions",
+    "property": "margin-top",
+    "value": "1rem"
+  },
+  {
+    "selector": ".detail-field dt",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".detail-field dt",
+    "property": "flex",
+    "value": "0 0 8rem"
+  },
+  {
+    "selector": ".detail-field-group",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".detail-field-group",
+    "property": "flex-direction",
+    "value": "column"
+  },
+  {
+    "selector": ".detail-field-group",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".detail-fields[data-preset-columns=\"1\"]",
+    "property": "display",
+    "value": "grid"
+  },
+  {
+    "selector": ".detail-fields[data-preset-columns=\"1\"]",
+    "property": "grid-template-columns",
+    "value": "minmax(0, 1fr)"
+  },
+  {
+    "selector": ".detail-fields[data-preset-columns=\"2\"]",
+    "property": "column-gap",
+    "value": "1rem"
+  },
+  {
+    "selector": ".detail-fields[data-preset-columns=\"2\"]",
+    "property": "display",
+    "value": "grid"
+  },
+  {
+    "selector": ".detail-fields[data-preset-columns=\"2\"]",
+    "property": "grid-template-columns",
+    "value": "repeat(2, minmax(0, 1fr))"
+  },
+  {
+    "selector": ".detail-fields[data-preset-label=\"inline\"] .detail-field",
+    "property": "flex-direction",
+    "value": "row"
+  },
+  {
+    "selector": ".detail-fields[data-preset-label=\"stacked\"] .detail-field dt",
+    "property": "flex",
+    "value": "0 0 auto"
+  },
+  {
+    "selector": ".detail-fields[data-preset-label=\"stacked\"] .detail-field",
+    "property": "flex-direction",
+    "value": "column"
+  },
+  {
+    "selector": ".detail-fields",
+    "property": "box-shadow",
+    "value": "none"
+  },
+  {
+    "selector": ".detail-field",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".detail-field",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".detail-field",
+    "property": "margin-bottom",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".errors code, .errors .allowed, .errors .hint",
+    "property": "display",
+    "value": "block"
+  },
+  {
+    "selector": ".errors code, .errors .allowed, .errors .hint",
+    "property": "font-size",
+    "value": "0.85em"
+  },
+  {
+    "selector": ".errors li",
+    "property": "color",
+    "value": "#a00"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"caution\"]",
+    "property": "background-color",
+    "value": "#f2f2f2"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"caution\"]",
+    "property": "border-color",
+    "value": "#666"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"caution\"]",
+    "property": "color",
+    "value": "#000"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"danger\"]",
+    "property": "background-color",
+    "value": "#fff"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"danger\"]",
+    "property": "border-color",
+    "value": "#a00"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"danger\"]",
+    "property": "color",
+    "value": "#a00"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"info\"]",
+    "property": "background-color",
+    "value": "#fff"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"info\"]",
+    "property": "border-color",
+    "value": "#005fcc"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"info\"]",
+    "property": "color",
+    "value": "#000"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"neutral\"]",
+    "property": "background-color",
+    "value": "#f2f2f2"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"neutral\"]",
+    "property": "border-color",
+    "value": "#ddd"
+  },
+  {
+    "selector": ".field-emphasis[data-emphasis=\"neutral\"]",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".field-emphasis",
+    "property": "border-radius",
+    "value": "0"
+  },
+  {
+    "selector": ".field-emphasis",
+    "property": "border-style",
+    "value": "solid"
+  },
+  {
+    "selector": ".field-emphasis",
+    "property": "border-width",
+    "value": "1px"
+  },
+  {
+    "selector": ".field-emphasis",
+    "property": "display",
+    "value": "inline-block"
+  },
+  {
+    "selector": ".field-emphasis",
+    "property": "padding",
+    "value": "0 0.5rem"
+  },
+  {
+    "selector": ".field-empty",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".field-unresolved",
+    "property": "color",
+    "value": "#a00"
+  },
+  {
+    "selector": ".list-card-field",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".list-card-field",
+    "property": "flex-wrap",
+    "value": "wrap"
+  },
+  {
+    "selector": ".list-card-field",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".list-card-label",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".list-card-label",
+    "property": "font-size",
+    "value": "0.85em"
+  },
+  {
+    "selector": ".list-cards",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".list-cards",
+    "property": "flex-direction",
+    "value": "column"
+  },
+  {
+    "selector": ".list-cards",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".list-cards",
+    "property": "margin-top",
+    "value": "1rem"
+  },
+  {
+    "selector": ".list-card",
+    "property": "border-radius",
+    "value": "0"
+  },
+  {
+    "selector": ".list-card",
+    "property": "border",
+    "value": "1px solid #ddd"
+  },
+  {
+    "selector": ".list-card",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".list-card",
+    "property": "flex-direction",
+    "value": "column"
+  },
+  {
+    "selector": ".list-card",
+    "property": "gap",
+    "value": "0.25rem"
+  },
+  {
+    "selector": ".list-card",
+    "property": "padding",
+    "value": "0.5rem 0.75rem"
+  },
+  {
+    "selector": ".list-detail-target-note, .detail-target-note",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".list-detail-target-note, .detail-target-note",
+    "property": "font-size",
+    "value": "0.875rem"
+  },
+  {
+    "selector": ".list-detail-target-note, .detail-target-note",
+    "property": "margin-top",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".list-row-interactive, .related-row-interactive",
+    "property": "cursor",
+    "value": "pointer"
+  },
+  {
+    "selector": ".list-row-interactive:hover, .list-row-interactive:focus-visible, .related-row-interactive:hover, .related-row-interactive:focus-visible",
+    "property": "background",
+    "value": "#f2f2f2"
+  },
+  {
+    "selector": ".list-table col[data-preset-width=\"narrow\"]",
+    "property": "width",
+    "value": "6rem"
+  },
+  {
+    "selector": ".list-table col[data-preset-width=\"standard\"]",
+    "property": "width",
+    "value": "12rem"
+  },
+  {
+    "selector": ".list-table col[data-preset-width=\"wide\"]",
+    "property": "width",
+    "value": "24rem"
+  },
+  {
+    "selector": ".list-table td[data-field-type=\"number\"]",
+    "property": "text-align",
+    "value": "right"
+  },
+  {
+    "selector": ".list-table th, .list-table td",
+    "property": "border-bottom",
+    "value": "1px solid #ddd"
+  },
+  {
+    "selector": ".list-table th, .list-table td",
+    "property": "padding",
+    "value": "0.25rem 0.5rem"
+  },
+  {
+    "selector": ".list-table th, .list-table td",
+    "property": "text-align",
+    "value": "left"
+  },
+  {
+    "selector": ".list-table th, .list-table td",
+    "property": "vertical-align",
+    "value": "top"
+  },
+  {
+    "selector": ".list-table th[data-preset-align=\"center\"], .list-table td[data-preset-align=\"center\"]",
+    "property": "text-align",
+    "value": "center"
+  },
+  {
+    "selector": ".list-table th[data-preset-align=\"left\"], .list-table td[data-preset-align=\"left\"]",
+    "property": "text-align",
+    "value": "left"
+  },
+  {
+    "selector": ".list-table th[data-preset-align=\"right\"], .list-table td[data-preset-align=\"right\"]",
+    "property": "text-align",
+    "value": "right"
+  },
+  {
+    "selector": ".list-table:has(col[data-preset-width])",
+    "property": "table-layout",
+    "value": "fixed"
+  },
+  {
+    "selector": ".list-table",
+    "property": "border-collapse",
+    "value": "collapse"
+  },
+  {
+    "selector": ".list-table",
+    "property": "box-shadow",
+    "value": "none"
+  },
+  {
+    "selector": ".list-table",
+    "property": "margin-top",
+    "value": "1rem"
+  },
+  {
+    "selector": ".list-table",
+    "property": "width",
+    "value": "100%"
+  },
+  {
+    "selector": ".list-view[data-preset-image=\"medium\"] .field-image, .detail-view[data-preset-image=\"medium\"] .field-image",
+    "property": "max-height",
+    "value": "12rem"
+  },
+  {
+    "selector": ".list-view[data-preset-image=\"medium\"] .field-image, .detail-view[data-preset-image=\"medium\"] .field-image",
+    "property": "max-width",
+    "value": "12rem"
+  },
+  {
+    "selector": ".list-view[data-preset-image=\"original\"] .field-image, .detail-view[data-preset-image=\"original\"] .field-image",
+    "property": "max-height",
+    "value": "none"
+  },
+  {
+    "selector": ".list-view[data-preset-image=\"original\"] .field-image, .detail-view[data-preset-image=\"original\"] .field-image",
+    "property": "max-width",
+    "value": "none"
+  },
+  {
+    "selector": ".list-view[data-preset-image=\"thumbnail\"] .field-image, .detail-view[data-preset-image=\"thumbnail\"] .field-image",
+    "property": "max-height",
+    "value": "4rem"
+  },
+  {
+    "selector": ".list-view[data-preset-image=\"thumbnail\"] .field-image, .detail-view[data-preset-image=\"thumbnail\"] .field-image",
+    "property": "max-width",
+    "value": "4rem"
+  },
+  {
+    "selector": ".login-error",
+    "property": "margin-top",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".login-form .passkey-actions, .login-form .password-actions",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".login-form .passkey-actions, .login-form .password-actions",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".login-form .passkey-actions, .login-form .password-actions",
+    "property": "margin-bottom",
+    "value": "0.75rem"
+  },
+  {
+    "selector": ".login-form label",
+    "property": "display",
+    "value": "block"
+  },
+  {
+    "selector": ".login-form label",
+    "property": "margin-bottom",
+    "value": "0.75rem"
+  },
+  {
+    "selector": ".login",
+    "property": "box-shadow",
+    "value": "none"
+  },
+  {
+    "selector": ".login",
+    "property": "margin",
+    "value": "2rem auto"
+  },
+  {
+    "selector": ".login",
+    "property": "max-width",
+    "value": "22rem"
+  },
+  {
+    "selector": ".meta",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".meta",
+    "property": "font-size",
+    "value": "0.85em"
+  },
+  {
+    "selector": ".meta",
+    "property": "margin-left",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".record-form .field",
+    "property": "margin-bottom",
+    "value": "0.75rem"
+  },
+  {
+    "selector": ".record-form .required",
+    "property": "color",
+    "value": "#a00"
+  },
+  {
+    "selector": ".record-form .required",
+    "property": "font-size",
+    "value": "0.85em"
+  },
+  {
+    "selector": ".record-form .required",
+    "property": "margin-left",
+    "value": "0.25rem"
+  },
+  {
+    "selector": ".record-form label",
+    "property": "display",
+    "value": "block"
+  },
+  {
+    "selector": ".record-form[data-preset-columns=\"1\"] .form-fields",
+    "property": "display",
+    "value": "grid"
+  },
+  {
+    "selector": ".record-form[data-preset-columns=\"1\"] .form-fields",
+    "property": "grid-template-columns",
+    "value": "minmax(0, 1fr)"
+  },
+  {
+    "selector": ".record-form[data-preset-columns=\"2\"] .form-fields",
+    "property": "column-gap",
+    "value": "1rem"
+  },
+  {
+    "selector": ".record-form[data-preset-columns=\"2\"] .form-fields",
+    "property": "display",
+    "value": "grid"
+  },
+  {
+    "selector": ".record-form[data-preset-columns=\"2\"] .form-fields",
+    "property": "grid-template-columns",
+    "value": "repeat(2, minmax(0, 1fr))"
+  },
+  {
+    "selector": ".record-form[data-preset-label=\"inline\"] .field",
+    "property": "flex-direction",
+    "value": "row"
+  },
+  {
+    "selector": ".record-form[data-preset-label=\"stacked\"] .field",
+    "property": "flex-direction",
+    "value": "column"
+  },
+  {
+    "selector": ".record-form",
+    "property": "box-shadow",
+    "value": "none"
+  },
+  {
+    "selector": ".related-table",
+    "property": "box-shadow",
+    "value": "none"
+  },
+  {
+    "selector": ".requirement-sources",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".requirement-sources",
+    "property": "font-size",
+    "value": "0.85em"
+  },
+  {
+    "selector": ".requirement-sources",
+    "property": "margin",
+    "value": "0.25rem 0 0.75rem"
+  },
+  {
+    "selector": ".requirement-sources",
+    "property": "padding-left",
+    "value": "1.25rem"
+  },
+  {
+    "selector": ".requirement-statements",
+    "property": "list-style",
+    "value": "none"
+  },
+  {
+    "selector": ".requirement-statements",
+    "property": "padding-left",
+    "value": "0"
+  },
+  {
+    "selector": ".requirement-text",
+    "property": "margin",
+    "value": "0"
+  },
+  {
+    "selector": ".requirement-text",
+    "property": "white-space",
+    "value": "pre-wrap"
+  },
+  {
+    "selector": ".requirements-copy",
+    "property": "align-items",
+    "value": "center"
+  },
+  {
+    "selector": ".requirements-copy",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".requirements-copy",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".requirements-doc-preface",
+    "property": "color",
+    "value": "#666"
+  },
+  {
+    "selector": ".shell header",
+    "property": "border-bottom",
+    "value": "1px solid #ddd"
+  },
+  {
+    "selector": ".shell header",
+    "property": "margin-bottom",
+    "value": "1rem"
+  },
+  {
+    "selector": ".shell header",
+    "property": "padding-bottom",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".shell",
+    "property": "margin",
+    "value": "0 auto"
+  },
+  {
+    "selector": ".shell",
+    "property": "max-width",
+    "value": "60rem"
+  },
+  {
+    "selector": ".shell",
+    "property": "padding",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".theme-export-copy",
+    "property": "align-items",
+    "value": "center"
+  },
+  {
+    "selector": ".theme-export-copy",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".theme-export-copy",
+    "property": "gap",
+    "value": "0.5rem"
+  },
+  {
+    "selector": ".theme-export-css",
+    "property": "overflow-x",
+    "value": "auto"
+  },
+  {
+    "selector": ".theme-preview-list",
+    "property": "display",
+    "value": "grid"
+  },
+  {
+    "selector": ".theme-preview-list",
+    "property": "gap",
+    "value": "0.75rem"
+  },
+  {
+    "selector": ".theme-preview-list",
+    "property": "grid-template-columns",
+    "value": "repeat(auto-fit, minmax(18rem, 1fr))"
+  },
+  {
+    "selector": ".workspace-body > .view-list",
+    "property": "flex",
+    "value": "1 1 12rem"
+  },
+  {
+    "selector": ".workspace-body > .workspace-main",
+    "property": "flex",
+    "value": "999 1 60%"
+  },
+  {
+    "selector": ".workspace-body > .workspace-main",
+    "property": "min-width",
+    "value": "0"
+  },
+  {
+    "selector": ".workspace-body",
+    "property": "align-items",
+    "value": "flex-start"
+  },
+  {
+    "selector": ".workspace-body",
+    "property": "display",
+    "value": "flex"
+  },
+  {
+    "selector": ".workspace-body",
+    "property": "flex-wrap",
+    "value": "wrap"
+  },
+  {
+    "selector": ".workspace-body",
+    "property": "gap",
+    "value": "1rem"
+  },
+  {
+    "selector": ":focus-visible",
+    "property": "outline",
+    "value": "2px solid #005fcc"
+  },
+  {
+    "selector": "@media (min-width: 40rem) { .shell }",
+    "property": "padding",
+    "value": "1rem"
+  },
+  {
+    "selector": "@media (min-width: 64rem) { .shell }",
+    "property": "padding",
+    "value": "2rem 1rem"
+  },
+  {
+    "selector": "body",
+    "property": "background-color",
+    "value": "#fff"
+  },
+  {
+    "selector": "body",
+    "property": "color",
+    "value": "#000"
+  },
+  {
+    "selector": "body",
+    "property": "font-family",
+    "value": "system-ui, sans-serif"
+  },
+  {
+    "selector": "body",
+    "property": "line-height",
+    "value": "1.6"
+  },
+  {
+    "selector": "body",
+    "property": "margin",
+    "value": "0"
+  },
+  {
+    "selector": "button, input, select, textarea",
+    "property": "border-radius",
+    "value": "0"
+  },
+  {
+    "selector": "button, input, select, textarea",
+    "property": "font-family",
+    "value": "inherit"
+  },
+  {
+    "selector": "button, input, select, textarea",
+    "property": "line-height",
+    "value": "inherit"
+  },
+  {
+    "selector": "li",
+    "property": "padding",
+    "value": "0.25rem 0"
+  },
+  {
+    "selector": "ul",
+    "property": "list-style",
+    "value": "none"
+  },
+  {
+    "selector": "ul",
+    "property": "padding",
+    "value": "0"
+  }
+]

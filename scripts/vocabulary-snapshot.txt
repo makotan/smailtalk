@@ -1,0 +1,1715 @@
+# 語彙の名前の一覧(`ADR-0250` / `A-G2` / `V5-M29`)
+#
+# **このファイルは基準であって記録ではない。** 検査は `scripts/vocabulary-drift.test.ts`。
+# 形は `scripts/kernel-export-snapshot.txt` に倣っている(1行1件。空行と `#` 始まりは無視される)。
+#
+# ## 赤くなったら何をするか
+#
+# **このファイルを更新する前に、増えた名前が `ADR-0007` の門A を通ったかを審査すること。**
+# **審査より先にこのファイルを更新してはならない。** 更新するだけで緑になるので、
+# それをやると検査は「増えたことに気づく」機能を失う
+# (`scripts/kernel-export-snapshot.txt` の doc コメントが同じ警告を持っている)。
+# **検査が機械化したのは検出であって審査ではない。**
+#
+# ### 【`V8-M22` / `J-G37` が足した】**名前が減っていたときは、上と別の手続きである**
+#
+# **上の6行は増えた側(`added`)のことしか書いていなかった。** **検出は着手前から両向きだった**
+# (`scripts/vocabulary-drift.test.ts` の `drift()` が `added` と `removed` を別々に名指しする)——
+# **片向きだったのは手続きの側だけである。** **以下がその減った側である。**
+# **上の6行は1バイトも書き換えていない。**
+#
+# **赤の `removed` に名前が並んだら(= 一覧に在って実物に無い = 語彙が減った)**:
+#
+#  1. **一覧を先に直さない。** **赤いまま審査する**(`ADR-0301` 限定11 の逐語:
+#     「**赤いまま審査し、通ってから一覧を直す**」)。**先に消すと、何が減ったのかを
+#     機械的に示す手段が1本も残らない**(同 ADR §3a の 7)。
+#  2. **判定値は「廃止」である**(`ADR-0301` が `ADR-0007` §3c の判定値を5つから**6つ**にした)。
+#     **意味の逐語**(同 限定2):「**今日の語彙に在るキー・値・予約規約を取り除く提案を、
+#     取り除く側で通す。取り除いたあとに何がその役割を担うかを限定表に必ず書き、担うものが
+#     1つも無いなら消える機能を名指しで列挙する。**」 **記録先は個別 ADR(限定表を必ず書く)+
+#     `ADR-0007` §8 の台帳1行。**
+#  3. **門は A である。** **`ADR-0007` §1b の機械的検査表の8行目 `Δ11` が発火する**(同 限定4)——
+#     **(a) `schemas/` の `properties` からキーが減る**(`manifest.schema.json` と
+#     `diff.schema.json` の両方)/ **(b) `RESOURCE_KINDS`・`FIELD_TYPES`・`DIFF_OPS` の要素が減る** /
+#     **(c) 予約名・予約規約フィールドが減る** / **(d) `src/kernel/` の公開エクスポートが減る**。
+#     **このファイルが赤くなる減り方は、ほぼ必ず (a) か (b) である。**
+#  4. **門B・門外を主張するなら `Δ11` が空であることを示すこと**(同 限定7)。
+#     **「実装からは消えたが語彙には残っている」状態を門外と称して2手目で落とす、という
+#     二段構えを通さない。**
+#  5. **「却下」を撤去の根拠にしてはならない**(同 限定3)——
+#     **`ADR-0007` の「却下 = 要求は今日満たせる」と「廃止 = 在るものを取り除く」は別物である。**
+#  6. **通ってから、このファイルの該当行を消す。** **そのとき `#` の追記で「どの ADR の
+#     どの限定が消したか」を残すこと** —— **この検査は「誰が動かしたか」を1件も言わない**
+#     (`ADR-0250` §Decision 5 の (1)。**この一覧の最大の損である**)。
+#
+# **【禁止】減った件数と増えた件数を差し引いて書かない**(`ADR-0301` 限定9)。
+# **【禁止】「語彙ゼロ増」「語彙が減った」を成果として書かない**(同 限定10)。
+# **増えた行数と減った行数を、両方とも実数で書くこと。**
+#
+# **【この手続きの実績】** **語彙が減った実例は `V8-M20`(`ADR-0310`)が最初である** ——
+# **`ADR-0301` は実績が1件も無い状態で先に決められた手続きであり**(同 §限界1)、
+# **`V8-M20` が最初の反証機会であった**(その実測は `docs/plan/v8/records/v8-m20.md` §10)。
+#
+# ## 何が並んでいるか
+#
+# 行の形は `<場所>:<名前>` である。**場所は宣言の位置を表し、名前はその場所に並ぶ識別子である。**
+#   `FIELD_TYPES:` / `RESOURCE_KINDS:` / `DIFF_OPS:`   `src/kernel/types.ts` の3配列(宣言順)
+#   `manifest.`                                        `schemas/manifest.schema.json`
+#   `diff.`                                            `schemas/diff.schema.json`
+#   `....properties:<key>`                             その定義の `properties` のキー(出現順)
+#   `....required:<key>`                               その定義の `required` の要素(出現順)
+#   `....$defs:<name>`                                 `$defs` 直下の定義名(出現順)
+#   `....oneOf.<index>....`                            `oneOf` の各要素(添字は出現順の位置)
+#   `....anyOf.<index>....`                            `anyOf` の各要素(**`V8-M22` が足した**)
+#   `....items....`                                    配列の要素の定義(**`V8-M22` が足した**)
+#   `....properties.<key>....`                         **その値の中に入れ子で書かれた定義**
+#                                                      (**`V8-M22` が足した**)
+#
+# **【`V8-M22` / `J-G37` の追記】上の3形は着手前には1行も無かった。**
+# **着手前の `collectVocabulary()` は「`$defs` の直下」と「`$defs` 直下の `oneOf` の各要素」の
+# 2段しか見ておらず、インラインで書かれた入れ子の定義の内側のキーを1つも数えていなかった** ——
+# **`V8-M20` の申し送り(`docs/plan/v8/records/v8-m20.md:1214`)が「語彙の一覧は、増えた側の
+# 内側のキーを今日も1つも数えていない」と名指しした穴である。**
+# **増えた行数 = 159。減った行数 = 0。名前の総数 402 → 561**(実測。差し引きでは書かない)。
+# **【誇張しない】語彙は1つも増えていない** —— **増えたのは「数えている名前」であって、
+# `schemas/` は1バイトも変わっていない。** **数え始めた 159件 は、それぞれ既に門A を通って
+# 入った語彙である**(`app.roles` = `ADR-0302` / `rules` = `ADR-0304` / `role_condition` =
+# `ADR-0306` / `access_control` = `ADR-0292` / `user_kinds` = `ADR-0158` ほか)。
+# **【この一覧が今日も数えないもの】** **`allOf` / `if` / `then` / `else` を1つも辿らない。**
+# **`schemas/diff.schema.json` の `$defs/operation` は差分操作18種ぶんの `if`/`then` を
+# `allOf` に持つが、そこに現れるキーは同 `$defs` の `properties`(10キー)に全部出ている** ——
+# **辿らないことで名前が1つも落ちていないことは実測したが、「その op のときどのキーが
+# `false` に閉じられているか」は今日も1件も見ていない。**
+# **`enum` の値・`pattern`・`$comment` の文面・型定義は着手前と同じく1件も見ていない。**
+#
+# **並び順に意味がある。** 検査は集合ではなく**順序ごと**突き合わせる ——
+# 2件を入れ替えただけでも赤になる。**このファイルを整形・ソートしてはならない。**
+#
+# ## この一覧が引き受けたもの(`V5-M29` の 128件)
+#
+# 語彙の**総量**を数値リテラルで焼き込んだ検査のうち、「そのあと誰も触っていないこと」を
+# **他人に対して**主張していた 128件・39ファイルが、`V5-M29-T02`〜`V5-M29-T05` で消える。
+# **その検証手段がここへ移る。** 対応は `docs/adr/0250-vocabulary-name-inventory.md` §Decision 6a。
+# **失うものは同 §Decision 5 に列挙されている** —— 最大の損は**帰属**である。
+# 語彙が1つ増えたとき、「どの ADR の限定に触れたか」はこの検査の赤からは分からない。
+#
+# ## この一覧が引き受けて**いない**もの
+#
+# **8主題の外の総量の焼き込み 89箇所 は1件も消えない**(`$defs/theme` 40 / `$defs/field` 20 ほか。
+# `docs/plan/v5/records/v5-m29.md` §2-7)。**このファイルには `theme` も `field` も並んでいるが、
+# 並んでいることと、各所の焼き込みが消えたこととは別である。**
+# **`enum` の値・`$comment` の文面・型定義は1件も見ていない。**
+#
+# 生成: `V5-M29-T01`(2026-08-06。土台 `68f4882`)。**このタスクは既存の検査を1件も消していない。**
+#
+# **【追記: `V5-M29-T02`(2026-08-06)】** `web/test/shell-navigation-boundary.test.ts` の
+# (a) 群の2本の `test` を消し、その doc コメントを**このファイルの末尾**へ `#` として逐語で写した。
+# **名前の一覧の行は1件も変えていない**(`#` コメントの追記だけである)。
+# **中央が測らない差を1件、実測で見つけている** —— `properties` を持たなかった `$defs` に
+# **空の `properties: {}`** が足されたとき、消した2本は赤になったが、この一覧を使う検査は赤にならない
+# (キーが1本も無いと行が1つも生まれないため)。**キーが1本入った時点では赤になる。**
+# 詳細と実測10種は `docs/plan/v5/records/v5-m29-t02.md` §3。
+#
+# **【追記: `V7-M2-T04`(2026-08-08)。v7 が足した2行の出所を残す】**
+# **この一覧に v7 が足した行は次の2行だけである**(`git diff bb13904 HEAD -- scripts/vocabulary-snapshot.txt`
+# の実測。**削除0行**):
+#   `manifest.$defs.table.properties:access_control`      —— **`V7-M1-T02`**(`f1af945`)が足した
+#   `diff.$defs.table_changes.properties:access_control`  —— **`V7-M1-T03`**(`ca3fa73`)が足した
+# **どちらも本来 `V7-M2-T04` の担当だが、足さないと `scripts/vocabulary-drift.test.ts` が
+# 赤いままになるため前倒しされた**(`docs/plan/v7/records/v7-m1.md` §2-2 (d) / §2-3 が自分で申告している)。
+# **`V7-M2-T04` が足した行は0行である。** **本タスクが足したのはこの `#` の段落だけであり、
+# 名前の一覧の行を1行も動かしていない**(整形もソートもしていない)。
+#
+# **【追記: `V8-M17`(2026-08-09)。v8 の軸3 が足した行の出所を残す】**
+# **`V8-M16`(`30641d0`)が足した行は3行である**: `DIFF_OPS:set_roles` /
+# `manifest.$defs.app.properties:roles` / `diff.$defs.operation.properties:roles`(**削除0行**)。
+# **`V8-M17` が足した行は次の1行だけである**(**削除0行**):
+#   `manifest.$defs.view_action.properties:id`  —— **役割に束ねた規則からボタンを名指しする
+#   ための識別子**(台帳 `J-G9`。`ADR-0007` の門A 本審査 = 限定採用)。
+# **【この一覧が `V8-M17` について測っていないもの】** —— **収集器(`collectVocabulary()`)は
+# `$defs` 直下の定義の `properties` / `required` のキーしか並べないので、
+# `app.roles[].rules` の**内側**のキー(`target` / `table` / `field` / `view` / `action` / `can`)は
+# 1つも並ばない。****`access_control` の内側と同じ穴であり、本タスクは塞いでいない。**
+# **したがって「語彙が1行しか増えていない」と読んではならない** —— **実際には
+# `roles[].rules` と、その内側の6キーと、動詞3語の値域が増えている。**
+# **【禁止】「語彙ゼロ増」と書かない。**
+#
+# **【追記: `V8-M18`(2026-08-09)】** **`V8-M18` が足した行は次の1行だけである**
+# (**削除0行**):
+#   `manifest.$defs:role_condition`  —— **役割の規則が当たる条件**(かつ / または / でない と、
+#   葉2種。台帳 `J-G12`。`ADR-0007` の門A 本審査 = 限定採用)。
+# **`$defs` が 28 から 29 になったのは v8 の軸3 でここ1回だけである。**
+# **【この一覧が `V8-M18` について測っていないもの】** —— **収集器(`collectVocabulary()`)は
+# `$defs` 直下の定義の `properties` / `required` のキーしか並べない。**
+# **`role_condition` は `anyOf` の5形で書かれており、`properties` を直下に持たない**ので、
+# **中のキー(`field` / `equals` / `equals_current_user` / `and` / `or` / `not`)は1つも並ばない。**
+# **`roles[].rules[]` の7キー目 `when` も並ばない**(`$defs/app` の内側だから)。
+# **したがって「語彙が1行しか増えていない」と読んではならない。**
+# **【禁止】「語彙ゼロ増」と書かない。**
+#
+# **【追記: `V8-M26`(2026-08-11)。ユーザ決定 `D-V8-70`。直前の
+# 「`role_condition` は `anyOf` の**5形**で書かれており」は今日から偽である。
+# 旧文を1バイトも消していない】**
+# **`role_condition` の `anyOf` は今日 6形である**(組み立て3種 + 葉3種)。
+# **6形目 = `{ field, is_empty }`(その項目が空か)。**
+# **`V8-M26` がこの一覧に足した行は 6行ちょうどである**(**削除0行・改名0行**):
+#   `manifest.$defs.role_condition.anyOf.5.properties:field`
+#   `manifest.$defs.role_condition.anyOf.5.properties:is_empty`
+#   `manifest.$defs.role_condition.anyOf.5.required:field`
+#   `manifest.$defs.role_condition.anyOf.5.required:is_empty`
+#   `manifest.$defs.role_condition.anyOf.5.properties=present`
+#   `manifest.$defs.role_condition.anyOf.5.required=present`
+# **異なり名で数えると増えたのは `is_empty` の**1語だけ**である**
+# (`field` は `anyOf.0` / `anyOf.1` に既に在る綴りであり、新しい名前ではない)。
+# **`$defs` の本数は 29 のまま1本も動いていない**(6形目は既存の `role_condition` の中である)。
+# **足した位置は末尾(`anyOf.5`)であり、既存5形の位置を1つも動かしていない** ——
+# **位置を動かすと、この一覧の順序の突き合わせ(`misordered`)が「並べ替え」として赤くなる。**
+# **【この一覧が `V8-M26` について測っていないもの】** —— **`V8-M18` の節に書いたのと
+# 同じ穴である。** **収集器は `anyOf` の各形の `properties` / `required` のキーを並べるが、
+# **値域(`const: true`)も `$comment` の文面も1文字も見ていない。**
+# **【禁止】「語彙ゼロ増」と書かない。**
+#
+# **【更新は審査の後である】**(`Z-G30` 限定 (1))—— **門A の本審査は `V7-M0` であり、
+# 2026-08-08 に `bb13904` として main へマージ済みである。** `Z-G10` / `Z-G11` / `Z-G12` / `Z-G13` の
+# 判定を記録した審査コミットは **`4200839`**(面4・面5 の8単位)、台帳への追記は **`065ff4e`** であり、
+# **上の2行を足した `f1af945` / `ca3fa73` はどちらもそれより後である**(前後関係の実出力は
+# `docs/plan/v7/records/v7-m2.md` §2-4-3)。
+#
+# **【この一覧が v7 について測っていないもの】** —— **この一覧の収集器
+# (`collectVocabulary()`)は `$defs` 直下の定義の `properties` / `required` のキーしか並べない。**
+# **`access_control` の**内側**のキー(`enabled` / `permissions` / `creator_permission` / `grant` /
+# `members` / `groups` / `inherit_from` と、その入れ子。2026-08-08 実測で 21本)は、
+# 1本もこの一覧に載っていない。** **したがって内側に8項目目を足しても、この検査は緑のままである。**
+# **`enum` の値も見ていない**(`V7-M2-T01` が `permissions[].id` に足した予約4語の `not` / `enum` は
+# この一覧に1文字も現れない)。**これは `V5-M29-T01` の doc コメントが既に書いている限界6 の実例である。**
+
+# FIELD_TYPES —— フィールド型(`src/kernel/types.ts`)。**8主題の1。** `V5-M16` / `ADR-0161` が門A を通して `file` を9種目に足した。
+# ## 【2026-08-10。`V8-M20`。**このファイルから名前が減った初めての更新である**】
+#
+# **上の「赤くなったら何をするか」は、増える側についてだけ書かれていた。**
+# **減る側も同じ規律である** —— **一覧を更新する前に、その撤去が `ADR-0007` の門A を
+# 通ったかを審査すること。** **審査より先にこのファイルを更新してはならない。**
+# **`ADR-0301` 限定11 の逐語**: 「**赤いまま審査し、通ってから一覧を直す**」。
+#
+# **本更新で消えた名前は5件である**(いずれも判定 = 廃止。手続きは `ADR-0301`):
+#
+#   manifest.$defs.view.properties:audience           台帳 J-G27(画面の「見せる相手」)
+#   manifest.$defs.field.properties:audience          台帳 J-G28(項目の「見せる相手」)
+#   manifest.$defs.field.properties:writable_by       台帳 J-G28(項目の「書ける相手」)
+#   manifest.$defs.view_action.properties:audience    台帳 J-G29(ボタンの「見せる相手」)
+#   diff.$defs.field_changes.properties:writable_by   台帳 J-G28(差分側の書き換え引数1キー)
+#
+# **本更新で増えた名前は0件である。** **増えた側は `V8-M16` / `V8-M17` / `V8-M18` が
+# 別のコミットで足しており、本更新はそれを1行も動かしていない。**
+#
+# **検査が減る側も検出することは実測で確かめた**(`ADR-0301` 限定11 / 台帳 `J-G37`)——
+# **一覧を直す前に `scripts/vocabulary-drift.test.ts` を走らせ、`removed` に上の5件が
+# 名指しで並んで赤くなることを見てから、この更新を行った。** **`added` は空だった。**
+#
+# **【この下の `#` の塊は当時の記録である】** —— **凍結表の写しや、キーが足された当時の
+# 経緯を書いた段落に `audience` / `writable_by` の綴りが残っている。**
+# **それらは「今日の語彙」ではなく「そのとき何が起きたか」であり、1バイトも書き換えていない。**
+# **今日の語彙の正は、この上に並んでいる名前の行だけである。**
+
+# ## 【2026-08-14。`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`】
+#
+# **本更新で増えた名前は 25件・減った名前は 0件である**(実測。数え方は下の内訳の合計)。
+# **ADR は `docs/adr/0339-report-view-kernel-boring-scope.md`(憲法1 の射程)と
+# `docs/adr/0340-report-view-declaration.md`(宣言の器と値域)の2本である。**
+#
+# **どの ADR のどの限定が足したか**(この一覧自身の手続きが要求している):
+#
+#   `ADR-0340` 増分1 …… `RESOURCE_KINDS:report_view`(1件)+ `VIEW_TYPES:*`(4件)
+#   `ADR-0340` 増分4 …… `manifest.$defs.view.properties:report`(1件)
+#   `ADR-0340` 増分5 …… `manifest.$defs:report` と その内側(11件)+ `=present`(6件)
+#   `ADR-0340` 増分6 …… `diff.$defs.view_changes.properties:report`(1件)
+#
+# **内訳の検算**: 1 + 4 + 1 + 11 + 6 + 1 = **24**。**これに `VIEW_TYPES` の主題を足したこと
+# そのもので増える行は無いので、24 と 25 が食い違う。** **食い違いの正体は
+# `manifest.$defs:report`(定義名の行)を増分5 の「11件」の外に数えていたことである** ——
+# **正しくは 1 + 4 + 1 + (1 + 11) + 6 + 1 = 25 である。**
+# **【禁止】この検算を黙って直さない。数が合わないときは数え直した経過を残す。**
+#
+# **【更新は審査の後である】** —— **門A の本審査は `V8-M7`(2026-08-14。43判定)であり、
+# その審査コミットは本更新より前である。** **実装(`6ae5833`)は一覧2本を赤いまま残しており、
+# 本更新はその赤を見てから行った**(`ADR-0301` 限定11 の逐語「赤いまま審査し、通ってから一覧を直す」)。
+#
+# **【この一覧が `V8-M8` について測っていないもの】** —— **`enum` の**値**を1つも見ていない。**
+# **演算の2値(`sum` / `count`)も粒度の3値(`day` / `week` / `month`)も、この一覧に1文字も
+# 現れない。** **したがって4値目・6値目が足されても、この検査は緑のままである。**
+# **`allOf` の分岐(今日5本)も1件も見ていない** —— **集計表の分岐が 22キーを `false` で
+# 閉じていることは、この一覧では1バイトも担保されない。**
+# **【禁止】「語彙ゼロ増」と書かない。** **6箇所で増えた。**
+
+FIELD_TYPES:text
+FIELD_TYPES:long_text
+FIELD_TYPES:number
+FIELD_TYPES:boolean
+FIELD_TYPES:date
+FIELD_TYPES:select
+FIELD_TYPES:reference
+FIELD_TYPES:image
+FIELD_TYPES:file
+
+# RESOURCE_KINDS —— リソース種別(`src/kernel/types.ts`)。**8主題の2。**
+RESOURCE_KINDS:app
+RESOURCE_KINDS:table
+RESOURCE_KINDS:form
+RESOURCE_KINDS:list_view
+RESOURCE_KINDS:detail_view
+RESOURCE_KINDS:workflow
+RESOURCE_KINDS:function
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分1(`RESOURCE_KINDS` 7 → 8)。** 集計表を独立した画面種別にした
+# ぶんの8値目である(ユーザ決定 `D-V8-121` / `D-V8-125`)。
+RESOURCE_KINDS:report_view
+
+# DIFF_OPS —— 差分操作(`src/kernel/types.ts`)。**8主題の3。** 宣言順であって、実行順でも `oneOf` の順でもない。
+DIFF_OPS:add_table
+DIFF_OPS:add_field
+DIFF_OPS:add_view
+DIFF_OPS:update_view
+DIFF_OPS:remove_field
+DIFF_OPS:remove_table
+DIFF_OPS:change_table
+DIFF_OPS:change_field
+DIFF_OPS:remove_view
+DIFF_OPS:add_workflow
+DIFF_OPS:update_workflow
+DIFF_OPS:remove_workflow
+DIFF_OPS:add_function
+DIFF_OPS:update_function
+DIFF_OPS:remove_function
+DIFF_OPS:set_theme
+DIFF_OPS:set_roles
+
+# VIEW_TYPES —— 画面種別(`src/kernel/types.ts`)。**4本目の主題である。**
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分1(`VIEW_TYPES` 3 → 4)と、`Q-G32` の穴の1件。**
+# **足した理由**: **着手前、中央の検査は `VIEW_TYPES` を1つも見ていなかった** ——
+# 一覧に `VIEW_TYPES:` で始まる行が1本も無く、画面種別に4値目を足しても1件も検出しなかった。
+# **末尾に足してある** —— 既存3配列の行の位置を1つも動かさないためである
+# (位置が動くと `misordered` の意味が変わる。`V5-M29-T06` が `presence` を末尾に置いたのと同じ理由)。
+# **【禁止】これを「`Q-G32` は達成された」と読まない** —— **同じ検査は `enum` の値・
+# `$comment` の文面・型の定義を今日も1つも見ていない**(`scripts/vocabulary-drift.test.ts` の doc)。
+VIEW_TYPES:form
+VIEW_TYPES:list_view
+VIEW_TYPES:detail_view
+VIEW_TYPES:report_view
+
+# manifest.properties
+manifest.properties:app
+
+# manifest.required
+manifest.required:app
+
+# manifest.$defs —— manifest スキーマの定義名。**8主題の4。**
+manifest.$defs:resource_id
+manifest.$defs:view_table_id
+manifest.$defs:app
+manifest.$defs:theme
+manifest.$defs:table
+manifest.$defs:field_type
+manifest.$defs:field
+manifest.$defs:view_type
+manifest.$defs:sort_key
+manifest.$defs:sort
+manifest.$defs:filter
+manifest.$defs:filter_and_array
+manifest.$defs:filter_leaf
+manifest.$defs:filter_node
+manifest.$defs:related_list
+manifest.$defs:view_action
+manifest.$defs:view_actions
+manifest.$defs:field_id_list
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分5(`$defs` 29 → 30)。** **`ADR-0104` 限定1(「`$defs` の本数 28 を
+# 1つも増やさない」)を引き直した側である。**
+manifest.$defs:report
+manifest.$defs:view
+manifest.$defs:schedule_at
+manifest.$defs:workflow_trigger
+manifest.$defs:action_value
+manifest.$defs:workflow_action
+manifest.$defs:workflow
+manifest.$defs:function_input
+manifest.$defs:function_output_field
+manifest.$defs:function_output
+manifest.$defs:function
+manifest.$defs:role_condition
+
+# manifest.$defs.app.properties
+manifest.$defs.app.properties:id
+manifest.$defs.app.properties:name
+manifest.$defs.app.properties:tables
+manifest.$defs.app.properties:views
+manifest.$defs.app.properties:workflows
+manifest.$defs.app.properties:functions
+manifest.$defs.app.properties:theme
+manifest.$defs.app.properties.theme.properties:slots
+manifest.$defs.app.properties.theme.properties:origin
+manifest.$defs.app.properties.theme.properties.origin.properties:template_app_id
+manifest.$defs.app.properties.theme.properties.origin.properties:template_diff_id
+manifest.$defs.app.properties.theme.properties.origin.required:template_app_id
+manifest.$defs.app.properties.theme.required:slots
+manifest.$defs.app.properties:roles
+manifest.$defs.app.properties.roles.items.properties:id
+manifest.$defs.app.properties.roles.items.properties:name
+manifest.$defs.app.properties.roles.items.properties:rules
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:target
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:table
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:field
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:view
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:action
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:can
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties:when
+manifest.$defs.app.properties.roles.items.properties.rules.items.required:target
+manifest.$defs.app.properties.roles.items.properties.rules.items.required:can
+manifest.$defs.app.properties.roles.items.properties:signup
+manifest.$defs.app.properties.roles.items.required:id
+
+# manifest.$defs.app.required
+manifest.$defs.app.required:id
+manifest.$defs.app.required:name
+manifest.$defs.app.required:tables
+manifest.$defs.app.required:views
+
+# manifest.$defs.theme.properties
+manifest.$defs.theme.properties:--color-danger
+manifest.$defs.theme.properties:--color-text
+manifest.$defs.theme.properties:--color-text-label
+manifest.$defs.theme.properties:--color-text-placeholder
+manifest.$defs.theme.properties:--color-text-secondary
+manifest.$defs.theme.properties:--color-border
+manifest.$defs.theme.properties:--color-page-background
+manifest.$defs.theme.properties:--color-surface-highlight
+manifest.$defs.theme.properties:--font-family-base
+manifest.$defs.theme.properties:--font-size-note
+manifest.$defs.theme.properties:--font-size-secondary
+manifest.$defs.theme.properties:--line-height-base
+manifest.$defs.theme.properties:--space-1
+manifest.$defs.theme.properties:--space-2
+manifest.$defs.theme.properties:--space-3
+manifest.$defs.theme.properties:--space-4
+manifest.$defs.theme.properties:--space-5
+manifest.$defs.theme.properties:--space-6
+manifest.$defs.theme.properties:--border-width
+manifest.$defs.theme.properties:--control-border-radius
+manifest.$defs.theme.properties:--surface-shadow
+manifest.$defs.theme.properties:--focus-outline-color
+manifest.$defs.theme.properties:--focus-outline-width
+manifest.$defs.theme.properties:--detail-label-width
+manifest.$defs.theme.properties:--login-max-width
+
+# manifest.$defs.theme.required
+manifest.$defs.theme.required:--color-danger
+manifest.$defs.theme.required:--color-text
+manifest.$defs.theme.required:--color-text-label
+manifest.$defs.theme.required:--color-text-placeholder
+manifest.$defs.theme.required:--color-text-secondary
+manifest.$defs.theme.required:--color-border
+manifest.$defs.theme.required:--color-page-background
+manifest.$defs.theme.required:--color-surface-highlight
+manifest.$defs.theme.required:--font-family-base
+manifest.$defs.theme.required:--font-size-note
+manifest.$defs.theme.required:--font-size-secondary
+manifest.$defs.theme.required:--line-height-base
+manifest.$defs.theme.required:--space-1
+manifest.$defs.theme.required:--space-2
+manifest.$defs.theme.required:--space-3
+manifest.$defs.theme.required:--space-4
+manifest.$defs.theme.required:--space-5
+manifest.$defs.theme.required:--space-6
+manifest.$defs.theme.required:--border-width
+manifest.$defs.theme.required:--control-border-radius
+manifest.$defs.theme.required:--surface-shadow
+manifest.$defs.theme.required:--focus-outline-color
+manifest.$defs.theme.required:--focus-outline-width
+manifest.$defs.theme.required:--detail-label-width
+manifest.$defs.theme.required:--login-max-width
+
+# manifest.$defs.table.properties
+manifest.$defs.table.properties:id
+manifest.$defs.table.properties:name
+manifest.$defs.table.properties:fields
+manifest.$defs.table.properties:representative_field
+manifest.$defs.table.properties:reference_search_fields
+manifest.$defs.table.properties:access_control
+manifest.$defs.table.properties.access_control.properties:enabled
+manifest.$defs.table.properties.access_control.properties:permissions
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties:id
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties:name
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties:read
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties:write
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties:delete
+manifest.$defs.table.properties.access_control.properties.permissions.items.required:id
+manifest.$defs.table.properties.access_control.properties.permissions.items.required:name
+manifest.$defs.table.properties.access_control.properties.permissions.items.required:read
+manifest.$defs.table.properties.access_control.properties.permissions.items.required:write
+manifest.$defs.table.properties.access_control.properties.permissions.items.required:delete
+manifest.$defs.table.properties.access_control.properties:creator_permission
+manifest.$defs.table.properties.access_control.properties:grant
+manifest.$defs.table.properties.access_control.properties.grant.properties:table
+manifest.$defs.table.properties.access_control.properties.grant.properties:target
+manifest.$defs.table.properties.access_control.properties.grant.properties:member
+manifest.$defs.table.properties.access_control.properties.grant.properties:group
+manifest.$defs.table.properties.access_control.properties.grant.properties:permission
+manifest.$defs.table.properties.access_control.properties.grant.required:table
+manifest.$defs.table.properties.access_control.properties.grant.required:target
+manifest.$defs.table.properties.access_control.properties.grant.required:permission
+manifest.$defs.table.properties.access_control.properties:members
+manifest.$defs.table.properties.access_control.properties.members.properties:table
+manifest.$defs.table.properties.access_control.properties.members.properties:account
+manifest.$defs.table.properties.access_control.properties.members.properties:group
+manifest.$defs.table.properties.access_control.properties.members.required:table
+manifest.$defs.table.properties.access_control.properties.members.required:account
+manifest.$defs.table.properties.access_control.properties:groups
+manifest.$defs.table.properties.access_control.properties.groups.properties:table
+manifest.$defs.table.properties.access_control.properties.groups.required:table
+manifest.$defs.table.properties.access_control.properties:inherit_from
+manifest.$defs.table.properties.access_control.required:enabled
+manifest.$defs.table.properties.access_control.required:permissions
+manifest.$defs.table.properties.access_control.required:grant
+manifest.$defs.table.properties.access_control.required:creator_permission
+
+# manifest.$defs.table.required
+manifest.$defs.table.required:id
+manifest.$defs.table.required:name
+manifest.$defs.table.required:fields
+
+# manifest.$defs.field.properties
+manifest.$defs.field.properties:id
+manifest.$defs.field.properties:name
+manifest.$defs.field.properties:type
+manifest.$defs.field.properties:required
+manifest.$defs.field.properties:options
+manifest.$defs.field.properties:reference_table
+manifest.$defs.field.properties:unique
+manifest.$defs.field.properties:unit
+manifest.$defs.field.properties:emphasis
+manifest.$defs.field.properties:hide_when_empty
+manifest.$defs.field.properties:reference_picker
+manifest.$defs.field.properties:reference_search_fields
+
+# manifest.$defs.field.required
+manifest.$defs.field.required:id
+manifest.$defs.field.required:name
+manifest.$defs.field.required:type
+
+# manifest.$defs.sort_key.properties
+manifest.$defs.sort_key.properties:field
+manifest.$defs.sort_key.properties:order
+
+# manifest.$defs.sort_key.required
+manifest.$defs.sort_key.required:field
+manifest.$defs.sort_key.required:order
+manifest.$defs.filter_and_array.items.properties:field
+manifest.$defs.filter_and_array.items.properties:equals
+manifest.$defs.filter_and_array.items.required:field
+manifest.$defs.filter_and_array.items.required:equals
+
+# manifest.$defs.filter_leaf.properties
+manifest.$defs.filter_leaf.properties:field
+manifest.$defs.filter_leaf.properties:equals
+manifest.$defs.filter_leaf.properties:contains
+manifest.$defs.filter_leaf.properties:gte
+manifest.$defs.filter_leaf.properties:lte
+manifest.$defs.filter_leaf.properties:in
+
+# manifest.$defs.filter_leaf.required
+manifest.$defs.filter_leaf.required:field
+
+# manifest.$defs.filter_leaf.oneOf.0.required
+manifest.$defs.filter_leaf.oneOf.0.required:equals
+
+# manifest.$defs.filter_leaf.oneOf.1.required
+manifest.$defs.filter_leaf.oneOf.1.required:contains
+
+# manifest.$defs.filter_leaf.oneOf.2.required
+manifest.$defs.filter_leaf.oneOf.2.required:gte
+
+# manifest.$defs.filter_leaf.oneOf.3.required
+manifest.$defs.filter_leaf.oneOf.3.required:lte
+
+# manifest.$defs.filter_leaf.oneOf.4.required
+manifest.$defs.filter_leaf.oneOf.4.required:in
+manifest.$defs.filter_node.anyOf.1.properties:and
+manifest.$defs.filter_node.anyOf.1.required:and
+manifest.$defs.filter_node.anyOf.2.properties:or
+manifest.$defs.filter_node.anyOf.2.required:or
+manifest.$defs.filter_node.anyOf.3.properties:not
+manifest.$defs.filter_node.anyOf.3.required:not
+manifest.$defs.related_list.items.properties:id
+manifest.$defs.related_list.items.properties:table
+manifest.$defs.related_list.items.properties:via
+manifest.$defs.related_list.items.properties:columns
+manifest.$defs.related_list.items.properties:sort
+manifest.$defs.related_list.items.properties:name
+manifest.$defs.related_list.items.required:table
+manifest.$defs.related_list.items.required:via
+manifest.$defs.related_list.items.required:columns
+
+# manifest.$defs.view_action.properties —— 操作ボタンのキー。**8主題の7b。**
+manifest.$defs.view_action.properties:form
+manifest.$defs.view_action.properties:view
+manifest.$defs.view_action.properties:prefill
+manifest.$defs.view_action.properties.prefill.properties:field
+manifest.$defs.view_action.properties.prefill.required:field
+manifest.$defs.view_action.properties:set
+manifest.$defs.view_action.properties.set.properties:field
+manifest.$defs.view_action.properties.set.properties:value
+manifest.$defs.view_action.properties.set.required:field
+manifest.$defs.view_action.properties.set.required:value
+manifest.$defs.view_action.properties:name
+manifest.$defs.view_action.properties:visible_when
+manifest.$defs.view_action.properties:run
+manifest.$defs.view_action.properties:id
+
+# manifest.$defs.view_action.oneOf —— 操作ボタンの排他の形。**8主題の7a**(形は下の oneOf.0 〜 oneOf.3 の4つ。**5つ目の形を足すには門A の再通過が要る** —— `ADR-0100` §3a-1 / `ADR-0173`)。
+# manifest.$defs.view_action.oneOf.0.properties
+manifest.$defs.view_action.oneOf.0.properties:set
+manifest.$defs.view_action.oneOf.0.properties:view
+manifest.$defs.view_action.oneOf.0.properties:run
+
+# manifest.$defs.view_action.oneOf.0.required
+manifest.$defs.view_action.oneOf.0.required:form
+manifest.$defs.view_action.oneOf.0.required:prefill
+
+# manifest.$defs.view_action.oneOf.1.properties
+manifest.$defs.view_action.oneOf.1.properties:form
+manifest.$defs.view_action.oneOf.1.properties:prefill
+manifest.$defs.view_action.oneOf.1.properties:view
+manifest.$defs.view_action.oneOf.1.properties:run
+
+# manifest.$defs.view_action.oneOf.1.required
+manifest.$defs.view_action.oneOf.1.required:set
+
+# manifest.$defs.view_action.oneOf.2.properties
+manifest.$defs.view_action.oneOf.2.properties:form
+manifest.$defs.view_action.oneOf.2.properties:prefill
+manifest.$defs.view_action.oneOf.2.properties:set
+manifest.$defs.view_action.oneOf.2.properties:run
+
+# manifest.$defs.view_action.oneOf.2.required
+manifest.$defs.view_action.oneOf.2.required:view
+
+# manifest.$defs.view_action.oneOf.3.properties
+manifest.$defs.view_action.oneOf.3.properties:form
+manifest.$defs.view_action.oneOf.3.properties:prefill
+manifest.$defs.view_action.oneOf.3.properties:set
+manifest.$defs.view_action.oneOf.3.properties:view
+
+# manifest.$defs.view_action.oneOf.3.required
+manifest.$defs.view_action.oneOf.3.required:run
+
+# manifest.$defs.report.properties / .required —— 集計表の中身
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分5 の内側。** 値域は演算2値(`sum` / `count`)・粒度3値(`day` / `week` /
+# `month`)・束ねるキーと集計が各 `maxItems: 3` に閉じている(同 ADR 限定1〜限定4)。
+# **【この一覧が数えないもの】** **`enum` の**値**は1つも数えていない** —— `sum` / `count` /
+# `day` / `week` / `month` が増えたことを、この検査は今日も1件も検出しない(限定14 の限界)。
+# **【`V8-M9`。台帳 `Q-G6`〜`Q-G9`。門A 本審査 = `V8-M7`。裁定 `M7-1`。ADR = `0341`】**
+# **`ADR-0341` 限定1 / 限定2 が足した名前**: `join`(1件)と、その要素の `table` / `via`
+# (`properties` に2件・`required` に2件 = 4件)。 **同 限定11 が足した名前**:
+# `group_by[].table` と `aggregates[].table`(2件)。 **合わせて 7件。**
+# **`$defs` は 30 のままである**(結合の要素の形をインラインで書き、新しい `$defs` を
+# 1本も作っていない)。
+# **【`V8-M9`。ユーザ決定 `D-V8-126`。ADR = `0342`】**
+# **`ADR-0342` はこの一覧に **1行も** 足していない** —— **足したのは
+# `group_by[].field` の値域を `pattern` で1つ広げたこと(`^(_id|[a-z][a-z0-9_-]*)$`)だけで、
+# **名前が1つも増えていない**からである。**
+# **`ADR-0340` §限界10 が予告していた穴 —— この検査は `enum` の**値**・`pattern`・`$comment`
+# の文面を今日も1つも見ていない —— が、そのまま当たった。**
+# **「行そのもので束ねられるようになった」ことを、この一覧は1件も検出しない**
+# (`ADR-0342` 限定4 がその事実を自ら書いている)。
+manifest.$defs.report.properties:join
+manifest.$defs.report.properties.join.items.properties:table
+manifest.$defs.report.properties.join.items.properties:via
+manifest.$defs.report.properties.join.items.required:table
+manifest.$defs.report.properties.join.items.required:via
+manifest.$defs.report.properties:group_by
+manifest.$defs.report.properties.group_by.items.properties:id
+manifest.$defs.report.properties.group_by.items.properties:table
+manifest.$defs.report.properties.group_by.items.properties:field
+manifest.$defs.report.properties.group_by.items.properties:granularity
+manifest.$defs.report.properties.group_by.items.required:field
+manifest.$defs.report.properties:aggregates
+manifest.$defs.report.properties.aggregates.items.properties:id
+manifest.$defs.report.properties.aggregates.items.properties:type
+manifest.$defs.report.properties.aggregates.items.properties:table
+manifest.$defs.report.properties.aggregates.items.properties:field
+manifest.$defs.report.properties.aggregates.items.required:type
+manifest.$defs.report.properties:filter
+# **【2026-08-15。`V8-M11-T02`。台帳 `Q-G21a`(束ねた結果の並べ替え)/ `Q-G12`(集計値での
+# 並べ替え)。門A 本審査 = `V8-M7`(2026-08-14。判定 = 限定採用)。ユーザ決定 `D-V8-130`。
+# 実施記録 `docs/plan/v8/records/v8-m11.md` §1-0c の決定1〜決定4 / §1-0e の決定13】**
+# **本更新で増えた名前は 9件・減った名前は 0件である**(実測。下の内訳の合計)。
+# **内訳**: `sort`(1件)+ その内側の `target` / `index` / `order`
+# (`properties` に3件・`required` に3件 = 6件)+ `=present` 2件(末尾の節に置いてある)。
+# **検算**: 1 + 3 + 3 + 2 = **9**。**赤くなったときの `added` も9件ちょうどであった。**
+# **`$defs` は 30 のままである**(値域をインラインで書き、新しい `$defs` を1本も作っていない)。
+# **`$defs/view.properties` も 29 のままである** —— **画面直下の `sort`(`$defs/sort`)とは
+# 別物であり、`$defs/sort` / `$defs/sort_key` は1バイトも動いていない。**
+# **【この一覧が今日も数えないもの】** **`enum` の**値**を1つも見ていない** ——
+# **`target` の2値(`group_by` / `aggregate`)も `order` の2値(`asc` / `desc`)も、この一覧に
+# 1文字も現れない。** **`index` の値域(`0..2`)も見ていない。** **したがって3値目・4値目が
+# 足されても、この検査は緑のままである**(`ADR-0340` §限界10 が予告した穴がそのまま当たる)。
+# **【更新は審査の後である】** —— **門A の本審査は `V8-M7`(2026-08-14)であり、本更新より
+# 前である。** **一覧を直す前に `scripts/vocabulary-drift.test.ts` を走らせ、`added` に
+# 上の9件が名指しで並んで赤くなることを見てから、この更新を行った**(`ADR-0301` 限定11)。
+# **【禁止】「語彙ゼロ増」と書かない。** **9行・異なり名で4語(`sort` / `target` / `index` /
+# `order`)増えた**(うち `target` / `index` / `order` は他の主題に既出の綴りである)。
+manifest.$defs.report.properties:sort
+manifest.$defs.report.properties.sort.properties:target
+manifest.$defs.report.properties.sort.properties:index
+manifest.$defs.report.properties.sort.properties:order
+manifest.$defs.report.properties.sort.required:target
+manifest.$defs.report.properties.sort.required:index
+manifest.$defs.report.properties.sort.required:order
+# **【2026-08-15。`V8-M12-T02`。台帳 `Q-G23`(集計の数字を棒グラフと折れ線グラフで見たい)。
+# 門A 本審査 = `V8-M7`(2026-08-14。判定 = 限定採用)。ユーザ決定 `D-V8-131`。
+# 実施記録 `docs/plan/v8/records/v8-m12.md` §1-0c の決定1〜決定3】**
+# **本更新で増えた名前は 1件・減った名前は 0件である**(実測。赤くなったときの `added` も
+# `manifest.$defs.report.properties:chart` の1件ちょうどであった)。
+# **内訳**: `chart`(1件)。**その内側の名前は 0件である** —— **値域を `enum` の
+# スカラー1本で書いたので、`properties` も `required` も `items` も持たない**
+# (`sort` が `=present` を2件連れてきたのと、ここが違う)。
+# **`$defs` は 30 のままである**(値域をインラインで書き、新しい `$defs` を1本も作っていない)。
+# **`$defs/view.properties` も 29 のままである** —— **グラフ種別は画面直下ではなく
+# 集計表の中(`$defs/report`)に置いた**(実施記録 §1-0c の決定1)。
+# **`schemas/diff.schema.json` にも1行も足していない** —— **`update_view` の `report` は
+# 全置換なので、`view_changes.properties` は 25 のままである。**
+# **【この一覧が今日も数えないもの】** **`enum` の**値**を1つも見ていない** ——
+# **2値(棒 / 折れ線)がこの一覧に1文字も現れない。** **したがって3値目が足されても、
+# この検査は緑のままである**(`ADR-0340` §限界10 が予告した穴がそのまま当たる)。
+# **`required` に入っていないこと(省略できること)も、この一覧は1件も検出しない。**
+# **【更新は審査の後である】** —— **門A の本審査は `V8-M7`(2026-08-14)であり、本更新
+# (2026-08-15)より前である。** **一覧を直す前に `scripts/vocabulary-drift.test.ts` を
+# 走らせ、`added` に上の1件が名指しで並んで赤くなることを見てから、この更新を行った**
+# (`ADR-0301` 限定11)。
+# **【禁止】「語彙ゼロ増」と書かない。** **1行・異なり名で1語(`chart`)増えた。**
+manifest.$defs.report.properties:chart
+manifest.$defs.report.required:group_by
+manifest.$defs.report.required:aggregates
+
+# manifest.$defs.view.properties —— ビューのキー。**8主題の5。** 末尾に足されてきた列であり、並びがそのまま履歴になっている。
+manifest.$defs.view.properties:id
+manifest.$defs.view.properties:type
+manifest.$defs.view.properties:table
+manifest.$defs.view.properties:name
+manifest.$defs.view.properties:columns
+manifest.$defs.view.properties:sort
+manifest.$defs.view.properties:filter
+manifest.$defs.view.properties:fields
+manifest.$defs.view.properties:related
+manifest.$defs.view.properties:actions
+manifest.$defs.view.properties:preset_column_align
+manifest.$defs.view.properties:preset_column_width
+manifest.$defs.view.properties:preset_pager_position
+manifest.$defs.view.properties:preset_label_placement
+manifest.$defs.view.properties:preset_field_columns
+manifest.$defs.view.properties:preset_image_size
+manifest.$defs.view.properties:preset_text_preview
+manifest.$defs.view.properties:custom_css
+manifest.$defs.view.properties.custom_css.properties:asset
+manifest.$defs.view.properties.custom_css.properties:digest
+manifest.$defs.view.properties.custom_css.required:asset
+manifest.$defs.view.properties.custom_css.required:digest
+manifest.$defs.view.properties:menu_listed
+manifest.$defs.view.properties:field_groups
+# **【`V10-M24-T04`。台帳 `CM-G29`。門外】値の形にしか現れない語彙の3件。**
+# **`V10-M24-T03` が `field_groups` の値を `oneOf` の2枝(旧形の配列 / 新形の
+# `{id?, fields}`)にしたが、着手前の検査は `additionalProperties` を1つも辿らず、
+# この3件は一覧に1行も出ていなかった。** **`T04` が辿らせて出るようにした。**
+# **枝0(旧形の配列)は `properties` も `required` も持たないので1行も出ない。**
+manifest.$defs.view.properties.field_groups.additionalProperties.oneOf.1.properties:id
+manifest.$defs.view.properties.field_groups.additionalProperties.oneOf.1.properties:fields
+manifest.$defs.view.properties.field_groups.additionalProperties.oneOf.1.required:fields
+manifest.$defs.view.properties:preset_list_shape
+manifest.$defs.view.properties:modal
+manifest.$defs.view.properties:search_fields
+manifest.$defs.view.properties:page_size
+manifest.$defs.view.properties:preset_density
+manifest.$defs.view.properties:after_save
+manifest.$defs.view.properties:sum_field
+manifest.$defs.view.properties:reference_pickers
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分4(`$defs/view.properties` 28 → 29)。** **`sum_field` の `$comment` が
+# 置いた「29キー目を足してはならない」を引き直した側である**(同 ADR §3-2。**その `$comment`
+# は1バイトも書き換えていない**)。 **置き換えとなる新しい不変条件: 30キー目を足してはならない。**
+manifest.$defs.view.properties:report
+
+# **【`V10-M1-T02`。台帳 `NV-G4`。門A 本審査 = `V10-M0` 群A。ADR = `0359`】**
+# **`ADR-0359` の増分1(`$defs/view.properties` 29 → 30)。** **`reference_pickers` の
+# `$comment`(`ADR-0289`)と `report` の `$comment`(`ADR-0340`)がどちらも置いた
+# 「30キー目を足してはならない」を、両方まとめて引き直した側である**(`ADR-0359` §5。
+# **その2つの `$comment` は1バイトも書き換えていない**)。
+# **置き換えとなる新しい不変条件: `$defs/view` に 32キー目を足してはならない。**
+# **31キー目は同じ ADR が同じ門で通した `flow` であり、実装は `V10-M4` の担当である。**
+manifest.$defs.view.properties:after_delete
+
+# **【`V10-M4-T01`。台帳 `NV-G9`。門A 本審査 = `V10-M0` 群B。ADR = `0359` / `0360`】**
+# **`ADR-0359` の増分3(`$defs/view.properties` 30 → 31)。** **すぐ上の `after_delete` の
+# コメントが「31キー目は同じ ADR が同じ門で通した `flow` であり、実装は `V10-M4` の担当
+# である」と名指しで予告していた —— これがその31キー目である。**
+# **置き換えとなる新しい不変条件: `$defs/view` に 32キー目を足してはならない**
+# (**`after_delete` が置いた線と同じ数である。`ADR-0359` §5 が同じ門で2本を通したので、
+# 線はその次の 32 に置く**)。
+# **値はオブジェクトなので、`custom_css` と同じく中のサブキーもここに並ぶ**
+# (`properties` に3件・`required` に3件 = 6件)**+ `=present` 2件(末尾の節に置いてある)**。
+# **新しい `$defs` を1つも作っていない** —— **`manifest.$defs` は 30 のままである。**
+manifest.$defs.view.properties:flow
+manifest.$defs.view.properties.flow.properties:id
+manifest.$defs.view.properties.flow.properties:step
+manifest.$defs.view.properties.flow.properties:kind
+manifest.$defs.view.properties.flow.required:id
+manifest.$defs.view.properties.flow.required:step
+manifest.$defs.view.properties.flow.required:kind
+
+# manifest.$defs.view.required
+manifest.$defs.view.required:id
+manifest.$defs.view.required:type
+manifest.$defs.view.required:table
+
+# manifest.$defs.schedule_at.properties
+manifest.$defs.schedule_at.properties:hour
+manifest.$defs.schedule_at.properties:minute
+
+# manifest.$defs.schedule_at.required
+manifest.$defs.schedule_at.required:hour
+manifest.$defs.schedule_at.required:minute
+
+# manifest.$defs.workflow_trigger.properties
+manifest.$defs.workflow_trigger.properties:type
+manifest.$defs.workflow_trigger.properties:table
+manifest.$defs.workflow_trigger.properties:at
+manifest.$defs.workflow_trigger.properties:older_than
+manifest.$defs.workflow_trigger.properties.older_than.properties:field
+manifest.$defs.workflow_trigger.properties.older_than.properties:days
+manifest.$defs.workflow_trigger.properties.older_than.required:field
+manifest.$defs.workflow_trigger.properties.older_than.required:days
+
+# manifest.$defs.workflow_trigger.required
+manifest.$defs.workflow_trigger.required:type
+
+# manifest.$defs.workflow_action.properties
+manifest.$defs.workflow_action.properties:action
+manifest.$defs.workflow_action.properties:table
+manifest.$defs.workflow_action.properties:values
+manifest.$defs.workflow_action.properties:target
+manifest.$defs.workflow_action.properties:connection
+manifest.$defs.workflow_action.properties:destination
+manifest.$defs.workflow_action.properties:payload
+manifest.$defs.workflow_action.properties:capability
+manifest.$defs.workflow_action.properties:prompt
+manifest.$defs.workflow_action.properties:input
+manifest.$defs.workflow_action.properties:output_field
+manifest.$defs.workflow_action.properties:fallback
+manifest.$defs.workflow_action.properties:function
+manifest.$defs.workflow_action.properties:output_table
+manifest.$defs.workflow_action.properties:write_back
+manifest.$defs.workflow_action.properties:write_ops
+manifest.$defs.workflow_action.properties:when
+manifest.$defs.workflow_action.properties.when.properties:field
+manifest.$defs.workflow_action.properties.when.properties:equals
+manifest.$defs.workflow_action.properties.when.required:field
+manifest.$defs.workflow_action.properties.when.required:equals
+
+# manifest.$defs.workflow_action.required
+manifest.$defs.workflow_action.required:action
+
+# manifest.$defs.workflow.properties
+manifest.$defs.workflow.properties:id
+manifest.$defs.workflow.properties:name
+manifest.$defs.workflow.properties:trigger
+manifest.$defs.workflow.properties:actions
+manifest.$defs.workflow.properties:history_table
+manifest.$defs.workflow.properties:act_as
+
+# manifest.$defs.workflow.required
+manifest.$defs.workflow.required:id
+manifest.$defs.workflow.required:name
+manifest.$defs.workflow.required:trigger
+manifest.$defs.workflow.required:actions
+manifest.$defs.workflow.required:history_table
+
+# manifest.$defs.function_input.properties
+manifest.$defs.function_input.properties:source
+manifest.$defs.function_input.properties:table
+manifest.$defs.function_input.properties:view
+manifest.$defs.function_input.properties:via
+
+# manifest.$defs.function_input.required
+manifest.$defs.function_input.required:source
+
+# manifest.$defs.function_output_field.properties
+manifest.$defs.function_output_field.properties:id
+manifest.$defs.function_output_field.properties:type
+
+# manifest.$defs.function_output_field.required
+manifest.$defs.function_output_field.required:id
+manifest.$defs.function_output_field.required:type
+
+# manifest.$defs.function_output.properties
+manifest.$defs.function_output.properties:fields
+manifest.$defs.function_output.properties:ops
+
+# manifest.$defs.function.properties
+manifest.$defs.function.properties:id
+manifest.$defs.function.properties:name
+manifest.$defs.function.properties:code
+manifest.$defs.function.properties:input
+manifest.$defs.function.properties:output
+manifest.$defs.function.properties:capabilities
+
+# manifest.$defs.function.required
+manifest.$defs.function.required:id
+manifest.$defs.function.required:name
+manifest.$defs.function.required:code
+manifest.$defs.function.required:input
+manifest.$defs.function.required:output
+manifest.$defs.role_condition.anyOf.0.properties:field
+manifest.$defs.role_condition.anyOf.0.properties:equals
+manifest.$defs.role_condition.anyOf.0.required:field
+manifest.$defs.role_condition.anyOf.0.required:equals
+manifest.$defs.role_condition.anyOf.1.properties:field
+manifest.$defs.role_condition.anyOf.1.properties:equals_current_user
+manifest.$defs.role_condition.anyOf.1.required:field
+manifest.$defs.role_condition.anyOf.1.required:equals_current_user
+manifest.$defs.role_condition.anyOf.2.properties:and
+manifest.$defs.role_condition.anyOf.2.required:and
+manifest.$defs.role_condition.anyOf.3.properties:or
+manifest.$defs.role_condition.anyOf.3.required:or
+manifest.$defs.role_condition.anyOf.4.properties:not
+manifest.$defs.role_condition.anyOf.4.required:not
+manifest.$defs.role_condition.anyOf.5.properties:field
+manifest.$defs.role_condition.anyOf.5.properties:is_empty
+manifest.$defs.role_condition.anyOf.5.required:field
+manifest.$defs.role_condition.anyOf.5.required:is_empty
+
+# diff.properties
+diff.properties:diff_id
+diff.properties:intent
+diff.properties:operations
+
+# diff.required
+diff.required:diff_id
+diff.required:intent
+diff.required:operations
+
+# diff.$defs
+diff.$defs:op_name
+diff.$defs:table_changes
+diff.$defs:field_changes
+diff.$defs:view_changes
+diff.$defs:operation
+
+# diff.$defs.table_changes.properties
+diff.$defs.table_changes.properties:id
+diff.$defs.table_changes.properties:name
+diff.$defs.table_changes.properties:representative_field
+diff.$defs.table_changes.properties:reference_search_fields
+diff.$defs.table_changes.properties:access_control
+
+# diff.$defs.field_changes.properties
+diff.$defs.field_changes.properties:id
+diff.$defs.field_changes.properties:name
+diff.$defs.field_changes.properties:type
+diff.$defs.field_changes.properties:required
+diff.$defs.field_changes.properties:options
+diff.$defs.field_changes.properties:reference_table
+diff.$defs.field_changes.properties:unique
+diff.$defs.field_changes.properties:unit
+diff.$defs.field_changes.properties:emphasis
+diff.$defs.field_changes.properties:hide_when_empty
+diff.$defs.field_changes.properties:reference_picker
+diff.$defs.field_changes.properties:reference_search_fields
+
+# diff.$defs.view_changes.properties —— `update_view` で差し替えられるキー。**8主題の6。**
+diff.$defs.view_changes.properties:name
+diff.$defs.view_changes.properties:columns
+diff.$defs.view_changes.properties:sort
+diff.$defs.view_changes.properties:filter
+diff.$defs.view_changes.properties:fields
+diff.$defs.view_changes.properties:preset_column_align
+diff.$defs.view_changes.properties:preset_column_width
+diff.$defs.view_changes.properties:preset_pager_position
+diff.$defs.view_changes.properties:preset_label_placement
+diff.$defs.view_changes.properties:preset_field_columns
+diff.$defs.view_changes.properties:preset_image_size
+diff.$defs.view_changes.properties:preset_text_preview
+diff.$defs.view_changes.properties:custom_css
+diff.$defs.view_changes.properties:menu_listed
+diff.$defs.view_changes.properties:field_groups
+diff.$defs.view_changes.properties:preset_list_shape
+diff.$defs.view_changes.properties:modal
+diff.$defs.view_changes.properties:search_fields
+diff.$defs.view_changes.properties:page_size
+diff.$defs.view_changes.properties:preset_density
+diff.$defs.view_changes.properties:after_save
+diff.$defs.view_changes.properties:sum_field
+diff.$defs.view_changes.properties:actions
+diff.$defs.view_changes.properties:reference_pickers
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分6(`diff.schema.json` の `view_changes` 24 → 25)。** `update_view` で
+# 後から書け、カーネルが値を実際に運ぶ(「キーは在るが効かない」穴を踏み直さない)。
+diff.$defs.view_changes.properties:report
+
+# **【`V10-M1-T02`。台帳 `NV-G4`。門A 本審査 = `V10-M0` 群A。ADR = `0359`】**
+# **`ADR-0359` の増分2(`diff.schema.json` の `view_changes` 25 → 26)。** `update_view` で
+# 後から書け、カーネルが値を実際に運ぶ(「キーは在るが効かない」穴を踏み直さない)。
+# **置き換えとなる新しい不変条件: `view_changes` に 28キー目を足してはならない**
+# (**27キー目は同じ ADR が通した `flow` である。`ADR-0359` は差分側の本数の不変条件を
+# 1つも書いていないので、マニフェスト側 §5 の数え方をそのまま移した**)。
+diff.$defs.view_changes.properties:after_delete
+
+# **【`V10-M4-T01`。台帳 `NV-G9`。門A 本審査 = `V10-M0` 群B。ADR = `0359` / `0360`】**
+# **`ADR-0359` の増分4(`diff.schema.json` の `view_changes` 26 → 27)。** `update_view` で
+# 後から書け、カーネルが値を実際に運ぶ(「キーは在るが効かない」穴を踏み直さない)。
+# **すぐ上の `after_delete` のコメントが「27キー目は同じ ADR が通した `flow` である」と
+# 名指しで予告していた —— これがその27キー目である。**
+# **置き換えとなる新しい不変条件: `view_changes` に 28キー目を足してはならない**
+# (**`after_delete` が置いた線をそのまま引き継ぐ**)。
+# **1行だけである** —— **manifest 側を絶対 URI で `$ref` するので、サブキーの3件は
+# こちらには出ない(定義を二重に持たない)。**
+diff.$defs.view_changes.properties:flow
+
+# diff.$defs.operation.properties
+diff.$defs.operation.properties:op
+diff.$defs.operation.properties:table
+diff.$defs.operation.properties:field
+diff.$defs.operation.properties:view
+diff.$defs.operation.properties:changes
+diff.$defs.operation.properties:workflow
+diff.$defs.operation.properties:function
+diff.$defs.operation.properties:theme
+diff.$defs.operation.properties:roles
+
+# diff.$defs.operation.required
+diff.$defs.operation.required:op
+
+# ===========================================================================
+# `V5-M29-T02` が `web/test/shell-navigation-boundary.test.ts` から移した doc コメント
+# ===========================================================================
+#
+# 同ファイルの (a) 群の2本の `test`(`:564` / `:571`)と、その期待値だった
+# `DEF_NAMES` / `DEF_PROPERTY_KEYS` のリテラルを `V5-M29-T02` が削除した
+# (発注書 `docs/plan/v5/records/v5-m29.md` §4-3 / §6-2 の `V5-M29-T02`)。
+# **2本が持っていた doc コメント(どのキーが、どの門A の本審査を通って、
+# どの ADR の限定で入ったかの経緯)を、以下に逐語のまま写す。要約していない。**
+# **写したのは行の頭に `# ` を足したことだけで、本文は1バイトも変えていない。**
+# 配列のリテラル行も一緒に写してある —— コメントがどのキーに付いていたかは、
+# 隣接するリテラル行を見ないと分からないためである。
+#
+# **【この写しは基準ではない】** 検査が読むのは `#` の付かない行だけであり、
+# 以下は1行も検査に使われない。**基準は上の `manifest.` / `diff.` の各節である。**
+#
+# **【消えたもの】** 削除した2本のテスト名は
+# 「(a) manifest schema の $defs の名前が V3-M3 着手時と一致する(新しい定義を足せない)」
+# 「(a) manifest schema の各 $defs のプロパティキーが V3-M3 着手時と一致する(導線用のキーが増えていない)」
+# であった。**「`V3-M3` 着手時と一致する」という基準時点は、ここには移っていない。**
+# 上の一覧の基準時点は「`V5-M29-T01` が書き出した今日の実物」である
+# (`v5-m29.md` §5 の (6))。
+#
+# --- ここから逐語(元: `web/test/shell-navigation-boundary.test.ts:75`-`:562`)---
+# /** `$defs` の名前の全量(**新しい `$defs` を足しても赤くなる**)。 */
+# const DEF_NAMES = [
+#   "action_value",
+#   "app",
+#   "field",
+#   "field_id_list",
+#   "field_type",
+#   "filter",
+#   "filter_and_array",
+#   "filter_leaf",
+#   "filter_node",
+#   "function",
+#   "function_input",
+#   "function_output",
+#   "function_output_field",
+#   "related_list",
+#   "resource_id",
+#   "schedule_at",
+#   "sort",
+#   "sort_key",
+#   "table",
+#   "theme",
+#   "view",
+#   "view_action",
+#   "view_actions",
+#   "view_table_id",
+#   "view_type",
+#   "workflow",
+#   "workflow_action",
+#   "workflow_trigger",
+# ];
+#
+# /**
+#  * `properties` を持つ `$defs` のキー集合の全量(**V3-M3 着手時 = main の `3405045` と同じ**)。
+#  *
+#  * **導線用のキーは、どの名前で・どこに足しても、この表との不一致として現れる。**
+#  */
+# const DEF_PROPERTY_KEYS: Record<string, string[]> = {
+#   // **【`V5-M17-T02` / `G-G5` / `ADR-0158` 限定8 が足した8キー目 `user_kinds`】**
+#   // **門A の本審査(`V5-M12` 単位 `G-G5`/`G-G6`/`G-G7`。判定 = 限定採用)を通った増分である。**
+#   // **利用者の種類の宣言であって、テーマの持ち込みとも導線とも1ミリも関係しない**
+#   // (配色・書体・余白のスロットを1つも持たず、行き先のIDも1つも持たない)。
+#   // **列挙を消して件数に丸めない**(既存の作法)。
+#   app: ["functions", "id", "name", "tables", "theme", "views", "workflows", "user_kinds"],
+#   theme: [
+#     "--border-width",
+#     "--color-border",
+#     "--color-danger",
+#     "--color-page-background",
+#     "--color-surface-highlight",
+#     "--color-text",
+#     "--color-text-label",
+#     "--color-text-placeholder",
+#     "--color-text-secondary",
+#     "--control-border-radius",
+#     "--detail-label-width",
+#     "--focus-outline-color",
+#     "--focus-outline-width",
+#     "--font-family-base",
+#     "--font-size-note",
+#     "--font-size-secondary",
+#     "--line-height-base",
+#     "--login-max-width",
+#     "--space-1",
+#     "--space-2",
+#     "--space-3",
+#     "--space-4",
+#     "--space-5",
+#     "--space-6",
+#     "--surface-shadow",
+#   ],
+#   /*
+#    * **V4-M10-T24 / `E-G35`(再提出) / ADR-0080 限定1 が足した4キー目
+#    * `representative_field`。**
+#    *
+#    * **シェルの導線用のキーではない** —— 「このテーブルが参照されたときに表示に出す列」で
+#    * あり、**門A の本審査(`V4-M8` 単位5 の再提出。審査回数1回目)を通って限定採用された
+#    * 増分である**(`docs/adr/0080-table-representative-field.md`)。**門A を通った1キーは
+#    * 列挙を更新して通す。**
+#    * **値は既存の `resource_id` を `$ref` で受けており、新しい `$defs` を1つも作っていない**
+#    * (限定1: `$defs` の本数28 を増やさない)。
+#    */
+#   table: ["fields", "id", "name", "representative_field"],
+#   /*
+#    * **V4-M3-T05 / `B-G2` / ADR-0071 限定1 が足した8キー目 `audience`。**
+#    *
+#    * **シェルの導線用のキーではない** —— **門A の本審査(`B-G2`)を通って限定採用された
+#    * 増分である**(`docs/adr/0071-field-audience-declaration.md`)。**この表が凍結している
+#    * のは「導線用のキーが黙って増えないこと」であり、門A を通った1キーは列挙を更新して
+#    * 通す**(`custom_css` / `audience`(view)と同じ扱い)。
+#    * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値域は
+#    * `$defs/view/properties/audience` を `$ref` で指しており、新しい `$defs` を作っていない。
+#    */
+#   /*
+#    * **V4-M10-T01 / `E-G48` / ADR-0076 限定1 が足した9キー目 `writable_by`。**
+#    *
+#    * **シェルの導線用のキーではない** —— 「この項目を書ける相手(ロール)の列挙」であり、
+#    * **門A の本審査(`V4-M7` 単位1。審査回数1回目)を通って限定採用された増分である**
+#    * (`docs/adr/0076-field-write-control.md`)。**門A を通った1キーは列挙を更新して通す。**
+#    * **`audience` を裏返したものではなく別のキーである**(同 §1b)。
+#    * **値域は `$defs/view/properties/audience` を `$ref` で指しており、新しい `$defs` を
+#    * 1つも作っていない**(限定2)。
+#    */
+#   /*
+#    * **V4-M10-T46 / `E-G14` / `F-9`(4回目)/ ADR-0086 限定1 が足した10キー目 `unit`。**
+#    *
+#    * **シェルの導線用のキーではない** —— 「この `number` の値が何の単位か」であり、
+#    * **門A の本審査(再審査 C5。審査回数4回目 = 1〜3回目はいずれも却下)を通って限定採用
+#    * された増分である**(`docs/adr/0086-field-value-unit.md`)。**門A を通った1キーは列挙を
+#    * 更新して通す。**
+#    * **値は短い文字列1つで、新しい `$defs` を1つも作っていない**(限定1)。
+#    * **`FIELD_TYPES` は8のままである**(`currency` 型は作っていない。限定2)。
+#    */
+#   /*
+#    * **V4-M16-T10 / `P-G28` + `P-G22`(`S1` が1単位に寄せた)/ ADR-0090 限定1 が足した
+#    * 11キー目 `emphasis`。**
+#    *
+#    * **シェルの導線用のキーではない** —— 「この `select` の値のうち、どれが注意を要するか」
+#    * を意味の名前で宣言するものであり、**門A の本審査(`V4-M14` 本審査② の単位3)を通って
+#    * 限定採用された増分である。** **判定 = 限定採用 / 記録 =
+#    * `docs/plan/v4/records/v4-m14-gate-a-value-emphasis.md`**
+#    * (ADR = `docs/adr/0090-value-emphasis-declaration.md`)。
+#    * **門A を通った1キーは列挙を更新して通す**(`audience` / `writable_by` / `unit` と
+#    * 同じ扱い)。
+#    * **値域は「`options` の値 → 意味の名前の有限 enum 4値」の対応表で、新しい `$defs` を
+#    * 1つも作っていない**(限定1: `$defs` の本数28 は不変)。
+#    * **`$defs/view` にも `$defs/theme` にも1バイトも触っていない**(限定1 / 限定5)——
+#    * **画面ごとに強調を変えることはできず、新しい色スロットも1つも作っていない。**
+#    */
+#   field: [
+#     "audience",
+#     "emphasis",
+#     // **【V4-M19-T07 / ADR-0119 限定1 で足した12キー目 `hide_when_empty`】** シェルの導線用の
+#     // キーではない —— 「値が無いとき、詳細画面でその行ごと出さない」宣言であり、**門A の
+#     // 本審査(V4-M19 単位E-a。2回目の審査)を通って限定採用された増分である**
+#     // (`docs/adr/0119-field-hide-when-empty.md`)。**門A を通った1キーは列挙を更新して通す**
+#     // (`audience` / `writable_by` / `unit` / `emphasis` と同じ扱い)。**8型すべてに書ける。**
+#     "hide_when_empty",
+#     "id",
+#     "name",
+#     "options",
+#     "reference_table",
+#     "required",
+#     "type",
+#     "unique",
+#     "unit",
+#     "writable_by",
+#   ],
+#   sort_key: ["field", "order"],
+#   filter_leaf: ["contains", "equals", "field", "gte", "in", "lte"],
+#   // **【V4-M20-T01 / ADR-0100 限定1 で 3 → 4 に更新した】** 4キー目 `set`(今開いている
+#   // レコードの1フィールドを1つのリテラル値に書き換える2つ目の形)が門A を通って増えた
+#   // (`V4-M20` 単位A。審査3回目。判定 = 限定採用)。**導線(シェル/ナビゲーション)の
+#   // キーではない** —— **本表が塞いでいる「導線用のキー」は1本も増えていない。**
+#   // **【V4-M20-T02 / ADR-0101 限定1 で 4 → 5 に更新した】** 5キー目 `visible_when`
+#   // (その起点を出すか出さないかを決める葉1つの条件。値域は既存の `$defs/filter_leaf` の
+#   // `$ref` そのもの)が門A を通って増えた(`V4-M20` 単位B。審査3回目。判定 = 限定採用)。
+#   // **【V5-M22-T01 / `L-G5` / `L-G6` / ADR-0173 限定1 で 5 → 6 に更新した】** 6キー目
+#   // `view`(行き先のビューID。`$defs/view_action.oneOf` の3形目の唯一のキー)が門A を
+#   // 通って増えた(`V5-M20` 面2。判定 = 限定採用)。
+#   // **【これは本表が塞ごうとしたものと**同じ種類**である。隠さない】** 本表の目的は
+#   // 逐語「導線用のキーは、どの名前で・どこに足しても、この表との不一致として現れる」で
+#   // あり、**`view` はまさに導線(どの画面へ行くか)のキーである。** **`V4-M20` の2回の
+#   // 更新は「導線のキーではない」と書けたが、今回は書けない。**
+#   // **本表は赤くなることで役目を果たした** —— **通ったのは門A の本審査(`ADR-0173`)を
+#   // 経たからであって、表が緩んだからではない。** **`V3-M3` の門外4単位が主張した
+#   // 「`schemas/` の差分0」は今日も真である**(それは `V3-M3` の差分についての主張であり、
+#   // 後続のマイルストーンを縛るものではない)。
+#   // **`$defs` の本数(28)は1つも動いていない**(`ADR-0173` 限定8)—— 上の `DEF_NAMES` は
+#   // 1バイトも変えていない。
+#   // **【V5-M23-T02 / `L-G14` / ADR-0177 限定1 で 6 → 7 に更新した】** 7キー目 `audience`
+#   // (この操作起点を見せる相手)が門A を通って増えた(`V5-M20` 面4。判定 = 限定採用)。
+#   // **【これは導線のキーではない。前回とは書き分ける】** 本表の目的は逐語「導線用のキーは、
+#   // どの名前で・どこに足しても、この表との不一致として現れる」であり、**`audience` は
+#   // 「どの画面へ行くか」ではなく「誰に見せるか」のキーである。** **`view`(前回)は
+#   // 導線のキーだと書いたが、今回はそう書けない** —— **書き分ける。**
+#   // **`$defs` の本数(28)は1つも動いていない**(`ADR-0177` 限定1)—— 上の `DEF_NAMES` は
+#   // 1バイトも変えていない。**値域は `$defs/view/properties/audience` の `$ref` 1本であり、
+#   // 新しい値の列挙を1つも作っていない**(限定2)。
+#   // **【`V5-M25-T01` / `L-G8` / `ADR-0174` 限定1 で 7 → 8 に更新した】** 8キー目 `run`
+#   // (起こす自動処理)が門A を通って増えた(`V5-M20` 面3。判定 = 限定採用)。
+#   // **【これは導線のキーか。書き分ける】** **`run` は「どの画面へ行くか」のキーではない**
+#   // —— **押しても画面は1ミリも移らない**(`web/src/navigation.tsx` の
+#   // `resolveRowActionDestination` は `run` 形に `undefined` を返す)。
+#   // **しかし「行から何かを起こす」という意味では `view`(前回)と同じ性質を持つ** ——
+#   // **本表の目的(逐語「導線用のキーは、どの名前で・どこに足しても、この表との不一致として
+#   // 現れる」)に照らして、本表は赤くなることで役目を果たした。**
+#   // **通ったのは門A の本審査(`ADR-0174`)を経たからであって、表が緩んだからではない。**
+#   // **`$defs` の本数(28)は1つも動いていない**(上の `DEF_NAMES` は1バイトも変えていない)。
+#   view_action: ["audience", "form", "name", "prefill", "run", "set", "view", "visible_when"],
+#   view: [
+#     "actions",
+#     "columns",
+#     "fields",
+#     "filter",
+#     "id",
+#     "name",
+#     "preset_column_align",
+#     "preset_column_width",
+#     "preset_field_columns",
+#     "preset_image_size",
+#     "preset_label_placement",
+#     "preset_pager_position",
+#     "preset_text_preview",
+#     "related",
+#     "sort",
+#     "table",
+#     "type",
+#     // **V3-M5-T02(D-G5 / ADR-0055)が足した18キー目。** シェルの導線用のキーではない ——
+#     // 逃げ道は **view 単位のみで、シェルには当てない**(限定13)。この表が凍結しているのは
+#     // 「導線用のキーが黙って増えないこと」であり、**門A を通った1キーは列挙を更新して通す。**
+#     "custom_css",
+#     /*
+#      * **V4-M3-T02 / `B-G1` / ADR-0070 限定1 が足した19キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `audience` は「この画面を見せる相手(ロール)の
+#      * 列挙」であり、**門A の本審査(`B-G1`。審査回数1回目)を通って限定採用された増分である**
+#      * (`docs/adr/0070-view-audience-declaration.md`)。**この表が凍結しているのは「導線用の
+#      * キーが黙って増えないこと」であり、門A を通った1キーは列挙を更新して通す**
+#      * (`custom_css` / `older_than` / `write_ops` と同じ扱い)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値域の enum は
+#      * `$defs/view/properties/audience` にインラインで書いてあり、**新しい `$defs` を
+#      * 1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "audience",
+#     /*
+#      * **V4-M10-T45 / `E-G12` / ADR-0084 限定1 が足した20キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `menu_listed` は「この画面を**アプリの**画面一覧
+#      * (メニュー)に並べるか」であり、**門A の本審査(再審査 B8。審査回数2回目 = 前回は
+#      * 将来送り)を通って限定採用された増分である**(`docs/adr/0084-view-menu-listing.md`)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)の導線を1ミリも動かさない** ——
+#      * 当たるのは `web/src/AppWorkspace.tsx` の `nav.view-list` だけで、`.shell` には
+#      * 1バイトも触っていない。**アプリ単位の導線を宣言するキーでもない**(`D-G6` の射程は
+#      * 今日も開いていない)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値は真偽値1つで、
+#      * **新しい `$defs` を1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "menu_listed",
+#     /*
+#      * **V4-M16-T12 / `P-G17` の (C) 側 / ADR-0092 限定1 が足した21キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `field_groups` は「**詳細画面の中で**どの項目が
+#      * どのまとまりに属するか」であり、**門A の本審査(`V4-M14` 本審査② の単位9。
+#      * 審査回数1回目)を通って限定採用された増分である。**
+#      * **判定 = 限定採用 / 記録 = `docs/plan/v4/records/v4-m14-gate-a-field-grouping.md`**
+#      * (ADR = `docs/adr/0092-detail-field-grouping.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` と同じ扱い)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)にも画面間の導線にも1ミリも
+#      * 触らない** —— 当たるのは `web/src/views/DetailViewRenderer.tsx` が描く `<Card>` の
+#      * 中だけで、`.shell` にも `nav.view-list` にも1バイトも触っていない。
+#      * **器の出し方(タブか区切りか)をアプリが選ぶ語彙でもない**(限定6)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値の構造は
+#      * `$defs/view/properties/field_groups` にインラインで書いてあり、**新しい `$defs` を
+#      * 1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "field_groups",
+#     /*
+#      * **V4-M16-T13 / `P-G24` の (C) 側 / ADR-0093 限定1 が足した22キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `preset_list_shape` は「**一覧画面の器を
+#      * 表にするかカードにするか**」であり、**門A の本審査(`V4-M14` 本審査② の単位11。
+#      * 審査回数1回目)を通って限定採用された増分である。**
+#      * **判定 = 限定採用 / 記録 = `docs/plan/v4/records/v4-m14-gate-a-list-shape.md`**
+#      * (ADR = `docs/adr/0093-list-view-shape.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` と同じ扱い)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)にも画面間の導線にも1ミリも
+#      * 触らない** —— 当たるのは `web/src/views/ListViewRenderer.tsx` が描く器の中だけで、
+#      * `.shell` にも `nav.view-list` にも1バイトも触っていない。
+#      * **選べるのは `table` / `card` の2値だけである**(限定3)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値域の enum は
+#      * `$defs/view/properties/preset_list_shape` にインラインで書いてあり、**新しい `$defs` を
+#      * 1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "preset_list_shape",
+#     /*
+#      * **V4-M18-T03 / `P-G14` の (C) 側 / ADR-0095 限定1 が足した23キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `modal` は「**この画面を今の画面の上に重ねて
+#      * 出すか**」であり、**門A の本審査(V4-M18 単位3)を通って限定採用された増分である。**
+#      * **判定 = 限定採用 / 記録 = `docs/plan/v4/records/v4-m18-gate-a-modal-declaration.md`**
+#      * (ADR = `docs/adr/0095-modal-view-declaration.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` / `preset_list_shape` と同じ扱い)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)にも画面間の導線にも1ミリも
+#      * 触らない** —— 当たるのは `web/src/ui/overlay.tsx` が描く器の中だけで、`.shell` にも
+#      * `nav.view-list` にも1バイトも触っていない。**器を1つも選べない**(真偽値1つだけ)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値域は
+#      * `$defs/view/properties/modal` に直接 `boolean` として書いてあり、**新しい `$defs` を
+#      * 1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "modal",
+#     /*
+#      * **V4-M22-T01 / `E-G7` の (C) 側 / ADR-0112 限定1 が足した24キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `search_fields` は「**この一覧画面で、利用者が
+#      * 打った語を照合する列**」であり、**門A の本審査(V4-M22 単位A)を通って限定採用された
+#      * 増分である。**
+#      * **判定 = 限定採用 / 記録 = `docs/plan/v4/records/v4-m22-gate-a-view-search.md`**
+#      * (ADR = `docs/adr/0112-view-search-fields.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` / `preset_list_shape` / `modal` と同じ扱い)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)にも画面間の導線にも1ミリも
+#      * 触らない** —— 当たるのは一覧画面の検索欄だけで、`.shell` にも `nav.view-list` にも
+#      * 1バイトも触っていない。**演算子も条件式も1つも選べない**(実在フィールドIDの配列
+#      * だけ)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値は
+#      * `$defs/view/properties/search_fields` に `resource_id` の配列として書いてあり、
+#      * **新しい `$defs` を1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "search_fields",
+#     /*
+#      * **V4-M22-T05 / `E-G8`/`E-G11` の (C) 側 / ADR-0113 限定1 が足した25キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `page_size` は「**この一覧画面の1ページに出す
+#      * 件数**」であり、**門A の本審査(V4-M22 単位C。4回目の審査)を通って限定採用された
+#      * 増分である。**
+#      * **判定 = 限定採用 / ADR = `docs/adr/0113-view-page-size.md`。**
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` / `preset_list_shape` / `modal` / `search_fields` と同じ扱い)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)にも画面間の導線にも1ミリも
+#      * 触らない** —— 当たるのは一覧画面のページャだけで、`.shell` にも `nav.view-list` にも
+#      * 1バイトも触っていない。**選べるのは10/20/50/100の4段階値だけである**(限定3)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値は
+#      * `$defs/view/properties/page_size` に enum としてインラインで書いてあり、
+#      * **新しい `$defs` を1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "page_size",
+#     /*
+#      * **V4-M19-T03 / `P-G32` の (C) 側 / ADR-0118 限定1 が足した26キー目。**
+#      *
+#      * **シェルの導線用のキーではない** —— `preset_density` は「**この画面の詰まり具合
+#      * (余白・寸法)**」であり、**門A の本審査(V4-M19 単位C。2回目の審査。前回 =
+#      * `V4-M14` 単位7 は却下)を通って限定採用された増分である。**
+#      * **判定 = 限定採用 / 審査記録 = `docs/plan/v4/records/v4-m19-gate-a-view-density.md`**
+#      * (ADR = `docs/adr/0118-view-density-preset.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` / `preset_list_shape` / `modal` / `search_fields` / `page_size` と
+#      * 同じ扱い)。
+#      *
+#      * **【誇張しない】これはシェル(プラットフォームの外枠)にも画面間の導線にも1ミリも
+#      * 触らない** —— 当たるのは `web/src/views/ViewHost.tsx` の `ViewDensityScope` が描く
+#      * 器の中だけで、`.shell` にも `nav.view-list` にも1バイトも触っていない。**選べるのは
+#      * `comfortable` / `compact` の2値だけである**(限定3)。**他の8つの `preset_` キーと
+#      * 違い、3種(list_view / form / detail_view)すべてに書ける**(限定なし)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値域の enum は
+#      * `$defs/view/properties/preset_density` にインラインで書いてあり、**新しい `$defs` を
+#      * 1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "preset_density",
+#     /*
+#      * **V4-M20-T04 / ADR-0102 限定1 が足した27キー目 `after_save`。**
+#      *
+#      * **シェルの導線用のキーではない** —— `after_save` は「**form の保存が成立した
+#      * あとに帰る画面**」であり、当たるのは `web/src/views/FormRenderer.tsx` の
+#      * `afterSubmitRoute`(保存後の遷移先を決めるロジック)だけで、`.shell` にも
+#      * `nav.view-list` にも1バイトも触っていない。**門A の本審査(V4-M20 単位D。
+#      * 2回目の審査)を通って限定採用された増分である。**
+#      * **判定 = 限定採用 / 審査記録 =
+#      * `docs/plan/v4/records/v4-m20-gate-a-after-save-destination.md`**
+#      * (ADR = `docs/adr/0102-form-after-save-destination.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` / `preset_list_shape` / `modal` / `search_fields` / `page_size` /
+#      * `preset_density` と同じ扱い)。
+#      *
+#      * **値はビューID 1つ、`form` 型のビューでだけ書ける**(限定2 / 限定3)。**確認の段も
+#      * 条件分岐も送信ボタンの文言も1つも作っていない**(限定4〜6)。
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値は
+#      * `$defs/view/properties/after_save` に `resource_id` への `$ref` として書いてあり、
+#      * **新しい `$defs` を1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "after_save",
+#     /*
+#      * **V4-M23-T01 / ADR-0104 限定1 が足した28キー目 `sum_field`。**
+#      *
+#      * **シェルの導線用のキーではない** —— `sum_field` は「**この一覧画面が表す集合の、
+#      * どの列の合計を出すか**」であり、当たるのは一覧の器の中だけで、`.shell` にも
+#      * `nav.view-list` にも1バイトも触っていない。**門A の本審査(V4-M23。判定 = 限定採用)
+#      * を通って限定採用された増分である。**
+#      * **判定 = 限定採用 / 審査記録 = `docs/plan/v4/records/v4-m23-gate-a-list-sum.md`**
+#      * (ADR = `docs/adr/0104-list-view-aggregate.md`)。
+#      * **この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、門A を通った
+#      * 1キーは列挙を更新して通す**(`custom_css` / `audience` / `menu_listed` /
+#      * `field_groups` / `preset_list_shape` / `modal` / `search_fields` / `page_size` /
+#      * `preset_density` / `after_save` と同じ扱い)。
+#      *
+#      * **値は number 型のフィールドID 1つ、`list_view` でだけ書ける**(限定2 / 限定3)。
+#      * **`group_by` も2つ目の演算も1バイトも開いていない。**
+#      *
+#      * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** —— 値は
+#      * `$defs/view/properties/sum_field` に `resource_id` への `$ref` として書いてあり、
+#      * **新しい `$defs` を1つも作っていない**(限定1: `$defs` の本数28 を増やさない)。
+#      */
+#     "sum_field",
+#   ],
+#   schedule_at: ["hour", "minute"],
+#   /*
+#    * **V3-M10-T02 / `D-G16b` / ADR-0064 限定1 で期待値を更新した。**
+#    *
+#    * - **更新前**: `workflow_trigger: ["at", "table", "type"]`(3キー)
+#    * - **更新後**: 下の4キー(`older_than` が4キー目)。
+#    *
+#    * **更新する権限は `ADR-0064` の側にしか無い** —— 同じ V3-M10 で通った
+#    * `ADR-0063`(`D-G16a`)の限定1 は「新しいキーを1つも作らない」であり、
+#    * `D-G16a` 単独ではこの期待値は3キーのまま変わらない
+#    * (`ADR-0064` §Consequences / `v3-m10.md` §2a-3)。
+#    * **`$defs` の名前の全量(上の `DEF_NAMES`)は変わっていない** ——
+#    * `older_than` は `workflow_trigger` の中にインラインで書かれており、
+#    * `$defs` を1つも新設していない(限定1)。
+#    */
+#   workflow_trigger: ["at", "older_than", "table", "type"],
+#   workflow_action: [
+#     "action",
+#     "capability",
+#     "connection",
+#     "destination",
+#     "fallback",
+#     "function",
+#     "input",
+#     "output_field",
+#     "output_table",
+#     "payload",
+#     "prompt",
+#     "table",
+#     "target",
+#     "values",
+#     "when",
+#     "write_back",
+#     /*
+#      * **V3-M13-T09 / `D-G15` / ADR-0067 限定 A10 で期待値を更新した(16 → 17キー)。**
+#      *
+#      * **シェルの導線用のキーではない** —— `write_ops` は `run_function` の第3の書込モード
+#      * (島が返した更新操作の配列を1トランザクションで適用する)であり、**門A の本審査
+#      * (4回目)を通って限定採用された増分である**(`docs/adr/0067-island-write-ops.md`)。
+#      * この表が凍結しているのは「導線用のキーが黙って増えないこと」であり、
+#      * **門A を通った1キーは列挙を更新して通す**(`custom_css` / `older_than` と同じ扱い)。
+#      */
+#     "write_ops",
+#   ],
+#   /*
+#    * **V4-M10-T09 / `E-G41` / ADR-0079 限定1 が足した6キー目 `act_as`。**
+#    *
+#    * **シェルの導線用のキーではない** —— 「この自動処理が誰の行として書くか」を
+#    * トリガー元レコードの参照フィールド1本で指す宣言であり、**門A の本審査
+#    * (`V4-M7` 単位5。審査回数1回目)を通って限定採用された増分である**
+#    * (`docs/adr/0079-workflow-act-as-owner.md`)。**門A を通った1キーは列挙を更新して通す。**
+#    * **値の形は `pattern` で表しており、新しい `$defs` を1つも作っていない**(限定1)。
+#    */
+#   workflow: ["act_as", "actions", "history_table", "id", "name", "trigger"],
+#   /*
+#    * **V4-M10-T44 / `E-G72` / ADR-0083 限定1 が足した4キー目 `via`。**
+#    *
+#    * **シェルの導線用のキーではない** —— 「島に渡す行を、トリガー元のレコードを指している
+#    * ものだけに絞る」宣言であり、**門A の本審査(`V4-M9` 単位11。審査回数1回目)を通って
+#    * 限定採用された増分である**(`docs/adr/0083-function-input-trigger-scope.md`)。
+#    * **門A を通った1キーは列挙を更新して通す。**
+#    * **値は既存の `resource_id` を `$ref` で受けており、新しい `$defs` を1つも作っていない。**
+#    */
+#   function_input: ["source", "table", "via", "view"],
+#   function_output_field: ["id", "type"],
+#   // **V3-M13-T09 / ADR-0067 限定 A10 の2箇所目**: `function_output` に第2の形(`ops` =
+#   // 更新操作の配列を返す宣言)が入った。`fields`(行の配列)とは排他である。
+#   function_output: ["fields", "ops"],
+#   function: ["capabilities", "code", "id", "input", "name", "output"],
+# };
+#
+# --- ここまで逐語 ---
+
+# =============================================================================
+# 【`V5-M29-T06` が足した節】`properties` / `required` という**入れ物が在ること自体**
+# =============================================================================
+#
+# **この節は「キーの名前」ではなく「入れ物の存在」を1行1件で持つ。**
+#
+# **足した理由 = `V5-M29-T02` が実測した穴(同記録 §3-3 の m4)を塞ぐため。**
+# `T02` が消した `web/test/shell-navigation-boundary.test.ts` の2本は
+# 「`properties` を**持つ** `$defs` の名前の集合」そのものを突き合わせていたので、
+# **キーが1本も入っていない空の `properties: {}` が足されただけでも赤になった。**
+# 上の節は `properties` の**キーの名前**を並べるので、キーが0本なら行が1つも生まれず、
+# **中央は緑のままだった。** `T02` は「消した側は赤・中央は緑」と実測したうえで
+# 「中央を直す権限が本タスクに無い」として、穴のまま `V5-M29-T06` へ送った。
+# **`V5-M29-T06` が同じ加工を今日の木の複製で再現して緑であることを確かめ(実測: 7 pass /
+# 0 fail = 検出できていない)、この節を足して塞いだ。**
+#
+# **この節は上の 340行 の**あとに**置いてある。** 位置を末尾にしたのは、既存の行の位置を
+# 1つも動かさないためである —— 位置が動くと `misordered` の出力の意味が変わる。
+#
+# **赤くなったときの読み方**: `... .properties=present` が `added` に出たら、
+# **`properties` という入れ物を新しく持った `$defs` がある**ということである。
+# **中身が空でも出る。** 一覧を更新する前に、その `$defs` が `ADR-0007` の門A を
+# 通ったかを審査すること(この節も上の節と同じ規律に従う)。
+manifest.properties=present
+manifest.required=present
+manifest.$defs.app.properties=present
+manifest.$defs.app.properties.theme.properties=present
+manifest.$defs.app.properties.theme.properties.origin.properties=present
+manifest.$defs.app.properties.theme.properties.origin.required=present
+manifest.$defs.app.properties.theme.required=present
+manifest.$defs.app.properties.roles.items.properties=present
+manifest.$defs.app.properties.roles.items.properties.rules.items.properties=present
+manifest.$defs.app.properties.roles.items.properties.rules.items.required=present
+manifest.$defs.app.properties.roles.items.required=present
+manifest.$defs.app.required=present
+manifest.$defs.theme.properties=present
+manifest.$defs.theme.required=present
+manifest.$defs.table.properties=present
+manifest.$defs.table.properties.access_control.properties=present
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties=present
+manifest.$defs.table.properties.access_control.properties.permissions.items.required=present
+manifest.$defs.table.properties.access_control.properties.grant.properties=present
+manifest.$defs.table.properties.access_control.properties.grant.required=present
+manifest.$defs.table.properties.access_control.properties.members.properties=present
+manifest.$defs.table.properties.access_control.properties.members.required=present
+manifest.$defs.table.properties.access_control.properties.groups.properties=present
+manifest.$defs.table.properties.access_control.properties.groups.required=present
+manifest.$defs.table.properties.access_control.required=present
+manifest.$defs.table.required=present
+manifest.$defs.field.properties=present
+manifest.$defs.field.required=present
+manifest.$defs.sort_key.properties=present
+manifest.$defs.sort_key.required=present
+manifest.$defs.filter_and_array.items.properties=present
+manifest.$defs.filter_and_array.items.required=present
+manifest.$defs.filter_leaf.properties=present
+manifest.$defs.filter_leaf.required=present
+manifest.$defs.filter_leaf.oneOf.0.required=present
+manifest.$defs.filter_leaf.oneOf.1.required=present
+manifest.$defs.filter_leaf.oneOf.2.required=present
+manifest.$defs.filter_leaf.oneOf.3.required=present
+manifest.$defs.filter_leaf.oneOf.4.required=present
+manifest.$defs.filter_node.anyOf.1.properties=present
+manifest.$defs.filter_node.anyOf.1.required=present
+manifest.$defs.filter_node.anyOf.2.properties=present
+manifest.$defs.filter_node.anyOf.2.required=present
+manifest.$defs.filter_node.anyOf.3.properties=present
+manifest.$defs.filter_node.anyOf.3.required=present
+manifest.$defs.related_list.items.properties=present
+manifest.$defs.related_list.items.required=present
+manifest.$defs.view_action.properties=present
+manifest.$defs.view_action.properties.prefill.properties=present
+manifest.$defs.view_action.properties.prefill.required=present
+manifest.$defs.view_action.properties.set.properties=present
+manifest.$defs.view_action.properties.set.required=present
+manifest.$defs.view_action.oneOf.0.properties=present
+manifest.$defs.view_action.oneOf.0.required=present
+manifest.$defs.view_action.oneOf.1.properties=present
+manifest.$defs.view_action.oneOf.1.required=present
+manifest.$defs.view_action.oneOf.2.properties=present
+manifest.$defs.view_action.oneOf.2.required=present
+manifest.$defs.view_action.oneOf.3.properties=present
+manifest.$defs.view_action.oneOf.3.required=present
+# **【`V8-M8`。台帳 `Q-G1`〜`Q-G5` / `Q-G32`。門A 本審査 = `V8-M7`。ADR = `0339` / `0340`】**
+# **`ADR-0340` の増分5 の内側**(入れ物が在ること自体を名前として持つ節。`V5-M29-T06`)。
+# **【`V8-M9`。ADR = `0341`】** **結合の要素の入れ物が2件増えた**
+# (`join.items.properties` / `join.items.required`)。 **`ADR-0342` はこの節にも1行も
+# 足していない**(値域を広げただけで、入れ物が1つも増えていない)。
+manifest.$defs.report.properties=present
+manifest.$defs.report.properties.join.items.properties=present
+manifest.$defs.report.properties.join.items.required=present
+manifest.$defs.report.properties.group_by.items.properties=present
+manifest.$defs.report.properties.group_by.items.required=present
+manifest.$defs.report.properties.aggregates.items.properties=present
+manifest.$defs.report.properties.aggregates.items.required=present
+# **【2026-08-15。`V8-M11-T02`】並べ替え(`report.sort`)の入れ物2件。**
+# **`properties` の走査は深さ優先なので、`sort` の2行は `report.required=present` より**前**に
+# 出る**(`sort` は `report.properties` の中で最後に読まれ、`report.required` はその後である)。
+manifest.$defs.report.properties.sort.properties=present
+manifest.$defs.report.properties.sort.required=present
+manifest.$defs.report.required=present
+manifest.$defs.view.properties=present
+manifest.$defs.view.properties.custom_css.properties=present
+manifest.$defs.view.properties.custom_css.required=present
+# **【`V10-M24-T04`。台帳 `CM-G29`。門外】上の3件の入れ物2件。**
+# **`custom_css` の直後に来るのは宣言順のためである**(`field_groups` は
+# `view.properties` の `custom_css` の次のキーである)。
+manifest.$defs.view.properties.field_groups.additionalProperties.oneOf.1.properties=present
+manifest.$defs.view.properties.field_groups.additionalProperties.oneOf.1.required=present
+# **【`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359`】31キー目 `flow` の入れ物2件。**
+# **`custom_css` と同じ形である**(値がオブジェクトで `properties` と `required` を持つ
+# `$defs/view` のキーは、今日この2本だけである)。
+# **`custom_css` の直後に来るのは宣言順のためである**(`flow` は `view.properties` の
+# 末尾だが、presence は `properties` を走査した順に積まれる)。
+manifest.$defs.view.properties.flow.properties=present
+manifest.$defs.view.properties.flow.required=present
+manifest.$defs.view.required=present
+manifest.$defs.schedule_at.properties=present
+manifest.$defs.schedule_at.required=present
+manifest.$defs.workflow_trigger.properties=present
+manifest.$defs.workflow_trigger.properties.older_than.properties=present
+manifest.$defs.workflow_trigger.properties.older_than.required=present
+manifest.$defs.workflow_trigger.required=present
+manifest.$defs.workflow_action.properties=present
+manifest.$defs.workflow_action.properties.when.properties=present
+manifest.$defs.workflow_action.properties.when.required=present
+manifest.$defs.workflow_action.required=present
+manifest.$defs.workflow.properties=present
+manifest.$defs.workflow.required=present
+manifest.$defs.function_input.properties=present
+manifest.$defs.function_input.required=present
+manifest.$defs.function_output_field.properties=present
+manifest.$defs.function_output_field.required=present
+manifest.$defs.function_output.properties=present
+manifest.$defs.function.properties=present
+manifest.$defs.function.required=present
+manifest.$defs.role_condition.anyOf.0.properties=present
+manifest.$defs.role_condition.anyOf.0.required=present
+manifest.$defs.role_condition.anyOf.1.properties=present
+manifest.$defs.role_condition.anyOf.1.required=present
+manifest.$defs.role_condition.anyOf.2.properties=present
+manifest.$defs.role_condition.anyOf.2.required=present
+manifest.$defs.role_condition.anyOf.3.properties=present
+manifest.$defs.role_condition.anyOf.3.required=present
+manifest.$defs.role_condition.anyOf.4.properties=present
+manifest.$defs.role_condition.anyOf.4.required=present
+manifest.$defs.role_condition.anyOf.5.properties=present
+manifest.$defs.role_condition.anyOf.5.required=present
+diff.properties=present
+diff.required=present
+diff.$defs.table_changes.properties=present
+diff.$defs.field_changes.properties=present
+diff.$defs.view_changes.properties=present
+diff.$defs.operation.properties=present
+diff.$defs.operation.required=present
+
+# ============================================================================
+# **【2026-08-11。`V8-M29` 第2波。減った側の手続き6段の 6 の履行】**
+#
+# **どの ADR のどの限定が消したか**: **`ADR-0301`**(語彙の判定値に「廃止」を足した ADR)
+# の **限定2**(廃止の定義 = 取り除いたあとに何が担うかを限定表に必ず書き、担うものが
+# 1つも無いなら消える機能を名指しで列挙する)と **限定11**(この一覧の更新は審査の後)。
+# **審査**: `V8-M25`(軸4の門A本審査。2026-08-10)。**判定値 = 廃止。**
+# **台帳の行**: `docs/adr/0007-vocabulary-governance.md` §8 の
+# `T-G9a` / `T-G11` / `T-G12` / `T-G13` の4行。
+# **実装タスク**: `V8-M29`。
+#
+# **【手続き1〜5 を踏んだ実測】** **先に赤いまま走らせ、その出力を証跡として採った** ——
+# `drift().removed` が下の9行を**名指しで**返した(`added` は0行 / `misordered` は0行)。
+# **その後にこのファイルを直した。**
+#
+# **【消した有効エントリの全量。9行。件数に丸めず名前で列挙する】**
+#
+#   1. DIFF_OPS:set_user_kinds
+#   2. manifest.$defs.app.properties:user_kinds
+#   3. manifest.$defs.app.properties.user_kinds.items.properties:id
+#   4. manifest.$defs.app.properties.user_kinds.items.properties:name
+#   5. manifest.$defs.app.properties.user_kinds.items.required:id
+#   6. manifest.$defs.app.properties.user_kinds.items.required:name
+#   7. diff.$defs.operation.properties:user_kinds
+#   8. manifest.$defs.app.properties.user_kinds.items.properties=present
+#   9. manifest.$defs.app.properties.user_kinds.items.required=present
+#
+# **【`Δ11` の4枝。1枝ずつ、発火したかしなかったかを実測で書く】**
+#  (a) `schemas/` の `properties` からキーが減る —— **発火した。2キー**
+#      (`manifest.schema.json` の `$defs/app/properties/user_kinds` と
+#       `diff.schema.json` の `$defs/operation/properties/user_kinds`)。
+#  (b) `RESOURCE_KINDS` / `FIELD_TYPES` / `DIFF_OPS` の要素が減る —— **発火した。**
+#      **`DIFF_OPS` が 18 → 17。** **`RESOURCE_KINDS` は 7 のまま / `FIELD_TYPES` は 9 のまま。**
+#  (c) 予約名・予約規約フィールドが減る —— **発火しない。**
+#      **予約4語そのものは1語も減っていない** —— 減ったのは「立場という器に予約4語を
+#      書けない」という**禁止1件**であり、予約は
+#      `manifest.schema.json` の `$defs/table/.../permissions/items/properties/id` の
+#      `not.enum`(4語)/ `RESERVED_ROLES`(3語)/ `DEFAULT_ROLE_IDS`(3語)/
+#      `countOwners` の SQL の `'owner'` に今日も在る。
+#  (d) `src/kernel/` の公開エクスポートが減る —— **発火した。2本**
+#      (`UserKindDeclaration` と `SetUserKindsOperation`。
+#       `scripts/kernel-export-snapshot.txt` の側でも減る)。
+#
+# **【担い手が無いもの(`ADR-0301` 限定6 の ④)。名指しで列挙する】**
+#  1. 「立場という器に予約4語を書けない」という禁止1件(器ごと消えた)。
+#  2. 行ごとのアクセス権の上限8 の**由来**の固定
+#     (`src/kernel/access-control-declaration.test.ts` が逐語で記録している)。
+#  3. 宣言によって `customer` を人に付けられる値・登録で名乗れる値から**外す**こと。
+#  4. `user_kinds` を書いて保存されている既存アプリのマニフェスト(移行の実装も op も無い)。
+#
+# **【禁止の履行】** **減った件数と増えた件数を差し引いて書いていない**(同 限定9)。
+# **「語彙ゼロ増」「語彙が減った」を成果として書いていない**(同 限定10)。
+# **増えた行数 = 0行 / 減った行数 = 9行** —— **両方とも実数で書いた。**
+# ============================================================================

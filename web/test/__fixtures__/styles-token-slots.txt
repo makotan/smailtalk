@@ -1,0 +1,89 @@
+# `web/src/styles.css` の `:root` に置かれたスロット名の一覧(28件)。
+#
+# 正は `docs/plan/v3/03-token-slot-inventory.md` §9 の確定表(V3-M1-T01)である。
+# **V3-M0-T04 の値埋め込み型の命名(`--color-666` など33件)は廃止された** ——
+# 名前は意味を表し、値を含まない(`docs/adr/0046-design-token-slots.md` §1 / D-G1)。
+#
+# 内訳: V3-M0-T04 の33件を整理した21件(意味への改名 + 束ね + 意味の分割 +
+# 死んだ規則の削除)+ ADR-0046 限定2 が許す新設7軸ぶんの7件 = 28件。
+# **新設できる軸は7つだけである**(角丸 / 影 / アウトライン / ページ地色 /
+# 本文文字色 / 密度 / 枠線の強さ)。8つ目の軸は ADR-0046 §3a により門A の再通過が要る。
+#
+# **赤くなったら、スナップショットを更新する前に、増えたスロットが ADR-0007 の門A を
+# 通ったかを審査すること。** この検査が機械化したのは検出であって審査ではない。
+# 空行と `#` で始まる行は無視される。
+
+# 配色 —— テキスト(5)
+--color-danger
+--color-text
+--color-text-label
+--color-text-placeholder
+--color-text-secondary
+
+# 配色 —— 面と枠線(3)
+--color-border
+--color-page-background
+--color-surface-highlight
+
+# 書体・行間(4)
+--font-family-base
+--font-size-note
+--font-size-secondary
+--line-height-base
+
+# 密度(余白の段階軸。6)
+--space-1
+--space-2
+--space-3
+--space-4
+--space-5
+--space-6
+
+# 枠線の強さ(2)
+--border-style
+--border-width
+
+# 角丸(1)
+--control-border-radius
+
+# 影(1)
+--surface-shadow
+
+# アウトライン(フォーカスリング。3)
+--focus-outline-color
+--focus-outline-style
+--focus-outline-width
+
+# 寸法(3。**レイアウトは V3-M2 の担当。うち --shell-max-width は下の「テーマ対象外」である**)
+--detail-label-width
+--login-max-width
+--shell-max-width
+#
+# ============================================================================
+# テーマ対象外(3件)—— V3-M1-T03 の完了条件21(メインが実測して決めた)
+# ============================================================================
+#
+# **上の28件のうち、次の3件は「アプリ単位テーマ」の対象に含めない。**
+# したがって `schemas/manifest.schema.json` の `$defs/theme` の properties は
+# **25キー**であり、`src/kernel/theme-contrast.ts` の役割表も25件である
+# (ADR-0046 限定1 が言う3箇所一致は、この「**テーマ対象**スロット集合」で成り立つ ——
+#  限定1 は `:root` の全スロットがテーマ対象であることを要求していない)。
+#
+# **3件は `:root` のスロットとしては残る**(上の28件から1件も減っていない)。
+# したがって `web/test/styles.test.ts` の検査 (c) / (d) / (e) は緑のままである。
+#
+# **この節を増やすことは「テーマで指定できない項目を増やす」ことであり、
+# ADR-0046 §3a の門を通す事項である。** 増減は差分に必ず出る(照合検査が
+# (i) テーマ対象25件の一致と (ii) 対象外3件の一致の両方を固定する)。
+#
+# theme-excluded: --shell-max-width
+#   `.shell` だけが参照する。**`.shell` はアプリ単位スコープ要素の外側である**
+#   (シェルは V3-M3 / D-G6 の担当)。テーマに入れても値を埋めて画面が
+#   1ピクセルも変わらない = 憲法6 に触れる(T01-7 で処置した死んだ3スロットと同型)。
+# theme-excluded: --border-style
+#   `.shell header` と `.list-table th, td` が参照する。**7軸に「枠線の種別」は
+#   含まれない**(軸は 角丸 / 影 / アウトライン / ページ地色 / 本文文字色 / 密度 /
+#   枠線の強さ)。enum を `["solid"]` の1値にすると「埋めても変わらないスロット」に
+#   なり、`dashed` 等を許すと T01 が失った表現力を復活させる = 7軸を超える増分になる。
+# theme-excluded: --focus-outline-style
+#   `:focus-visible` が参照する。同上(種別は軸に含まれない)。

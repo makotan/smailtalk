@@ -1,0 +1,8 @@
+{
+  "diff_id": "d-0003",
+  "intent": "使わなくなった状態列を削除したい",
+  "operations": [
+    { "op": "remove_field", "table": "books",
+      "field": { "id": "status", "name": "状態", "type": "select", "options": ["未読"] } }
+  ]
+}

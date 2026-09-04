@@ -1,0 +1,8 @@
+{
+  "name": "smailtalk",
+  "description": "SmAIltalk(スマイルトーク)の語彙の説明書。差分の形 / 画面の形 / 自動処理の形 / アプリの作り方の4本を、必要になったときだけ開ける形で配ります。MCP サーバは同梱しません(接続はリポジトリ直下の .mcp.json のままです)。",
+  "author": {
+    "name": "makotan"
+  },
+  "version": "0.2.0"
+}

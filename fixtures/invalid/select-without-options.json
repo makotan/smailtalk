@@ -1,0 +1,16 @@
+{
+  "app": {
+    "id": "book-tracker",
+    "name": "蔵書管理",
+    "tables": [
+      {
+        "id": "books",
+        "name": "書籍",
+        "fields": [
+          { "id": "status", "name": "状態", "type": "select" }
+        ]
+      }
+    ],
+    "views": []
+  }
+}

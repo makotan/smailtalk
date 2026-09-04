@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "smailtalk": {
+      "command": "mise",
+      "args": ["exec", "--", "bun", "run", "src/mcp/index.ts"],
+      "env": {
+        "ST_DATA_ROOT": "data",
+        "ST_PREVIEW_BASE_URL": "http://localhost:3000",
+        "ST_MCP_ACTOR": ""
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+# 【V9-M11-T01 / X-G26】公開単位(apps/smailtalk)が単独で成立するための除外の正本。
+# 切り出した木には正本のルートの .gitignore が存在しないため、ここに持つ。
+# biome.json の vcs.useIgnoreFile: true がこのファイルを読む(tools/lint-ignore.test.ts と同じ理由)。
+
+# 実行時データ(SQLiteファイル、スナップショット等)。ユーザランドの実体はここに存在するため git 管理外とする
+# ST_DATA_ROOT は差し替えられるため、評価用の data-cp5/ 等も併せて除外する
+data/
+data-*/
+
+# 依存関係
+node_modules/
+
+# ビルド成果物
+dist/
+build/
+*.tsbuildinfo
+
+# フロント(Vite)の成果物と E2E の実行結果
+web/dist/
+test-results/
+playwright-report/
+
+# ログ
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# エディタ
+.vscode/
+.idea/
+
+# 環境変数
+.env
+.env.local
+
+# Bun
+bun.lockb.bak

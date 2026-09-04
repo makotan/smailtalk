@@ -1,0 +1,139 @@
+# `apps/smailtalk/schemas/` の姿の一覧(`V10-M10-T03`。検査は `scripts/schemas-drift.test.ts`)。
+#
+# **このファイルは基準であって記録ではない。**
+# 形は `scripts/kernel-export-snapshot.txt` / `scripts/vocabulary-snapshot.txt` に倣っている
+# (1行1件。空行と `#` 始まりは無視される)。
+#
+# ## 由来の条文(**起票の引用は誤りである。ここに正を書く**)
+#
+# 起票は本検査を「**`CM-G3` 限定2 の機械化**」と呼ぶが、**`ADR-0366` の `CM-G3` 限定2 は
+# 「`SYSTEM_TABLES` に投影しない」**であって `schemas/` の話ではない(`ADR-0366:141`)。
+# **`schemas/` を1バイトも変えない、と書いているのは `CM-G1` 限定2 である**(`ADR-0366:116`)。
+#
+# ## これは「永遠に変わらない」の固定ではない
+#
+# **その `CM-G1` 限定2 は、`ADR-0373` §Decision 2 の #6 が正面から破った。**
+# `ADR-0371` が `manifest.schema.json` に名札を3箇所入れている。
+# **このファイルが固定するのは「今日の姿」であって「変えてはならない」ではない。**
+#
+# ## 赤くなったら何をするか
+#
+# **このファイルを更新する前に、増えた/減ったキーが `ADR-0007` の門A を通ったかを審査すること。**
+# **審査より先に更新してはならない。** 更新するだけで緑になるので、それをやると検査は
+# 「動いたことに気づく」機能を失う。**機械化したのは検出であって審査ではない。**
+#
+# ## 数を持たない
+#
+# **本ファイルにも検査にも、件数のリテラルは1つも無い。** 本数はこの一覧から導く
+# (`ADR-0250` §Decision 7 の線2)。
+#
+# --- ファイル一覧 -----------------------------------------------------------------
+files:diff.schema.json
+files:manifest.schema.json
+
+# --- バイト列(長さと sha256)------------------------------------------------------
+diff.schema.json:bytes:100822
+diff.schema.json:sha256:3a97e9c675067a953f46f0b211999a5438f64ec7e76bd4de5c6eb9391391df6a
+manifest.schema.json:bytes:370527
+manifest.schema.json:sha256:cfa97b1f4b4ddc47c060d2ed275a83a9b951cb47d2a51453b0a7e29ea5d23608
+
+# --- manifest.schema.json の $defs(宣言順)---------------------------------------------
+manifest.schema.json:$defs:resource_id
+manifest.schema.json:$defs:view_table_id
+manifest.schema.json:$defs:app
+manifest.schema.json:$defs:theme
+manifest.schema.json:$defs:table
+manifest.schema.json:$defs:field_type
+manifest.schema.json:$defs:field
+manifest.schema.json:$defs:view_type
+manifest.schema.json:$defs:sort_key
+manifest.schema.json:$defs:sort
+manifest.schema.json:$defs:filter
+manifest.schema.json:$defs:filter_and_array
+manifest.schema.json:$defs:filter_leaf
+manifest.schema.json:$defs:filter_node
+manifest.schema.json:$defs:related_list
+manifest.schema.json:$defs:view_action
+manifest.schema.json:$defs:view_actions
+manifest.schema.json:$defs:field_id_list
+manifest.schema.json:$defs:report
+manifest.schema.json:$defs:view
+manifest.schema.json:$defs:schedule_at
+manifest.schema.json:$defs:workflow_trigger
+manifest.schema.json:$defs:action_value
+manifest.schema.json:$defs:workflow_action
+manifest.schema.json:$defs:workflow
+manifest.schema.json:$defs:function_input
+manifest.schema.json:$defs:function_output_field
+manifest.schema.json:$defs:function_output
+manifest.schema.json:$defs:function
+manifest.schema.json:$defs:role_condition
+
+# --- manifest.schema.json の $defs/view.properties(宣言順)-----------------------
+manifest.schema.json:$defs/view.properties:id
+manifest.schema.json:$defs/view.properties:type
+manifest.schema.json:$defs/view.properties:table
+manifest.schema.json:$defs/view.properties:name
+manifest.schema.json:$defs/view.properties:columns
+manifest.schema.json:$defs/view.properties:sort
+manifest.schema.json:$defs/view.properties:filter
+manifest.schema.json:$defs/view.properties:fields
+manifest.schema.json:$defs/view.properties:related
+manifest.schema.json:$defs/view.properties:actions
+manifest.schema.json:$defs/view.properties:preset_column_align
+manifest.schema.json:$defs/view.properties:preset_column_width
+manifest.schema.json:$defs/view.properties:preset_pager_position
+manifest.schema.json:$defs/view.properties:preset_label_placement
+manifest.schema.json:$defs/view.properties:preset_field_columns
+manifest.schema.json:$defs/view.properties:preset_image_size
+manifest.schema.json:$defs/view.properties:preset_text_preview
+manifest.schema.json:$defs/view.properties:custom_css
+manifest.schema.json:$defs/view.properties:menu_listed
+manifest.schema.json:$defs/view.properties:field_groups
+manifest.schema.json:$defs/view.properties:preset_list_shape
+manifest.schema.json:$defs/view.properties:modal
+manifest.schema.json:$defs/view.properties:search_fields
+manifest.schema.json:$defs/view.properties:page_size
+manifest.schema.json:$defs/view.properties:preset_density
+manifest.schema.json:$defs/view.properties:after_save
+manifest.schema.json:$defs/view.properties:sum_field
+manifest.schema.json:$defs/view.properties:reference_pickers
+manifest.schema.json:$defs/view.properties:report
+manifest.schema.json:$defs/view.properties:after_delete
+manifest.schema.json:$defs/view.properties:flow
+
+# --- diff.schema.json の $defs(宣言順)---------------------------------------------
+diff.schema.json:$defs:op_name
+diff.schema.json:$defs:table_changes
+diff.schema.json:$defs:field_changes
+diff.schema.json:$defs:view_changes
+diff.schema.json:$defs:operation
+
+# --- diff.schema.json の $defs/view_changes.properties(宣言順)-----------------------
+diff.schema.json:$defs/view_changes.properties:name
+diff.schema.json:$defs/view_changes.properties:columns
+diff.schema.json:$defs/view_changes.properties:sort
+diff.schema.json:$defs/view_changes.properties:filter
+diff.schema.json:$defs/view_changes.properties:fields
+diff.schema.json:$defs/view_changes.properties:preset_column_align
+diff.schema.json:$defs/view_changes.properties:preset_column_width
+diff.schema.json:$defs/view_changes.properties:preset_pager_position
+diff.schema.json:$defs/view_changes.properties:preset_label_placement
+diff.schema.json:$defs/view_changes.properties:preset_field_columns
+diff.schema.json:$defs/view_changes.properties:preset_image_size
+diff.schema.json:$defs/view_changes.properties:preset_text_preview
+diff.schema.json:$defs/view_changes.properties:custom_css
+diff.schema.json:$defs/view_changes.properties:menu_listed
+diff.schema.json:$defs/view_changes.properties:field_groups
+diff.schema.json:$defs/view_changes.properties:preset_list_shape
+diff.schema.json:$defs/view_changes.properties:modal
+diff.schema.json:$defs/view_changes.properties:search_fields
+diff.schema.json:$defs/view_changes.properties:page_size
+diff.schema.json:$defs/view_changes.properties:preset_density
+diff.schema.json:$defs/view_changes.properties:after_save
+diff.schema.json:$defs/view_changes.properties:sum_field
+diff.schema.json:$defs/view_changes.properties:actions
+diff.schema.json:$defs/view_changes.properties:reference_pickers
+diff.schema.json:$defs/view_changes.properties:report
+diff.schema.json:$defs/view_changes.properties:after_delete
+diff.schema.json:$defs/view_changes.properties:flow

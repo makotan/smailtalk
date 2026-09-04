@@ -1,0 +1,1139 @@
+# src/kernel/ の公開エクスポート一覧(ADR-0007 §1b の Δ8 の基準)
+#
+# **このファイルは基準であって記録ではない。** 検査は scripts/kernel-export-drift.test.ts。
+# 赤くなったら、まず「増えた識別子が ADR-0007 の門A を通ったか」を審査すること。
+# **審査より先にこのファイルを更新してはならない。** 更新するだけで緑になるので、
+# それをやると検査は「増えたことに気づく」機能を失う。
+#
+# 生成: V1-M1-T02(2026-07-19)。対象は src/kernel/*.ts のうち *.test.ts と index.ts を除く全ファイル。
+#
+# 更新: V1-M1-T03(2026-07-19)。**24件増え、0件減った。** 増分はすべて ADR-0010 が
+# ADR-0007 の門A を通した破壊的 op 4種の実装であり、内訳は記録
+# docs/plan/v1/records/v1-m1-t03.md §10 に全件列挙してある。
+#   convert.ts        8件(変換マトリクス §5b/§5c と事前検証 §6b)
+#   rebuild-table.ts  4件(層2 のテーブル再構築 §5a)
+#   ddl.ts            4件(DROP/RENAME の DDL 生成。**限定5 は維持** ——
+#                        NOT NULL / CHECK / 外部キーの DDL は1つも足していない)
+#   types.ts          6件(4 op の Operation 型と TableChanges / FieldChanges)
+#   migrate.ts        1件(MigrationStep。順序付き実行計画)
+#   apply-diff.ts     1件(DESTRUCTIVE_NO_CASCADE_NOTE。§7a のカスケード非採用の hint)
+#
+# 更新: V1-M1 remove_view(2026-07-19)。**1件増え、0件減った。** 増分は
+#   types.ts   1件(RemoveViewOperation。9つ目の op の Operation 型)
+# のみである。ADR-0012 が ADR-0007 の門A を正面から通し、限定採用と判定された
+# 結果であり、審査の記録は docs/plan/v1/records/v1-m1-remove-view.md にある
+# (**本ファイルの更新はその審査の後である**)。カーネルの関数・定数は1つも
+# 増えていない —— remove_view は既存の applyDiff / validate の経路に分岐を足しただけで、
+# 新しい実装モジュールを持たない。
+# 件数: 158(V1-M1-T02 の生成時点 133 → V1-M1-T03 で +24 → remove_view で +1)
+#
+# **初回生成時点で、T02 自身が足した5件を含んでいる**(dry-run.ts の DRY_RUN_NOTE /
+# DryRunDiffResult / DryRunReport / DryRunTableImpact / dryRunDiff)。T02 は
+# 01-destructive-migration.md §実施順表で「門A の適用」に位置づけられたタスクであり、
+# ADR-0010 が確定させた設計の実装である。**この5件を基準に含めたことを隠さないために、
+# ここに名指しで書いておく。**
+#
+# 記録に残る export 総数(129 / 127)と本ファイルの件数は一致しない。数え方が違うためで
+# あり、**本検査は件数を基準にしていない**(v1-m1-t01.md §3-1)。
+#
+# 更新: V1-M1-T04(2026-07-19)。**5件増え、0件減った。** 増分はすべて `recovery.ts`
+# (未完了適用の検出と自動巻き戻し)である。**ADR-0010 は復旧機構を審査していない**ので、
+# V1-M1-T04 が自前で ADR-0007 §2 の S1〜S6 を通した。**判定は限定採用**(限定5点)であり、
+# 審査記録と限定の内容は docs/plan/v1/records/v1-m1-t04.md §1、台帳の1行は
+# docs/adr/0007-vocabulary-governance.md §8 にある。
+#   recovery.ts  5件(recover / beginApply / endApply / RecoveryOutcome / RecoveryStatus)
+# 件数: 162(V1-M1-T03 時点 157 → V1-M1-T04 で +5)
+#
+# 更新: V1-M2-T07(2026-07-20)。**12件増え、0件減った。増分はすべて types.ts の型であり、
+# 関数・定数は1つも増えていない**(`DIFF_OPS` / `RESOURCE_KINDS` は既存の識別子が
+# 中身を増やしただけなので、識別子集合としては動かない)。
+# **これを通した門は ADR-0013(docs/adr/0013-workflow-vocabulary.md)である** ——
+# ADR-0007 門A の**本審査**であり、判定は限定採用(限定12点)。審査記録は
+# docs/plan/v1/records/v1-m2-t01.md、台帳の1行は
+# docs/adr/0007-vocabulary-governance.md §8 にある。**本ファイルの更新はその審査の後である**
+# (ADR-0013 は V1-M2-T01 で確定し、実装は V1-M2-T07)。
+#   types.ts  12件 —— 内訳は次の3群である。
+#     op の Operation 型 3件(AddWorkflowOperation / UpdateWorkflowOperation /
+#                            RemoveWorkflowOperation。ADR-0013 §4c = 12種目までの語彙)
+#     ワークフロー定義   1件(Workflow。リソース種の6種目。ADR-0013 §1)
+#     その定義の構成要素 8件(WorkflowTrigger とその枝3件 = WorkflowTriggerOnCreate /
+#                            WorkflowTriggerOnUpdate / WorkflowTriggerSchedule、
+#                            ScheduleAt(§6b が cron 式を却下して採った構造化オブジェクト)、
+#                            WorkflowAction とその枝2件 = WorkflowActionCreateRecord /
+#                            WorkflowActionUpdateRecord)
+# **ADR-0013 が「足さない」と書いたものは、実際に1件も増えていない** —— 時刻源
+# (clock.ts)は §6d により V1-M2-T08 送りで本タスクでは足していないし、
+# src/shared/system-tables.ts(限定9)と src/kernel/create-app.ts(限定8)は
+# 1バイトも変更していない。
+# **【V1-M2-T08 単位1 による追記。上の行は当時の事実として残す】**
+# **時刻源(clock.ts)はもう「T08 送り」ではない。V1-M2-T08 単位1 が実際に足した。**
+# 増分の内訳は本ファイル末尾の「更新: V1-M2-T08 単位1」を見ること。
+# 件数: 174(V1-M1-T04 時点 162 → V1-M2-T07 で +12)
+#
+# 【V1-M2-T07 による訂正注 —— 上の件数は誤りである。過去の行は消さずに残す】
+# **実測すると、本ファイルの識別子行(コメント行と空行を除いた行)は
+# 変更前 163 / 変更後 175 である。**上の「162 → 174」も、V1-M1-T04 の
+# 「162」も、V1-M1-T03 の「157」も、実体より1少ない。
+# **さらにヘッダ自身が既に食い違っている** —— :28 は「件数: 158」と書き、
+# :45 は同じ時点を「V1-M1-T03 時点 157」と書いている。**1のずれは
+# V1-M1-T03 か V1-M1-T04 の時点で入り、以後そのまま引き継がれてきた。**
+#
+# **増分(+12)と削除(0)は正しい。Δ8 の判定に影響は無い** ——
+# kernel-export-drift.test.ts は識別子名の集合差で比較しており(:133-141)、
+# 件数では比較していないので、この誤りは検査をすり抜けてきた。
+#
+# **訂正するのは、このファイルが「基準であって記録ではない」からである**(:3-6)。
+# **基準に嘘の数字が載っていると、次に赤くなった者が「増えた件数」を
+# ここから引き算して、間違った差分を審査する。**
+# **正しい件数は 175 である。次の改訂は 175 から数えること。**
+#
+# 更新: V1-M2-T02(2026-07-20)。**7件増え、0件減った。増分はすべて新規ファイル
+# `workflow-runner.ts`(ワークフロー実行エンジン。イベントトリガーのみ)である。**
+# **これを通した門は ADR-0013(docs/adr/0013-workflow-vocabulary.md)である** ——
+# T01 が門A の本審査を済ませ、限定採用(限定12点)と判定した語彙の**実行側の実装**であり、
+# 本タスクは語彙を1要素も増やしていない(`RESOURCE_KINDS` / `FIELD_TYPES` / `DIFF_OPS` /
+# トリガー3種 / アクション2種は1つも動いていない)。**本ファイルの更新はその審査の後である。**
+#   workflow-runner.ts  7件 —— 内訳は次の3群である。
+#     実行の入口       1件(runWorkflows。`records.ts` の createRecord / updateRecord が
+#                          selectRow の後に呼ぶ。V1-M2-T08 は schedule から同じ関数を呼ぶ)
+#     履歴の規約       2件(WORKFLOW_HISTORY_COLUMNS = 5列 / WorkflowEventTriggerType。
+#                          ADR-0013 §8d が「規約は説明文にしか無い」と申告した対象の、
+#                          カーネル側の唯一の表明である)
+#     履歴失敗の通知   4件(WorkflowHistoryWriteFailure / WorkflowHistoryFailureHandler /
+#                          setWorkflowHistoryFailureHandler /
+#                          resetWorkflowHistoryFailureHandler。既定は console.error であり、
+#                          **ユーザには届かない** —— §2-2 判断1 が確定させた T02 の限界)
+# **ADR-0013 が「足さない」と書いたものは、実際に1件も増えていない** —— 時刻源
+# (clock.ts)は §6d により V1-M2-T08 送りのままで、src/shared/system-tables.ts(限定9)と
+# src/kernel/create-app.ts(限定8)は1バイトも変更していない。
+# **`records.ts` の公開シグネチャは1つも変えていない**(フックは関数の内側に置いた)。
+# **【V1-M2-T08 単位1 による追記。上の行は当時の事実として残す】**
+# **時刻源(clock.ts)はもう「T08 送りのまま」ではない。V1-M2-T08 単位1 が実際に足した。**
+# **`ran_at` の取得も、この行の時点では `new Date()` の直接呼び出しだったが、
+# T08 単位1 が時刻源経由に変えた**(`workflowClock.now()`)。
+# 増分の内訳は本ファイル末尾の「更新: V1-M2-T08 単位1」を見ること。
+# 件数: 182(V1-M2-T07 時点の実測 175 → V1-M2-T02 で +7)
+#
+# 更新: V1-M2-T03(2026-07-20)。**1件増え、0件減った。** 増分は
+#   workflow-runner.ts  1件(WORKFLOW_MAX_DEPTH。ワークフロー連鎖の深度上限 = 20)
+# のみである。T03 は「ワークフローの無限ループ防止」であり、**語彙を1要素も増やして
+# いない**(RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS / トリガー3種 / アクション2種は
+# 1つも動いていない)。**新しい門は要らない** —— ADR-0013 §5a が通した実行エンジンの
+# 内部の歯止めであり、T02 が `firing` フラグ(深度1固定)という暫定で置いていた場所を
+# 本格的な機構(深度上限 + 再発火抑止)に置き換えたものである。
+#
+# **`WORKFLOW_MAX_DEPTH` は読み取り専用の定数であり、差し替える setter を持たない。**
+# T03 判断4 が「テスト専用の口を本番に残さない」と決めたためで、
+# `setWorkflowHistoryFailureHandler`(T02)とは性格が違う —— あちらは**観測**の口、
+# こちらは**挙動**そのものである。段数が要る検査は、この定数からテーブルと
+# ワークフローをループで組み立てている(`workflow-runner.test.ts` の `chainManifest()`)。
+#
+# **再発火抑止の状態(depth / firedRecords)は1件も export していない。**
+# モジュールスコープに閉じており、外から読む口も書く口も無い。
+# src/shared/system-tables.ts(限定9)と src/kernel/create-app.ts(限定8)は
+# 本タスクでも1バイトも変更していない。
+# 件数: 183(V1-M2-T02 時点 182 → V1-M2-T03 で +1)
+#
+# 更新: V1-M2-T08 単位1(2026-07-20)。**9件増え、0件減った。**
+#   clock.ts            7件(新規ファイル。時刻源)
+#     時刻源そのもの   2件(Clock / systemClock。**メソッドは now() 1つだけ**)
+#     タイムゾーン     4件(DEFAULT_TIME_ZONE = "Asia/Tokyo" / TimeZoneResolution /
+#                          resolveTimeZone / ZonedNow)
+#     壁時計への変換   1件(zonedNow。**指定 TZ における「今日の日付」と「現在の時分」**)
+#   workflow-runner.ts  2件(setWorkflowClock / resetWorkflowClock。実行履歴の `ran_at` が
+#                          読む時刻源の差し替え口)
+#
+# **これを通した門は ADR-0013 §6d である。** §6d は「時刻源を src/kernel/ から export すると
+# Δ8 が発火する。**それは V1-M2-T08 の作業であり、その門A は T08 が通す**」と明示的に
+# 委任しており、**さらに「時刻源の形は T08 が決める」と設計そのものを委ねている。**
+# 本ファイルの更新はその審査の後である。
+#
+# **語彙は1要素も増えていない** —— RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS /
+# トリガー3種 / アクション2種は1つも動いていない。**マニフェストにもスキーマにも
+# タイムゾーンを足していない**(判断1。足すと Δ3 が発火し、門A の審査が要る)。
+# TZ は環境変数 `ST_TIMEZONE` で受ける —— `ST_DATA_ROOT` / `PORT` の前例に揃えた。
+# src/shared/system-tables.ts(限定9)と src/kernel/create-app.ts(限定8)は
+# 本タスクでも1バイトも変更していない。
+#
+# **`setWorkflowClock` / `resetWorkflowClock` は T02 の
+# `setWorkflowHistoryFailureHandler` と同じ性格の口である** —— **観測/注入の口であって、
+# 挙動を変える口ではない。**注入しない本番経路の既定は `systemClock`(実時刻)であり、
+# **本番に残るテスト専用の分岐は1つも無い**(T03 判断4 の規律)。
+# **`WORKFLOW_MAX_DEPTH` に setter を置かなかったのと矛盾しない** —— あちらは挙動の
+# パラメータであり、こちらは外界(実時刻)の読み取り口である。
+#
+# **時刻源に置き換えたのは `ran_at` だけである**(判断2)。
+# `records.ts` / `meta-store.ts` / `recovery.ts` の `new Date()` は置き換えていない ——
+# 置き換えると `records.ts` の行番号がずれ、そこを行番号で指している既存の引用が壊れる。
+# **代償: レコードの `_created_at` / `_updated_at` はテストから制御できないままである。**
+#
+# **`ran_at` の形式は変えていない**(UTC の ISO8601)。T02 が書いた既存の履歴行と
+# 形式が混ざるのを避けるためで、**「その TZ での今日」は読み取り側が `zonedNow` で導く**
+# (ADR-0013 §6c)。
+# 件数: 192(V1-M2-T03 時点 183 → V1-M2-T08 単位1 で +9)
+#
+# 更新: V1-M2-T08 単位2(2026-07-20)。**8件増え、0件減った。**
+#   workflow-scheduler.ts  5件(新規ファイル。`schedule` トリガーの実行基盤)
+#     周期処理           2件(runSchedulerTick / startWorkflowScheduler)
+#     周期の定数         1件(SCHEDULER_TICK_INTERVAL_MS = 30_000)
+#     取っ手と設定の型   2件(WorkflowSchedulerHandle / WorkflowSchedulerOptions)
+#   workflow-runner.ts     3件(getWorkflowClock / runScheduledWorkflow / WorkflowTriggerType)
+#
+# **これを通した門は ADR-0013 §6 である。** §6a〜§6c が発火方式・スケジュール情報の
+# 置き場・発火済み状態の置き場をすべて確定させており、**単位2 が決め直したものは1つも無い。**
+# 時刻源の Δ8 は単位1 が §6d の委任で通しており、**本ファイルの更新はその後である。**
+#
+# **語彙は1要素も増えていない** —— RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS /
+# トリガー3種 / アクション2種は1つも動いていない。**`schemas/` を1バイトも変更していない。**
+# **履歴テーブルの列も増えていない**(`WORKFLOW_HISTORY_COLUMNS` の doc が
+# 「T08 で trigger_type に "schedule" が加わる。**列は増えない**」と予告したとおり)。
+# src/shared/system-tables.ts(限定9)と src/kernel/create-app.ts(限定8)は
+# 本タスクでも1バイトも変更していない。
+#
+# **`runScheduledWorkflow` を足して `runWorkflows` に合流させなかった理由**:
+# `runWorkflows` は `trigger.table === tableId` で合致を決めるが、**`schedule` は
+# `table` を持たない**(§6b)。合流させると「テーブルIDを取るがテーブルを見ない引数」が
+# 生まれ、**`WorkflowEventTriggerType` に `schedule` を混ぜた瞬間に「型としては書けるが
+# 1本も合致しない呼び出し」ができる** —— T02 がその型を2値に保った理由そのものである。
+# **入口を分けたので、`WorkflowEventTriggerType` は2値のままである。**
+# 増えた `WorkflowTriggerType`(3値)は**履歴に書かれうる値**の型であり、入口の型ではない。
+#
+# **`SCHEDULER_TICK_INTERVAL_MS` に setter を置かない**(`WORKFLOW_MAX_DEPTH` と同じ規律。
+# T03 判断4)。実行時に周期を動かせると、**本番で実際にどれだけ遅れるのかがコードを
+# 読んでも決まらなくなる。**
+#
+# **`runSchedulerTick` を公開したのはテストのためである。隠さない。**
+# 計画 `docs/plan/v1/02-workflow.md:165` が「**実時間を待つテストを1つも書かない**」を
+# 絶対条件に置いており、タイマーの発火を待たずに1周期を回せる口がないと満たせない。
+# **ただしこれは「観測の口」であって「挙動を変える口」ではない** ——
+# 本番の `src/server/index.ts` は `startWorkflowScheduler` しか呼ばず、
+# `runSchedulerTick` を直接呼ぶ本番経路は1つも無い。
+#
+# **発火済み状態の export は1件も無い**(ADR-0013 限定7)。
+# `workflow-scheduler.ts` はテーブルもファイルもモジュール変数も1つも持たず、
+# 「今日すでに発火したか」は**毎回、実行履歴テーブルを読んで導いている。**
+# 件数: 200(V1-M2-T08 単位1 時点 192 → 単位2 で +8)
+#
+# 更新: V1-M9-T02(2026-07-21)。**2件増え、0件減った。** 増分はすべて `recovery.ts`
+# (同時更新の保護 + applyDiff の原子性)。**新規ファイルは作らず、既存マーカー
+# (`.st-applying.json`)を apply 窓ガードに転用した述語1本と、その返り値の型だけを公開する。**
+#   recovery.ts  2件(isApplyInProgress = apply 窓の読取専用述語 / ApplyStatus = その返り値の型)
+# **これを通した門は ADR-0007 門A(個別 ADR-0017)である。** `isApplyInProgress` の公開が
+# Δ8 に該当する(catch-all の楽観ロック param 追加は Δ1/2/3・Δ8 いずれにも非該当)。
+# 版トークンは既存の `_updated_at` を使い**新しい列も型も足していない**ので schemas は
+# 1バイトも変わらず、RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列も1要素も動いていない。
+#
+# 更新: V1-M6-T05(2026-07-22)。**5件増え、0件減った。増分はすべて types.ts の型であり、
+# 関数・定数は1つも増えていない**(`DIFF_OPS` / `RESOURCE_KINDS` は既存の識別子が
+# 中身を増やしただけなので、識別子集合としては動かない —— ADR-0013 のワークフロー追加と
+# 同じ性質である)。
+# **これを通した門は ADR-0024(docs/adr/0024-function-resource.md)である** ——
+# ADR-0007 門A を通した増分であり、判定は限定採用。リソース種 `function`(7種目)と
+# 差分 op 3種(add_function / update_function / remove_function)の語彙統合(第1段)。
+# **run_function(ワークフローアクション)と島の実行は第2段(T03〜)であり、本タスクは
+# 足していない** —— したがって workflow-runner.ts / island-runner.ts の export は動いていない。
+#   types.ts  5件 —— 内訳は次の2群である。
+#     関数定義とその入力の枝 2件(FunctionDef = リソース種7種目 / FunctionInput =
+#                              入力の判別共用体。ADR-0024 §Decision)
+#     op の Operation 型     3件(AddFunctionOperation / UpdateFunctionOperation /
+#                              RemoveFunctionOperation。ADR-0024 §4c = 15種目までの語彙)
+# **ADR-0024 が「足さない」と書いたものは、実際に1件も増えていない** —— capability 種
+# (限定6)・計算フィールド型(限定1)・予約名 / システムテーブル(限定10)は
+# 1つも足しておらず、src/shared/system-tables.ts は1バイトも変更していない。
+#
+# 更新: V1-M8-T02(2026-07-23)。**14件増え、0件減った。**
+# **これを通した門は ADR-0025(docs/adr/0025-requirements-doc-generation.md)である** ——
+# ADR-0007 門A の**本審査**であり、判定は限定採用(限定12点)。増分は要件ドキュメント生成
+# (マニフェストと changelog から出典付きの文書を決定論的に組み立てる読み取り専用の純関数群)。
+# **本ファイルの更新はその審査の後である**(ADR-0025 §歯止め1 が「門A 通過後に更新」と明記)。
+#   requirements-doc.ts  13件 —— 内訳は次の3群である。
+#     生成の口     3件(generateRequirementsDoc / renderRequirementsMarkdown /
+#                      renderStatementText。ADR-0025 §2 の公開関数)
+#     入出力の型   9件(RequirementsDoc / RequirementStatement / RequirementSection /
+#                      RequirementIdentifiers / RequirementTemplateId / StatementSource /
+#                      Slot / IdentifierGroup / VocabularyGroup)
+#     文面の定数表 1件(REQUIREMENT_TEMPLATES。**データであって生成の口ではない** ——
+#                      ADR-0025 §3 の不変条件3点と §4-3 の残差検査は、この表に到達
+#                      できないと検査そのものを書けないため公開している。限定11 の
+#                      文言(「公開面 + 型」)より1件多いことをここに明記しておく)
+#   undo.ts  1件(undoneTargetSeqs。ADR-0025 §8-1 が selectUndoTarget から切り出した
+#                **構文的事実**の抽出。「生きている apply」という解釈は持ち込んでおらず、
+#                解釈は消費者(requirements-doc.ts)側にある)
+# **ADR-0025 が「足さない」と書いたものは、実際に1件も増えていない** —— カーネル語彙3配列
+# (限定1)・システムテーブル / 予約名(限定2)・schemas/(限定3)は1つも動いておらず、
+# src/shared/system-tables.ts は1バイトも変更していない。書き込み経路も持たない(限定4)。
+# 件数: 278(V1-M6-T05 時点の実測 264 → V1-M8-T02 で +14)
+ajv-error-adapter.ts:toValidationErrors
+app-id.ts:APP_ID_FALLBACK
+app-id.ts:generateAppId
+app-id.ts:slugifyAppName
+apply-diff.ts:APPLIED_MANIFEST_PATH_NOTE
+apply-diff.ts:ApplyDiffResult
+apply-diff.ts:DESTRUCTIVE_NO_CASCADE_NOTE
+apply-diff.ts:FoldOperationsResult
+apply-diff.ts:annotateAppliedManifestError
+apply-diff.ts:applyDiff
+apply-diff.ts:foldOperations
+apply-manifest.ts:ApplyManifestResult
+apply-manifest.ts:applyManifest
+apply-manifest.ts:readCurrentManifest
+changelog.ts:getChangelog
+clock.ts:Clock
+clock.ts:DEFAULT_TIME_ZONE
+clock.ts:TimeZoneResolution
+clock.ts:ZonedNow
+clock.ts:resolveTimeZone
+clock.ts:systemClock
+clock.ts:zonedNow
+convert.ts:ConversionVerdict
+convert.ts:ConvertValueResult
+convert.ts:FieldConversion
+convert.ts:UNCONVERTIBLE_SAMPLE_LIMIT
+convert.ts:checkFieldConversions
+convert.ts:conversionLayer
+convert.ts:conversionVerdict
+convert.ts:convertValue
+create-app.ts:CreateAppOptions
+create-app.ts:CreateAppResult
+create-app.ts:createApp
+create-app.ts:emptyManifest
+ddl.ts:SYSTEM_COLUMNS
+ddl.ts:SYSTEM_COLUMN_NAMES
+ddl.ts:addColumnSql
+ddl.ts:applyManifestDdl
+ddl.ts:columnDefinition
+ddl.ts:createTableSql
+ddl.ts:dropColumnSql
+ddl.ts:dropTableSql
+ddl.ts:quoteIdentifier
+ddl.ts:renameColumnSql
+ddl.ts:renameTableSql
+ddl.ts:sqliteTypeForFieldType
+dry-run.ts:DRY_RUN_NOTE
+dry-run.ts:DryRunDiffResult
+dry-run.ts:DryRunReport
+dry-run.ts:DryRunTableImpact
+dry-run.ts:dryRunDiff
+errors.ts:CONCURRENT_WRITE_WAIT_PRAGMA
+errors.ts:ValidationError
+errors.ts:ValidationResult
+errors.ts:concurrentWriteBusyErrors
+errors.ts:formatValidationErrors
+errors.ts:invalid
+errors.ts:valid
+meta-store.ts:APP_STATUSES
+meta-store.ts:AppRecord
+meta-store.ts:AppStatus
+meta-store.ts:AppendChangelogInput
+meta-store.ts:CHANGELOG_KINDS
+meta-store.ts:ChangelogEntry
+meta-store.ts:ChangelogKind
+meta-store.ts:KernelMetaStore
+meta-store.ts:RegisterAppInput
+migrate.ts:AddFieldStep
+migrate.ts:MigrationPlan
+migrate.ts:MigrationPlanResult
+migrate.ts:MigrationStep
+migrate.ts:applyAddField
+migrate.ts:applyAddTable
+migrate.ts:applyMigrationPlan
+migrate.ts:migrateSchema
+migrate.ts:planMigration
+read-records.ts:ReadSource
+read-records.ts:readRecord
+read-records.ts:readRecordCount
+read-records.ts:readRecordCountAndSum
+read-records.ts:readRecordList
+rebuild-table.ts:RebuildColumn
+rebuild-table.ts:rebuildTable
+rebuild-table.ts:supportsDropColumn
+rebuild-table.ts:supportsRenameColumn
+records.ts:ListRecordsOptions
+records.ts:MAX_FILTER_DEPTH
+records.ts:RecordInput
+records.ts:RecordResult
+records.ts:RecordRow
+records.ts:RecordValue
+records.ts:countAndSumRecords
+records.ts:countRecords
+records.ts:createRecord
+records.ts:deleteRecord
+records.ts:fieldIds
+records.ts:getRecord
+records.ts:listRecords
+records.ts:readOnlyTableError
+records.ts:unknownTableError
+records.ts:updateRecord
+records.ts:validateDbFreeFieldValue
+records.ts:validatePageParam
+records.ts:validateSortKeys
+recovery.ts:ApplyStatus
+recovery.ts:RecoveryOutcome
+recovery.ts:RecoveryStatus
+recovery.ts:beginApply
+recovery.ts:endApply
+recovery.ts:isApplyInProgress
+recovery.ts:recover
+referential-integrity.ts:validateReferentialIntegrity
+report.ts:computeReport
+requirements-doc.ts:IdentifierGroup
+requirements-doc.ts:REQUIREMENT_TEMPLATES
+requirements-doc.ts:RequirementIdentifiers
+requirements-doc.ts:RequirementSection
+requirements-doc.ts:RequirementStatement
+requirements-doc.ts:RequirementTemplateId
+requirements-doc.ts:RequirementsDoc
+requirements-doc.ts:Slot
+requirements-doc.ts:StatementSource
+requirements-doc.ts:VocabularyGroup
+requirements-doc.ts:generateRequirementsDoc
+requirements-doc.ts:renderRequirementsMarkdown
+requirements-doc.ts:renderStatementText
+resolve-table.ts:resolveTable
+resource-id.ts:RESOURCE_ID_MAX_LENGTH
+resource-id.ts:isValidResourceId
+snapshot.ts:SnapshotRef
+snapshot.ts:listSnapshots
+snapshot.ts:restoreSnapshot
+snapshot.ts:takeSnapshot
+storage-paths.ts:appDbPath
+storage-paths.ts:appDir
+storage-paths.ts:appManifestPath
+storage-paths.ts:appSnapshotsDir
+storage-paths.ts:appsDir
+storage-paths.ts:kernelDbPath
+storage-paths.ts:snapshotDir
+types.ts:AddFieldOperation
+types.ts:AddFunctionOperation
+types.ts:AddTableOperation
+types.ts:AddViewOperation
+types.ts:AddWorkflowOperation
+types.ts:App
+types.ts:ChangeFieldOperation
+types.ts:ChangeTableOperation
+types.ts:DIFF_OPS
+types.ts:DetailView
+types.ts:Diff
+types.ts:DiffOp
+types.ts:FIELD_TYPES
+types.ts:Field
+types.ts:FieldChanges
+types.ts:FieldType
+types.ts:FilterCondition
+types.ts:FilterLeaf
+types.ts:FilterNode
+types.ts:FormView
+types.ts:FunctionDef
+types.ts:FunctionInput
+types.ts:ListView
+types.ts:Manifest
+types.ts:Operation
+types.ts:RESOURCE_KINDS
+types.ts:RemoveFieldOperation
+types.ts:RemoveFunctionOperation
+types.ts:RemoveTableOperation
+types.ts:RemoveViewOperation
+types.ts:RemoveWorkflowOperation
+types.ts:ReportAggregate
+types.ts:ReportDeclaration
+types.ts:ReportGroupBy
+# **【`V8-M9`。台帳 `Q-G6`〜`Q-G9`。門A 本審査 = `V8-M7`。ADR = `0341`(限定2)】**
+# **`ReportJoin`(結合1本の型)を1本足した。** **`$defs` は 30 のままである**
+# (スキーマ側は結合の要素の形をインラインで書いており、新しい `$defs` を作っていない)——
+# **公開エクスポートの側だけが1本増えた。**
+# **【`V8-M9`。ユーザ決定 `D-V8-126`。ADR = `0342`】** **こちらは公開エクスポートを
+# **1本も** 足していない** —— **`ReportGroupBy.field` の値域を広げただけで、型そのものは
+# `ResourceId` のままだからである**(`ADR-0342` 限定4 / 限定9)。
+types.ts:ReportJoin
+types.ts:ReportView
+types.ts:ResourceId
+types.ts:ResourceKind
+types.ts:SORT_ORDERS
+types.ts:ScheduleAt
+types.ts:Sort
+types.ts:SortOrder
+types.ts:Table
+types.ts:TableChanges
+types.ts:UpdateFunctionOperation
+types.ts:UpdateViewOperation
+types.ts:UpdateWorkflowOperation
+types.ts:VIEW_TYPES
+types.ts:View
+types.ts:ViewChanges
+types.ts:ViewType
+types.ts:Workflow
+types.ts:WorkflowAction
+types.ts:WorkflowActionCreateRecord
+types.ts:WorkflowActionUpdateRecord
+types.ts:WorkflowTrigger
+types.ts:WorkflowTriggerManual
+types.ts:WorkflowTriggerOnCreate
+types.ts:WorkflowTriggerOnUpdate
+types.ts:WorkflowTriggerSchedule
+types.ts:filterFieldRefs
+types.ts:normalizeSort
+types.ts:renameFilterField
+types.ts:sortErrorPath
+undo.ts:MAX_UNDOABLE_DIFF_ID_LENGTH
+undo.ts:PreviewUndoResult
+undo.ts:RecordCounts
+undo.ts:RedoResult
+undo.ts:UNDO_DIFF_ID_PREFIX
+undo.ts:UNDO_PREVIEW_NOTE
+undo.ts:UndoPreview
+undo.ts:UndoResult
+undo.ts:previewRedo
+undo.ts:previewUndo
+undo.ts:redo
+undo.ts:undo
+undo.ts:undoneTargetSeqs
+validate.ts:DIFF_SCHEMA_PATH
+validate.ts:JsonSchema
+validate.ts:MANIFEST_SCHEMA_PATH
+validate.ts:diffSchema
+validate.ts:manifestSchema
+validate.ts:validateDiff
+validate.ts:validateManifest
+validate.ts:validateManifestFull
+workflow-runner.ts:WORKFLOW_HISTORY_COLUMNS
+workflow-runner.ts:WORKFLOW_MAX_DEPTH
+workflow-runner.ts:WorkflowEventTriggerType
+workflow-runner.ts:WorkflowHistoryFailureHandler
+workflow-runner.ts:WorkflowHistoryWriteFailure
+workflow-runner.ts:WorkflowTriggerType
+workflow-runner.ts:beginManualRun
+workflow-runner.ts:beginManualRun
+workflow-runner.ts:getWorkflowClock
+workflow-runner.ts:resetWorkflowClock
+workflow-runner.ts:resetWorkflowHistoryFailureHandler
+workflow-runner.ts:runManualWorkflow
+workflow-runner.ts:runScheduledWorkflow
+workflow-runner.ts:runWorkflows
+workflow-runner.ts:setWorkflowClock
+workflow-runner.ts:setWorkflowHistoryFailureHandler
+workflow-scheduler.ts:SCHEDULER_TICK_INTERVAL_MS
+workflow-scheduler.ts:WorkflowSchedulerHandle
+workflow-scheduler.ts:WorkflowSchedulerOptions
+workflow-scheduler.ts:runSchedulerTick
+workflow-scheduler.ts:startWorkflowScheduler
+#
+# --- V1-M4 capability(ADR-0020 §Δ8。2026-07-21 / T04 で reconcile)------------------
+# ADR-0020 §8 の Δ表が C1/C2/C3 を **門A** と判定し、§増分表が「src/kernel/ の公開
+# エクスポート: 複数(capability 判定・外部 fetch)」を Δ8 発火として予告している。
+# その門A審査は ADR-0020 本体で済んでおり、ここはその**受け皿(審査後のスナップショット
+# 更新)**である。T02(secret 非保管ストア)/ T03(call_external + outbox 配送)が足した
+# export が未 reconcile のままだった(この検査が baseline で赤だった)ので、T04 で
+# ConnectionRequest / CreateRequestInput(申請)を足すのと併せてまとめて記録する。
+# いずれも ADR-0020 が門A で認めた capability 語彙であり、normalizeSort 系の層またぎとは無関係。
+#
+# 更新: V1-M4-T05 ハードニング(2026-07-21)。**1件増え、0件減った。** 増分は
+#   host-scope.ts:hostAllowed  1件(宛先スコープ判定の純関数)
+# のみである。**新しい語彙・新しい判定ロジックは1つも足していない** —— これは
+# `workflow-runner.ts` の private 関数 `hostAllowed`(ロジック不変)を、`outbox-dispatcher.ts`
+# の**配送時再検証**と共有するために切り出したものである(判定ロジックを2箇所に複製しない
+# =単一ソース化)。**門は ADR-0020 §Δ8(既に済んだ本審査の受け皿)であり、原則1
+# 「既定 deny の宛先ホワイトリスト照合」の実装場所が private からモジュール export に
+# 移っただけで、判定そのものは1バイトも変わっていない**(既存 red-team / call-external が
+# green のまま)。ADR-0020 §Δ8 の受け皿として審査済み。
+host-scope.ts:hostAllowed
+capability-store.ts:CapabilityStore
+capability-store.ts:Connection
+capability-store.ts:ConnectionRequest
+capability-store.ts:CreateConnectionInput
+capability-store.ts:CreateRequestInput
+capability-store.ts:EnqueueOutboxInput
+capability-store.ts:OutboxItem
+outbox-dispatcher.ts:dispatchOutbox
+outbox-dispatcher.ts:outboundFetch
+secret-resolver.ts:SecretResolutionError
+secret-resolver.ts:SecretSource
+secret-resolver.ts:resolveSecret
+storage-paths.ts:parseAppDbPath
+types.ts:WorkflowActionCallExternal
+
+# --- V1-M5(ADR-0021。機能内 AI 呼び出しと メータリング)で増えた公開エクスポート ---
+# **ADR-0021 §増分の総数 が門A として審査済み。**`ai_transform` アクション(4種目)・
+# AI capability ストア(capabilities / jobs / usage / requests)・プロバイダ抽象
+# (claude_cli / openai_compatible)・コスト推定・上限判定・非同期ジョブ配送。
+# 遮断は実行層(runAiTransform / dispatchAiJobs)で行い、メータリングは記録漏れ経路を
+# 作らない(ADR-0021 §4 / §5 / §8c)。**capability 定義は投影しない**が、使用量 `ai_usage` は
+# read-only システムテーブル `_ai_usage` に投影する(ADR-0020 §8c-8 の芯を保った上での1本。§4)。
+ai-capability-store.ts:AiCapability
+ai-capability-store.ts:AiCapabilityStore
+ai-capability-store.ts:AiJob
+ai-capability-store.ts:AiLimit
+ai-capability-store.ts:AiProviderKind
+ai-capability-store.ts:AiRequest
+ai-capability-store.ts:AiUsage
+ai-capability-store.ts:AiUsageTotals
+ai-capability-store.ts:CreateAiCapabilityInput
+ai-capability-store.ts:CreateAiRequestInput
+ai-capability-store.ts:EnqueueAiJobInput
+ai-capability-store.ts:RecordAiUsageInput
+ai-cost.ts:estimateCostUsd
+ai-cost.ts:isKnownModel
+ai-cost.ts:ModelPrice
+ai-dispatcher.ts:dispatchAiJobs
+ai-dispatcher.ts:DispatchAiResult
+ai-limits.ts:AI_MAX_CHAIN_DEPTH
+ai-limits.ts:AiLimitVerdict
+ai-limits.ts:aiUsageDate
+ai-limits.ts:checkAiLimit
+ai-limits.ts:currentAiChainDepth
+ai-limits.ts:resolveAiTimeZone
+ai-limits.ts:withAiChainDepth
+ai-provider.ts:AiProvider
+ai-provider.ts:AiProviderResult
+ai-provider.ts:defaultAiProvider
+ai-structured.ts:buildStructuredPrompt
+ai-structured.ts:parseAiValue
+types.ts:WorkflowActionAiTransform
+
+# --- V1-M6-T03(ADR-0024。コードの島のサンドボックス実行機構)で増えた公開エクスポート ---
+# **3件増え、0件減った。増分はすべて新規ファイル `island-runner.ts`(QuickJS-WASM 実行機構)である。**
+# **これを通した門は ADR-0024(docs/adr/0024-function-resource.md)である** —— T02 が門A の
+# 本審査を済ませ、§増分表が「`src/kernel/` の公開エクスポート: 複数(関数実行・スキーマ検証・
+# capability 注入)。**Δ8 発火。実装は T03/T04**」と予告している。本 T03 は「コード + 入力 + 制限を
+# 受け取り、安全に実行して構造化結果を返す実行機構」だけを足したもので、**語彙(RESOURCE_KINDS /
+# FIELD_TYPES / DIFF_OPS / schemas)は1要素も動いていない** —— リソース種 `function` / diff op /
+# run_function / スキーマは T05(変更モデル統合)、capability 注入は T04 の作業である。
+# **本ファイルの更新はその審査の後である。**
+#   island-runner.ts  3件 —— 内訳は次の2群である。
+#     実行の入口     1件(runIsland。code + input + limits を受け、QuickJS-WASM で使い捨て隔離実行)
+#     契約の型       2件(IslandLimits = timeout/memory/入力サイズの上限 /
+#                        IslandResult = success{output} | failure{timeout|memory|error|input_too_large})
+# **safeDispose / injectHostFunctions / classifyVmError 等の内部関数は1件も export していない**
+# (モジュールスコープに閉じている)。`hostFunctions` は T04 の前方互換の口だが、T03 は既定で
+# 何も注入しない(アンビエント権限ゼロを保つ)。
+island-runner.ts:IslandLimits
+island-runner.ts:IslandResult
+island-runner.ts:runIsland
+
+# --- V1-M6-T04(ADR-0024。島 → capability 接続)で増えた公開エクスポート ---
+# **6件増え、0件減った。増分はすべて新規ファイル `island-capability-bridge.ts`
+# (島 → capability ブリッジ)である。** T03 が予告した「capability 注入は T04 の作業」が
+# これである。**これを通した門は ADR-0024(docs/adr/0024-function-resource.md)** —— T02 の
+# §増分表が「`src/kernel/` の公開エクスポート: 複数(…capability 注入)。**Δ8 発火。実装は
+# T03/T04**」と門A の本審査を予告済みであり、本 T04 はその予告どおり capability 注入の口を
+# 1本足しただけである。**語彙(RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS / schemas)は1要素も
+# 動いていない**(リソース種 function / diff op / run_function / スキーマは T05 の作業)。
+# 遮断機構は M4(capability-store / host-scope)/ M5(ai-capability-store / ai-limits)の
+# 既存関数を再利用しており、新しい審査対象の語彙・判定ロジックは1つも持たない。
+# **本ファイルの更新はその審査(ADR-0024 §増分表)の後である。**
+#   island-capability-bridge.ts  6件 —— 内訳は次の2群である。
+#     組み立ての入口     1件(buildCapabilityBridges。宣言 + 付与された capability の分だけ
+#                          runIsland の hostFunctions を生やす。宣言外は生やさない = 構造的遮断)
+#     契約の型           5件(BridgeResult = ok{kind,id} | fail{reason} /
+#                          CapabilityBridge = (arg)=>BridgeResult /
+#                          BuildCapabilityBridgesParams = db/declaredCapabilities/actor/workflowId /
+#                          ConnectionBridgeArg = destination/payload /
+#                          AiBridgeArg = prompt/input/書き戻し先)
+# **detectKind / makeConnectionBridge / makeAiBridge / coerce* 等の内部関数は1件も export して
+# いない**(モジュールスコープに閉じている)。
+island-capability-bridge.ts:AiBridgeArg
+island-capability-bridge.ts:BridgeResult
+island-capability-bridge.ts:BuildCapabilityBridgesParams
+island-capability-bridge.ts:CapabilityBridge
+island-capability-bridge.ts:ConnectionBridgeArg
+island-capability-bridge.ts:buildCapabilityBridges
+
+# --- V1-M6-T05 第2段(ADR-0024。run_function アクションと島の同期実行)で増えた公開エクスポート ---
+# **3件増え、0件減った。** 内訳は次の2ファイルである。
+#   island-runner.ts  2件(runIslandSync = runIsland の同期版・同契約 /
+#                        ensureIslandRuntimeReady = 島ランタイムの事前ロード。冪等)
+#   types.ts          1件(WorkflowActionRunFunction = ワークフローアクション5種目)
+# **これを通した門は ADR-0024(docs/adr/0024-function-resource.md)である** —— T02 が門A の
+# 本審査を済ませ、§増分表が「ワークフローのアクション種 +1(run_function)」「src/kernel/ の
+# 公開エクスポート: 複数(関数実行…)。Δ8 発火」を予告している。本 T05 第2段はその予告どおり、
+# 呼び出し口 run_function 1つと、それを同期発火経路から呼ぶための島の同期実行の口を足したもの。
+# **語彙(RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS)は1要素も動いていない** —— それらは第1段で
+# 統合済み(FunctionDef / FunctionInput / 関数3 op)。run_function は WorkflowAction union の
+# 5種目であって、DIFF_OPS でも RESOURCE_KINDS でもない。
+# **`runRunFunction` / `validateFunctionOutput` / `resolveFunctionInput` / `clearOutputTable` 等の
+# 実行本体は1件も export していない**(workflow-runner.ts のモジュールスコープに閉じている)。
+# **`runIslandSync` / `runIsland` はカーネル内部(workflow-runner.ts)からのみ呼び、index.ts は
+# `ensureIslandRuntimeReady` だけを再公開する**(サーバ / MCP の起動が島ランタイムを事前ロード
+# するため)。src/shared/system-tables.ts / src/kernel/create-app.ts は1バイトも変更していない。
+island-runner.ts:ensureIslandRuntimeReady
+island-runner.ts:runIslandSync
+types.ts:WorkflowActionRunFunction
+
+# --- V1-M9-T04(ADR-0030。孤児スナップショットの検出とアプリ単位の削除プリミティブ)で増えた公開エクスポート ---
+# **4件増え、0件減った。増分はすべて新規ファイル `snapshot-orphans.ts` である。**
+# **これを通した門は ADR-0030(docs/adr/0030-snapshot-orphan-detection.md)** —— 判断ゲート
+# (docs/plan/v1/records/v1-m9-t04-gate.md §6)が「Δ8 発火・門A」と判定済みであり、歯止め2
+# 「既存関数への入口を開けるだけ」は封じられている(スナップショットを削除する能力は
+# カーネルに存在しなかった。snapshot.ts の export は listSnapshots / takeSnapshot /
+# restoreSnapshot の3本のみで、列挙も削除もこの3本では表現できない)。**本ファイルの更新は
+# その審査の後である。**
+#   snapshot-orphans.ts  4件 —— 内訳は次の2群である。
+#     検出         3件(auditAppSnapshots = 1アプリの孤児/死蔵/宙吊り参照の列挙 /
+#                      auditAllSnapshots = 全アプリ横断版 / SnapshotAudit = その返り値の型。
+#                      **孤児(orphans)と死蔵(-undo-。undo_snapshots)を別欄で返す**)
+#     削除         1件(deleteAppSnapshots = アプリ単位のスナップショット全消し。T09 が
+#                      呼ぶ唯一の削除経路。冪等 / force)
+# **v2 送り分は1件も足していない** —— 世代刈り取り・単一スナップショット削除・RETENTION 相当の
+# 定数・定期実行の契機は1つも公開しておらず、`UndoPreview` / `ChangelogEntry` の型も
+# `unusableSnapshotError` の文面も変えていない。**RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の
+# 3配列・schemas/・src/mcp/vocabulary.ts は1バイトも動いていない**(Δ5 非発火)。
+snapshot-orphans.ts:SnapshotAudit
+snapshot-orphans.ts:auditAllSnapshots
+snapshot-orphans.ts:auditAppSnapshots
+snapshot-orphans.ts:deleteAppSnapshots
+
+# --- V1-M9-T09(ADR-0031。アプリの完全削除)で増えた公開エクスポート ---
+# **4件増え、0件減った。増分はすべて新規ファイル `delete-app.ts` である。**
+# **これを通した門は ADR-0031(docs/adr/0031-app-deletion.md)** —— 判断ゲート
+# (docs/plan/v1/records/v1-m9-t09-gate.md §5)が「Δ8 発火・門A」と判定済みであり、歯止め2
+# 「既存関数への入口を開けるだけ」は封じられている(アプリを削除する公開関数は
+# カーネルに存在しなかった。meta-store.ts の export は registerApp / getApp / listApps /
+# appendChangelog 等のみで、削除は1つも無かった)。**本ファイルの更新はその審査の後である。**
+#   delete-app.ts  4件 —— 内訳は次の2群である。
+#     削除の口     1件(deleteApp = アプリ単位の完全削除。台帳 / changelog / 横断テーブル /
+#                      スナップショット / ディレクトリをまとめて消す。スナップショットの削除は
+#                      自前で書かず T04 の deleteAppSnapshots を呼ぶ)
+#     支える定数/型 3件(APP_SCOPED_KERNEL_TABLES = 削除対象の横断テーブル集合の単一ソース /
+#                      DeleteAppResult = 統一形式の返り値の型 / DeleteAppOptions = 部分失敗の
+#                      注入 seam の型)
+# **KernelMetaStore に削除メソッド `deleteApp` を1つ足したが、これは class のメソッドであって
+# top-level export ではないので Δ8 の識別子集合は増やさない**(meta-store.ts の export 行に変化なし)。
+# **v2 送り分は1件も足していない** —— 論理削除 / archived 転用 / deleted ステータス / 単一
+# スナップショット削除 / 世代刈り取りは1つも公開していない。**RESOURCE_KINDS / FIELD_TYPES /
+# DIFF_OPS の3配列・schemas/ は1バイトも動いていない**(マニフェスト語彙は増えない)。
+delete-app.ts:APP_SCOPED_KERNEL_TABLES
+delete-app.ts:DeleteAppOptions
+delete-app.ts:DeleteAppResult
+delete-app.ts:deleteApp
+
+# --- V1-M9-T05(ADR-0032。redo)で増えた公開エクスポート ---
+# **3件増え、0件減った。増分はすべて既存ファイル `undo.ts` である。**
+# **これを通した門は ADR-0032(docs/adr/0032-redo.md)** —— 判断ゲート
+# (docs/plan/v1/records/v1-m9-t05-gate.md §6-1)が「Δ8 発火・門A」と判定済みであり、
+# ADR-0004 §5 が明示的に作らないと決めた「スナップショットへ戻る API」が新設されるため、
+# 歯止め2(既存関数への入口を開けるだけ)は主張できない(参照先の関数が存在しなかった)。
+# ADR-0032 は ADR-0004 §1「redo は v0 では作らない」の明示的な改訂であり、§1 の理由
+# (「v0 の op は additive のみなので同じ差分の再適用で足りる」)が M1 の破壊的 op 解禁で
+# 失効したことがその根拠である。**本ファイルの更新はその審査の後である。**
+#   undo.ts  3件 —— 内訳は次の2群である。
+#     やり直しの口 2件(redo = 直前の undo をやり直す / previewRedo = その事前確認。
+#                      previewRedo の返りは既存の UndoPreview を再利用し、新しい型を足さない)
+#     契約の型     1件(RedoResult = redo の統一形式の返り値の型。UndoResult と対称)
+# **CHANGELOG_KINDS(meta-store.ts)の値域を apply/undo → apply/undo/redo に拡張したが、
+# これは既存の識別子が中身を増やしただけなので識別子集合としては動かない**(ADR-0013 の
+# ワークフロー追加が DIFF_OPS を動かさなかったのと同型)。**REDO_DIFF_ID_PREFIX は
+# undo.ts のモジュールスコープに閉じ、公開していない**(公開面を最小に保つ)。
+# **RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列・schemas/ は1バイトも動いていない。**
+
+# --- V2-M2-T02(ADR-0035。image フィールドの blob ストレージ層)で増えた公開エクスポート ---
+# **4件増え、0件減った。** 増分は ADR-0035 §3 限定8 が定める3点(appBlobsDir /
+# blob ストア put/get/exists)に一致する。orphan-blob 検出は T04 の担当でここには無い。
+# **これを通した門は ADR-0035(docs/adr/0035-image-field.md)** —— V2-M2-T00 の門A本審査で
+# 限定採用と判定済み(記録: docs/plan/v2/records/v2-m2.md §1)。歯止め2(既存関数への入口を
+# 開けるだけ)は主張できない —— カーネルがファイル実体を扱う公開面は従来存在しなかった
+# (storage-paths.ts は appDbPath / appManifestPath 等のパス関数のみで、バイト列の保存/読取は
+# 表現できない)。**本ファイルの更新はその審査の後である。**
+#   storage-paths.ts  1件(appBlobsDir = apps/<appId>/blobs/ の解決。Δ8)
+#   blob-store.ts     3件(putBlob = content-addressed 保存 + de-dup + 原子的書込 /
+#                        getBlob = 実体読取 / blobExists = 実在確認)
+# **RESOURCE_KINDS / DIFF_OPS は1バイトも動いていない**(upload/delivery は server 層 HTTP。
+# 限定5)。**FIELD_TYPES への image 追加は T01 の差分**で本タスクの増分ではない。`_files` の
+# DDL/定数は src/shared/files-table.ts に置き(bun:sqlite 非 import)、SYSTEM_TABLES には
+# 足していない(物理テーブルのみ・投影しない)。
+storage-paths.ts:appBlobsDir
+blob-store.ts:blobExists
+blob-store.ts:getBlob
+blob-store.ts:putBlob
+
+# --- V2-M2-T04(ADR-0035。orphan blob 検出 + アプリ単位の blob 全消し)で増えた公開エクスポート ---
+# **3件増え、0件減った。増分はすべて既存ファイル `snapshot-orphans.ts` である**
+# (T04 の追加物を snapshot-orphans と**同居**させた —— 「検出 + アプリ単位全消しだけ・自動
+# retention 刈り取り無し」という同型の作法をそのまま踏襲するため)。
+# **これを通した門は ADR-0035(docs/adr/0035-image-field.md)** —— §3 限定8 が「増える表面」に
+# **orphan-blob 検出**を明示的に含めており(appBlobsDir / blob ストア put/get/exists は T02 で追加済み)、
+# 限定7 が「blob の自動 retention 刈り取りを入れない(検出のみ)」を機械検査に落とすと定めている。
+# 歯止め2(既存関数への入口を開けるだけ)は主張できない —— blob の参照追跡・列挙・全消しの能力は
+# 従来カーネルに存在しなかった。**本ファイルの更新はその審査の後である。**
+#   snapshot-orphans.ts  3件 —— 内訳は次の2群である。
+#     検出         2件(auditAppBlobs = 現行 app.sqlite + 全 snapshot の app.sqlite の `_files` から
+#                      参照されない blobs/ 実体の列挙(orphan の定義 = ADR-0035 §4)/
+#                      BlobAudit = その返り値の型。**列挙するだけで消さない**)
+#     削除         1件(deleteAppBlobs = アプリ単位の blob 全消し。deleteApp が呼ぶ。冪等 / force。
+#                      **単一 blob 削除も世代指定の自動 retention 刈り取りも提供しない**。
+#                      snapshot-orphans の deleteAppSnapshots と同型)
+# **自動刈り取りの契機は1つも足していない**(参照集合を縮めて undo/redo の戻り先を壊さないため。
+# ADR-0035 §3 限定7 / §4)。**RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列・schemas/ は1バイトも
+# 動いていない**(upload/delivery は server 層。orphan blob 検出は kernel の保守プリミティブ)。
+snapshot-orphans.ts:BlobAudit
+snapshot-orphans.ts:auditAppBlobs
+snapshot-orphans.ts:deleteAppBlobs
+
+# --- V2-M4-T01(ADR-0039。EC-G7 バッチ原子書込)で増えた公開エクスポート ---
+# **7件増え、0件減った。増分はすべて新規ファイル `batch.ts` である**(バッチ書込 API)。
+# **これを通した門は ADR-0039(docs/adr/0039-atomic-batch-write.md)** —— §1 が「`src/kernel/` の
+# 新規 export であり本ドリフト検査が名指し検出する(Δ8 確定発火)」と明記し、§3 限定表が
+# 「op は create/update の2種のみ・明示リストのみ(where句/反復なし)・1 IMMEDIATE tx で全成功か
+# 全失敗・update は if_match CAS・`action_value` を触らない・FIELD_TYPES/RESOURCE_KINDS/DIFF_OPS を
+# 動かさない・IMMEDIATE はこの経路のみ」を機械検査に落とすと定めている。歯止め2(既存関数への
+# 入口を開けるだけ)は主張できない —— 複数レコードの原子書込は従来カーネルに無い能力である。
+#   batch.ts  7件 —— 内訳は writeRecords(1関門)+ その入出力の型6件。
+#     writeRecords          明示リストの op を1 IMMEDIATE tx で全成功か全失敗で書く公開関数。
+#     BatchOp / BatchCreateOp / BatchUpdateOp   op の型(create/update の2種のみ)。
+#     BatchWrittenOp        onWritten フック(監査 INSERT を同一 tx に束ねる)に渡す1件。
+#     WriteRecordsOptions / WriteRecordsResult  入出力の型。
+# **RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列・`$defs/action_value` は1バイトも動いていない**
+# (バッチはレコードデータの書込経路であって manifest 語彙ではない。ADR-0039 §3 限定6/7)。
+batch.ts:BatchCreateOp
+batch.ts:BatchOp
+batch.ts:BatchUpdateOp
+batch.ts:BatchWrittenOp
+batch.ts:WriteRecordsOptions
+batch.ts:WriteRecordsResult
+batch.ts:writeRecords
+
+# --- V2-M5-T01(ADR-0041。EC-G4 受信 capability の人間専用ストア)で増えた公開エクスポート ---
+# **5件増え、0件減った。増分はすべて新規ファイル `inbound-store.ts` である**(capability-store.ts =
+# 送信 = connections の鏡写し。受信 = inbound endpoint の人間専用ストア)。
+# **これを通した門は ADR-0041(docs/adr/0041-inbound-capability.md)** —— §1b が「署名検証の実行層関数 /
+# 受信 HTTP ルート / inbound capability の人間専用ストアが増え、本ドリフト検査が名指し検出する
+# (Δ8 確定発火)」と明記し、§3 限定表が「発行は人間 owner のみ・AI は request_inbound_endpoint で
+# 申請だけ(限定1)/ 署名検証鍵は非保管・SecretSource で取得元だけ(限定4)/ 書込先テーブル1つ・
+# inbound grant を endpoint が内包(限定3)/ RESOURCE_KINDS・FIELD_TYPES・DIFF_OPS ゼロ増・inbound
+# endpoint をリソースにせずマニフェストに現れない人間専用ストア(限定5)」を機械検査に落とすと定めている。
+# 歯止め2(既存関数への入口を開けるだけ)は主張できない —— 外部から到達する受信口の capability は
+# 従来カーネルに無い能力である。**本ファイルの更新はその審査(T00 = ADR-0041 限定採用)の後である。**
+#   inbound-store.ts  5件 —— 内訳は InboundStore(人間専用ストア)+ その入出力の型4件。
+#     InboundStore                    kernel.sqlite に inbound_endpoints / inbound_endpoint_requests を
+#                                     持つ人間専用ストア(connections の CapabilityStore と同型)。
+#     InboundEndpoint / IssueInboundEndpointInput            endpoint の行 / 発行入力(人間経路)。
+#     InboundEndpointRequest / RequestInboundEndpointInput   受信口の申請の行 / 申請入力(AI 経路)。
+# **RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列・schemas/ は1バイトも動いていない**
+# (inbound endpoint はリソースでなくマニフェストに現れない人間専用ストア。ADR-0041 §1b/§3 限定5)。
+inbound-store.ts:InboundEndpoint
+inbound-store.ts:InboundEndpointRequest
+inbound-store.ts:InboundStore
+inbound-store.ts:IssueInboundEndpointInput
+inbound-store.ts:RequestInboundEndpointInput
+
+# --- V2-M5-T02(ADR-0041。EC-G4 署名検証の実行層関数)で増えた公開エクスポート ---
+# **2件増え、0件減った。増分はすべて新規ファイル `inbound-verify.ts` である**(受信 Webhook の
+# 署名検証 HMAC-SHA256 を**書込直前・実行層**で行う関数。ADR-0020 が送信の fetch 直前で grant を
+# 検査するのと対称。ADR-0041 §3 限定2)。
+# **これを通した門は ADR-0041(docs/adr/0041-inbound-capability.md)** —— §1b が「署名検証の実行層関数 /
+# 受信 HTTP ルート / inbound capability の人間専用ストアが増え、本ドリフト検査が名指し検出する
+# (Δ8 確定発火)」と明記し、§3 限定表2 が「署名検証は実行層(書込直前)・受信生バイト body で
+# HMAC を計算・不一致/鍵未解決は 1バイトも書かず遮断・定数時間比較・鍵値を出さない」を機械検査に
+# 落とすと定めている。歯止め2(既存関数への入口を開けるだけ)は主張できない —— 外部から到達する
+# 受信口の署名検証は従来カーネルに無い能力である。**本ファイルの更新はその審査(T00 = ADR-0041
+# 限定採用)の後である。**
+#   inbound-verify.ts  2件 —— 署名検証関数 + 署名ヘッダ名の定数。
+#     verifyInboundSignature      HMAC-SHA256(生バイト body, 鍵)を定数時間で照合する実行層関数。
+#     INBOUND_SIGNATURE_HEADER    署名ヘッダ名 `X-Mock-PSP-Signature`(受信ルートが読む)。
+# **RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列・schemas/ は1バイトも動いていない**
+# (署名検証は実行層の関数であってリソース・型・diff op でない。ADR-0041 §1b/§3 限定5)。
+# 受信 HTTP ルート(`src/server/inbound-route.ts`)はサーバ層なので本 kernel ドリフト検査の対象外。
+inbound-verify.ts:INBOUND_SIGNATURE_HEADER
+inbound-verify.ts:verifyInboundSignature
+
+# --- V3-M1-T02(ADR-0046。D-G1 テーマのコントラスト検査の純関数)で増えた公開エクスポート ---
+# **7件増え、0件減った。増分はすべて新規ファイル `theme-contrast.ts` である**(テーマのスロット値
+# から sRGB の相対輝度を計算し、前景×背景の対のコントラスト比が閾値未満なら ValidationError[] を
+# 返す**純関数**。**本タスクは結線しない** —— 適用経路(`validateManifestFull` の
+# `purpose === "incoming"`)への結線・拒否の「全か無か」・`dry_run` の一致は V3-M1-T03 である)。
+# **これを通した門は ADR-0046(docs/adr/0046-design-token-slots.md)** —— 審査単位 D-G1・**限定採用**・
+# 2026-07-25(門A本審査は V3-M1-T00 = docs/plan/v3/records/v3-m1-gate-a-theme.md。台帳は
+# docs/adr/0007-vocabulary-governance.md §8 の 2026-07-25 の追記行 + 注15)。同 ADR §1d が
+# 「`V3-M1-T02` が `src/kernel/theme-contrast.ts` を新設し、`src/kernel/` の公開エクスポートが増える。
+# **判定は `bun test scripts/kernel-export-drift.test.ts` である**」と Δ8 の確定発火を明記しており、
+# §3 限定4 が「閾値は本文テキスト 4.5:1 / 非テキスト 3:1 の2つだけ・段階を増やさない・要素別の
+# 例外を作らない・『WCAG 準拠』と名乗らない」を `src/kernel/theme-contrast.test.ts` に落とすと定めている。
+# **限定3(トークン表そのものを `src/kernel/` に持たない)を守っている** —— 増えたのは検査の純関数と
+# 「前景 / 背景 / テキスト / 非テキスト」の役割の属性だけで、**スロットの値・値域・既定値・並び・
+# 変換規則を1つも持たない。** 役割表のスロット集合は限定1 により `styles-token-slots.txt` と
+# `$defs/theme` と完全一致することを機械で固定する(照合は V3-M1-T03)。
+#   theme-contrast.ts  7件 —— 純関数2 + 定数3 + 型2。
+#     contrastRatio           2色(#rgb / #rrggbb)のコントラスト比。読めない値は null。
+#     checkThemeContrast      スロット値を受け、閾値未満の対を ValidationError[] で返す(全件)。
+#     CONTRAST_THRESHOLDS     閾値2つ(text 4.5 / non-text 3)。凍結。限定4 の機械的固定点。
+#     THEME_SLOT_ROLES        役割表(28スロット → 役割の属性)。**値を持たない。**
+#     THEME_CONTRAST_PAIRS    役割の直積として生成した検査対象14組。凍結。
+#     ThemeSlotRole           役割の型(foreground+target / background / not-a-color)。
+#     ThemeContrastPair       検査する1対の型(前景・背景のスロット名と閾値の種別)。
+# **RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS の3配列・schemas/ ・web/ は1バイトも動いていない**
+# (Δ1 / Δ2 / Δ3 / Δ6 は非発火。ADR-0046 §1d。差分操作を足すのは D-G2 = V3-M1-T03 である)。
+# **本ファイルの更新はその審査(V3-M1-T00 = ADR-0046 限定採用)の後である。**
+theme-contrast.ts:CONTRAST_THRESHOLDS
+theme-contrast.ts:THEME_CONTRAST_PAIRS
+theme-contrast.ts:THEME_SLOT_ROLES
+theme-contrast.ts:ThemeContrastPair
+theme-contrast.ts:ThemeSlotRole
+theme-contrast.ts:checkThemeContrast
+theme-contrast.ts:contrastRatio
+
+# --- V3-M1-T03(ADR-0047。D-G2 アプリのテーマをマニフェストに実値で持ち、差分操作を1つ足す)で増えた公開エクスポート ---
+# **2件増え、0件減った。増分は `types.ts` の型2件だけである**(関数・定数は1つも増えていない ——
+# `DIFF_OPS` は既存の識別子が中身を 15 → 16 に増やしただけなので、識別子集合としては動かない。
+# ADR-0013 / ADR-0024 が op を足したときと同型である)。
+# **これを通した門は ADR-0047(docs/adr/0047-app-theme-manifest.md)** —— 審査単位 D-G2・**限定採用**・
+# 2026-07-25(門A本審査は V3-M1-T00 = docs/plan/v3/records/v3-m1-gate-a-theme.md §3。台帳は
+# docs/adr/0007-vocabulary-governance.md §8 の 2026-07-25 の追記行 + 注15)。同 ADR §1e が
+# 「**Δ8**: `src/kernel/types.ts` に `Operation` union の新しい分岐型と `Theme` 型の export が増える。
+# **判定は `bun test scripts/kernel-export-drift.test.ts`**」と確定発火を明記している。
+# **限定10 が増分をこの2件に限っている** —— 「`src/kernel/` の新規 export は `Operation` union の
+# 新しい分岐型と `Theme` 型に限る。op ごとの hint は非 export の定数として持つ。
+# `src/kernel/types.ts` に import を1つも足さない(ADR-0009 限定3)」。**実際に、畳み込み関数
+# (`foldSetTheme`)もコントラスト検査の結線(`checkTheme`)も非 export の関数である。**
+#   types.ts  2件 —— 型2件(値・関数・定数は0件)。
+#     SetThemeOperation  16種目の op の Operation 型(`{ op: "set_theme"; theme: Theme }`)。
+#     Theme              テーマの型(`slots` = スロット名→値 / 任意の `origin`)。
+#                        **25スロットのキー名を型で列挙していない** —— 正は
+#                        schemas/manifest.schema.json の `$defs/theme` であり、型に写すと
+#                        スロット集合の4つ目の複写(機械照合されない複写)ができるためである
+#                        (ADR-0046 限定1 が照合するのは3箇所)。
+# **FIELD_TYPES / RESOURCE_KINDS は1つも増えていない**(ADR-0047 限定4。テーマをリソース種に
+# しない・色の型やテーマ型をフィールド型にしない)。**`src/kernel/theme-contrast.ts` の export は
+# V3-M1-T02 の7件から1つも増えていない**(T03 は結線しただけで、新しい純関数を足していない)。
+# **本ファイルの更新はその審査(V3-M1-T00 = ADR-0047 限定採用)の後である。**
+types.ts:SetThemeOperation
+types.ts:Theme
+
+# --- V3-M5-T01(ADR-0055。D-G5 逃げ道 = 任意 CSS の資産ストアと owner 発行/失効)で増えた公開エクスポート ---
+# **9件増え、0件減った。**
+# **これを通した門は ADR-0055(docs/adr/0055-escape-hatch-custom-css.md)** —— 審査単位 D-G5・
+# **限定採用**・2026-07-27(門A本審査は V3-M5-T00 = docs/plan/v3/records/v3-m5-gate-a-escape-hatch.md。
+# 索引は v3-m5-gate-a.md §2 で、Δ8 を**確定発火**と実測している。台帳は
+# docs/adr/0007-vocabulary-governance.md §8 の 2026-07-27 の行 + 注20)。
+#
+# **スナップショットを更新する前に、増えた9件が ADR-0055 限定11 の内側かを確かめた**(歯止め1-1)。
+# 確認したのは次の4点で、いずれも実測である:
+#   (1) **ファイルが2つとも §6 の T01 行に名指しされている** —— `src/kernel/storage-paths.ts`
+#       (Δ8)と**新規** `src/kernel/escape-hatch-store.ts`(Δ8。「名前は実装が決める」)。
+#       **列挙に無い src/kernel/ のファイルは1つも触っていない**(delete-app.ts は同じ行の
+#       `APP_SCOPED_KERNEL_TABLES` として明示的に許されている。同ファイルの export は0件増)。
+#   (2) **限定3 に触れていない** —— `RESOURCE_KINDS` / `FIELD_TYPES` / `DIFF_OPS` は 7 / 8 / 16 のまま
+#       (識別子集合としても中身としても動いていない)。**限定4 に触れていない** ——
+#       `SYSTEM_TABLE_IDS` は 3 のままで、ユーザランドに `_` 始まりのテーブルを1つも作っていない
+#       (ストアは kernel.sqlite の独立テーブル2つ = `escape_hatch_assets` /
+#       `escape_hatch_asset_requests`)。
+#   (3) **限定8 に触れていない** —— CSS プロパティの許可リストも拒否リストも作っていないので、
+#       パーサも語彙表も export していない(9件のどれも CSS を解釈しない。憲法1)。
+#   (4) **9件は §1 の4層のうち下2層(本体 + 登録 + 申請)にちょうど対応する。**
+#       余分な口(孤児の刈り取り・配信・マニフェストの参照)は1つも export していない ——
+#       孤児検出は限定10 により T02 の担当、参照キーは Δ3 として T02 の担当である。
+#   escape-hatch-store.ts  8件 —— 内訳は次の3群である。
+#     クラス1件      EscapeHatchStore(発行 / 一覧 / 名前+ダイジェスト引き / 失効 / 申請 4メソッド)。
+#                    `CapabilityStore` / `InboundStore` と同型。
+#     関数3件        putEscapeHatchBody / getEscapeHatchBody / escapeHatchBodyExists。
+#                    **`blob-store.ts` の putBlob / getBlob / blobExists と同型・同数**であり、
+#                    限定9(content-addressed / de-dup / 上書きしない / tmp→rename)の実装である。
+#     型4件          EscapeHatchAsset / IssueEscapeHatchAssetInput /
+#                    EscapeHatchAssetRequest / RequestEscapeHatchAssetInput。
+#                    `Connection` / `CreateConnectionInput` / `ConnectionRequest` /
+#                    `CreateRequestInput` の4件と1対1に対応する(数も対応も同じ)。
+#   storage-paths.ts  1件 —— appEscapeHatchDir。**`appBlobsDir`(ADR-0035)と同型の1本**で、
+#                    本体を `apps/<appId>/escape-hatch/<sha256>` に閉じる。
+# **secret を保管しない**(ADR-0055 に secret は無い)ので、`secret_source_*` に相当する
+# 列も型も1つも増えていない(capability-store.ts:16〜:18 の規律を読んだうえでの判定。
+# 記録は docs/plan/v3/records/v3-m5-t01.md §5)。
+# **本ファイルの更新はその確認の後である。**
+escape-hatch-store.ts:EscapeHatchAsset
+escape-hatch-store.ts:EscapeHatchAssetRequest
+escape-hatch-store.ts:EscapeHatchStore
+escape-hatch-store.ts:IssueEscapeHatchAssetInput
+escape-hatch-store.ts:RequestEscapeHatchAssetInput
+escape-hatch-store.ts:escapeHatchBodyExists
+escape-hatch-store.ts:getEscapeHatchBody
+escape-hatch-store.ts:putEscapeHatchBody
+storage-paths.ts:appEscapeHatchDir
+
+# --- V3-M5-T02(逃げ道の孤児検出。D-G5 / ADR-0055 限定10・限定11)------------------
+# **2件増え、0件減った。増分はすべて既存ファイル `snapshot-orphans.ts` である**
+# (T01 が本体の籠を `blobs/` と分けたため `auditAppBlobs` を流用できず、逃げ道専用の
+#  監査が1本要る —— 記録は docs/plan/v3/records/v3-m5-t01.md 申し送り2)。
+#
+# **本ファイルを更新する前に、増分が ADR-0055 の限定表の内側かを確認した(限定11 / 歯止め1-1)。**
+#   (1) **触ったファイルが v3-m5-gate-a.md §6 の T02 行に名指しされている** ——
+#       `src/kernel/snapshot-orphans.ts`(Δ8)。**列挙に無い src/kernel/ のファイルは
+#       1つも触っていない**(`escape-hatch-store.ts` / `storage-paths.ts` / `delete-app.ts` は
+#       T01 のもので、本タスクは1バイトも変えていない)。
+#   (2) **限定3 / 限定4 に触れていない** —— RESOURCE_KINDS=7 / FIELD_TYPES=8 /
+#       DIFF_OPS=16 / SYSTEM_TABLE_IDS=3(実測。着手時と同値)。増えたのは
+#       `$defs/view` の1キー(custom_css)だけで、それは Δ3 であって公開面ではない。
+#   (3) **限定8 に触れていない** —— CSS を1バイトも解釈しない。2件のどちらも読むのは
+#       マニフェストの `custom_css.digest`(sha256 の16進64文字)だけである。
+#   (4) **限定10 そのものである** —— 「孤児の自動刈り取りを入れない。検出のみ」。
+#       **削除プリミティブを1つも export していない**(`deleteAppBlobs` / `deleteAppSnapshots`
+#       に相当するものを作らなかった)—— アプリ削除は T01 が `appDir` ごと消す経路を
+#       既に持っており、逃げ道の実体に**部分削除の口を作らない**ことが限定10 の趣旨だからである。
+#   snapshot-orphans.ts  2件 —— 内訳は次の2群である。
+#     型1件            EscapeHatchAudit(`BlobAudit` と同型の欄立て: app_id / on_disk /
+#                      referenced / orphans / bytes)。
+#     関数1件          auditAppEscapeHatch(参照集合 = 現行 manifest.json + 全 snapshot の
+#                      manifest.json。`auditAppBlobs` が `_files` について同じことをしている
+#                      理由と同じで、**現行だけを見て刈ると undo で見た目が戻らなくなる**)。
+# **本ファイルの更新はその確認の後である。**
+snapshot-orphans.ts:EscapeHatchAudit
+snapshot-orphans.ts:auditAppEscapeHatch
+
+# --- V5-M15(ADR-0160。G-G9 / G-G10 署名の「ヘッダ名」と「値の形式」の宣言)で増えた公開エクスポート ---
+# **5件増え、0件減った。増分はすべて既存ファイル `inbound-verify.ts` である。**
+# **これを通した門は ADR-0160(docs/adr/0160-inbound-signature-shape-declaration.md。門A・限定採用・
+# 2026-08-05。審査記録は docs/plan/v5/records/v5-m12.md §3-3、実施記録は同 v5-m15.md)** ——
+# 同 ADR §3 限定11 の逐語は「**`src/kernel/` に増える公開面は0本を目標とする。増えるなら
+# `scripts/kernel-export-drift.test.ts` で識別子を1つずつ名指ししてからスナップショットを更新する**」で
+# ある。**0本にはできなかった。5本増えた。** 名指しは次のとおりで、**5本とも「値域」か「その型」か
+# 「既定値」であって、新しい能力の入口は1本も増えていない**(署名検証の関数は
+# `verifyInboundSignature` の1本のままで、増えていない)。
+#   inbound-verify.ts  5件 —— 内訳は値3件 + 型2件。
+#     INBOUND_SIGNATURE_HEADERS         宣言できる署名ヘッダ名の値域(有限3値。ADR-0160 限定2)。
+#                                       **自由文字列は書けない。4値目には門A の新規審査が要る。**
+#     INBOUND_SIGNATURE_FORMATS         宣言できる署名の値の形式の値域(有限3値。限定4)。
+#                                       **アルゴリズムではない** —— HMAC-SHA256 の1種のままである(限定3)。
+#     DEFAULT_INBOUND_SIGNATURE_FORMAT  値の形式の既定値(`sha256_hex` = 今日どおり。限定8)。
+#     InboundSignatureHeader            上の値域の型。
+#     InboundSignatureFormat            上の値域の型。
+# **既存の2件は1件も消していない**(`INBOUND_SIGNATURE_HEADER` は既定値として残り、
+# `verifyInboundSignature` は第4引数(形式。省略時は今日どおり)が増えただけである)。
+# **RESOURCE_KINDS=7 / FIELD_TYPES=8 / DIFF_OPS=16 は1つも動いていない**(限定10。実測)。
+# **schemas/ は1バイトも動いていない**(限定7。宣言の置き場は人間専用ストア kernel.sqlite である)。
+# **【D-V5-85 により残っている穴を、この場所にも書く】** **`INBOUND_SIGNATURE_HEADERS` に
+# `Stripe-Signature` は在るが、決済サービスが実際に送る値の形式(タイムスタンプ連結)は
+# `INBOUND_SIGNATURE_FORMATS` の3値のどれとも一致しない** —— **支払い完了の通知は今日も受け取れない。**
+# 固定している検査は `src/server/inbound-signature-shape.test.ts` の (S) である。
+inbound-verify.ts:DEFAULT_INBOUND_SIGNATURE_FORMAT
+inbound-verify.ts:INBOUND_SIGNATURE_FORMATS
+inbound-verify.ts:INBOUND_SIGNATURE_HEADERS
+inbound-verify.ts:InboundSignatureFormat
+inbound-verify.ts:InboundSignatureHeader
+#
+# 更新: V5-M17b(2026-08-05)。**2件増え、0件減った。** 増分は `ADR-0248`(ADR-0007 の
+# 門A 本審査 = 限定採用)が通した17種目の差分操作 `set_user_kinds` の型2本だけである。
+# **`ADR-0248` 限定8 が「新しい公開 export は2つまで」と定めており、実測もちょうど2件である。**
+# **関数は1本も export していない**(`foldSetUserKinds` は `apply-diff.ts` の内部関数)。
+# **`RESOURCE_KINDS`=7 / `FIELD_TYPES`=9 は1つも動いていない。`DIFF_OPS` は 16 → 17 である**
+# (限定7 / 限定1。実測)。**`ADR-0158` 限定6(`src/kernel/` に1バイトも差分を出さない)は
+# 本決定が正面から破ったものであり、「守った」とは書かない。**
+#
+# 更新: V8-M16-T03(2026-08-09)。**2件増え、0件減った。** 増分は台帳 `J-G1b`
+# (`ADR-0007` の門A 本審査 = 限定採用)が通した18種目の差分操作 `set_roles` の型2本
+# —— `RoleDeclaration` と `SetRolesOperation` —— だけである。
+# **関数は1本も export していない**(`foldSetRoles` は `apply-diff.ts` の内部関数)。
+# **`RESOURCE_KINDS`=7 / `FIELD_TYPES`=9 は1つも動いていない。`DIFF_OPS` は 17 → 18 である。**
+# **判定の実装は1バイトも無い** —— 規則は `V8-M17`、条件は `V8-M18` が足す。
+types.ts:RoleDeclaration
+types.ts:SetRolesOperation
+#
+# 更新: V8-M17(2026-08-09)。**2件増え、0件減った。** 増分は台帳 `J-G6` / `J-G7` /
+# `J-G8` / `J-G9` / `J-G10` / `J-G11`(`ADR-0007` の門A 本審査 = 6行とも限定採用)が
+# 通した「役割に束ねた規則」の型2本 —— `RoleRule` と `RoleRuleVerb` —— だけである。
+# **関数は1本も export していない**(適用時検査は `referential-integrity.ts` の内部、
+# 既定の役割定義3本は `create-app.ts` の内部 const)。
+# **`RESOURCE_KINDS`=7 / `FIELD_TYPES`=9 / `DIFF_OPS`=18 / `$defs`=28 は1つも動いていない。**
+# **この2本を読むのはサーバ層の判定である** —— **`V8-M17` は判定を1バイトも書いていない。**
+types.ts:RoleRule
+types.ts:RoleRuleVerb
+#
+# 更新: V8-M17(2026-08-09。**メインの判断で既定3本を消せないようにしたぶん**)。
+# **1件増え、0件減った。** 増分は `types.ts:DEFAULT_ROLE_IDS`(既定の役割定義3本の識別子)
+# だけである。**値の const を1本足したのは、既定を**入れる**側(`create-app.ts`)と
+# **消えていないことを検査する**側(`referential-integrity.ts`)が、同じ3語を別々に
+# 持たないためである**(「判定を2箇所に住まわせない」)。
+# **根拠は `04` §7 の `V8-M16` の完了条件 (ii)(`D-V8-26`)と台帳 `J-G2` の限定である。**
+# **関数は今回も1本も export していない。**
+types.ts:DEFAULT_ROLE_IDS
+#
+# 更新: V8-M18(2026-08-09)。**2件増え、0件減った。** 増分は台帳 `J-G12` / `J-G13` /
+# `J-G14` / `J-G15` / `J-G16`(`ADR-0007` の門A 本審査 = 5行とも限定採用)が通した
+# 「役割の規則が当たる条件」の型2本 —— `RoleCondition` と `RoleConditionNotice` —— だけである。
+# **関数は1本も export していない**(深さと指し先の適用時検査は `referential-integrity.ts` の
+# 内部関数 `walkRoleCondition`、誰も通さない条件・全員を通す条件の知らせは
+# `apply-diff.ts` の内部関数 `collectRoleConditionNotices`)。
+# **`RESOURCE_KINDS`=7 / `FIELD_TYPES`=9 / `DIFF_OPS`=18 は1つも動いていない。**
+# **`$defs` は 28 → 29 である**(`role_condition` の1本。**v8 の軸3 で `$defs` を動かす
+# 唯一の増分である**)。
+# **`RoleCondition` を読むのはサーバ層の評価器である** —— **`V8-M18` は評価器を
+# 1バイトも書いていない。****カーネルがするのは形の検査(値域・深さ・指し先の実在)だけである。**
+types.ts:RoleCondition
+types.ts:RoleConditionNotice
+#
+# 更新: V8-M29 第2波(2026-08-11)。**0件増え、2件減った。** **このファイルで
+# 「減った」と書くのは 2度目である**(1度目は V8-M20 / ADR-0310 の宣言4層の撤去)。
+# **減ったのは `types.ts:SetUserKindsOperation` と `types.ts:UserKindDeclaration` の
+# 2本である**(下の行から取り除いた。件数に丸めず名前で書く)。
+# **どの ADR のどの限定が消したか**: **`ADR-0301` の限定2(廃止の定義)と限定11
+# (一覧の更新は審査の後)。** **審査は `V8-M25`(軸4の門A本審査。2026-08-10)、
+# 判定値は「廃止」、台帳の行は `docs/adr/0007-vocabulary-governance.md` §8 の
+# `T-G9a` / `T-G11` / `T-G12` / `T-G13` の4行。実装タスクは `V8-M29`。**
+# **赤いまま先に走らせ、`removed` が上の2本を名指しで返す出力を証跡として採ってから
+# このファイルを直した**(同 限定11 の逐語「赤いまま審査し、通ってから一覧を直す」)。
+# **`Δ11` の (d)(`src/kernel/` の公開エクスポートが減る)が発火した。**
+# **代わりに立つのは `types.ts:RoleDeclaration` と `types.ts:SetRolesOperation` である。**
+# **`RESOURCE_KINDS`=7 / `FIELD_TYPES`=9 は1つも動いていない。`DIFF_OPS` は 18 → 17。**
+# **`$defs` は 29 のままである。**
+#
+# 更新: `V8-M8-T09`(2026-08-14)。**5件増え、0件減った。** 増分は v8 の2本目の軸
+# (集計表とグラフ)の1本目のマイルストーン `V8-M8` が足した集計表の宣言であり、
+# **門A の本審査(`V8-M7`)を通って限定採用と判定された結果である**
+# (審査記録 docs/plan/v8/records/v8-m7.md。ADR = docs/adr/0340-report-view-declaration.md
+#  と docs/adr/0339-report-view-kernel-boring-scope.md)。
+# **本ファイルの更新はその審査の後である。**
+#   report.ts  1件(computeReport。集計は JS のメモリ上で行う ―― SQL に GROUP BY を
+#                1文字も書いていない。ADR-0339 §Decision 2)
+#   types.ts   4件(ReportView / ReportDeclaration / ReportGroupBy / ReportAggregate。
+#                判別共用体の枝はすべて出す、という同ファイルの規範に従った)
+# **`ADR-0025` 限定11 の枠(requirements-doc.ts 13件 + undo.ts 1件 = 14件・余白0)には
+#   1件も足していない。** 増えた5件はその枠の外である。
+#
+# 更新: `V10-M10-T01`(2026-08-23)。**5件増え、0件減った。** 増分は v10 の1本目の軸
+# (コメント)の器 `src/kernel/comment-store.ts` が持つ公開エクスポートであり、
+# **門A の本審査(`V10-M0`)を通って限定採用と判定された結果である**
+# (審査記録 docs/plan/v10/records/v10-m0.md。ADR = docs/adr/0366-comment-vessel.md の
+#  `CM-G1` / `CM-G3`)。**本ファイルの更新はその審査の後である。**
+#   comment-store.ts  5件(COMMENT_ANCHOR_FORMS = 宛先の形の登録簿(今日は7形)/
+#                     CommentAnchorForm = その形の名前の型 / Comment = 積まれた1行 /
+#                     AddCommentInput = 追加の入力 / CommentStore = 器そのもの)
+# **【訂正。`V10-M26-T02`(`CM-G33` / `ADR-0374`)。2026-08-24】**
+# **すぐ上の `COMMENT_ANCHOR_FORMS` の「今日は7形」は、今日は偽である。**
+# **`V10-M25`(`CM-G25a` / `CM-G25b` / `CM-G26` / `CM-G32`)が 7形 → 9形 → 11形 と広げた。**
+# **今日は 11形ちょうどである**(app / view / view_action / view_field / view_related /
+#  view_report_node / view_field_group / view_field_link / view_row / view_after_save /
+#  view_after_delete)。**上の行は書き換えない**(本リポジトリの作法)。
+# **公開エクスポートの本数は1本も動いていない** —— **形が増えても `COMMENT_ANCHOR_FORMS` は1本のままである。**
+# **`RESOURCE_KINDS`=8 / `FIELD_TYPES`=9 / `DIFF_OPS`=17 は1つも動いていない。**
+# **`$defs` は 30 のまま・`$defs/view.properties` は 31 のままである**
+# (`schemas/` を1バイトも触っていない。`CM-G1` 限定1 / 限定2)。
+# **【禁止】これを「語彙ゼロ増」と読まない** —— **`schemas/` は動かないが、
+# `src/kernel/` の公開エクスポートは5本増えた**(`Δ8` が発火し、門A を通っている)。
+#
+# 更新: `V10-M13-T02`(2026-08-24)。**2件増え、0件減った。** 増分は v10 の1本目の軸
+# (コメント)の器 `src/kernel/comment-store.ts` に足した「状態」である。**門A の本審査
+# (`V10-M0`)を通って限定採用と判定された `CM-G19` の実装**(ADR = `docs/adr/0369-comment-writer-state-reason.md`)。
+# **本ファイルの更新はその審査の後である。**
+#   comment-store.ts  2件(COMMENT_STATES = 状態の値域の登録簿(3値ちょうど。open /
+#                     not_applicable / applied)/ CommentState = その値の型)。
+# **裁定6(`RULINGS-M13.md`)により「値として import する側」を採ったため
+#   (`src/server/comment-api.test.ts` が `COMMENT_STATES` を値 import する)、
+#   本更新は `kernel-import-snapshot.txt` 側の更新と対になる。**
+comment-store.ts:AddCommentInput
+comment-store.ts:COMMENT_ANCHOR_FORMS
+comment-store.ts:COMMENT_STATES
+comment-store.ts:Comment
+comment-store.ts:CommentAnchorForm
+comment-store.ts:CommentState
+comment-store.ts:CommentStore
+#
+# 更新: `V10-M30-T01`(2026-08-25)。**1件増え、0件減った。** 増分は v10 の2本目の軸
+# (コメント→AIの直し)のうち**アプリごとのコメント表示設定の器**であり、**門A の本審査
+# (`V10-M29`)を通って限定採用と判定された `CM-G36` の実装**
+# (ADR = `docs/adr/0377-per-app-comment-visibility-store.md`)。
+# **本ファイルの更新はその審査の後である。**
+#   meta-store.ts  1件(CommentVisibility = 書く側/読む側の2つを持つ設定の型。
+#                  `D-V10-36` により1つに畳んでいない)。
+# **増えたのは型1本だけである** —— `getCommentVisibility` / `setCommentVisibility` は
+# `KernelMetaStore` のメソッドであって top-level export ではないので、Δ8 の識別子集合を
+# 増やさない(:699 と同じ理由)。
+# **器は `apps` 表の列2本ちょうどであり、`kernel.sqlite` の表は1本も増えていない**(限定1)。
+# **`src/shared/system-tables.ts` は1バイトも変わっていない**(限定2。`_apps` 投影は4フィールドのまま)。
+# **`APP_SCOPED_KERNEL_TABLES` は13要素のままである**(限定4)。
+# **`RESOURCE_KINDS`=8 / `FIELD_TYPES`=9 / `DIFF_OPS`=17 は1つも動いていない。**
+# **`schemas/` を1バイトも触っていない**(限定5)。
+meta-store.ts:CommentVisibility

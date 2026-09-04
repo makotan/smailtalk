@@ -1,0 +1,992 @@
+/*
+ * 最小限の可読性のためのスタイル(V0-P3-T03。V3-M1-T06 / ADR-0049 で改訂し、
+ * V3-M2-T05 / ADR-0052 で再改訂し、V3-M4-T03 / ADR-0054 で5種目を足した)。
+ *
+ * **アプリごとの見た目をここに持たない。** それはマニフェストの app.theme(有限個の
+ * スロットの実値)にあり、差し替えは差分操作 set_theme である(ADR-0046 / ADR-0047)。
+ * **画面ごとの見せ方も同じで、マニフェストのビュー定義の preset_ で始まるキー
+ * (有限 enum)にある**(ADR-0050 / ADR-0051)。
+ *
+ * **足してよいのは5つだけである。**(i) スロットの定義(:root)と、既存宣言からの
+ * スロットの参照(var(--…))/(ii) アプリ単位テーマのスコープ要素の規則(.app-theme と、
+ * 継承を開けるための inherit)/(iii) web/src/ 自身が描く UI 要素の「器」の宣言
+ * (先例は .requirements-copy。.theme-export-copy / .theme-export-css も同型)/
+ * (iv) 画面プリセットの有限 enum に1対1で対応する属性セレクタの規則 —— 属性値は
+ * enum の1要素であり、規則の総数は各 enum の値の数の和で上から抑えられる
+ * (アプリ数・画面数・列数をいくつ増やしても規則は1つも増えない)/
+ * (v) 適用前の候補を同時に並べる器の規則(.theme-preview-list)—— 器の並べ方だけを
+ * 書き、枠の中の見た目は1宣言も持たない(候補の実値は ThemePreviewPanel が
+ * インラインスタイルで立てる)。候補を何種類に増やしても規則は1つも増えない。
+ *
+ * **引き続き禁じる**: アプリ固有のセレクタ、任意の CSS 規則、そして
+ * 配色設定・切り替え機構や、マニフェストに現れないレイアウト指定のような
+ * 「マニフェストに現れない表示オプション」。
+ *
+ * **【V3-M5-T05 / ADR-0055 で追記】逃げ道(任意 CSS)もここには無い。** V3-M5 で
+ * owner 専用の逃げ道が入り、**画面に当たる見た目のうち、テーマでもプリセットでもない
+ * ぶんが実在するようになった** —— 上の「アプリごとの見た目をここに持たない」の説明は、
+ * それを数えていない。逃げ道の本体はマニフェストの外(owner 専用の content-addressed
+ * ストア)にあり、当てるのは web/src/views/ViewHost.tsx が .app-theme の内側に立てる
+ * <style> である。**このファイルには1規則も足していない**(V3-M5-T02 が
+ * git diff = 0行 で担保した。ADR-0055 限定12)—— **したがって6種目は生じていない。**
+ * **上の禁止は1つも外れていない。**
+ */
+
+/*
+ * スロット(V3-M1-T01 / ADR-0046)。**名前は意味を表し、値を含まない。**
+ *
+ * V3-M0-T04 が入れた値埋め込み型の33件(`--color-666` など)は廃止した。集合の正は
+ * `web/test/__fixtures__/styles-token-slots.txt`(28件)、確定表は
+ * `docs/plan/v3/03-token-slot-inventory.md` §9 である。
+ *
+ * **【V4-M15-T07 / ADR-0089 で書き直した。旧文は今日から偽である】**
+ * 旧文は「**ADR-0046 §3 の限定5 が禁じている3種(メディアクエリ / 配色設定のメディア特性 /
+ * テーマ切り替えの属性セレクタ)を1つも足さないこと** —— 解析器は at-rule を含む CSS で
+ * 例外を投げるので、1つ足せば検査(a)〜(h)が全部落ちる」だった。
+ * **ADR-0089 が限定5 の射程を「幅の条件のメディアクエリ」の分だけ引き直した。**
+ * **【禁止】これを「限定5 を1バイトも緩めていない」と書かない。緩めている。**
+ *
+ * **今日の線は次のとおりである** —— 解析器は「**通すものの有限の列挙**」を持つ:
+ * (1) **幅の条件(min-width / max-width)のメディアクエリだけを通す。**
+ *     **断点は2本だけである**(40rem / 64rem)。3本目を足すと検査が赤くなる。
+ * (2) **それ以外の at-rule は今日どおり例外を投げる**(取り込み / 文字集合 / 機能問い合わせ /
+ *     入れ子の器 / 作用域 / 層 / カスタムプロパティ登録 / キーフレーム / 書体宣言)。
+ * (3) **配色設定のメディア特性とテーマ切り替えの属性セレクタは1バイトも動かしていない**
+ *     —— 2本の文字列検査(`web/test/preset-boundary.test.ts` と
+ *     `web/test/style-sources.test.ts`)が今日も見ている。
+ * **同 限定2 の7軸より多い軸を足さないこと**(足すには門A の再通過が要る)。
+ *
+ * (このコメントに禁止対象の字面を書かないのは、`web/src/styles.css` に対する
+ *  `grep` の結果を汚さないためである。ADR-0046 は「0件」を前提の事実に挙げている。)
+ *
+ * **【V4-M55 が 2026-08-04 に追記。上の方針は今日、意図的に破られた】**
+ * **同じ方針をこのファイルは2箇所に掲げており、下の詳細側の段組コメント(`:700` 付近)に
+ * 経緯を書いた。** **要点だけ書く**: **字面を避けたせいで `V4-M51` の走査がこのファイルの
+ * 同型2箇所を1件も拾えなかったので、ユーザ決定 `D-V4-190` により `V4-M55` の追記には
+ * `@media` の字面を使った。** **したがって「このファイルのコメントに禁止対象の字面が
+ * 1つも無い」は今日から偽である**(着手時の実測は **0** 個)。**旧文を1バイトも消していない。**
+ * 経緯は `docs/plan/v4/records/v4-m55.md` §6。
+ */
+:root {
+  /* 配色 —— テキスト */
+  --color-text: #000;
+  --color-text-secondary: #666;
+  --color-text-label: #666;
+  --color-text-placeholder: #666;
+  --color-danger: #a00;
+
+  /* 配色 —— 面と枠線 */
+  --color-page-background: #fff;
+  --color-surface-highlight: #f2f2f2;
+  --color-border: #ddd;
+
+  /* 書体・行間 */
+  --font-family-base: system-ui, sans-serif;
+  --font-size-secondary: 0.85em;
+  --font-size-note: 0.875rem;
+  --line-height-base: 1.6;
+
+  /*
+   * 密度(余白の段階軸)。**`0` は段階に入れない** —— `margin: 0` / `padding: 0` は
+   * UA 既定の打ち消しであって密度の選択ではなく、値を埋める余地が無い(T01 の記録 §5)。
+   */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 2rem;
+
+  /* 枠線の強さ */
+  --border-width: 1px;
+  --border-style: solid;
+
+  /*
+   * 角丸。**【V4-M15-T02 で一度 0.375rem に変え、同じタスクの中で 0 に戻した】**
+   *
+   * **戻した理由は `ADR-0087` 限定1(`src/` に1バイトも触らない)である。**
+   * この既定値は `src/mcp/vocabulary.ts` の「言葉と見た目の対応表」の段階表と結び付いており、
+   * **既定値を変えると `src/mcp/vocabulary.test.ts` の「各軸に、製品の既定値と完全一致する段が
+   * ちょうど1つある」が赤になる**(2026-08-03 実測。角丸の軸は、既定値と一致する段を
+   * ちょうど1つ持つことを前提にしている)。**直すには `src/` を触ることになる。**
+   * (**段の名前をここに書かない** —— `web/test/intake-boundary.test.ts` の (c) が
+   *  「表の段ID・形容詞が `web/src/` に1件も現れない」ことを検査しているためである。)
+   * **したがって着手前の値のまま残した。** **`v4-m13-baseline.md` の「角丸0px」は今日も成り立つ。**
+   * **【禁止】これを「角丸を丸くした」と書かない。** 変えていない。
+   */
+  --control-border-radius: 0;
+
+  /*
+   * 影。**【V4-M15-T02 で一度 `0 1px 3px #0000001a` に変え、同じタスクの中で `none` に戻した】**
+   * **理由は角丸と同じである**(影の軸も、既定値と一致する段をちょうど1つ持つことを前提にしている)。
+   * **`v4-m13-baseline.md` の「影none」は今日も成り立つ。**
+   */
+  --surface-shadow: none;
+
+  /* アウトライン(フォーカスリング) */
+  --focus-outline-width: 2px;
+  --focus-outline-style: solid;
+  --focus-outline-color: #005fcc;
+
+  /* 寸法(レイアウトは V3-M2 の担当。ここにあるのは既存宣言の写しだけである) */
+  --shell-max-width: 60rem;
+  --login-max-width: 22rem;
+  --detail-label-width: 8rem;
+}
+
+body {
+  margin: 0;
+  color: var(--color-text);
+  background-color: var(--color-page-background);
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-base);
+}
+
+/*
+ * アプリ単位テーマのスコープ要素(V3-M1-T04 / ADR-0047 / ADR-0048 §1b)。
+ *
+ * `web/src/AppWorkspace.tsx` が、マニフェストの `app.theme.slots` を**そのままの名前**で
+ * この要素の inline style に立てる(変換規則は恒等写像1本だけ。V3-M1-T03 段階B の定義)。
+ * したがってスコープの内側では `var(--…)` がテーマの値に解決し、外側(`.shell` / `body`)は
+ * 既定値のままである。**シェルの見た目は V3-M3 の担当なので、ここから漏らさない**
+ * (ADR-0048 限定2)。
+ *
+ * **4件は「再宣言」である。** `body` にも同じ4件があるが、`body` は `var()` を
+ * **body の位置で解決する**ので、子孫は解決済みの計算値を継承してしまい、スコープ要素で
+ * カスタムプロパティを上書きしても遡らない(chromium 実測。ADR-0047 限界4)。
+ * **`.shell` の `max-width` / `padding` / `line-height` はこの要素の外にあるので射程外である。**
+ */
+.app-theme {
+  color: var(--color-text);
+  background-color: var(--color-page-background);
+  font-family: var(--font-family-base);
+  line-height: var(--line-height-base);
+}
+
+/*
+ * フォーカスリング。**`:focus-visible` の中だけで宣言する** —— 無条件セレクタ
+ * (`button { … }` 等)に書くと著者規則が UA 規則に無条件で勝ち、フォーカスリングが
+ * 消える(アクセシビリティの後退)。UA の `outline-style: auto` は著者側からは
+ * 再現できないので(`outline: auto` と書くと `rgb(0,0,0) auto 3px` になる。実測)、
+ * 色は macOS の chromium の `-webkit-focus-ring-color`(`rgb(0, 95, 204)`)に合わせた明示値を置く。
+ *
+ * **【2026-07-27。V3-FIX-02 で書き直した】「UA と同じ色」は macOS 限定の主張だった。**
+ * chromium の既定フォーカスリング色はプラットフォーム依存で、**Linux の chromium では
+ * `rgb(16, 16, 16)`(`#101010`)である**(実 CI で実測)。OS のアクセントカラーを
+ * `-webkit-focus-ring-color` に流しているのは macOS だけである。**したがって Linux では、
+ * この宣言はリングの太さと種別だけでなく色も変えている。**
+ * **値(`--focus-outline-color`)は1バイトも変えていない** —— 環境ごとに UA の色が違う以上
+ * 「どの環境の UA とも一致する値」は存在せず、環境に依らない固定のリテラルであることの
+ * ほうが重要だからである(`docs/adr/0046-design-token-slots.md` 限界8 /
+ * `docs/plan/v3/records/v3-fix-02.md`)。環境ごとの実測は
+ * `web/e2e/theme-baseline.e2e.ts` の最後のテストが台帳として固定する。
+ */
+:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+}
+
+/*
+ * 角丸が実際に見えるのはフォームコントロールだけである(UA 既定はいずれも 0px。実測)。
+ *
+ * **書体と行間の継承をここで開ける(V3-M1-T04-3)。** UA 既定はフォームコントロールの
+ * `font-family` を継承させず(chromium 実測で `Arial`)、`line-height` も `normal` に
+ * 固定するので、スコープ要素にテーマの書体・行間を宣言しても部品には届かない。
+ * **この2件は描画を実際に変える**(テーマを持たないアプリでも変わる。実測値は
+ * `docs/plan/v3/records/v3-m1-t04.md` §5)—— 変わることを差分と記録に書いてある。
+ * **色は継がせない。理由は fail-closed の穴である**(V3-M1-T06-11 / メインの裁定)——
+ * `color: inherit` を足すと「**テーマの文字色 × UA のフィールド地色(`field` = 白)**」という
+ * 対ができるが、**コントラスト検査はこの対を1組も見ていない**(見ているのは
+ * `--color-text` × `--color-page-background` である)。したがって
+ * **文字色を白にしたテーマが入力欄を白地に白文字にでき、しかもエラー0件で通る。**
+ * **足すなら検査対象の対を増やすのが先であり、それは ADR-0046 §3a の門を通す事項である**
+ * (閾値の話ではなく検査対象の話なので、限定4 の「例外を作らない」では済まない)。
+ * **「1件くらいなら」で足さないこと** —— 描画変更が1件増えるという理由は弱く、
+ * 本当の理由はここに書いた穴である。
+ */
+button,
+input,
+select,
+textarea {
+  border-radius: var(--control-border-radius);
+  font-family: inherit;
+  line-height: inherit;
+}
+
+/*
+ * シェルの器。**【V4-M15-T07 で幅の条件を足した。ADR-0089 / D-V4-44】**
+ *
+ * **書き方は狭い画面が既定で、広い画面を条件で足す形にした**(いわゆるモバイル先行)。
+ * **無条件の宣言のほうが狭い画面の値である** —— 条件が1つも当たらない環境
+ * (メディアクエリを解さない読み手)でも、詰まって読めなくなる側に倒れない。
+ *
+ * **【正直に書く】このファイルで幅に追随するのは `.shell` の余白だけである。**
+ * 画面の中身(表・入力欄・詳細の項目)の幅への対応は、**部品体系の側**が持つ
+ * (レンダラーのソースに `sm:` / `lg:` のリテラルとして現れ、`web/src/tailwind.css` の
+ * ビルド出力に落ちる)。**したがって「手書き CSS でレスポンシブにした」とは書けない。**
+ *
+ * **画面プリセット(`data-preset-…`)には1つも幅の条件を掛けていない** ——
+ * 掛けると「選んだ段組数も列幅も画面幅に追随しない固定値である」という
+ * 今日の説明が偽になる。**プリセットの意味は1バイトも変えていない。**
+ */
+.shell {
+  max-width: var(--shell-max-width);
+  margin: 0 auto;
+  padding: var(--space-2);
+}
+
+.shell header {
+  border-bottom: var(--border-width) var(--border-style) var(--color-border);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  padding: var(--space-1) 0;
+}
+
+.meta {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
+  margin-left: var(--space-2);
+}
+
+.errors li {
+  color: var(--color-danger);
+}
+
+.errors code,
+.errors .allowed,
+.errors .hint {
+  display: block;
+  font-size: var(--font-size-secondary);
+}
+
+/* list_view(V0-P3-T04)。型ごとに1通りの見せ方しかなく、設定できる余地は無い。 */
+
+/*
+ * 影の当たり先(V3-FIX-01)。**新しいスロットも新しい軸も1つも足していない** ——
+ * 足したのは既存スロット `--surface-shadow` の参照だけである(ADR-0049 限定2' の (i)。
+ * ADR-0046 限定2 の7軸は増えていない)。
+ *
+ * **V3-M1 は影スロットを新設したのに、当たり先を `.login` 1箇所しか作らなかった。**
+ * そのため利用者がテーマで影を指定しても、ログイン画面のカード以外は1ピクセルも
+ * 変わらなかった(V3-M2-T06 の R39 が実測。`docs/plan/v3/records/v3-fix-01.md`)。
+ *
+ * **「面」と判定した条件は3つで、すべて満たすものにだけ当てる:**
+ * (1) マニフェストのビュー定義(3種)またはアプリのログイン画面が描く**主たる内容の
+ *     かたまり**であること /(2) 要素の箱がその塊の見た目の輪郭と一致すること /
+ * (3) アプリ単位テーマのスコープ要素の内側にあること(外側には値が届かない)。
+ *
+ * **全要素には当てない。** 行(`.detail-field` / `.list-row-interactive`)に当てると
+ * 影が行ごとに落ち、画面の領域(`.list-view` / `.detail-view` / `.related-list`)に
+ * 当てると内容の縁ではない場所に落ちる。**当たり先の全量と、当てなかった要素の全量は
+ * `web/test/styles.test.ts` の検査 (h) と上記の記録が持つ。**
+ *
+ * **既定値は `none` なので、テーマを持たないアプリの描画は1ピクセルも変わらない**
+ * (chromium 実測は `web/e2e/theme-baseline.e2e.ts`)。
+ */
+
+.list-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-4);
+  /* 一覧の主たるかたまり(レコードの表)。行区切りの罫線が引かれる範囲そのものである。 */
+  box-shadow: var(--surface-shadow);
+}
+
+/*
+ * 詳細画面の子一覧の表(`related`。ADR-0045)。**`.list-table` と同種の物**なので
+ * 同じ扱いにする —— 同じ画面の中で「表には影が付くものと付かないものがある」状態を作らない。
+ * (画面プリセットは `.list-table` を経由させて子一覧に当てていないが〔ADR-0050 §4〕、
+ *  あれは**画面単位**の指定の話である。テーマは**アプリ単位**なので同じ線を引かない。)
+ */
+.related-table {
+  box-shadow: var(--surface-shadow);
+}
+
+.list-table th,
+.list-table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: var(--border-width) var(--border-style) var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* 数値は桁を比べられるよう右寄せ。型に対する固定の作法であって設定項目ではない。 */
+.list-table td[data-field-type="number"] {
+  text-align: right;
+}
+
+/*
+  クリックで開ける行(一覧の行と、詳細画面の子一覧の行。後者は V3-M3-T02 が足した)。
+  **同じ意味の行なので同じ規則に載せる** —— 別規則にすると「開ける行」の見え方が
+  画面ごとに割れる。**宣言は1つも増えていない**(当たり先のセレクタが増えただけ)。
+*/
+.list-row-interactive,
+.related-row-interactive {
+  cursor: pointer;
+}
+
+.list-row-interactive:hover,
+.list-row-interactive:focus-visible,
+.related-row-interactive:hover,
+.related-row-interactive:focus-visible {
+  background: var(--color-surface-highlight);
+}
+
+/*
+  遷移先が一意に決まらないときだけ出る注記(V1-M0-T08。**遷移点が増えたので
+  V3-M3-T02 が `.detail-target-note` を同じ規則に載せた**)。表の内容ではなく
+  表の読み方についての補足なので、本文より控えめにする。
+*/
+.list-detail-target-note,
+.detail-target-note {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-note);
+  color: var(--color-text-secondary);
+}
+
+/*
+ * 一覧の画面プリセット(V3-M2-T02 / ADR-0050 の限定1 / 5 / 6 / 9 / 11 / ADR-0051 限定2)。
+ *
+ * **マニフェストの有限 enum が DOM の属性値になったものだけを指す。** セレクタに
+ * アプリID・画面ID・フィールドIDは1つも現れず、規則の総数は各 enum の値の数の和で
+ * 上から抑えられる(アプリ・画面・列をいくつ増やしても1つも増えない)。
+ * **`.list-table` を経由させるので、詳細画面の子一覧(`.related-table`)には当たらない**
+ * (ADR-0050 §4)。**任意の CSS を受ける口も、座標も、切り替え機構も作らない。**
+ *
+ * **列幅の段階値は `table-layout: fixed` を前提にする** —— `auto` では `<col>` の幅は
+ * ヒントに過ぎず内容幅が勝つので、段階値が安定しない。そこで **`<col>` に段階値が
+ * 1つでも出ている表にだけ** 固定レイアウトを掛ける(限定6)。**属性が無い表は `auto` の
+ * ままなので、プリセットを書いていない既存アプリの列幅配分は1ピクセルも変わらない。**
+ * 代償は「幅を指定しなかった列も固定レイアウトの配分になる」ことである。
+ *
+ * **寄せの3規則は上の `td[data-field-type="number"]` より後に置く**(同じ詳細度なので
+ * 後勝ちにする)—— number 列に寄せを書いたとき、型の既定ではなく書いた値が勝つ。
+ */
+
+.list-table:has(col[data-preset-width]) {
+  table-layout: fixed;
+}
+
+.list-table col[data-preset-width="narrow"] {
+  width: 6rem;
+}
+
+.list-table col[data-preset-width="standard"] {
+  width: 12rem;
+}
+
+.list-table col[data-preset-width="wide"] {
+  width: 24rem;
+}
+
+.list-table th[data-preset-align="left"],
+.list-table td[data-preset-align="left"] {
+  text-align: left;
+}
+
+.list-table th[data-preset-align="center"],
+.list-table td[data-preset-align="center"] {
+  text-align: center;
+}
+
+.list-table th[data-preset-align="right"],
+.list-table td[data-preset-align="right"] {
+  text-align: right;
+}
+
+/*
+ * 一覧の器の形が `card` のときの当たり先(V4-M16-T13。`P-G24` の (C) 側 / ADR-0093 限定6)。
+ *
+ * **`ADR-0050` §3a 3 の逐語「当たり先の無い enum 値を置いてはならない」を自らに課している** ——
+ * **この4規則が `card` の当たり先であり、宣言と同じ差分で作った。**
+ * (`ADR-0093` は器を `V4-M15-T15` が作ると書いたが、`docs/plan/v4/records/v4-m15-t19.md`
+ *  §T15 の 3 が「器を作っていない」と申告している。**器を作ったのは `V4-M16-T13` である。**)
+ *
+ * **冒頭の許可のうち (iii)「web/src/ 自身が描く UI 要素の『器』の宣言」に当たる** ——
+ * **セレクタは属性値を1つも持たない。** 器の選択は web/src/views/ListViewRenderer.tsx の
+ * 分岐であって CSS の属性セレクタではないので、**クラス名はレンダラーのソースに
+ * リテラルとして現れるものだけである**(ADR-0093 限定9 = ADR-0087 限定6)。
+ * **セレクタにアプリID・画面ID・フィールドIDは1つも現れず、アプリ数・画面数・列数を
+ * いくつ増やしても規則は1つも増えない。**
+ *
+ * **座標系9プロパティを1つも使っていない**(限定5)—— **カードを重ねて出さない。**
+ * 器は縦に1列に並べるだけである(flex-direction: column)。
+ *
+ * **色のリテラルを1バイトも書いていない** —— 使うのは25スロットの var() だけである。
+ * **クリックできるときのカーソルと地色は `.list-row-interactive` の既存規則が持つ** ——
+ * カードのために色の宣言を1つも新設していない。
+ *
+ * **`.list-table` を経由しないので、詳細画面の子一覧(`.related-table`)には当たらない** ——
+ * そもそも preset_list_shape は list_view にしか書けず、RelatedList は
+ * list-cards / list-card を1つも描かない(当たり方の表は ListViewRenderer.tsx にある)。
+ */
+
+.list-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.list-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) var(--border-style) var(--color-border);
+  border-radius: var(--control-border-radius);
+}
+
+.list-card-field {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.list-card-label {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.field-empty {
+  color: var(--color-text-placeholder);
+}
+
+.field-unresolved {
+  color: var(--color-danger);
+}
+
+/*
+ * 値の意味に応じた強調(V4-M16-T10 / ADR-0090 限定5 / 限定6 / 限定7)。
+ *
+ * **この5規則は、冒頭の許可 (iv)「画面プリセットの有限 enum に1対1で対応する属性
+ * セレクタの規則 —— 属性値は enum の1要素であり、規則の総数は各 enum の値の数の和で
+ * 上から抑えられる」と同型である。**6種目を作っていない —— 属性値に入るのは意味の名前の
+ * 有限 enum 4値(neutral / info / caution / danger)の1要素だけで、**アプリ数・画面数・
+ * 選択肢の数をいくつ増やしても規則は1つも増えない。**
+ * (プリセットと違うのは、enum を選ぶ場所がビュー定義ではなくフィールド定義である点だけで、
+ *  「有限 enum の1要素に1対1で対応する属性セレクタ」という形は1ミリも変わっていない。)
+ *
+ * **色の実値を1バイトも書いていない (限定5)** —— 使う色は $defs/theme の25スロットだけで、
+ * アプリはマニフェストに色を1バイトも書けない。
+ * **座標系9プロパティを1つも書いていない (限定7)。**
+ * **セレクタにアプリID・画面ID・フィールドIDは1つも現れない。**
+ *
+ * **【正直に書く】この4組の文字色と地色の対は、コントラスト検査に1組も載っていない**
+ * (ADR-0090 §Context 4 の 5 / §Decision 3 の 5)。**読める配色であることは担保していない。**
+ * 載せる作業は ADR-0046 §3a の門であり、ADR-0090 の射程外である。
+ */
+.field-emphasis {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-width: var(--border-width);
+  border-style: var(--border-style);
+  border-radius: var(--control-border-radius);
+}
+
+.field-emphasis[data-emphasis="neutral"] {
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface-highlight);
+  border-color: var(--color-border);
+}
+
+.field-emphasis[data-emphasis="info"] {
+  color: var(--color-text);
+  background-color: var(--color-page-background);
+  border-color: var(--focus-outline-color);
+}
+
+.field-emphasis[data-emphasis="caution"] {
+  color: var(--color-text);
+  background-color: var(--color-surface-highlight);
+  border-color: var(--color-text-secondary);
+}
+
+.field-emphasis[data-emphasis="danger"] {
+  color: var(--color-danger);
+  background-color: var(--color-page-background);
+  border-color: var(--color-danger);
+}
+
+/* form(V0-P3-T05): 入力欄が縦に読める最低限だけ。配色・レイアウトの選択肢は作らない。 */
+
+/*
+ * フォームの主たるかたまり(入力欄の並び)。影の当たり先の判定は上の `.list-table` の
+ * コメントにある(V3-FIX-01)。**器の中の1項目(`.record-form .field`)には当てない**
+ * —— 当てると影が項目ごとに落ちる。
+ */
+.record-form {
+  box-shadow: var(--surface-shadow);
+}
+
+.record-form .field {
+  margin-bottom: var(--space-3);
+}
+
+.record-form label {
+  display: block;
+}
+
+.record-form .required {
+  color: var(--color-danger);
+  font-size: var(--font-size-secondary);
+  margin-left: var(--space-1);
+}
+
+/*
+ * 入力フォームの画面プリセット(V4-M16-T11 / P-G29 / ADR-0091 の限定3 / 4 / 5 / 6 / 7)。
+ *
+ * **冒頭の許可 (iv)「画面プリセットの有限 enum に1対1で対応する属性セレクタの規則」と
+ * 同型である。**6種目を作っていない —— 属性値に入るのは既存の enum の1要素だけ
+ * (向きは2値・段組数は2値)で、**アプリ数・画面数・項目数をいくつ増やしても規則は
+ * 1つも増えない。****新しいキーも新しい enum 値も1つも無い** —— マニフェスト側は
+ * detail_view で既に書けた2キーの false を form 分岐から外しただけである(限定1 / 限定2)。
+ *
+ * **色を1バイトも書いていない(限定4)** —— 上の `button, input, select, textarea` の
+ * 3宣言に1バイトも足しておらず、`color` も `background` も `background-color` も書かない。
+ * **同ファイル上部が名指しした fail-closed の穴(ADR-0046 §3a の門)を発火させない。**
+ * **必須印(`.record-form .required`)の規則を1バイトも触っていない(限定5)。**
+ * **入力欄の幅・高さの規則を1つも新設していない(限定5)。**
+ * **座標系9プロパティを1つも書いていない。**
+ *
+ * **【正直に書く。ADR の記述と実物が食い違う】ADR-0091 限定6 は逐語「既定は inline
+ * (項目名と値の向き)と 1段(項目の段組数)であり、今日の描画と一致する」と書いているが、
+ * form についてはこれが実物と一致しない** —— `.record-form label { display: block }` と
+ * `FormRenderer` の `flex flex-col` により、**form の既定は縦積みである**(detail_view の
+ * 既定は横並びで、そこが違う)。**実装は限定6 の第一義(書かなかった画面は1ピクセルも
+ * 変わらない)を採った**: 書かなかった form には属性が1つも出ないのでここの規則は1つも
+ * 当たらず、**`stacked` と書いた form が今日の描画と同じになり、`inline` と書いた form
+ * だけが項目名と入力欄の横並びに変わる。**
+ *
+ * **段組は器(`.form-fields`)に当てる**(`<form>` 自身ではない)—— `<form>` の直下には
+ * 項目以外の子(送信ボタン・エラー表示・書込不可の注記)が居り、`<form>` に段を掛けると
+ * **送信ボタンまで段に入る**(実測)。**器は段組数を書いた form にだけ出る**ので、
+ * 書かなかった form の DOM は着手前と完全一致する。`grid` を使う理由と、**メディアクエリを
+ * 1つも足していないので段組数が画面幅に追随しない**ことは、下の詳細側のコメントと同じである。
+ *
+ * **【V4-M55 が 2026-08-04 に追記。門外 Δ7 / 限定採用。記録 =
+ * `docs/plan/v4/records/v4-m55.md`】上の前提(「メディアクエリを1つも足していない」)は
+ * 今日から偽である** —— **2026-08-04 実測: このファイルには幅の条件の `@media` が2本ある**
+ * (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ * どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
+ * (`V4-M15-T07` / `D-V4-44`。2026-08-03)**で、同 ADR §Context 2 は逐語で
+ * 「`ADR-0046` 限定5 を緩めている。緩めていないふりをしない」と書いている。**
+ *
+ * **一方で帰結(段組数が画面幅に追随しない)は今日も真である** —— **段組の規則
+ * (`.record-form[data-preset-columns=…] .form-fields`)は2本の `@media` の内側に
+ * 1つも入っていない**(`web/test/preset-boundary.test.ts` の `(vi-5)` が波括弧の対応で
+ * 実測している)。**狭い画面で段が潰れることも今日どおりである。**
+ * **「レスポンシブになった」に倒さない。** **旧文を1バイトも消していない**
+ * (`D-V4-188`。直し方は `ADR-0156` / `ADR-0157` と同じ形)。
+ *
+ * **【この追記は下の方針を意図的に破っている】** **`D-V4-190`(ユーザ決定)により、
+ * 追記には探せる言葉(`@media` の字面)を使う。** 経緯は記録 §6。
+ */
+
+.record-form[data-preset-label="inline"] .field {
+  flex-direction: row;
+}
+
+.record-form[data-preset-label="stacked"] .field {
+  flex-direction: column;
+}
+
+.record-form[data-preset-columns="1"] .form-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 段の間隔だけを開ける(行の間隔は既存の `.record-form .field` の margin が持つ)。 */
+.record-form[data-preset-columns="2"] .form-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-4);
+}
+
+/*
+ * detail_view(V0-P3-T06): 1レコードが縦に読める最低限だけ。
+ *
+ * **【V3-M2-T05 で直した】旧コメントは「表示オプションは作らない」だった。**
+ * V3-M2 で詳細にも画面プリセット(向き・段組数・image サイズ・切り詰め長)が入ったので偽になった。
+ * **ここに在るのはプリセットを書かなかった画面の既定であり、選べる分は下の別ブロックが持つ。**
+ */
+
+/*
+ * 詳細の項目のかたまり(V3-FIX-01)。**V3-M2-T06 の R39「詳細の項目のかたまりを影で
+ * 浮かせたい」が名指しした対象そのものである。** 影の当たり先の判定は上の `.list-table` の
+ * コメントにある。**器の中の1項目(`.detail-field`)には当てない** —— 当てると影が
+ * 項目ごとに落ちる。**`.related-list` にも当てない** —— 見出し(`h3`)を含むので、
+ * 箱の輪郭が塊の輪郭と一致しない(中の `.related-table` に当てている)。
+ */
+.detail-fields {
+  box-shadow: var(--surface-shadow);
+}
+
+.detail-field {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.detail-field dt {
+  color: var(--color-text-label);
+  flex: 0 0 var(--detail-label-width);
+}
+
+/*
+ * 詳細の項目のまとまりの器(P-G17 の (C) 側。V4-M16-T12 / ADR-0092 限定6 / 限定7 / 限定8)。
+ *
+ * **足してよい5つのうち (iii)「web/src/ 自身が描く UI 要素の『器』の宣言」である** ——
+ * 中の見た目は1宣言も持たない(項目そのものは既存の `.detail-fields` / `.detail-field` が
+ * 描き、当たり方は今日と1ミリも変わらない)。**セレクタにアプリID・画面ID・フィールドID・
+ * まとまりの名前は1つも現れない** —— まとまりをいくつ書いても規則は1つも増えない。
+ *
+ * **器は「見出し付きの区切り」である(限定6)** —— タブではない。**重ねる表現(モーダル /
+ * トースト / 開くメニュー)を1つも作らないので、座標系9プロパティを1つも書いていない**
+ * (限定7。web/test/preset-boundary.test.ts の (ii) と
+ * web/test/detail-field-grouping.test.tsx の (g) が固定する)。
+ * **色のリテラルを1バイトも書いていない** —— 参照するのは既存のスロットだけである。
+ *
+ * **まとまりを1つも書かなかった画面には当たり先が無い**(器が DOM に出ない)ので、
+ * **その画面は今日と1ピクセルも変わらない**(限定8)。
+ */
+.detail-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detail-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.detail-actions p {
+  margin: 0 0 var(--space-2);
+}
+
+/*
+ * 詳細の画面プリセット(V3-M2-T03 / ADR-0050 の限定1 / 5 / 8 / 9 / 11 / ADR-0051 限定2)。
+ *
+ * **マニフェストの有限 enum が DOM の属性値になったものだけを指す。** セレクタに
+ * アプリID・画面ID・フィールドIDは1つも現れず、規則の総数は各 enum の値の数の和で
+ * 上から抑えられる(アプリ・画面・項目をいくつ増やしても1つも増えない)。
+ * **任意の CSS を受ける口も、座標も、切り替え機構も作らない。**
+ *
+ * **軸4・軸5 は項目の器(`.detail-fields`)を経由させる** —— `related` の子一覧は
+ * この器の外にあるので、子一覧の表には1つも当たらない(ADR-0050 §4)。
+ *
+ * **`--detail-label-width` の意味は向きで変わる**(限定8)。上の
+ * `.detail-field dt { flex: 0 0 var(--detail-label-width) }` の `flex-basis` は、
+ * `flex-direction: column` では**幅ではなく高さ**として解釈され、ラベルがその値ぶんの
+ * 高さを持ってしまう。そこで**縦積みのときだけ `flex: 0 0 auto` へ落とす**。
+ * **テーマスロットの値そのものは1バイトも変えていない**(横並びのときは今日どおり効く)。
+ *
+ * **段組は `grid` を使う**(`flex` ではない)。理由は2つで、どちらも実測に基づく:
+ * (i) `flex` だと段を作るために**子(`.detail-field`)側に幅を宣言する**必要があり、
+ * 既存規則に宣言を足すことになる = プリセットを書いていない画面の基準が動く
+ * (ADR-0051 限定4「未指定は1ピクセルも変わらない」に触れる)。`grid` なら段組の指定が
+ * 器の中で完結する。(ii) `minmax(0, 1fr)` で列が内容幅に押し広げられない
+ * (長い値のある項目が段を崩さない)。
+ *
+ * **【限界。必ず読むこと】メディアクエリを1つも足していない**(ADR-0046 限定5 / ADR-0050 限定9)
+ * ので、**段組数は画面幅に追随しない固定値である。狭い画面では2段組が潰れる。**
+ *
+ * **【V4-M55 が 2026-08-04 に追記。門外 Δ7 / 限定採用。記録 =
+ * `docs/plan/v4/records/v4-m55.md`】上の前提(「メディアクエリを1つも足していない」)は
+ * 今日から偽である** —— **2026-08-04 実測: このファイルには幅の条件の `@media` が2本ある**
+ * (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ * どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
+ * (`V4-M15-T07` / `D-V4-44`。2026-08-03)**で、同 ADR §Context 2 は逐語で
+ * 「`ADR-0046` 限定5 を緩めている。緩めていないふりをしない」と書いている。**
+ * **したがって上の括弧が引く `ADR-0046` 限定5 / `ADR-0050` 限定9 は、このファイルに
+ * ついては今日はもう成り立たない**(限定表の行そのものは1バイトも動いていない)。
+ *
+ * **一方で帰結(段組数は画面幅に追随しない固定値である。狭い画面では2段組が潰れる)は
+ * 今日も真である** —— **段組の規則(`.detail-fields[data-preset-columns=…]`)は2本の
+ * `@media` の内側に1つも入っていない**(`web/test/preset-boundary.test.ts` の `(vi-5)`)。
+ * **「レスポンシブになった」に倒さない。** **旧文を1バイトも消していない**(`D-V4-188`)。
+ *
+ * (このコメントに禁止対象の字面を書かないのは、`web/src/styles.css` に対する `grep` の結果を
+ *  汚さないためである —— 上のスロット定義のコメントが同じ理由で同じことをしている。)
+ *
+ * **【V4-M55 が 2026-08-04 に追記。上の方針は今日、意図的に破られた】**
+ * **`V4-M51` の字面走査(`grep "@media"`)は、この方針のせいで、このファイルの同型2箇所
+ * (form 側と detail 側の段組コメント)を1件も拾えなかった**(`V4-M53` の実測)。
+ * **探せない代償のほうが大きいと判断され、ユーザ決定 `D-V4-190` により、`V4-M55` の追記には
+ * `@media` の字面を使った。** **したがって「このファイルのコメントに禁止対象の字面が
+ * 1つも無い」は今日から偽である**(2026-08-04 実測: 着手時のコメント中の `@` の個数は
+ * **0** だった)。**`grep -n "@media" web/src/styles.css` は今日、規則の2本に加えて
+ * コメントの行も返す。** **旧方針の文を1バイトも消していない。** 経緯と代償は
+ * `docs/plan/v4/records/v4-m55.md` §6。
+ */
+
+.detail-fields[data-preset-label="inline"] .detail-field {
+  flex-direction: row;
+}
+
+.detail-fields[data-preset-label="stacked"] .detail-field {
+  flex-direction: column;
+}
+
+.detail-fields[data-preset-label="stacked"] .detail-field dt {
+  flex: 0 0 auto;
+}
+
+.detail-fields[data-preset-columns="1"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 段の間隔だけを開ける(行の間隔は既存の `.detail-field` の margin が持つ)。 */
+.detail-fields[data-preset-columns="2"] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--space-4);
+}
+
+/*
+ * `image` の表示サイズ(軸6。V3-M2-T03 / ADR-0050 限定1)。**一覧と詳細の両方にある軸**で、
+ * **器が別なので画面ごとに別の段階値を持てる。** 段階値の意味(何 rem か)は画面によらず
+ * 1つなので、2つの器を1つの規則にまとめてある(規則を値の数より増やさない)。
+ *
+ * **詳細側のセレクタは `.detail-view` から始まる** —— したがって `related` の子一覧の
+ * 画像にも同じ規則が当たる(ADR-0050 §4)。**同じ画面の中で画像の大きさが割れないため**で、
+ * 代償として「詳細の項目はサムネイル、子一覧は中サイズ」の使い分けはできない。
+ *
+ * `max-width` / `max-height` の対にするのは、縦長の画像も横長の画像も同じ大きさの枠に
+ * 収め、かつ**元より大きくしない**ため。`original` は「枠を掛けない」という選択であり、
+ * 今日の既定(規則0件)と同じ描画になる —— **書かなかった場合と同じ**だが、
+ * 3値のどれを書いても当たり先の規則が実在する形にしてある(限定1)。
+ */
+
+.list-view[data-preset-image="thumbnail"] .field-image,
+.detail-view[data-preset-image="thumbnail"] .field-image {
+  max-width: 4rem;
+  max-height: 4rem;
+}
+
+.list-view[data-preset-image="medium"] .field-image,
+.detail-view[data-preset-image="medium"] .field-image {
+  max-width: 12rem;
+  max-height: 12rem;
+}
+
+.list-view[data-preset-image="original"] .field-image,
+.detail-view[data-preset-image="original"] .field-image {
+  max-width: none;
+  max-height: none;
+}
+
+/* 認証(V1-M3-T01 / per-app): アプリ単位のログイン画面と、各アプリ画面のログアウト導線。 */
+
+.login {
+  max-width: var(--login-max-width);
+  margin: var(--space-6) auto;
+  box-shadow: var(--surface-shadow);
+}
+
+.login-form label {
+  display: block;
+  margin-bottom: var(--space-3);
+}
+
+.login-form .passkey-actions,
+.login-form .password-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.login-error {
+  margin-top: var(--space-2);
+}
+
+/* アプリ作業画面のヘッダ: アプリ名 + 現在ユーザ + そのアプリからのログアウト。 */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.app-header h2 {
+  margin: 0;
+}
+
+.app-header .current-user {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+}
+
+/*
+ * 要件定義書(V1-M8-T02 / ADR-0025)。
+ *
+ * 記述の本文には**逐語引用の改行**が入る(`history.intent` / `data.field_option` など)ので、
+ * 白空白をそのまま保つ。ここで折り畳むと、引用が1行に潰れて原文と別物になる。
+ */
+.requirement-text {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.requirements-doc-preface {
+  color: var(--color-text-secondary);
+}
+
+.requirement-sources {
+  margin: var(--space-1) 0 var(--space-3);
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
+}
+
+.requirement-statements {
+  list-style: none;
+  padding-left: 0;
+}
+
+.requirements-copy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/*
+ * テーマの持ち出し(V3-M1-T05 / D-G3b。門外 Δ7)。
+ *
+ * 足しているのは**既存スロットの参照と最小の器**だけで、アプリ固有のセレクタも
+ * 切り替え機構も1つも足していない(冒頭の禁止と、その改訂を担う V3-M1-T06 への申し送り)。
+ * `.theme-export-copy` は要件定義書のコピー行(`.requirements-copy`)と同じ形である。
+ * `overflow-x` は生成物の行が長いときに**ページ全体が横に伸びるのを防ぐ**ためで、
+ * `pre` の既定(折り返さない)を保ったまま器の内側に収める。
+ */
+.theme-export-copy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.theme-export-css {
+  overflow-x: auto;
+}
+
+/*
+ * テーマ候補のプレビュー(V3-M4-T01 / D-G7。門外 Δ7)。
+ *
+ * 足しているのは**候補を同時に並べる器1つだけ**である(ユーザ決定 D-M4-3 = 切替式に
+ * しない)。**アプリ固有のセレクタも、切り替え機構も、配色設定も1つも足していない** ——
+ * 枠の中の見た目はすべて候補のスロットの実値から来る(`ThemePreviewPanel` が
+ * インラインスタイルで立てる)。
+ *
+ * **メディアクエリを1つも足さない**(ADR-0046 限定5)。列数は `auto-fit` が決めるので、
+ * 画面幅による分岐を書かずに済む。
+ *
+ * **V3-M4-T03 が判定した(ADR-0054 の限定2)**: この規則は (iii)「web/src/ 自身が描く
+ * UI 要素の器」の射程に**含めない。5種目として明記した** —— (iii) の先例
+ * (`.requirements-copy` / `.theme-export-copy`)は器の中身も製品自身の UI だが、
+ * ここは**器の中にアプリの画面がまるごと入る**。射程に含めると「アプリの画面を包む器」が
+ * (iii) の名の下に際限なく増える。**5種目の限定は「器の並べ方だけを書き、枠の中の
+ * 見た目を1宣言も持たないこと」である**(冒頭コメントの (v) と同じ線)。
+ */
+.theme-preview-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-3);
+}
+
+/*
+ * 画面一覧を左カラムに置く器(V4-M2-T03 / 単位 `B-G4`。**門外 Δ7・条件付き**)。
+ *
+ * **門外の条件2つは両方とも守っている**(`v4-m0-gate-boundary.md` §1-5 の (i)(ii)):
+ * **メディアクエリを1つも足していない**(このファイルの at-rule 記号の個数は今日も 0)/
+ * **新しい `:root` スロットを1つも足していない**(参照しているのは既存の `--space-4` だけ)。
+ *
+ * **【V4-M55 が 2026-08-04 に追記。門外 Δ7 / 限定採用。記録 =
+ * `docs/plan/v4/records/v4-m55.md`】上の括弧の中の実測値は今日から偽である** ——
+ * **2026-08-04 実測: このファイルの at-rule の個数は今日 `2` である** ——
+ * **幅の条件の `@media` が2本ある**
+ * (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ * どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
+ * (`V4-M15-T07` / `D-V4-44`。2026-08-03)。
+ * **一方で主文(「`V4-M2-T03` 自身がメディアクエリを1つも足していない」)は今日も真である**
+ * —— この器の2規則には今日も幅の条件が1つも掛かっておらず、`web/test/app-workspace.test.tsx`
+ * の逐語「**`.workspace-body` 側には幅の条件を1つも掛けていない**」が実測している。
+ * **【この括弧は `V4-M2-T03` が門外 Δ7 を主張した条件として書かれている】**
+ * **当時の判断が今日も成り立つかを、`V4-M55` は1つも判定していない** —— **確かめ直したのは
+ * `V4-M56`**(`docs/plan/v4/records/v4-m56.md` / `D-V4-189`)**で、その結論は
+ * 「当時も今日も門外である。崩れたのは台帳が根拠に書いた**状態の数値**のほうだけである」。**
+ * **`V4-M55` はその結論を引いているだけで、自分では1つも判定していない。**
+ * **旧文を1バイトも消していない**(`D-V4-188`)。
+ *
+ * **シェルの2規則にも1バイト触っていない**(台帳の完了条件 (4) / `D-V4-5` / `D-V4-24`)
+ * —— この器は `.app-theme` の内側にある。
+ *
+ * **【冒頭コメントの5分類との緊張を、丸めずに書く】**
+ * **この2規則は (iii)「web/src/ 自身が描く UI 要素の器」に最も近い**(先例は同じ
+ * `web/src/AppWorkspace.tsx` が描く `.app-header`)。**しかし (iii) の射程は
+ * V3-M4-T03 が `.theme-preview-list` について狭めており、その理由は逐語で
+ * 「器の中にアプリの画面がまるごと入る」ことだった。** **`.workspace-main` の中には
+ * 選択中の画面がまるごと入るので、その理由はここにも当たる。**
+ * **したがって「きれいに (iii) である」とは書かない。**
+ * **足してよいものを6種目に増やしてもいない**(冒頭コメントを1バイトも書き換えていない)。
+ * **判断の根拠は、V3-M4-T03 が (iii) を狭めた本当の動機 = 「アプリの画面を包む器が
+ * 際限なく増えること」にこの2規則が当たらないことである** —— **器は作業画面ごとに1つで、
+ * アプリ数・画面数・列数をいくつ増やしても規則は1つも増えない。**
+ * **これは計画側の判断であり、門A の判定でもユーザ決定でもない。**
+ * 記録と、ユーザへ上げる要確認事項は `docs/plan/v4/records/v4-m2.md` §2b にある。
+ *
+ * **幅への追随は `flex-wrap: wrap` と `flex-basis` の対だけで行う** —— 本文の器の基準幅を
+ * 60% に取ってあるので、画面一覧の基準幅(12rem)が残り 40% に入らなくなった時点で
+ * 折り返し、上下に積まれる。先例は `.theme-preview-list` の `auto-fit`(同じく分岐を
+ * 書かずに列数を決める形)である。**`D-V4-44`(画面幅への対応)を理由にしていない** ——
+ * その射程は `V4-M13` / `V4-M15` であって `V4-M2` ではない。
+ *
+ * **左端を決めているのは文書順であって位置指定ではない。** `flex-direction` を倒さない
+ * 限り、`AppWorkspace.tsx` が先に描く `.view-list` が左端に来る。**`app.views` の配列順は
+ * 1つも触っていない**(`ADR-0008` 限定2)。
+ */
+.workspace-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.workspace-body > .view-list {
+  flex: 1 1 12rem;
+}
+
+.workspace-body > .workspace-main {
+  flex: 999 1 60%;
+  min-width: 0;
+}
+
+/*
+ * 幅の条件(V4-M15-T07 / ADR-0089 / D-V4-44)。**断点は2本だけである。**
+ *
+ * **本数を増やすと `web/test/styles.test.ts` の (i) が赤くなる**(ADR-0089 限定3)——
+ * 赤くなったら数を書き換える前に、増やしてよいかを門A で審査すること。
+ * **AI も owner も断点を1つも指定できない** —— マニフェストの語彙に置き場が無い。
+ *
+ * **通るのは幅の条件だけである。** 配色設定のメディア特性(OS の明暗設定)も、
+ * 印刷・向き・入力機器の条件も、解析器が例外を投げるので1つも書けない。
+ */
+@media (min-width: 40rem) {
+  .shell {
+    padding: var(--space-4);
+  }
+}
+
+@media (min-width: 64rem) {
+  .shell {
+    padding: var(--space-6) var(--space-4);
+  }
+}

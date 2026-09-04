@@ -1,0 +1,328 @@
+{
+  "task": "V1-M9-T03",
+  "generated_at": "2026-07-21T02:33:22.721Z",
+  "seed": 20260719,
+  "reps": 3,
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "os_release": "25.5.0",
+    "os_product": "macOS 26.5.2",
+    "cpu_model": "Apple M4",
+    "cpu_count": 10,
+    "total_memory_bytes": 34359738368,
+    "bun_version": "1.3.14",
+    "filesystem": "APFS",
+    "solid_state": true
+  },
+  "scenarios": ["contention", "xproc", "snapshot_size"],
+  "results": {
+    "contention": [
+      {
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "writer_lock": "immediate",
+        "reader_op": "read",
+        "busy_timeout_ms": 0,
+        "busy": false,
+        "ok": true,
+        "error_code": null,
+        "timing": {
+          "samples_ms": [0.024, 0.005, 0.004],
+          "median_ms": 0.005,
+          "min_ms": 0.004,
+          "max_ms": 0.024
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "writer_lock": "immediate",
+        "reader_op": "read",
+        "busy_timeout_ms": 200,
+        "busy": false,
+        "ok": true,
+        "error_code": null,
+        "timing": {
+          "samples_ms": [0.026, 0.007, 0.005],
+          "median_ms": 0.007,
+          "min_ms": 0.005,
+          "max_ms": 0.026
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "writer_lock": "exclusive",
+        "reader_op": "read",
+        "busy_timeout_ms": 0,
+        "busy": true,
+        "ok": false,
+        "error_code": "SQLITE_BUSY",
+        "timing": {
+          "samples_ms": [0.067, 0.005, 0.004],
+          "median_ms": 0.005,
+          "min_ms": 0.004,
+          "max_ms": 0.067
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "writer_lock": "exclusive",
+        "reader_op": "read",
+        "busy_timeout_ms": 200,
+        "busy": true,
+        "ok": false,
+        "error_code": "SQLITE_BUSY",
+        "timing": {
+          "samples_ms": [268.242, 252.343, 259.75],
+          "median_ms": 259.75,
+          "min_ms": 252.343,
+          "max_ms": 268.242
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "writer_lock": "immediate",
+        "reader_op": "write",
+        "busy_timeout_ms": 0,
+        "busy": true,
+        "ok": false,
+        "error_code": "SQLITE_BUSY",
+        "timing": {
+          "samples_ms": [0.108, 0.033, 0.039],
+          "median_ms": 0.039,
+          "min_ms": 0.033,
+          "max_ms": 0.108
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "writer_lock": "immediate",
+        "reader_op": "read",
+        "busy_timeout_ms": 0,
+        "busy": false,
+        "ok": true,
+        "error_code": null,
+        "timing": {
+          "samples_ms": [0.212, 0.008, 0.005],
+          "median_ms": 0.008,
+          "min_ms": 0.005,
+          "max_ms": 0.212
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "writer_lock": "immediate",
+        "reader_op": "read",
+        "busy_timeout_ms": 200,
+        "busy": false,
+        "ok": true,
+        "error_code": null,
+        "timing": {
+          "samples_ms": [0.176, 0.006, 0.005],
+          "median_ms": 0.006,
+          "min_ms": 0.005,
+          "max_ms": 0.176
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "writer_lock": "exclusive",
+        "reader_op": "read",
+        "busy_timeout_ms": 0,
+        "busy": false,
+        "ok": true,
+        "error_code": null,
+        "timing": {
+          "samples_ms": [0.159, 0.004, 0.003],
+          "median_ms": 0.004,
+          "min_ms": 0.003,
+          "max_ms": 0.159
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "writer_lock": "exclusive",
+        "reader_op": "read",
+        "busy_timeout_ms": 200,
+        "busy": false,
+        "ok": true,
+        "error_code": null,
+        "timing": {
+          "samples_ms": [0.169, 0.006, 0.006],
+          "median_ms": 0.006,
+          "min_ms": 0.006,
+          "max_ms": 0.169
+        },
+        "busy_stable": true
+      },
+      {
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "writer_lock": "immediate",
+        "reader_op": "write",
+        "busy_timeout_ms": 0,
+        "busy": true,
+        "ok": false,
+        "error_code": "SQLITE_BUSY",
+        "timing": {
+          "samples_ms": [0.177, 0.018, 0.016],
+          "median_ms": 0.018,
+          "min_ms": 0.016,
+          "max_ms": 0.177
+        },
+        "busy_stable": true
+      }
+    ],
+    "xproc": [
+      {
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "writer_hold_ms": 300,
+        "reader_busy_timeout_ms": 5000,
+        "read_succeeded": true,
+        "busy": false,
+        "timing": {
+          "samples_ms": [407.983, 409.512, 389.662],
+          "median_ms": 407.983,
+          "min_ms": 389.662,
+          "max_ms": 409.512
+        }
+      },
+      {
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "writer_hold_ms": 300,
+        "reader_busy_timeout_ms": 5000,
+        "read_succeeded": true,
+        "busy": false,
+        "timing": {
+          "samples_ms": [0.928, 0.862, 0.889],
+          "median_ms": 0.889,
+          "min_ms": 0.862,
+          "max_ms": 0.928
+        }
+      }
+    ],
+    "snapshot_size": [
+      {
+        "target_mb": 1,
+        "rows": 5000,
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "app_db_bytes": 1056768,
+        "wal_bytes_before_snapshot": 0,
+        "timing": {
+          "samples_ms": [3.319, 2.138, 2.102],
+          "median_ms": 2.138,
+          "min_ms": 2.102,
+          "max_ms": 3.319
+        },
+        "snapshot_bytes": 1046954,
+        "throughput_mb_s": 494.3
+      },
+      {
+        "target_mb": 1,
+        "rows": 5000,
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "app_db_bytes": 1056768,
+        "wal_bytes_before_snapshot": 12392,
+        "timing": {
+          "samples_ms": [4.135, 3.302, 3.157],
+          "median_ms": 3.302,
+          "min_ms": 3.157,
+          "max_ms": 4.135
+        },
+        "snapshot_bytes": 1046954,
+        "throughput_mb_s": 320
+      },
+      {
+        "target_mb": 10,
+        "rows": 50000,
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "app_db_bytes": 10534912,
+        "wal_bytes_before_snapshot": 0,
+        "timing": {
+          "samples_ms": [27.905, 14.505, 14.084],
+          "median_ms": 14.505,
+          "min_ms": 14.084,
+          "max_ms": 27.905
+        },
+        "snapshot_bytes": 10398122,
+        "throughput_mb_s": 726.3
+      },
+      {
+        "target_mb": 10,
+        "rows": 50000,
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "app_db_bytes": 10534912,
+        "wal_bytes_before_snapshot": 111272,
+        "timing": {
+          "samples_ms": [26.009, 16.247, 16.588],
+          "median_ms": 16.588,
+          "min_ms": 16.247,
+          "max_ms": 26.009
+        },
+        "snapshot_bytes": 10398122,
+        "throughput_mb_s": 635.1
+      },
+      {
+        "target_mb": 100,
+        "rows": 500000,
+        "journal_mode": "delete",
+        "effective_journal_mode": "delete",
+        "app_db_bytes": 105807872,
+        "wal_bytes_before_snapshot": 0,
+        "timing": {
+          "samples_ms": [155.917, 156.631, 163.543],
+          "median_ms": 156.631,
+          "min_ms": 155.917,
+          "max_ms": 163.543
+        },
+        "snapshot_bytes": 104327594,
+        "throughput_mb_s": 675.5
+      },
+      {
+        "target_mb": 100,
+        "rows": 500000,
+        "journal_mode": "wal",
+        "effective_journal_mode": "wal",
+        "app_db_bytes": 105807872,
+        "wal_bytes_before_snapshot": 1034152,
+        "timing": {
+          "samples_ms": [165.335, 161.816, 160.328],
+          "median_ms": 161.816,
+          "min_ms": 160.328,
+          "max_ms": 165.335
+        },
+        "snapshot_bytes": 104338517,
+        "throughput_mb_s": 653.9
+      }
+    ]
+  },
+  "caveats": [
+    "すべて実測値である。推定値はこの JSON に入っていない(推定は記録文書 / ADR の側で「推定」と明示して書く)。",
+    "ディスク量(バイト)と SQL 発行回数は同一シードで完全に再現する。所要時間は再現しない(同一マシンでもばらつく)。",
+    "同時アクセス(複数接続・クロスプロセス)は V1-M9-T03 で contention / xproc シナリオとして測定した(M1-T05 時点の『未測定』は解消済み)。ただし真の並行性は xproc(別プロセスの書き手)でのみ現れる。同一プロセス同一スレッドの contention では書き手がロックを保持したまま解放できないため、busy_timeout を設定しても『その分だけ待って結局 SQLITE_BUSY』になる —— この非対称は記録に明示する。",
+    "OS のページキャッシュを制御していない。コールドスタートは遅い方向に外れる。",
+    "environment と切り離して数値を引用しないこと。別環境で再現しない可能性がある。"
+  ]
+}

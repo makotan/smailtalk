@@ -1,0 +1,203 @@
+{
+  "task": "V1-M9-T01",
+  "generated_at": "2026-07-21T07:09:29.934Z",
+  "seed": 20260719,
+  "reps": 3,
+  "environment": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "os_release": "25.5.0",
+    "os_product": "macOS 26.5.2",
+    "cpu_model": "Apple M4",
+    "cpu_count": 10,
+    "total_memory_bytes": 34359738368,
+    "bun_version": "1.3.14",
+    "filesystem": "APFS",
+    "solid_state": true
+  },
+  "scenarios": ["read"],
+  "results": {
+    "read": [
+      {
+        "label": "user/scale=1000",
+        "path": "user",
+        "scale": 1000,
+        "record_count": 1000,
+        "list_ms": {
+          "samples_ms": [1.613, 0.651, 0.611, 0.6, 0.595],
+          "median_ms": 0.611,
+          "min_ms": 0.595,
+          "max_ms": 1.613
+        },
+        "serialize_ms": {
+          "samples_ms": [0.185, 0.143, 0.145, 0.143, 0.151],
+          "median_ms": 0.145,
+          "min_ms": 0.143,
+          "max_ms": 0.185
+        },
+        "payload_bytes": 263536
+      },
+      {
+        "label": "user/scale=10000",
+        "path": "user",
+        "scale": 10000,
+        "record_count": 10000,
+        "list_ms": {
+          "samples_ms": [6.993, 5.431, 5.108, 5.258, 5.285],
+          "median_ms": 5.285,
+          "min_ms": 5.108,
+          "max_ms": 6.993
+        },
+        "serialize_ms": {
+          "samples_ms": [1.662, 1.384, 1.392, 1.401, 1.838],
+          "median_ms": 1.401,
+          "min_ms": 1.384,
+          "max_ms": 1.838
+        },
+        "payload_bytes": 2620317
+      },
+      {
+        "label": "user/scale=100000",
+        "path": "user",
+        "scale": 100000,
+        "record_count": 100000,
+        "list_ms": {
+          "samples_ms": [86.52, 77.912, 82.158, 79.161, 77.954],
+          "median_ms": 79.161,
+          "min_ms": 77.912,
+          "max_ms": 86.52
+        },
+        "serialize_ms": {
+          "samples_ms": [16.44, 14.475, 13.771, 13.93, 14.244],
+          "median_ms": 14.244,
+          "min_ms": 13.771,
+          "max_ms": 16.44
+        },
+        "payload_bytes": 26210751
+      },
+      {
+        "label": "_apps/scale=1",
+        "path": "_apps",
+        "scale": 1,
+        "record_count": 1,
+        "list_ms": {
+          "samples_ms": [1.399, 0.94, 0.59, 0.636, 1.775],
+          "median_ms": 0.94,
+          "min_ms": 0.59,
+          "max_ms": 1.775
+        },
+        "serialize_ms": {
+          "samples_ms": [0.003, 0, 0, 0, 0],
+          "median_ms": 0,
+          "min_ms": 0,
+          "max_ms": 0.003
+        },
+        "payload_bytes": 198
+      },
+      {
+        "label": "_changelog/scale=1",
+        "path": "_changelog",
+        "scale": 1,
+        "record_count": 2,
+        "list_ms": {
+          "samples_ms": [1.204, 0.934, 0.547, 0.558, 0.588],
+          "median_ms": 0.588,
+          "min_ms": 0.547,
+          "max_ms": 1.204
+        },
+        "serialize_ms": {
+          "samples_ms": [0.007, 0.001, 0.001, 0.001, 0.001],
+          "median_ms": 0.001,
+          "min_ms": 0.001,
+          "max_ms": 0.007
+        },
+        "payload_bytes": 661
+      },
+      {
+        "label": "_apps/scale=10",
+        "path": "_apps",
+        "scale": 10,
+        "record_count": 10,
+        "list_ms": {
+          "samples_ms": [1.08, 0.879, 0.584, 0.558, 0.533],
+          "median_ms": 0.584,
+          "min_ms": 0.533,
+          "max_ms": 1.08
+        },
+        "serialize_ms": {
+          "samples_ms": [0.003, 0.001, 0.001, 0.001, 0.001],
+          "median_ms": 0.001,
+          "min_ms": 0.001,
+          "max_ms": 0.003
+        },
+        "payload_bytes": 1863
+      },
+      {
+        "label": "_changelog/scale=10",
+        "path": "_changelog",
+        "scale": 10,
+        "record_count": 20,
+        "list_ms": {
+          "samples_ms": [1.158, 0.599, 0.606, 0.666, 0.666],
+          "median_ms": 0.666,
+          "min_ms": 0.599,
+          "max_ms": 1.158
+        },
+        "serialize_ms": {
+          "samples_ms": [0.009, 0.004, 0.003, 0.004, 0.004],
+          "median_ms": 0.004,
+          "min_ms": 0.003,
+          "max_ms": 0.009
+        },
+        "payload_bytes": 6515
+      },
+      {
+        "label": "_apps/scale=100",
+        "path": "_apps",
+        "scale": 100,
+        "record_count": 100,
+        "list_ms": {
+          "samples_ms": [1.555, 1.161, 0.882, 0.919, 0.907],
+          "median_ms": 0.919,
+          "min_ms": 0.882,
+          "max_ms": 1.555
+        },
+        "serialize_ms": {
+          "samples_ms": [0.044, 0.042, 0.034, 0.03, 0.03],
+          "median_ms": 0.034,
+          "min_ms": 0.03,
+          "max_ms": 0.044
+        },
+        "payload_bytes": 18783
+      },
+      {
+        "label": "_changelog/scale=100",
+        "path": "_changelog",
+        "scale": 100,
+        "record_count": 200,
+        "list_ms": {
+          "samples_ms": [1.164, 0.965, 0.819, 0.691, 0.666],
+          "median_ms": 0.819,
+          "min_ms": 0.666,
+          "max_ms": 1.164
+        },
+        "serialize_ms": {
+          "samples_ms": [0.08, 0.04, 0.042, 0.044, 0.044],
+          "median_ms": 0.044,
+          "min_ms": 0.04,
+          "max_ms": 0.08
+        },
+        "payload_bytes": 65667
+      }
+    ]
+  },
+  "caveats": [
+    "すべて実測値である。推定値はこの JSON に入っていない(推定は記録文書 / ADR の側で「推定」と明示して書く)。",
+    "ディスク量(バイト)と SQL 発行回数は同一シードで完全に再現する。所要時間は再現しない(同一マシンでもばらつく)。",
+    "同時アクセス(複数接続・クロスプロセス)は V1-M9-T03 で contention / xproc シナリオとして測定した(M1-T05 時点の『未測定』は解消済み)。ただし真の並行性は xproc(別プロセスの書き手)でのみ現れる。同一プロセス同一スレッドの contention では書き手がロックを保持したまま解放できないため、busy_timeout を設定しても『その分だけ待って結局 SQLITE_BUSY』になる —— この非対称は記録に明示する。",
+    "OS のページキャッシュを制御していない。コールドスタートは遅い方向に外れる。",
+    "負荷試験(load)はストレージ層(cross-process の複数書き手)を測る。HTTP/認証オーバーヘッドは加算で天井を変えないため対象外。writer は実サーバの deferred tx + read-then-CAS-update の形状をミラーするが `_auth_activity` の第2書込を省くので観測 BUSY はロックの下限。時間は再現しない・質的判定(busy の有無・会計一致)は決定的。",
+    "read シナリオ(V1-M9-T01 判断ゲート)は kernel の read パス(readRecordList / listRecords)+ 結果配列の JSON シリアライズを測る。DOM 描画は web/test/list-render-bench.test.tsx が happy-dom 上で別途計測する。payload_bytes と record_count は同一シードで決定的、時間は桁と比のみ。HTTP はさらに owner-scope の O(N) post-filter を通るため実 HTTP はこれ以上に遅い(list_ms は下限)。",
+    "environment と切り離して数値を引用しないこと。別環境で再現しない可能性がある。"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    // Environment
+    // web/ は DOM を触るため DOM 系 lib を足している。strict 系の設定は一切緩めていない。
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+
+    // Bun runtime
+    // `vite/client` は web/src が読む CSS(`import "./tailwind.css"`)の宣言だけのために足している。
+    // TypeScript 7 は、型宣言の無いファイルへの副作用 import を TS2882 で赤くする(5.9 は黙って通していた)。
+    // Vite が配る `declare module '*.css' {}` がその宣言にあたる。
+    "types": ["bun", "vite/client"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Strictness
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true
+  },
+  // 検査層は本体ではないが、エビデンス採取や実地検証ハーネス(scripts/mcp-trial/)
+  // のように判定ロジックを持つものがあるため、型検査の対象に含める。
+  //
+  // 【V9-M11-T01 / X-G26】正本のルートの tsconfig.json を土台にし、include を
+  // 公開単位(apps/smailtalk)の中だけに絞った。正本のルートは "tools" も見るが、
+  // tools/ は公開単位に1本も入らないので、ここには書かない
+  // (書くと切り出した木で「存在しないディレクトリ」を指す)。
+  "include": ["src", "web", "scripts"],
+  "exclude": ["node_modules", "data"]
+}

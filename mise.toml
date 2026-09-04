@@ -1,0 +1,5 @@
+[tools]
+bun = "1.3.14"
+# typecheck(tsc) / lint(biome) / MCP Inspector は node 実行のバイナリなので、
+# bun だけを固定していると "No version is set for shim: node" で落ちる。
+node = "24.19.0"

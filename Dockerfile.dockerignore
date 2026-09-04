@@ -1,0 +1,78 @@
+# docker build に渡す context から外すもの(V5-M7-T01)。
+#
+# 【外す理由は2つある】
+#   (a) イメージに入れてはならないもの —— docs/ / .github/ / 実運用の data/
+#   (b) 入れても無駄なもの —— node_modules(イメージの中で入れ直す)/ ビルド成果物
+#
+# 【重要】data-runner-image/ だけは context に入れる。
+# ここに scripts/runner-image/prepare-context.ts が「1アプリ分の data/」を置く。
+# .gitignore の data-*/ が当たるので git には入らないが、docker build には要る。
+#
+# 【V9-M12-T03 / X-G33。この行より下のパスは「公開単位の根を context とした相対」である】
+# build context は apps/smailtalk である(理由は Dockerfile 冒頭の【build context】)。
+# したがって web/ 系は apps/smailtalk/ の接頭辞を落として web/… と書く。
+# **docs / .github / .claude は apps/smailtalk の下に1つも無いので、
+# 下の行は今日1件も当たらない。** 消さずに残す —— 公開単位の下にその名前が
+# できた日に、黙って context へ入るのを止めるためである(当たらない除外は害が無い)。
+# **これは「将来も入らない」の保証ではない。今日の当たり件数を測っただけである。**
+#
+# 【data/ は今日ここに実在する】apps/smailtalk/data/ は実測台のデータであり、
+# tools/publish/publish-unit.json も配布物に入れていない。下の `data/` が当てる。
+#
+# 【V9-M1-T03 の時点では効いていなかった。そのときの記述を残す】
+# docker は `-f apps/smailtalk/Dockerfile` を与えられたとき
+# (1) apps/smailtalk/Dockerfile.dockerignore (2) <context>/.dockerignore の順に探す。
+# **`apps/smailtalk/.dockerignore` はそのどちらでもないので、読まれなかった。**
+# 読ませるには、このファイルを `apps/smailtalk/Dockerfile.dockerignore` に改名するか、
+# 正本のルートへ戻す必要がある。**V9-M1-T03 はファイルを動かさないので、行っていない。**
+#
+# 【V9-M1 のメインが、実験で確かめたうえで改名した(2026-08-17)】
+# 上の (1)(2) の順序は、docker 29.1.3 / buildx v0.30.1 で実際に測った:
+#   context に secret.txt を置き、sub/Dockerfile を `-f sub/Dockerfile` で建てた。
+#   sub/Dockerfile.dockerignore に `secret.txt` を書く → `RUN ls /x` に secret.txt が出ない
+#   同じ内容を sub/.dockerignore に改名する      → `RUN ls /x` に secret.txt が出る(陰性対照)
+# したがって **このファイルは `.dockerignore` という名前のままでは読まれない**。
+# 改名した。中身は1バイトも変えていない(git は R100 の rename として記録している)。
+#
+# 【この名前は、公開物になったあとも効く】
+# V9-M5 が apps/smailtalk/ を単独のリポジトリとして切り出すと、Dockerfile は
+# その木のルートに来る。docker は `-f` 無しでも (1) <dockerfile>.dockerignore を
+# 先に探すので、`Dockerfile.dockerignore` はそのまま効く。`.dockerignore` に
+# 戻す必要は無い。
+
+.git
+.github
+.claude
+.claude-worktrees
+.claude/worktrees
+node_modules
+**/node_modules
+
+# 実運用のデータ。**イメージに入れてはならない**(他アプリの行が混ざる)。
+data/
+
+# 評価用・作業用の data-*(下で data-runner-image だけ戻す)
+data-*/
+!data-runner-image/
+
+# ビルド成果物(イメージの中で建て直す)
+web/dist
+web/runner
+dist
+build
+*.tsbuildinfo
+
+# 検査の出力
+test-results
+playwright-report
+coverage
+
+# 配布物に不要な文書と検査資材
+docs
+web/e2e
+web/test
+
+*.log
+.DS_Store
+.env
+.env.local

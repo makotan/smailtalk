@@ -1,0 +1,156 @@
+/*
+ * 部品体系(Tailwind CSS 4.3.3)の入口。**配られる CSS の集合の2本目である**
+ * (V4-M15-T01 / T02。ADR-0087 / ADR-0088 限定4)。
+ *
+ * **ここに何を書いてよいか —— 足してよいのは5つだけである。**
+ * (i) 部品体系の取り込みの1行(`@import "tailwindcss" source(none);`)と、
+ *     走査対象の宣言(`@source`)/
+ * (ii) `@theme inline` の中の**導出だけ** —— 右辺は `var(--…)` で
+ *     `web/src/styles.css` の `:root` が定義した25スロットのどれかを指すこと。
+ *     **色のリテラル(`#…` / `rgb(` / `oklch(` ほか)を1つも書かない。**
+ *     25スロットから導出できない変数を、ここに書かない(ADR-0087 限定7)/
+ * (iii) **断点の宣言**(`@theme` の `--breakpoint-…`)—— **本数を有限に固定するため
+ *     既定の断点を全部消して、名指しした分だけを置く**(ADR-0089 限定3)。
+ *     **断点だけはリテラルである** —— メディアクエリの条件に `var()` は書けない。
+ *     **AI も owner も断点を1つも指定できない**(語彙に置き場を作らない)/
+ * (iv) **幅以外のメディア特性を出さないための変種の再定義**(`@custom-variant`)——
+ *     `ADR-0089` 限定1 が「`hover` ほか幅以外のメディア特性を1つも通さない」と
+ *     定めているので、Tailwind 既定の `hover:`(`@media (hover: hover)` を生む)を
+ *     素の `&:hover` に置き換える。**代償は、指で触る画面で hover が残りうることである** /
+ * (v) 本コメント。
+ *
+ * **【V4-M18-T02 で6つになった。上の「足してよいのは5つだけである」を1バイトも消していない】**
+ * (vi) **重ね順の段の宣言**(`@theme` の `--layer-…`)—— `ADR-0094` 限定4 が
+ *     「生成側の入口に定義する重ね順は**2段だけ**」と定めた。**3段目を作らない。**
+ *     **段だけはリテラル(素の整数)である** —— 重ね順は色でも寸法でもなく、25スロットの
+ *     どれからも導出できない。**これは「テーマの入口が2つに割れる」ことではない** ——
+ *     **アプリも AI も重ね順を1つも選べず、`$defs/theme` は今日も 25 / 25 である。**
+ *     本数を数える検査は `web/test/overlay-layering.test.ts` が持つ。
+ *
+ * **【正直に書く】(vi) は `ADR-0087` 限定8 の前段を1バイトも緩めていない** ——
+ * 前段が禁じるのは**手で書く CSS**(`web/src/styles.css`)に9プロパティを書くことであり、
+ * ここは生成側である。**同時に、器の実装は座標系プロパティを使う。**
+ * **【禁止】「9プロパティの禁止を守ったまま重ねて出す器を作った」と書かない**
+ * (`ADR-0087` §3 の総括の禁止7 / `ADR-0094` §Decision 3 の 1)。
+ *
+ * **引き続き禁じる**: セレクタを持つ規則(`.foo { … }` / 要素セレクタ)/
+ * `@media` ほかの条件付き規則 / `@layer` / `@property` / `@keyframes` の手書き /
+ * アプリ固有のセレクタ / safelist(ADR-0087 限定6)/
+ * 配色設定のメディア特性・テーマ切り替えの属性セレクタ(ADR-0087 限定10 / ADR-0089 限定6)。
+ *
+ * **手で書く規則はここに1つも無い**(ADR-0088 限定5 の「生成された規則」側である)。
+ * このファイルの**出力**は `@layer` と `@property` を含む —— だから
+ * `web/src/styles.css` の解析器(`@` を含む CSS で例外を投げる)には掛けない。
+ * 置き場を分けることでそれが成立している(ADR-0089 限定2)。
+ *
+ * **`@theme inline` の `inline` は外さないこと。** `inline` を外すと Tailwind は
+ * `:root` に `--color-background: var(--color-page-background)` を出し、その `var()` は
+ * `:root` の時点で解決される —— **`.app-theme` に注入したアプリ単位テーマが届かなくなる。**
+ * `inline` なら各ユーティリティが `var(--color-page-background)` を直接持つので、
+ * スコープ要素の値がそのまま効く(V4-M15-T08 で実測した)。
+ */
+
+@import "tailwindcss" source(none);
+@source "./**/*.{ts,tsx}";
+
+/*
+ * 幅以外のメディア特性を1つも出さない(ADR-0089 限定1)。
+ * Tailwind 既定の `hover:` は `@media (hover: hover)` を出すので、素の `&:hover` に置く。
+ */
+@custom-variant hover (&:hover);
+
+/*
+ * 断点(ADR-0089 限定3)。**既定の5本を全部消して2本だけ置く。**
+ * `sm` = 40rem(640px。スマホ 390px はここに入らない = 既定側に落ちる)。
+ * `lg` = 64rem(1024px)。**この2本以外の断点はビルド出力に1つも現れない。**
+ * 本数を数える検査は `web/test/style-sources.test.ts` が持つ。
+ */
+@theme {
+  --breakpoint-*: initial;
+  --breakpoint-sm: 40rem;
+  --breakpoint-lg: 64rem;
+}
+
+@theme inline {
+  /* 面と文字(ADR-0087 限定7 の導出。左辺 = 部品側 / 右辺 = 25スロット) */
+  --color-background: var(--color-page-background);
+  --color-foreground: var(--color-text);
+  --color-card: var(--color-page-background);
+  --color-card-foreground: var(--color-text);
+  --color-secondary: var(--color-surface-highlight);
+  --color-secondary-foreground: var(--color-text);
+  --color-muted: var(--color-surface-highlight);
+  --color-muted-foreground: var(--color-text-secondary);
+  --color-accent: var(--color-surface-highlight);
+  --color-accent-foreground: var(--color-text);
+  --color-destructive: var(--color-danger);
+  --color-border: var(--color-border);
+  --color-input: var(--color-border);
+  --color-ring: var(--focus-outline-color);
+  --color-placeholder: var(--color-text-placeholder);
+  --color-label: var(--color-text-label);
+
+  /*
+   * **塗りつぶしと、重ねて出す小窓の配色**(V4-M18-T06。ADR-0087 限定7 の導出)。
+   *
+   * **これは `$defs/theme` のスロットの追加ではない。** V4-M18 門A本審査 単位4
+   * (`P-G49` の (C) 側 + `P-G35` の (C) 側)は**却下**であり、本4行はその**却下の帰属先**
+   * (表示層での導出)を履行するものである(docs/plan/v4/records/v4-m18.md §2-1 の
+   * 【`T06` の位置づけを混ぜない】)。**スロットは今日も 25 / 25 である。**
+   *
+   * **【禁止】「主たる操作の色を選べるようになった」と書かない。** 塗りつぶしの地色は
+   * **本文の文字色そのもの**であり、本文と独立には選べない
+   * (v4-m18-gate-a-theme-slot-gap.md §3-3 の 1。失うものは4点、全部そこに書いてある)。
+   *
+   * **コントラスト比の保証はそのまま効く** —— (--color-text on --color-page-background) の
+   * 対は今日すでに THEME_CONTRAST_PAIRS に入っており(前景 × 背景の直積)、
+   * **検査対象の対を1組も増やしていない**(同 §3-2 の 3)。
+   */
+  --color-primary: var(--color-text);
+  --color-primary-foreground: var(--color-page-background);
+  --color-popover: var(--color-page-background);
+  --color-popover-foreground: var(--color-text);
+
+  /* 書体・行間 */
+  --font-sans: var(--font-family-base);
+  --leading-base: var(--line-height-base);
+
+  /* 角丸 */
+  --radius-ui: var(--control-border-radius);
+
+  /* 密度(段階軸6件をそのまま間隔スケールに写す) */
+  --spacing-s1: var(--space-1);
+  --spacing-s2: var(--space-2);
+  --spacing-s3: var(--space-3);
+  --spacing-s4: var(--space-4);
+  --spacing-s5: var(--space-5);
+  --spacing-s6: var(--space-6);
+
+  /* 影 */
+  --shadow-surface: var(--surface-shadow);
+
+  /* 文字の大きさ(2件。本文の大きさはスロットに無いので写していない) */
+  --text-note: var(--font-size-note);
+  --text-secondary: var(--font-size-secondary);
+}
+
+/*
+ * 重ね順の段(V4-M18-T02。ADR-0094 限定4)。**2段だけ置く。3段目を作らない。**
+ *
+ * | 段 | 何が乗るか | なぜこの順か |
+ * |---|---|---|
+ * | `--layer-overlay` | 重ねて出す小窓 / 開くメニュー(とその背面) | 今の画面の上 |
+ * | `--layer-notice` | 一時的な知らせ | **小窓が開いていても知らせが見える**必要があるため、
+ *   小窓より上に置く(小窓の中の操作の結果を知らせることが在る) |
+ *
+ * **値は素の整数である。**色でも寸法でもないので `@theme inline` ではなく `@theme` に置く。
+ * **`z-index` の生の数値をレンダラーのソースに1つも書かない** —— 器は `z-(--layer-overlay)` /
+ * `z-(--layer-notice)` の形で**段の名前だけ**を使う(検査は `overlay-layering.test.ts`)。
+ *
+ * **【この2段が言えないこと】** **どちらが実際に上に描かれるかは CSS の計算である。**
+ * **chromium の実測は `web/e2e/overlay.e2e.ts` が採る。**
+ */
+@theme {
+  --layer-overlay: 100;
+  --layer-notice: 200;
+}

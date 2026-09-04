@@ -1,0 +1,10 @@
+{
+  "diff_id": "d-0042",
+  "intent": "読了日で並べたいという要望。既読管理を日付ベースにする",
+  "operations": [
+    { "op": "add_field", "table": "books",
+      "field": { "id": "finished_at", "name": "読了日", "type": "date" } },
+    { "op": "update_view", "view": "book-list",
+      "changes": { "sort": { "field": "finished_at", "order": "desc" } } }
+  ]
+}

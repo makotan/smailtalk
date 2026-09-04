@@ -1,0 +1,40 @@
+{
+  "app": {
+    "id": "inventory",
+    "name": "備品管理",
+    "tables": [
+      {
+        "id": "categories",
+        "name": "カテゴリ",
+        "fields": [
+          { "id": "name", "name": "カテゴリ名", "type": "text", "required": true }
+        ]
+      },
+      {
+        "id": "items",
+        "name": "備品",
+        "fields": [
+          { "id": "name", "name": "備品名", "type": "text", "required": true },
+          { "id": "note", "name": "備考", "type": "long_text" },
+          { "id": "quantity", "name": "数量", "type": "number", "required": true },
+          { "id": "in_use", "name": "使用中", "type": "boolean" },
+          { "id": "purchased_at", "name": "購入日", "type": "date" },
+          { "id": "condition", "name": "状態", "type": "select", "options": ["新品", "良好", "要修理"] },
+          { "id": "category", "name": "カテゴリ", "type": "reference", "reference_table": "categories" },
+          { "id": "photo", "name": "写真", "type": "image" },
+          { "id": "manual", "name": "取扱説明書", "type": "file" }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "item-list", "type": "list_view", "table": "items",
+        "columns": ["name", "quantity", "condition", "in_use"],
+        "sort": { "field": "purchased_at", "order": "desc" },
+        "filter": [{ "field": "in_use", "equals": true }] },
+      { "id": "item-form", "type": "form", "table": "items",
+        "fields": ["name", "note", "quantity", "in_use", "purchased_at", "condition", "category", "photo", "manual"] },
+      { "id": "item-detail", "type": "detail_view", "table": "items" },
+      { "id": "category-form", "type": "form", "table": "categories", "fields": ["name"] }
+    ]
+  }
+}

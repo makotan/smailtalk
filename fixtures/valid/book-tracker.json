@@ -1,0 +1,25 @@
+{
+  "app": {
+    "id": "book-tracker",
+    "name": "蔵書管理",
+    "tables": [
+      {
+        "id": "books",
+        "name": "書籍",
+        "fields": [
+          { "id": "title",  "name": "タイトル", "type": "text", "required": true },
+          { "id": "status", "name": "状態", "type": "select",
+            "options": ["未読", "読書中", "読了"] },
+          { "id": "finished_at", "name": "読了日", "type": "date" }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "book-list", "type": "list_view", "table": "books",
+        "columns": ["title", "status"], "sort": { "field": "finished_at", "order": "desc" } },
+      { "id": "book-form", "type": "form", "table": "books",
+        "fields": ["title", "status", "finished_at"] },
+      { "id": "book-detail", "type": "detail_view", "table": "books" }
+    ]
+  }
+}

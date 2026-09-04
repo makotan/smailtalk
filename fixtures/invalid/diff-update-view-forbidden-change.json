@@ -1,0 +1,8 @@
+{
+  "diff_id": "d-0004",
+  "intent": "一覧に説明文を付けたい",
+  "operations": [
+    { "op": "update_view", "view": "book-list",
+      "changes": { "description": "蔵書の一覧です", "columns": ["title"] } }
+  ]
+}

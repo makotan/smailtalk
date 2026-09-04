@@ -1,0 +1,228 @@
+# 配布物(plugin 同梱の skill)の記述と、語彙の正との対応表。
+#
+# 検査は scripts/skill-vocabulary-drift.test.ts(V6-M13-T01 / H-G5 / H-G19)。
+# 判断は docs/plan/v6/records/v6-m13.md。上位は docs/plan/v6/records/v6-m8.md §5-5 / §5-19。
+#
+# 列は **タブ区切り**。行の種類は5つ:
+#
+#   closed   <パス> <見出しの型> <spans|rowhead> <ordered|unordered> <正の集合式>
+#            その節の列挙が、正の集合と**過不足なく**一致すること(両向き)。
+#   allow    <パス> <見出しの型> <語> <理由>
+#            その節に**意図して**置いた語彙外の語。理由を書かない行は赤になる。
+#   covers   <パス> <正の集合式>
+#            その集合の名前が、そのファイルのどこかに1つ残らず現れること(片向き)。
+#   count    <パス> <逐語の型> <正の集合式>
+#            散文に書いた**件数**が、正の件数と一致すること。
+#   verbatim <パス> <正の定数名>
+#            そのファイルの引用ブロックが全部その定数の**部分文字列**であること(H-G20 限定2)。
+#   pair     <パス> <逐語A> <逐語B> <理由>
+#            逐語A を載せたファイルには逐語B も必ず在ること(片向き。V8-M22 / J-G35)。
+#            **偽になった旧文だけを切り出して配らない**ための組で、理由を書かない行は赤になる。
+#
+# {n} は集合の件数、{n+1} はその次の数に展開される。
+# **この一覧にも検査にも数字を1文字も書かない**(H-G19 限定4 / ADR-0250 §Decision 3 の 3)。
+#
+# 赤くなったら、まず「正が動いたのか、skill が間違えたのか」を人が判定すること。
+# **この一覧を先に書き換えてはならない。** 機械化したのは検出であって審査ではない。
+
+# --- 差分の形(diff-shape)---
+closed	plugins/smailtalk/skills/diff-shape/SKILL.md	## 4. 名前の全量	spans	ordered	kernel:RESOURCE_KINDS+kernel:FIELD_TYPES
+allow	plugins/smailtalk/skills/diff-shape/SKILL.md	## 4. 名前の全量	remove_app	語彙に無い差分操作の反例として名指ししている(「言い換えても書けない」の例示)。
+allow	plugins/smailtalk/skills/diff-shape/SKILL.md	## 4. 名前の全量	patch_manifest	同上。
+allow	plugins/smailtalk/skills/diff-shape/SKILL.md	## 4. 名前の全量	copy_field	同上。
+allow	plugins/smailtalk/skills/diff-shape/SKILL.md	## 4. 名前の全量	run_workflow	同上。**run_function(ワークフローのアクション)と紛らわしい名前なので、反例として残す意味がある。**
+closed	plugins/smailtalk/skills/diff-shape/SKILL.md	## 2. 1操作	rowhead	ordered	kernel:DIFF_OPS
+allow	plugins/smailtalk/skills/diff-shape/SKILL.md	## 2. 1操作	op	表の見出し行の第1列。操作の種別ではなくキー名である。
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:table.properties
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:field.properties
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	diff:operation.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**リソース種({n})**	kernel:RESOURCE_KINDS
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**フィールド型({n})**	kernel:FIELD_TYPES
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**差分操作({n})**	kernel:DIFF_OPS
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**この{n}種で全部である。**	kernel:DIFF_OPS
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	の**{n}つだけ**で、	diff:operation.properties
+verbatim	plugins/smailtalk/skills/diff-shape/SKILL.md	CANNOT_DO
+
+closed	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	## 操作に書けるキーは{n}つだけ	spans	ordered	diff:operation.properties
+allow	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	## 操作に書けるキーは{n}つだけ	additionalProperties	JSON Schema のキーワード名。語彙の名前ではない。
+allow	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	## 操作に書けるキーは{n}つだけ	false	同キーワードの値。語彙の名前ではない。
+closed	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	## 操作ごとの必須キー	rowhead	ordered	kernel:DIFF_OPS
+allow	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	## 操作ごとの必須キー	op	表の見出し行の第1列(通し番号の次の列)。操作の種別ではなくキー名である。
+covers	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	diff:table_changes.properties
+covers	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	diff:field_changes.properties
+covers	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	manifest:table.properties
+covers	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	manifest:field.properties
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	# 差分操作{n}種 —— 必須キーと、書けるキーの全量	kernel:DIFF_OPS
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	なので、{n+1}個目の名前を書くと差分全体が拒否される。	diff:operation.properties
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	**{n+1}種目は無い。**	kernel:DIFF_OPS
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	(**{n}つだけ**)	diff:table_changes.properties
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	(**{n}個だけ**)	diff:field_changes.properties
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	| {n}個。一覧は	diff:view_changes.properties
+
+verbatim	plugins/smailtalk/skills/diff-shape/reference/cannot-do.md	CANNOT_DO
+
+# --- 画面の形(view-shape)---
+closed	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	spans	unordered	diff:view_changes.properties
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	update_view	節が説明している差分操作そのものの名前。
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	id	**changes に書けないキー**として名指ししている(画面の同一性)。
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	type	同上。
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	table	同上。
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	related	同上(子一覧)。
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	audience	**【V8-M22 で理由を書き直した。行は消していない】** かつては画面定義に書けた「見せる相手」のキーで、V8-M20 が撤去した。**今日は changes に書けないのではなく、語彙のどこにも無い。**説明書はその名前を「今日書くと差分全体が拒否される」の反例として名指ししている。**この allow 行がある限り §3 からこの語を消せない**(消すと allow 行が古い宣言になって赤くなる)—— 消したいときは、この行を同じ差分で外すこと。
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	remove_view	撤去前の audience を変えるときの代わりの手順として名指ししていた差分操作。**今日は子一覧(related)を変えるときの手順として同じ2つを名指ししている。**
+allow	plugins/smailtalk/skills/view-shape/SKILL.md	## 3. `update_view` の `changes` に書けるのは{n}キー	add_view	同上。
+closed	plugins/smailtalk/skills/view-shape/SKILL.md	## 5. `preset_` で始まる{n}軸	rowhead	ordered	manifest:view.preset_properties
+covers	plugins/smailtalk/skills/view-shape/SKILL.md	manifest:view_type.enum
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**画面定義に書けるキーは{n}個あるが、種別ごとに閉じている。**	manifest:view.properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**この{n}個に入っていない主なもの**	diff:view_changes.properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**{n}軸・合計	manifest:view.preset_properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	合計{n}の選択肢で全部である。**	manifest:view.preset_option_values
+count	plugins/smailtalk/skills/view-shape/SKILL.md	の{n}つだけ**({n+1}つ目は無い)	manifest:view_type.enum
+verbatim	plugins/smailtalk/skills/view-shape/SKILL.md	CANNOT_DO
+
+closed	plugins/smailtalk/skills/view-shape/reference/view-keys.md	## {n}キーの一覧	rowhead	unordered	manifest:view.properties
+covers	plugins/smailtalk/skills/view-shape/reference/view-keys.md	manifest:view_type.enum
+count	plugins/smailtalk/skills/view-shape/reference/view-keys.md	# 画面定義に書けるキーの全量({n}キー)	manifest:view.properties
+count	plugins/smailtalk/skills/view-shape/reference/view-keys.md	**{n+1}個目のキーは無い。**	manifest:view.properties
+
+verbatim	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	CANNOT_DO
+
+# --- 自動処理の形(automation-shape)---
+closed	plugins/smailtalk/skills/automation-shape/SKILL.md	## 3. `actions` —— {n}種と、種別ごとに変わる必須キー	rowhead	ordered	manifest:workflow_action.action.enum
+allow	plugins/smailtalk/skills/automation-shape/SKILL.md	## 3. `actions` —— {n}種と、種別ごとに変わる必須キー	action	表の見出し行の第1列。アクションの種別ではなくキー名である。
+closed	plugins/smailtalk/skills/automation-shape/SKILL.md	## 2. `trigger` —— {n}種と、種別ごとに変わる必須キー	rowhead	unordered	manifest:workflow_trigger.type.enum
+allow	plugins/smailtalk/skills/automation-shape/SKILL.md	## 2. `trigger` —— {n}種と、種別ごとに変わる必須キー	type	表の見出し行の第1列。トリガーの種別ではなくキー名である。
+covers	plugins/smailtalk/skills/automation-shape/SKILL.md	manifest:workflow.properties
+covers	plugins/smailtalk/skills/automation-shape/SKILL.md	manifest:function.properties
+covers	plugins/smailtalk/skills/automation-shape/SKILL.md	manifest:function_input.source.enum
+count	plugins/smailtalk/skills/automation-shape/SKILL.md	(**この{n}つで全部**	manifest:workflow.properties
+count	plugins/smailtalk/skills/automation-shape/SKILL.md	。{n+1}つ目のキーは書けない)	manifest:workflow.properties
+count	plugins/smailtalk/skills/automation-shape/SKILL.md	の**{n}つだけ**。	manifest:workflow_trigger.type.enum
+count	plugins/smailtalk/skills/automation-shape/SKILL.md	値は次の{n}つだけ。	manifest:workflow_action.action.enum
+count	plugins/smailtalk/skills/automation-shape/SKILL.md	の**{n}つだけ**。	manifest:function_input.source.enum
+count	plugins/smailtalk/skills/automation-shape/SKILL.md	フィールド型{n}種のどれか	kernel:FIELD_TYPES
+verbatim	plugins/smailtalk/skills/automation-shape/SKILL.md	CANNOT_DO
+
+closed	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	## アクションに書けるキーの全量({n})	spans	ordered	manifest:workflow_action.properties
+covers	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	manifest:workflow_action.action.enum
+covers	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	manifest:workflow_trigger.type.enum
+covers	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	manifest:function.properties
+covers	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	manifest:function_input.source.enum
+count	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	{n+1}個目の名前を書くと差分全体が拒否される。	manifest:workflow_action.properties
+count	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	フィールド型{n}種のどれか	kernel:FIELD_TYPES
+
+verbatim	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	CANNOT_DO
+
+# --- 偽になった旧文だけを切り出して配らない(V8-M22 / J-G35。2026-08-10)---
+#
+# 引用ブロックが CANNOT_DO の旧文で終わっていると、説明書だけを読む相手には
+# 直後の訂正が1文字も届かない。verbatim はそれを検出できない(旧文だけの引用も部分文字列である)。
+pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	画面ごと・項目ごとの表示権限を AI が設定することはできません	訂正します。直前の1文は今日は偽です	CANNOT_DO は V8-M21 が旧文の直後に訂正を足した。引用を旧文で切ると、説明書だけを読む相手には訂正が届かない。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	受信口・ワークフロー・コードの島には1バイトも掛からない	`V8-M21` が3経路に判定を配線した	旧文は V8-M21 の後に偽になった。旧文を残すなら、同じファイルに今日の正も要る。
+pair	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	受信口・ワークフロー・コードの島には1バイトも掛からない	`V8-M21` が3経路に判定を配線した	同上。
+pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	ワークフロー・コードの島・受信口も、この規則を1つも通らない	`V8-M21` が3経路に判定を配線した	同上。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	MCP(あなた)は常に管理者として扱うと決まっている	(1) は今日は偽である	旧の訂正(V8-M22)の (1) が V8-M31 の後に偽になった。旧文を残すなら、同じファイルに今日の正も要る。
+pair	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	MCP(あなた)は常に管理者として扱うと決まっている	(1) は今日は偽である	同上。
+
+# --- V8-M32 第5波(2026-08-12)。plugins/ に足した訂正を固定する(ADR-0316 (乙))---
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	対象4種・動詞3語の外は書けない。	その字面は今日は偽で、対象は6種である	旧文は V8-M28 / ADR-0322 の後に偽になった(5種目 app・6種目 role)。旧文を残すなら、同じファイルに今日の正も要る。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	どの規則からも名指しされていない対象は、今日どおり全員に開いている	規則が1本も無い対象は、既定で閉じる	旧文は V8-M26 / ADR-0317 の後に偽になった。旧文だけを配ると「書き忘れても通る」と読まれる。
+pair	plugins/smailtalk/skills/view-shape/reference/view-keys.md	`target` は `table` / `field` / `view` / `action` の**4つだけ**。	その字面は今日は偽で、`target` は6つある	同上(V8-M28 / ADR-0322)。旧の列挙だけを配ると、app / role を書けないと読まれる。
+pair	plugins/smailtalk/skills/view-shape/reference/view-keys.md	どの規則からも名指しされていない画面は、今日どおり全員に見える	その字面は今日は偽である** —— **規則が1本も無い画面は、既定で閉じる	同上(V8-M26 / ADR-0317)。旧文だけを配ると「書き忘れても見える」と読まれる。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	どの役割の規則からも名指しされていない画面は、今日どおり全員に見えます	規則が1本も無い画面は、既定で閉じる	引用は CANNOT_DO の逐語だが、その CANNOT_DO 自身が今日は偽である。引用の外に訂正を置いた組。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	あなたの write_records はこの規則に1ミリも守られません	`write_records` の部分は今日は偽である	V8-M31 / ADR-0327 が write_records に名乗りと項目の判定を配線した。引用の外に訂正を置いた組。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	あなたが list_records で読むときは役割の規則を1つも見ません	見出し「MCP から読むときは規則が1つも効かない」も今日は偽である	同上(読取も絞られる)。見出しも旧文なので、訂正が同じファイルに無いと旧文だけが配られる。
+pair	plugins/smailtalk/skills/diff-shape/SKILL.md	「何に対して(`target` = `table` / `field` / `view` / `action`)」	`target` の列挙は今日は偽で、6種ある	同上(V8-M28 / ADR-0322)。旧の列挙だけを配ると、app / role を書けないと読まれる。
+pair	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	**対象4種・動詞3語の外は書けない。**	「対象4種」は今日は偽で、対象は6種である	同上(V8-M28 / ADR-0322)。上の表も4行のままなので、訂正が同じファイルに無いと旧文だけが配られる。
+pair	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	どの規則からも名指しされていない対象は今日どおり全員に開いている	規則が1本も無い対象は、既定で閉じる	同上(V8-M26 / ADR-0317)。旧文だけを配ると「書き忘れても通る」と読まれる。
+pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	規則を1本も書いていない対象は今日どおり全員に見えます	規則が1本も無い対象は、既定で閉じる	引用は CANNOT_DO の逐語だが、その CANNOT_DO 自身が今日は偽である。引用の外に訂正を置いた組。
+pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	今日も規則を1つも通らないのは2本だけである	今日も規則を1つも通らないのは `schedule` の1本だけで、0本ではない。	旧の訂正(V8-M22)の本数が V8-M31 / ADR-0328 の後に偽になった。素通りは1本であって2本ではない。
+pair	plugins/smailtalk/skills/automation-shape/SKILL.md	「項目の値が要求している人と等しい」の2形)	「2形」は今日は偽で、あちらの葉は3形ある	旧文は V8-M26 / D-V8-70 の後に偽になった(3つ目は is_empty)。旧文だけを配ると、空の行を書けないと読まれる。
+pair	plugins/smailtalk/skills/automation-shape/reference/action-required-keys.md	8段まで組め、葉も2形ある。	「葉も2形ある」は今日は偽で、あちらの葉は3形ある	同上(V8-M26 / D-V8-70)。ワークフローの when が等値1形なのは今日も真なので、そちらは訂正していない。
+pair	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	等しい」の2形、枝は `and` / `or`(2件以上)/ `not`	その字面は今日は偽で、葉は3形ある	旧文は V8-M26 / D-V8-70 の後に偽になった(3つ目は is_empty)。旧文だけを配ると、空の行を書けないと読まれる。
+pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	group by / 平均 / 最小 / 最大 をカーネルに書くことはできません	束ねる指定と件数が差分操作で書けるようになりました	CANNOT_DO は V8-M8(台帳 Q-G1〜Q-G5。ADR-0104 限定2・限定8 の引き直し)が旧文の直後に訂正を足した。引用を旧文で切ると、説明書だけを読む相手には「束ねられない」という今日は偽の文だけが届く。
+
+# --- V8-M46(2026-08-16)。アプリの組み立て方(app-build)。O-G1 / O-G20 ---
+# 4本目は「順序と骨格」を書く説明書で、書けるキーの全量を1つも持たない。
+# そのため closed 行(節の列挙 = 正の集合)を1本も宣言していない ——
+# 骨格の節は正の部分集合(その骨格が実際に使うキーだけ)であって、全量ではない。
+# 引用ブロック(行頭 >)を1つも置いていないので verbatim 行も無い(H-G20 限定1 / O-G8 限定5)。
+covers	plugins/smailtalk/skills/app-build/SKILL.md	manifest:view_type.enum
+
+# --- V8-M47(2026-08-16)。既存の説明書3本への追記 ---
+# 足した節はどれも「1つの見出しの中に正の集合の全量を閉じ込めた」形になっていない
+# (散文と表が混ざる)。そのため closed 行を1本も宣言せず、covers + count で固定する。
+# **closed でないぶん、節の中に語彙外の名前が紛れても赤くならない。** 塞いでいないことを先に書く。
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:table.access_control.properties
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:table.access_control.required
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:access_control.grant.properties
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:access_control.members.properties
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:access_control.groups.properties
+covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:access_control.permission.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`access_control` に書けるキーは{n}つで、{n+1}つ目は書けない。**	manifest:table.access_control.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**そのうち必須は{n}つである。**	manifest:table.access_control.required
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	の{n}キーで、{n}キーとも必須である。	manifest:access_control.permission.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`grant` は{n}キー**	manifest:access_control.grant.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**そのうち必須は{n}つ**(`table` / `target` / `permission`)	manifest:access_control.grant.required
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`members` は{n}キー**	manifest:access_control.members.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**そのうち必須は{n}つ**(`table` / `account`)	manifest:access_control.members.required
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`groups` は{n}キー**	manifest:access_control.groups.properties
+
+covers	plugins/smailtalk/skills/view-shape/SKILL.md	manifest:view_action.properties
+covers	plugins/smailtalk/skills/view-shape/SKILL.md	manifest:filter_leaf.properties
+covers	plugins/smailtalk/skills/view-shape/SKILL.md	manifest:role.properties
+covers	plugins/smailtalk/skills/view-shape/SKILL.md	manifest:role.signup.enum
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**1つのボタンに書けるキーは{n}つで、{n+1}つ目は書けない。**	manifest:view_action.properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**葉に書けるキーは{n}つ**	manifest:filter_leaf.properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	`signup` の{n}キーで	manifest:role.properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**`signup` に書ける値は `open` と `invite` の{n}つちょうどで、{n+1}つ目は無い。**	manifest:role.signup.enum
+
+covers	plugins/smailtalk/skills/view-shape/reference/view-keys.md	manifest:view_action.properties
+covers	plugins/smailtalk/skills/view-shape/reference/view-keys.md	manifest:filter_leaf.properties
+count	plugins/smailtalk/skills/view-shape/reference/view-keys.md	**1つの操作に書けるキーは{n}つで、{n+1}つ目は書けない。**	manifest:view_action.properties
+count	plugins/smailtalk/skills/view-shape/reference/view-keys.md	**葉に書けるキーは全部で{n}つ**	manifest:filter_leaf.properties
+
+# 4本目の説明書(app-build)ができたので、diff-shape の description の旧文だけを読むと
+# 「アプリの作り方はどこにも無い」と読める。旧文は消さず、送り先を同じ front matter に足した。
+pair	plugins/smailtalk/skills/diff-shape/SKILL.md	アプリの作り方の手順は扱わない	4本目の説明書 app-build がアプリを作る順序と骨格を扱う	V8-M46 が4本目を置いたことで、旧文だけを読む相手には行き先が1文字も届かなくなった。旧文を残すなら、同じファイルに送り先も要る。
+
+# --- V8-M47(2026-08-16)。CANNOT_DO 参照ファイル3本の「この3つの説明書は…」への訂正 ---
+pair	plugins/smailtalk/skills/diff-shape/reference/cannot-do.md	この3つの説明書は `CANNOT_DO` の代わりではない。	説明書は今日4本である	4本目(app-build)ができたので「3つ」は今日は偽である。旧文を残すなら、同じファイルに今日の本数も要る。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	この3つの説明書は `CANNOT_DO` の代わりではない。	今日は3本ではなく4本である	同上(V8-M47)。旧文だけを配ると「3本」という今日は偽の数だけが届く。
+pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	この3つの説明書は `CANNOT_DO` の代わりではない。	説明書は今日4本になった	同上(V8-M47)。旧文だけを配ると「3本」という今日は偽の数だけが届く。
+
+# --- V10-M18-T03(2026-08-21)。「戻る」を器へ移した(FU-G3)。旧文3組を登録する ---
+# 3組とも view-shape/SKILL.md の中で「旧文 → 訂正」が同居している。
+# 逐語A だけを切り出して配ると、今日は偽の文が届く。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	「戻る」(**入力画面にだけ出る**)	上の見出しの「入力画面にだけ出る」は、今日は偽である。	旧の見出しは V10-M18-T03(FU-G3)の後に偽になった。「戻る」は器へ移り、段を宣言した画面には種別を問わず出る。見出しだけを切り出して配ると「入力画面にしか無い」という今日は偽の文が届く。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	段を宣言した入力画面(`form`)には、「戻る」のボタンが1つ出る。	入力画面だけではない	同上(V10-M18-T03)。旧の箇条は今日も真の部分を含むが、それだけを配ると一覧・詳細に出ることが届かない。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	一覧画面(`list_view`)と詳細画面(`detail_view`)には出ない。	段を宣言した一覧画面と詳細画面にも「戻る」は1つ出る。	同上(V10-M18-T03)。この1行が最も直接に偽になった。旧文だけを配ると「一覧と詳細には無い」と読まれる。
+
+# --- V10-M18-T05(2026-08-21)。点検の反映。偽になった旧文と今日の正が同居する組を3つ足す ---
+# 1組目は「行を押したときの行き先」、2〜3組目は「戻る」の参照ファイル側である。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	`flow` を足しても、書かなかった画面の行き先は1バイトも変わらない。	偽になったのは2行目のほうである。	旧文は V10-M18 の後に偽になった。段を宣言すると、その画面を行き先にしていた別の画面(行クリック・参照セルのリンク・関連行)の行き先が変わる。旧文だけを配ると「足しても他は動かない」という今日は偽の文が届く。
+pair	plugins/smailtalk/skills/view-shape/reference/view-keys.md	`flow` を書いた `form` だけ	段を宣言した画面には種別を問わず1つ出る	旧の表のセルは V10-M18-T03 の後に偽になった。「戻る」は器へ移り、段を宣言した list_view / detail_view にも出る。表だけを切り出して配ると「入力画面にしか無い」と読まれる。
+pair	plugins/smailtalk/skills/view-shape/reference/view-keys.md	`list_view` と `detail_view` には出ない。	段を宣言した `list_view` と `detail_view` にも「戻る」は1つ出る。	同上(V10-M18-T03)。この1行が最も直接に偽になった。旧文だけを配ると「一覧と詳細には無い」と読まれる。
+
+# --- V10-M19-T05(2026-08-22)。登録の直後に開く画面の条件が変わった。旧文4組を登録する ---
+# 4組とも app-build/SKILL.md の中で「旧文 → 訂正」が同居している。
+# 逐語A だけを切り出して配ると、今日は偽の文が届く。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	で読めるものだけである。	その3つでは足りない。	旧の1点目は V10-M19-T03 の後に偽になった。候補の条件は3つから5つに増えた(書けるか・見えている行が無いか)。旧文だけを配ると「読めれば候補になる」という今日は偽の文が届く。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	アプリ1本だけを配って動かす版では案内が出ず、自動で開くところだけが効く。	配って動かす版でも案内は出る。	旧の箇条は V10-M19-T01 の後に偽になった。配って動かす版も、定義を育てる版と同じ案内を描く。旧文だけを配ると「配った版では案内が出ない」と読まれる。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	上の骨格はちょうど1本に当たる	骨格が候補1本に当たるのは今日も真だが、開くことは無条件ではない。	旧の段落は V10-M19-T02 の後に無条件では成り立たなくなった。骨格のままでも、持ち主の欄が空の行が1件でも見えていれば開かない。旧文だけを配ると「骨格を写せば必ず開く」と読まれる。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	その人の行が既にあるかどうかは見ていない	上の最後の行は、前半だけが偽である。	旧の1行は前半だけが V10-M19-T02 の後に偽になった。後半(二重に作られることを止める仕組みは無い)は今日も真なので、行ごと否定せず前半だけを訂正した組である。
+
+# --- V10-M19-T06(2026-08-22)。独立点検の反映。書込の関門の「理由」が実装と違っていた。旧文2組を登録する ---
+# 2組とも app-build/SKILL.md の中で「旧文 → 訂正」が同居している。
+# 逐語A だけを切り出して配ると、「表への write の規則が候補を決める」という今日は偽の読み方が届く。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	表そのものへの `write` が許されていて、かつ、その表に行を作るボタンの規則が	表そのものに `write` を許す規則は、ここでは1度も読まれていない。	旧の (4) の理由は V8-M27-T04 が表単位の枝を撤去した後に偽になった。判定は立場の名前(閲覧者・未ログインか)と、行を作るボタンの規則の2つだけを見ている。旧文だけを配ると「表に write を書けば候補になる / 書かなければ落ちる」という今日は偽の作り方が届く。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	骨格の `customer` は `item` に `write` を持ち、`item` に行を作るボタンが1つも無いので (4) は通る。	`item` に `write` を持っていることは、(4) の判定に1ミリも効いていない	旧の1行は結論(通る)だけが真で、理由が実物と違う。通る理由は「customer が閲覧者でも未ログインでもないこと」と「作成のボタンが1本も無いので壁が立たないこと」の2つである。旧文だけを配ると、骨格を写す相手が write の宣言を効いていると誤解する。
+
+# --- V10-M11-T03(2026-08-24)。台帳 CM-G6 / ADR-0367 限定5・限定6 ---
+# CANNOT_DO の (f)「未ログインには書き込みの導線を1つも出しません」は、匿名にコメントの書込を
+# 1本だけ開けた 2026-08-24 に一部が偽になった。訂正は (f) の直後に足してあり、view-shape の
+# 引用ブロックにも同じ2文を写した。verbatim 行は「引用が CANNOT_DO の部分文字列であること」しか
+# 見ないので、写しから訂正の2文だけを消しても緑のままである(V10-M11-T03 が実出力で確かめた)。
+# その穴を塞ぐために組を2本置く。左は同じ (f) の逐語で、右は訂正の2文それぞれである。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	未ログインには書き込みの導線を1つも出しません	画面へのコメントだけは、ログインしていない人でも書けます	(f) は V10-M11-T03 / ADR-0367 の後に一部が偽になった。旧文だけを配ると「未ログインは1バイトも書けない」という今日は偽の文が届く。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	止めているのは画面ではなくサーバです	回数の制限も1つもありません	同上。開けた口に荒らし対策を1つも置いていないこと(ADR-0367 限定6 / 憲法6)が写しにも届いていることを固定する。訂正の2文目だけが写しから落ちても赤くなる。

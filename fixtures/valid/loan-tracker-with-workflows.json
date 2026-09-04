@@ -1,0 +1,68 @@
+{
+  "app": {
+    "id": "loan-tracker",
+    "name": "貸出管理",
+    "tables": [
+      {
+        "id": "loans",
+        "name": "貸出",
+        "fields": [
+          { "id": "borrower", "name": "借り手", "type": "text", "required": true },
+          { "id": "due_on", "name": "返却期限", "type": "date" },
+          { "id": "status", "name": "状態", "type": "select",
+            "options": ["貸出中", "返却済"] }
+        ]
+      },
+      {
+        "id": "loan_logs",
+        "name": "貸出履歴",
+        "fields": [
+          { "id": "borrower", "name": "借り手", "type": "text" },
+          { "id": "note", "name": "メモ", "type": "text" }
+        ]
+      },
+      {
+        "id": "workflow_runs",
+        "name": "ワークフロー実行履歴",
+        "fields": [
+          { "id": "ran_at", "name": "実行日", "type": "date" },
+          { "id": "workflow", "name": "ワークフロー", "type": "text" },
+          { "id": "trigger_type", "name": "きっかけ", "type": "text" },
+          { "id": "status", "name": "結果", "type": "text" },
+          { "id": "error", "name": "エラー", "type": "long_text" },
+          { "id": "workflow_id", "name": "ワークフローID(独自の追加列)", "type": "text" }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "loan-list", "type": "list_view", "table": "loans",
+        "columns": ["borrower", "due_on", "status"],
+        "sort": { "field": "due_on", "order": "asc" } },
+      { "id": "run-list", "type": "list_view", "table": "workflow_runs",
+        "columns": ["workflow_id", "ran_at"] }
+    ],
+    "workflows": [
+      { "id": "log-new-loan", "name": "貸出が登録されたら履歴に書く",
+        "trigger": { "type": "on_create", "table": "loans" },
+        "actions": [
+          { "action": "create_record", "table": "loan_logs",
+            "values": { "borrower": "$record.borrower", "note": "貸出を登録しました" } }
+        ],
+        "history_table": "workflow_runs" },
+      { "id": "log-loan-change", "name": "貸出が更新されたら履歴を書き換える",
+        "trigger": { "type": "on_update", "table": "loans" },
+        "actions": [
+          { "action": "update_record", "table": "loan_logs", "target": "$record._id",
+            "values": { "note": "貸出の内容が変わりました" } }
+        ],
+        "history_table": "workflow_runs" },
+      { "id": "daily-loan-summary", "name": "毎朝9時に当日の集計行を作る",
+        "trigger": { "type": "schedule", "at": { "hour": 9, "minute": 0 } },
+        "actions": [
+          { "action": "create_record", "table": "loan_logs",
+            "values": { "note": "本日の貸出状況を確認してください" } }
+        ],
+        "history_table": "workflow_runs" }
+    ]
+  }
+}

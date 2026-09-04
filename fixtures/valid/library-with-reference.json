@@ -1,0 +1,32 @@
+{
+  "app": {
+    "id": "library",
+    "name": "図書館",
+    "tables": [
+      {
+        "id": "authors",
+        "name": "著者",
+        "fields": [
+          { "id": "name", "name": "氏名", "type": "text", "required": true },
+          { "id": "bio", "name": "略歴", "type": "long_text" }
+        ]
+      },
+      {
+        "id": "books",
+        "name": "書籍",
+        "fields": [
+          { "id": "title", "name": "タイトル", "type": "text", "required": true },
+          { "id": "author", "name": "著者", "type": "reference", "reference_table": "authors", "required": true }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "author-list", "type": "list_view", "table": "authors", "columns": ["name", "bio"] },
+      { "id": "book-list", "type": "list_view", "table": "books", "columns": ["title", "author"],
+        "sort": { "field": "title", "order": "asc" } },
+      { "id": "book-form", "type": "form", "table": "books", "fields": ["title", "author"] },
+      { "id": "author-form", "type": "form", "table": "authors", "fields": ["name", "bio"] },
+      { "id": "author-detail", "type": "detail_view", "table": "authors" }
+    ]
+  }
+}

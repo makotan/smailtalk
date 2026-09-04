@@ -1,0 +1,7 @@
+{
+  "diff_id": "d-0001",
+  "operations": [
+    { "op": "add_field", "table": "books",
+      "field": { "id": "note", "name": "メモ", "type": "long_text" } }
+  ]
+}

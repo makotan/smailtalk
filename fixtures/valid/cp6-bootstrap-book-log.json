@@ -1,0 +1,93 @@
+{
+  "app": {
+    "id": "book-log",
+    "name": "読書記録",
+    "tables": [
+      {
+        "id": "books",
+        "name": "本",
+        "fields": [
+          {
+            "id": "title",
+            "name": "タイトル",
+            "type": "text",
+            "required": true
+          },
+          {
+            "id": "author",
+            "name": "著者",
+            "type": "text"
+          },
+          {
+            "id": "status",
+            "name": "状態",
+            "type": "select",
+            "options": [
+              "読みたい",
+              "読書中",
+              "読了",
+              "中断"
+            ]
+          },
+          {
+            "id": "rating",
+            "name": "評価",
+            "type": "number"
+          },
+          {
+            "id": "started_on",
+            "name": "読み始め",
+            "type": "date"
+          },
+          {
+            "id": "finished_on",
+            "name": "読み終わり",
+            "type": "date"
+          },
+          {
+            "id": "notes",
+            "name": "感想メモ",
+            "type": "long_text"
+          }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "books_list",
+        "type": "list_view",
+        "table": "books",
+        "columns": [
+          "title",
+          "author",
+          "status",
+          "rating",
+          "finished_on"
+        ],
+        "sort": {
+          "field": "finished_on",
+          "order": "desc"
+        }
+      },
+      {
+        "id": "books_detail",
+        "type": "detail_view",
+        "table": "books"
+      },
+      {
+        "id": "books_form",
+        "type": "form",
+        "table": "books",
+        "fields": [
+          "title",
+          "author",
+          "status",
+          "rating",
+          "started_on",
+          "finished_on",
+          "notes"
+        ]
+      }
+    ]
+  }
+}

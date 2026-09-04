@@ -1,0 +1,3160 @@
+# src/kernel/ の外から**値として** import されているカーネルシンボルの一覧
+#
+# 基準ファイル。検査は scripts/kernel-import-drift.test.ts。判断は v1-m1-t01.md §3-2。
+# ADR-0009 限定2(層をまたいで値として import してよいのは normalizeSort のみ)の受け皿を
+# 一般形にしたものである。**import type は含まない**(限定2 の対象外。transpile で型を
+# 消してから採取している)。
+#
+# 赤くなったら、増えた行が ADR-0009 の限定に照らして許されるかを審査すること。
+# **審査より先にこのファイルを更新してはならない。**
+#
+# 生成: V1-M1-T02(2026-07-19)。件数: 120
+# 更新: V1-M1-T05(2026-07-19)。件数: 134(+14)
+# web/ からの値 import は normalizeSort の2箇所だけであり、別テストが条文の言葉で固定している。
+#
+# **初回生成時点で T02 自身が足した行を含む**(src/mcp/tools/read.ts と read.test.ts,
+# descriptions.test.ts からの dryRunDiff / DRY_RUN_NOTE / listSnapshots)。隠さないために書いておく。#
+# **V1-M1-T05 が足した14件**(scripts/bench/。審査は docs/plan/v1/records/v1-m1-t05.md §7-5):
+# ベンチマークは「カーネルの本物の経路を測る」ことが目的なので、測定対象そのもの
+# (applyDiff / dryRunDiff / undo / takeSnapshot / createRecord)と、その前提を組み立てる
+# 最小限(createApp / KernelMetaStore / readCurrentManifest)、および保存レイアウトを
+# ハードコードしないためのパス関数(appDbPath / appSnapshotsDir)だけを取っている。
+# **ADR-0009 限定2 の normalizeSort 系は1つも含まない。** 点検の過程で不要と判明した
+# listSnapshots の再エクスポートを1件削除している(死んだ層またぎだった)。
+#
+# 更新: V1-M1-T04(2026-07-19)。件数: 148(+14)。審査は docs/plan/v1/records/v1-m1-t04.md §12。
+# **製品コードの層またぎは1件だけである** —— src/mcp/index.ts と src/server/index.ts の
+# `recover`。V1-M1-T04 が起動時整合性チェックをプロセスの入口に配線したもので、
+# **この1件を作ることがタスクの目的そのもの**である(完了条件「再起動後に自動復帰する」)。
+# 残る12件は起動経路を実プロセスで検査するテスト2本のセットアップであり、
+# web/test/composite-sort.test.tsx が既に採っているのと同一の組(KernelMetaStore /
+# applyManifest / createApp / createRecord / appDbPath)+ 進行中マーカーの位置を
+# ハードコードしないための appDir である。
+# **ADR-0009 限定2 の normalizeSort 系は1つも含まない。**
+# 点検の過程で不要と判明した appManifestPath を1件削除している(その assert は
+# recovery.test.ts の kill ポイント (b) が既に固定しており、死んだ層またぎだった)。
+#
+# 更新: V1-M2-T08 単位2(2026-07-20)。件数: 150(+2)。**両方とも製品コードの
+# 層またぎである。**審査は docs/plan/v1/records/v1-m2-t08.md §審査。
+#
+# **上の行「製品コードの層またぎは1件だけである」は、この時点で嘘になる。3件になった。**
+# 過去の行は当時の事実として残し、ここに訂正を書く。
+#   src/server/index.ts:resolveTimeZone
+#   src/server/index.ts:startWorkflowScheduler
+#
+# **ADR-0009 の限定に照らした審査の結論: 許される。** 理由は3点である。
+#
+# 1. **限定2 の条文が名指しで塞いでいるのは `normalizeSort` 系(整列規則の再実装)で
+#    ある。**その趣旨は「**同じ規則が2箇所に実装され、静かに食い違うこと**」を防ぐこと
+#    であり、ここで import しているのは規則ではなく**プロセスの入口の配線**である。
+#    `recover` の2件が既に同じ位置取りで通っている(V1-M1-T04 §12)。
+# 2. **`recover` と同じく「この配線を作ることがタスクの目的そのもの」である。**
+#    ADR-0013 §6a が「**カーネルはアクティブなアプリのマニフェストを読んで発火を判定する**」
+#    と定めた以上、**誰かがカーネルにその周期処理を始めさせなければならない。**
+#    始められる場所はプロセスの入口(`src/server/index.ts`)しか実在しない。
+# 3. **向きが逆になっていない。**`src/kernel/workflow-scheduler.ts` は `src/server/` を
+#    1バイトも参照しない。**`src/server/app.ts` の `withAppDb` / `withStore` を export
+#    する案を採らなかったのはこのためである**(判断3)—— export すると kernel が server の
+#    ヘルパに依存し、層の向きが反転する。スケジューラは自前で DB を開閉している。
+#    **`src/server/app.ts` は1バイトも変更していない。**
+#
+# **代わりに増やさなかったもの**: `runSchedulerTick` / `SCHEDULER_TICK_INTERVAL_MS` は
+# 製品コードから1度も値 import していない(前者はテスト専用の観測口、後者は定数)。
+# **層またぎは必要最小の2件に絞ってある。**
+#
+# 更新: V1-M3-T02(2026-07-21)。件数: 153(+3)。**3件すべてテストのセットアップである
+# (製品コードの層またぎはゼロ)。**src/server/authz.test.ts が権限モデル(role enforcement)
+# ・管理エンドポイント・監査配線を検証するため、テスト用アプリを1つ作って manifest を適用する。
+#   src/server/authz.test.ts:KernelMetaStore
+#   src/server/authz.test.ts:applyManifest
+#   src/server/authz.test.ts:createApp
+# **審査の結論: 許される。** 既存の src/server/auth-boundary.test.ts / manifest-reflection.test.ts
+# が同一の3点(KernelMetaStore / applyManifest / createApp)を同じ目的(テスト用アプリの
+# 用意)で既に採っており、本件はその反復である。ADR-0009 限定2 が名指しで塞ぐ `normalizeSort`
+# 系(整列規則の再実装)は1つも含まず、規則の二重実装は生じない。app.sqlite の物理パスは
+# `appDbPath` を値 import せず authz.test.ts 内に手書きし(storage-paths.ts と同一)、
+# 台帳の増加を setup 3件に留めた。
+#
+# 更新: V1-M9-T02(2026-07-21)。件数: 157(+4)。同時更新の保護 + applyDiff の原子性
+# (ADR-0007 門A / 個別 ADR-0017)。全書込入口が apply 窓ガード述語 `isApplyInProgress` を
+# 書込前に読む配線である。製品コードの層またぎは2件(HTTP と MCP の書込入口)で、いずれも
+# ADR-0009 が名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)を含まず、規則の二重実装は
+# 生じない。残る2件はテストのセットアップ(マーカーを立てる beginApply / 消す endApply)。
+#   src/server/app.ts:isApplyInProgress       (製品コード。書込前の apply 窓ガード)
+#   src/mcp/tools/write.ts:isApplyInProgress   (製品コード。HTTP と同一意味論の窓ガード)
+#   src/mcp/tools/write.test.ts:beginApply     (テスト。apply 窓を立てて拒否を確かめる)
+#   src/mcp/tools/write.test.ts:endApply       (テスト。apply 窓を閉じる)
+#
+# 更新: V1-M3-T04(2026-07-21)。件数: 165(+3。本更新前の実台帳は 162 行)。個人スコープ
+# (owner)のサーバ層実装(ADR-0016 / 門外 Δ7)。**3件すべてテストのセットアップであり、
+# 製品コードの層またぎはゼロである。** 個人スコープの実装本体(src/server/owner-scope.ts /
+# app.ts)はカーネル型(Field / Table)を `import type` でしか使わず(限定2 の対象外)、
+# 値 import を1件も増やしていない。増えた3件は統合テスト src/server/owner-scope.test.ts が
+# st_owner を持つテスト用アプリを1つ作って manifest を適用するためのものである。
+#   src/server/owner-scope.test.ts:KernelMetaStore
+#   src/server/owner-scope.test.ts:applyManifest
+#   src/server/owner-scope.test.ts:createApp
+# **審査の結論: 許される。** V1-M3-T02 の src/server/authz.test.ts が同一の3点
+# (KernelMetaStore / applyManifest / createApp)を同一目的(テスト用アプリの用意)で既に
+# 採っており(上記 153(+3) の注)、本件はその反復である。ADR-0009 限定2 が名指しで塞ぐ
+# `normalizeSort` 系(整列規則の再実装)は1つも含まず、規則の二重実装は生じない。app.sqlite
+# の物理パスは `appDbPath` を値 import せず、可視性判定は `src/server/owner-scope.ts` の
+# 純粋関数に閉じている(カーネルへ新しい値依存を作らない)。
+#
+# 更新: V1-M9-T01 判断ゲート(2026-07-21)。件数: 166(+1)。ページネーションの判断ゲートを
+# 実測値付きで判定するため、read パス(全件返却)のコストを測る `read` ベンチシナリオを
+# scripts/bench/scenarios.ts に足した。増えた1件は測定対象そのものである:
+#   scripts/bench/scenarios.ts:readRecordList
+# **審査の結論: 許される。** ベンチは「カーネルの本物の read パスを測る」ことが目的であり、
+# HTTP GET が通る `readRecordList`(src/kernel/read-records.ts)を in-process で計時するのが
+# 最も忠実である(M1-T05 が applyDiff / takeSnapshot 等の測定対象を値 import したのと同型)。
+# `Manifest` / `ReadSource` / `RecordRow` は `import type` でしか使わず(限定2 の対象外)、
+# ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)は含まない。
+# 製品コード(src/kernel / src/server / schemas)は1バイトも変えていない(門外 Δ7)。
+# V1-M9-T09(ADR-0031)。delete_app ツールがカーネルの `deleteApp`(アプリの完全削除)を
+# 値 import する。ADR-0007 歯止め2(既存関数への入口を開けるだけ)は封じられている ——
+# 削除関数はこのタスクで新設され、門A(ADR-0031)を通っている。
+# 追加: V2-M1-T03 customer 顧客スコープ + 書込認可(2026-07-23)。ADR-0033 限定4/5。
+# customer が運営テーブルを GET/書込できないこと・自分の st_owner 行だけ見え/書けること・
+# 既存3ロール非回帰・匿名窓非回帰を統合テストで固定した src/server/customer-scope.test.ts が、
+# authz.test.ts / owner-scope.test.ts / public-read.test.ts と**同一の3点**
+# (KernelMetaStore / applyManifest / createApp)をテストのアプリ用意にだけ使う。
+# **審査の結論: 許される。** 製品コード(src/server/app.ts / owner-scope.ts)は値 import を
+# 1件も増やしていない —— customerTableAccess は owner-scope.ts 内の純粋関数で kernel に依存しない。
+# 更新: V1-M3-T07 自動バックアップ(2026-07-21)。件数: 187(+21)。ADR-0019 / 門外 Δ7。
+# `data/backups/` へ全アプリ + kernel.sqlite の整合コピー(VACUUM INTO)を取る自動バックアップと
+# そこからのリストアを src/server に実装した。**src/kernel と schemas は1バイトも変えていない。**
+# 増えた21件はすべて server→kernel の正当な依存(既存パス関数 / isApplyInProgress / systemClock)と
+# テストのセットアップ(createApp / applyManifest / createRecord / KernelMetaStore)である。
+#   src/server/backup.ts: 全アプリ列挙・整合コピー・apply 窓判定に既存カーネル API を読む(6件)
+#   src/server/restore.ts: 復元先パスの解決に既存パス関数を読む(3件)
+#   src/server/backup.test.ts / backup-restore.test.ts: テスト用アプリ+データの用意(12件)
+# **審査の結論: 許される。** V1-M3-T04 の owner-scope.test.ts / V1-M3-T02 の authz.test.ts が
+# 同型(KernelMetaStore / applyManifest / createApp)を同一目的で既に採っており、その反復である。
+# バックアップ本体(backup.ts / restore.ts)はカーネルの読み取り専用 API(パス解決・進行中判定・
+# 時刻源)しか値 import せず、ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の
+# 再実装)は1つも含まない。VACUUM INTO は copyDatabaseConsistently が非公開のため数行で自前実装
+# しているが、これはカーネルへ新しい値依存を作らない(bun:sqlite を直接使う)。
+# 更新: V2-M2-T04 画像 blob の backup/restore(2026-07-23)。+5件。ADR-0035 §4 / 門外 Δ7。
+# backup が各アプリの blobs/ を含め、restore が戻すよう拡張した(snapshot 非コピー・backup 含む
+# の非対称)。**src/kernel と schemas は1バイトも変えていない** —— backup.ts / restore.ts は
+# T02 が kernel に足した既存パス関数 `appBlobsDir` を**読むだけ**(appDbPath / appManifestPath
+# 読取と同型)。テストは blob 実体の put/get(putBlob / getBlob = T02 の read-only プリミティブ)を
+# 使う。**ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)は1つも含まない。**
+#   src/server/backup.ts / restore.ts: blobs/ の解決に appBlobsDir を読む(各1件)
+#   src/server/backup-restore.test.ts: blob backup→restore の実データ検証(appBlobsDir / getBlob / putBlob = 3件)
+#
+# 更新: V1-M4-T04(2026-07-21)。件数: 200(+13)。審査は docs/plan/v1/records/v1-m4-t04.md。
+# **capability(connection)の発行・配線を作ることがタスクの目的そのものである**(ADR-0020 §Δ8)。
+# 製品コードの層またぎは3件:
+#   src/mcp/tools/write.ts:CapabilityStore     … request_connection が申請(pending)を作るため。
+#                                                 **発行(createConnection)は呼ばない**(§8c-3)。
+#   src/server/auth-routes.ts:CapabilityStore  … owner 限定 HTTP ルートが発行/失効/一覧を行う。
+#                                                 **これが唯一の発行 seam**(§2b)。
+#   src/server/outbox-scheduler.ts:dispatchOutbox … 積まれた outbox を非同期配送する常駐配線
+#                                                 (§3 改訂2。T03 の dispatchOutbox をここで起動)。
+# 残る10件はテスト2本のセットアップ(capability-issuance.test.ts / outbox-scheduler.test.ts)で、
+# CapabilityStore / dispatchOutbox に加え、承認前後の対比を組むための最小限
+# (createApp / applyManifest / KernelMetaStore / createRecord / appDbPath)である。
+# **ADR-0009 限定2 の normalizeSort 系は1つも含まない。**向きも逆転していない
+# (src/kernel/ は src/server/・src/mcp/ を1バイトも参照しない)。
+#
+# 更新: V1-M4-T05(2026-07-21)。件数: 207(+7)。審査は docs/plan/v1/records/v1-m4-t05.md。
+# レッドチーム試験の HTTP/MCP 分(src/server/red-team-http.test.ts)が足した7件で、内容は
+# capability-issuance.test.ts と同型の**セットアップ最小限**(CapabilityStore / KernelMetaStore /
+# appDbPath / applyManifest / createApp / createRecord / dispatchOutbox)である。
+# **製品コードの層またぎは1件も増えていない(T05 は試験であって実装の改変ではない)。**
+# normalizeSort 系は含まず、向きも逆転していない。
+# --- V1-M5(ADR-0021)で増えた kernel 値 import(門A 審査済み) ---
+#   src/mcp/tools/write.ts:AiCapabilityStore        … request_ai_capability が申請(pending)を作るため。
+#   src/server/auth-routes.ts:AiCapabilityStore     … owner 限定 HTTP ルートが発行/上限変更/失効/一覧を行う。
+#   src/server/ai-dispatcher-scheduler.ts:dispatchAiJobs … 積まれた ai_jobs を非同期配送する常駐配線
+#                                                        (§3c。dispatchAiJobs をここで起動)。
+# --- V1-M5(ADR-0021)の AI capability 発行テストが使う kernel 値 import ---
+# capability-issuance.test.ts と同型の**セットアップ最小限**(AiCapabilityStore / KernelMetaStore /
+# applyManifest / createApp)。owner 限定 HTTP 発行・上限変更・申請ライフサイクルを固定するため。
+# --- V1-M6(ADR-0024)のコードの島ランタイム起動配線(既存分。本ファイル未反映だった) ---
+# **V1-M8-T02 の作業時点で、この2件はスナップショット未記載のまま main に入っていた。**
+# 隠さずに書く: **下の2行は V1-M8-T02 が足した層またぎではない。** 起動時に QuickJS-WASM
+# ランタイムを用意する `ensureIslandRuntimeReady` を、プロセスの入口(MCP / HTTP)へ
+# 配線したもので、`recover`(V1-M1-T04)/ `startWorkflowScheduler`(V1-M2-T08)と
+# 同じ位置取りである。normalizeSort 系(整列規則の再実装)は含まない。
+# --- V1-M8-T02(ADR-0025)の要件定義書生成の入口(MCP / HTTP)ぶん ---
+# **製品コードの層またぎ4件。いずれも入口層がカーネルの生成関数を呼ぶ配線である**
+# (残る入口 CLI ぶんは、下の CP-V1-8 の節にまとめてある)。
+# ADR-0025 限定9 が「MCP / HTTP / Web / CLI はカーネル関数を呼んで整形するだけ」と定めた
+# 以上、入口がその関数を値として import しなければ何も出せない。
+#   src/mcp/tools/read.ts        … generate_requirements_doc ツール
+#   src/server/app.ts            … GET /api/apps/:app_id/requirements
+# `renderRequirementsMarkdown` は `section` で絞ったときに markdown を**描き直させる**ために
+# 要る(入口層で markdown を切り貼りしないため。限定9)。
+# **web/ からの値 import は1件も増えていない** —— `web/src/api.ts` と
+# `web/src/RequirementsDocPanel.tsx` はカーネルから**型のみ**を取っており、
+# ADR-0009 限定2 の不変条件(値 import は normalizeSort の2箇所だけ)は保たれている。
+# --- V1-M9-T05(ADR-0032。redo)。MCP の入口が redo / previewRedo を値 import する ---
+# **製品コードの層またぎ3件。いずれも入口層(MCP)がカーネルの redo API を呼ぶ配線である**
+# (undo / previewUndo が既に同じ位置で値 import されているのと同型)。門は ADR-0032(門A)。
+#   src/mcp/tools/write.ts:redo         … redo ツール(直前の undo をやり直す)
+#   src/mcp/tools/write.ts:previewRedo  … redo ツールが実行前に呼ぶ事前確認(undo ツールが
+#                                         previewUndo を先に呼ぶのと同型)
+#   src/mcp/tools/read.ts:previewRedo   … preview_redo ツール(参照系)
+# ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)は1つも含まず、
+# 向きも逆転していない(src/kernel/ は src/mcp/ を1バイトも参照しない)。
+# --- V1-M8-T02(ADR-0025)。要件ドキュメント生成の CLI と CP-V1-8 の照合ハーネス ---
+# **11件すべて、製品コードの層またぎは1件(CLI 入口)だけである。**
+#
+#   src/cli/requirements-doc.ts:generateRequirementsDoc
+#     入口層(ADR-0025 §10 の CLI)。**カーネル関数を呼んで整形するだけ**で、
+#     判定ロジックを1行も持たない(限定9)。validate.ts が validateManifestFull /
+#     validateDiff を値 import しているのと同型である。
+#
+#   scripts/cp-v1-8-fixture.ts:{KernelMetaStore, createApp, applyDiff, undo}
+#     CP-V1-8 の合成試材を**カーネルの本物の経路**で育てるためのもの。scripts/cp4-evidence.ts
+#     / scripts/bench/fixture.ts が同一の組を同一目的で既に採っており、その反復である。
+#     マニフェスト直接投入(applyManifest)を採らないのは、それが changelog に載らず
+#     (ADR-0006 の限界①)、帰属(出典)の検査そのものが空回りするためである。
+#
+#   scripts/cp-v1-8-audit.ts:{FIELD_TYPES, VIEW_TYPES, DIFF_OPS, RESOURCE_KINDS,
+#                             SORT_ORDERS, CHANGELOG_KINDS}
+#     **語彙定数だけ**である。ADR-0025 §4-2 が「語彙スパンの中身がカーネルの語彙定数の
+#     要素と完全一致すること」を検査対象に定めており、**照合先そのもの**を写経すると
+#     語彙が増えたときに静かに食い違う。src/mcp/vocabulary.ts / error-self-correction.test.ts
+#     が同じ定数を同じ理由(語彙の二重定義を避ける)で値 import しているのと同型。
+#     **生成器(src/kernel/requirements-doc.ts)は1行も import していない**(ADR-0025 §4-6)——
+#     生成側と実在集合の構築を共有すると、集合の作り方が間違っていても両方が通る(循環)。
+#     この不在は scripts/cp-v1-8-audit.test.ts が実ファイルを読んで固定している。
+#
+# **ADR-0009 限定2 の normalizeSort 系は1つも含まない。**向きも逆転していない
+# (src/kernel/ は scripts/ ・ src/cli/ を1バイトも参照しない)。
+# --- V1-M9-T12(門外 Δ7)。ワークフロー実行履歴の書き込み失敗を成功レスポンスに載せる ---
+# 件数 +5。**製品コードの層またぎは4件**で、いずれも**既存の**観測フック
+# (setWorkflowHistoryFailureHandler / resetWorkflowHistoryFailureHandler)を、
+# レコード書き込み由来(on_create / on_update)の履歴失敗を集めるために scoped で
+# 差し込む/戻す配線である(§4。setWorkflowClock の install→呼び出し→collect→restore の
+# 作法と同型)。カーネルの `WorkflowHistoryWriteFailure` は `import type` でしか使わず
+# (限定2 の対象外)、値としては1件も増やしていない。
+#   src/mcp/tools/write.ts:setWorkflowHistoryFailureHandler    (insert_sample_data / update_record の scoped 収集)
+#   src/mcp/tools/write.ts:resetWorkflowHistoryFailureHandler  (収集窓を閉じて既定へ戻す)
+#   src/server/app.ts:setWorkflowHistoryFailureHandler          (POST / PATCH の同型 scoped 収集)
+#   src/server/app.ts:resetWorkflowHistoryFailureHandler        (収集窓を閉じて既定へ戻す)
+# 残る1件はテストのセットアップ(履歴テーブルを物理的に落として発火時に失敗させるため
+# 物理パスを引く appDbPath)。read.test.ts / index.test.ts が appDbPath を同一目的で既に
+# 採っており、その反復である。
+# **審査の結論: 許される。** ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の
+# 再実装)は1つも含まず、規則の二重実装は生じない。向きも逆転していない
+# (src/kernel/ は src/server/・src/mcp/ を1バイトも参照しない)。門外 Δ7 のとおり
+# src/kernel/ と schemas/ は1バイトも変えていない(既存の再エクスポートを使うだけ)。
+# --- V2-M2-T02(ADR-0035。画像 blob ストレージ層)で増えた層またぎの値 import ---
+# **製品コードの層またぎは1件**: src/server/app.ts が kernel の `putBlob` を値 import する。
+# アップロード API(server 層 HTTP)が受理バイト列を content-addressed で保存するためで、
+# ADR-0035 §3 限定5(upload/delivery は server 層。kernel の CRUD 語彙 = DIFF_OPS/MCP を
+# 増やさない)のとおり、kernel の**基盤関数**を server が呼ぶ配線である。ADR-0009 限定2 が
+# 名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)ではなく、規則の二重実装は生じない。
+# 向きも逆転していない(src/kernel/ は src/server/ を1バイトも参照しない)。
+# 残る4件は新規テスト src/server/files-upload.test.ts のセットアップで、既存のサーバテストが
+# 既に採っている kernel シンボル(createApp / applyManifest / KernelMetaStore / appDbPath)の反復。
+# --- V2-M2-T03(ADR-0035。画像配信 API + 公開整合)で増えた層またぎの値 import ---
+# **製品コードの層またぎは1件**: src/server/app.ts が kernel の `getBlob` を値 import する。
+# 配信 API(GET /files/:file_id・server 層 HTTP)が content-addressed の blob 実体を読むためで、
+# `putBlob`(T02)と対になる基盤関数の呼び出しである(ADR-0035 §3 限定8 が「増える公開面は
+# appBlobsDir / put/get/exists / orphan 検出」に限ると明記した範囲内)。ADR-0009 限定2 が名指しで
+# 塞ぐ `normalizeSort` 系(整列規則の再実装)ではなく、規則の二重実装は生じない。向きも逆転して
+# いない(src/kernel/ は src/server/ を1バイトも参照しない)。
+# 残る3件は新規テスト src/server/files-delivery.test.ts のセットアップで、既存のサーバテストが
+# 既に採っている kernel シンボル(createApp / applyManifest / KernelMetaStore)の反復。
+# --- V2-M4-T01(ADR-0039。EC-G7 バッチ原子書込)で増えた値 import ---
+# 製品コード2件: writeRecords(バッチ書込の公開関数)を MCP write_records と HTTP POST batch の
+# 両入口が値として呼ぶ(ADR-0003 §7。1関門を2経路が通る)。ADR-0009 限定2 に照らし、これは
+# 「カーネルの公開能力を配線層が呼ぶ」通常形であり(createRecord/updateRecord/applyDiff と同型)、
+# 層をまたいでロジックを写しているのではない。テスト3件は batch.test.ts が土台を組む値 import。
+# --- V2-M5-T02(ADR-0041。EC-G4 受信ルート + 署名検証実行層関数)で増えた値 import ---
+# **製品コードの層またぎは6件**: src/server/inbound-route.ts が受信 HTTP ルートを組むために
+# kernel の公開能力を値 import する —— verifyInboundSignature / INBOUND_SIGNATURE_HEADER(署名検証
+# 実行層。ADR-0041 §3 限定2)/ InboundStore(人間専用ストアの endpoint 参照。限定1)/ resolveSecret
+# (検証鍵の use-time 解決。限定4)/ createRecord(書込先テーブル1つへ1行 create。限定3)/ appDbPath
+# (app.sqlite の位置)/ readCurrentManifest(書込先テーブルのフィールド制約検証に要る manifest。限定5)。
+# **いずれも「配線層が kernel の公開能力を呼ぶ」通常形**であり(app.ts の createRecord/putBlob/
+# writeRecords と同型)、ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)ではない。
+# 規則の二重実装は生じず、向きも逆転していない(src/kernel/ は src/server/ を1バイトも参照しない)。
+# 残る5件は新規テスト src/server/inbound-route.test.ts のセットアップで、既存のサーバテストが
+# 既に採っている kernel シンボル(createApp / applyManifest / KernelMetaStore / appDbPath / InboundStore)の反復。
+# **V2-M5-T03 が足した16件**(scripts/mock-psp/。門外の決済フロー E2E 実証・モック PSP ハーネス。
+# 審査は docs/plan/v2/records/v2-m5.md §1 T03 / ADR-0041 §限界8「最初の実証は T03」):
+# - scripts/mock-psp/harness.test.ts:verifyInboundSignature —— **受信側の検証器**を独立実装のモック
+#   署名テストから呼び、取り決め(HMAC-SHA256(生バイト,鍵))が相互運用することを実証する。コードは
+#   共有せず、公開 API を1本値 import するだけ(署名の一致が自作自演にならないための最小の結線)。
+# - scripts/mock-psp/payment-flow-e2e.test.ts:{applyManifest / applyDiff / createApp / KernelMetaStore /
+#   writeRecords / dispatchOutbox / createRecord / listRecords / CapabilityStore / InboundStore / appDbPath /
+#   appManifestPath / DIFF_OPS / FIELD_TYPES / RESOURCE_KINDS} —— 決済フロー E2E が本物のカーネル経路を
+#   実際に叩くための公開 API の値 import。**checkout-atomicity.test.ts(M4)/ call-external.test.ts が
+#   既に採っている kernel シンボルの反復**であり(E2E は src/kernel/ でなく scripts/ に置いたため計数
+#   対象になる)、ADR-0009 限定2 が名指しで塞ぐ `normalizeSort` 系(整列規則の再実装)ではない。
+#   規則の二重実装は生じず、新しいカーネル語彙も1つも足していない(RESOURCE/FIELD/DIFF はゼロ増の確認に
+#   使うためだけに import している)。向きも逆転していない(src/kernel/ は scripts/ を1バイトも参照しない)。
+# --- V2-M5-T01(ADR-0041 限定1)で増えた値 import ---
+# **製品コードの層またぎは1件**: src/mcp/tools/write.ts:InboundStore —— request_inbound_endpoint が
+# 受信口の**申請**(pending)を1件積むために人間専用ストアを開く。request_connection:CapabilityStore /
+# request_ai_capability:AiCapabilityStore と同型で、**発行(issueInboundEndpoint)は呼ばない**
+# (発行 seam は owner の HTTP ルートだけ。MCP / apply_diff に発行経路を1本も結線しない。ADR-0041 限定1)。
+# 残る1件は src/mcp/tools/write.test.ts:InboundStore で、「申請だけが積まれ inbound_endpoints は0件」を
+# 固定するための読み取り(listPendingInboundEndpointRequests / listInboundEndpoints)。normalizeSort 系は
+# 含まず、向きも逆転していない(src/kernel/ は src/mcp/ を1バイトも参照しない)。
+# --- V2-M7-T01(CP-V2 受け入れゲート。門外 = 語彙ゼロ増の実証)で増えた値 import ---
+# **製品コードの層またぎは0件**: 参照 EC 全マニフェスト本体(scripts/ref-ec/manifest.ts)は
+# `type { Manifest }` の型 import しか持たず、値 import は1件も無い(型 import は限定2 の対象外)。
+# 増えた6件はすべて実証テスト scripts/ref-ec/manifest.test.ts の値 import で、payment-flow-e2e.test.ts
+# (V2-M5-T03)と同型 —— applyManifest / createApp / KernelMetaStore でアプリを立て、
+# FIELD_TYPES / RESOURCE_KINDS / DIFF_OPS で語彙ゼロ増を機械固定する。normalizeSort 系は含まず、
+# 向きも逆転していない(src/kernel/ は scripts/ を1バイトも参照しない)。
+# --- V3-M4-T01(D-G7 実物プレビュー選択。門外 Δ7)で増えた値 import ---
+# **製品コードの層またぎは0件**: web/src/theme-candidates.ts / web/src/ThemePreviewPanel.tsx /
+# web/src/api.ts はいずれも `import type` しか持たない(型 import は限定2 の対象外。
+# web/src/ThemeExportPanel.tsx と同じ作法)。
+# 増えた7件はすべて web/test/theme-candidates.test.ts の値 import である:
+# - checkThemeContrast —— **同梱する候補が全部コントラスト検査を通ることを、カーネルの検査関数
+#   そのもので確かめる**(ADR-0046 / ADR-0047 限定8)。web 側に閾値も比の計算も再実装しないため
+#   の1本であり、**再実装を避ける向きの層またぎである**(normalizeSort 系が塞ぐ「規則の二重実装」の
+#   逆向き)。src/kernel/index.ts の export は1つも増やしていない(theme-contrast.ts を直接読む)。
+# - KernelMetaStore / createApp / applyDiff / dryRunDiff / undo / redo —— 「候補の差分は普通の差分で
+#   あり、dry_run / changelog / undo / redo がそのまま効く」(V3-M4-T01 完了条件4)を一時 dataRoot 上の
+#   本物のカーネル経路で実証するためのセットアップと測定対象。web/test/api.test.ts /
+#   web/test/composite-sort.test.tsx が既に採っている組の反復である。
+# normalizeSort 系は1件も含まず、向きも逆転していない(src/kernel/ は web/ を1バイトも参照しない)。
+# --- V3-M5-T01(ADR-0055。D-G5 逃げ道 = 任意 CSS の資産ストアと owner 発行/失効)で増えた値 import ---
+# **12件増え、0件減った。**
+# **製品コードの層またぎは3件**: src/server/auth-routes.ts の `EscapeHatchStore` /
+# `putEscapeHatchBody` と、src/mcp/tools/write.ts の `EscapeHatchStore` である。
+# **この3件を作ることがタスクの目的そのものである** ——
+# - auth-routes.ts の2件 = **逃げ道の唯一の発行 seam**(owner の HTTP ルート1本)。
+#   ADR-0055 限定5 は「本体を書ける経路は owner の HTTP ルート1本だけ」と決めており、
+#   この層またぎが1本しか無いこと自体が担保である(src/server/escape-hatch-issuance.test.ts が
+#   「`putEscapeHatchBody` / `issueEscapeHatchAsset` を含む製品コードは
+#   src/kernel/escape-hatch-store.ts と src/server/auth-routes.ts の2つだけ」を固定する)。
+#   既存の CapabilityStore(V1-M4-T04)/ AiCapabilityStore(V1-M5-T04)と同型の層またぎである。
+# - write.ts の1件 = **AI 側の申請ツール1本**(request_custom_css)。
+#   src/mcp/tools/write.ts:InboundStore(V2-M5-T01)/ CapabilityStore(V1-M4-T04)と同型で、
+#   **申請(escape_hatch_asset_requests)にしか触れない**(発行・実体書込・失効の識別子は
+#   src/mcp/ 配下に1つも現れない。これも上記テストが固定する)。
+# 残る9件は escape-hatch-issuance.test.ts のセットアップと測定対象であり、
+# src/server/capability-issuance.test.ts が既に採っている組の反復である。
+# **normalizeSort 系は1件も含まず、向きも逆転していない**(src/kernel/ は src/server/ /
+# src/mcp/ を1バイトも参照しない)。
+# --- V3-M5-T04(ADR-0056 / `D-G10a`。逸脱の蓄積の集計と昇格の提案)。+3件 ---
+# **製品コードの層またぎは0件である。** 3件とも
+# src/mcp/tools/drift-report.test.ts のセットアップ(KernelMetaStore / createApp で
+# アプリを作り、appManifestPath で土台のマニフェストを置く)であり、
+# src/mcp/tools/read.test.ts / src/mcp/index.test.ts が既に採っている組の反復である。
+# **製品コード側(src/mcp/tools/read.ts)は1行も増えていない** ——
+# `report_drift` が読むのは既に値 import 済みの `readCurrentManifest` だけで、
+# 画面種別の一覧はカーネルから取らず `DRIFT_COUNTED_PRESET_KEYS` のキー集合から引いている
+# (取ればここが1行太る。太らせない側を選んだ理由をここに残す)。
+# **`src/kernel/` も `schemas/` も1バイトも触っていない**(Δ7 = 門外の根拠そのもの)。
+# --- V4-M6(E-G59。既に取れている監査記録を運営が読める経路)。+1件 ---
+# **製品コードの層またぎは0件である。** 増えたのは
+# src/server/auth-routes.test.ts の `applyManifest` 1件だけで、**監査行を作るために
+# テーブルを1つ持つマニフェストを適用するセットアップ**である。
+# **新しい層またぎの「種類」は0本**である —— 同じ組(KernelMetaStore / createApp /
+# applyManifest)は src/server/authz.test.ts / owner-scope.test.ts / app.test.ts /
+# auth-boundary.test.ts / ai-capability-issuance.test.ts が既に採っており、
+# 増えたのは「どのファイルから」の組み合わせだけである(先例と同じ形)。
+# **ADR-0009 限定2 が名指しした3本(normalizeSort / sortErrorPath / validateSortKeys)には
+# 1件も触れていない。** **`src/kernel/` も `schemas/` も1バイトも触っていない**
+# (Δ1 / Δ2 / Δ3 / Δ8 とも非発火。scripts/kernel-export-snapshot.txt は無変更)。
+# **この判断は実施側のものであって、門A の判定ではない**(先例 V4-M1-T00 §1-7 と同じ書き方)。
+scripts/bench/bench.test.ts:applyDiff
+scripts/bench/bench.test.ts:takeSnapshot
+scripts/bench/fixture.ts:KernelMetaStore
+scripts/bench/fixture.ts:appDbPath
+scripts/bench/fixture.ts:applyDiff
+scripts/bench/fixture.ts:createApp
+scripts/bench/scenarios.ts:appDbPath
+scripts/bench/scenarios.ts:appSnapshotsDir
+scripts/bench/scenarios.ts:applyDiff
+scripts/bench/scenarios.ts:createRecord
+scripts/bench/scenarios.ts:dryRunDiff
+scripts/bench/scenarios.ts:readCurrentManifest
+scripts/bench/scenarios.ts:readRecordList
+scripts/bench/scenarios.ts:takeSnapshot
+scripts/bench/scenarios.ts:undo
+scripts/cp-v1-8-audit.ts:CHANGELOG_KINDS
+scripts/cp-v1-8-audit.ts:DIFF_OPS
+scripts/cp-v1-8-audit.ts:FIELD_TYPES
+scripts/cp-v1-8-audit.ts:RESOURCE_KINDS
+scripts/cp-v1-8-audit.ts:SORT_ORDERS
+scripts/cp-v1-8-audit.ts:VIEW_TYPES
+scripts/cp-v1-8-fixture.ts:KernelMetaStore
+scripts/cp-v1-8-fixture.ts:applyDiff
+scripts/cp-v1-8-fixture.ts:createApp
+scripts/cp-v1-8-fixture.ts:undo
+scripts/cp3-scenario.ts:KernelMetaStore
+scripts/cp3-scenario.ts:applyManifest
+scripts/cp3-scenario.ts:createApp
+scripts/cp4-evidence.ts:KernelMetaStore
+scripts/cp4-evidence.ts:appDbPath
+scripts/cp4-evidence.ts:appSnapshotsDir
+scripts/cp4-evidence.ts:applyDiff
+scripts/cp4-evidence.ts:createApp
+scripts/cp4-evidence.ts:createRecord
+scripts/cp4-evidence.ts:getChangelog
+scripts/cp4-evidence.ts:previewUndo
+scripts/cp4-evidence.ts:readCurrentManifest
+scripts/cp4-evidence.ts:undo
+scripts/mcp-trial/seed.test.ts:KernelMetaStore
+scripts/mcp-trial/seed.test.ts:getChangelog
+scripts/mcp-trial/seed.test.ts:readCurrentManifest
+scripts/mcp-trial/seed.ts:KernelMetaStore
+scripts/mcp-trial/seed.ts:applyDiff
+scripts/mcp-trial/seed.ts:createApp
+scripts/mock-psp/harness.test.ts:verifyInboundSignature
+scripts/mock-psp/payment-flow-e2e.test.ts:CapabilityStore
+scripts/mock-psp/payment-flow-e2e.test.ts:DIFF_OPS
+scripts/mock-psp/payment-flow-e2e.test.ts:InboundStore
+scripts/mock-psp/payment-flow-e2e.test.ts:KernelMetaStore
+scripts/mock-psp/payment-flow-e2e.test.ts:appDbPath
+scripts/mock-psp/payment-flow-e2e.test.ts:appManifestPath
+scripts/mock-psp/payment-flow-e2e.test.ts:applyDiff
+scripts/mock-psp/payment-flow-e2e.test.ts:applyManifest
+scripts/mock-psp/payment-flow-e2e.test.ts:createApp
+scripts/mock-psp/payment-flow-e2e.test.ts:createRecord
+scripts/mock-psp/payment-flow-e2e.test.ts:dispatchOutbox
+scripts/mock-psp/payment-flow-e2e.test.ts:listRecords
+scripts/mock-psp/payment-flow-e2e.test.ts:writeRecords
+scripts/ref-ec/functions.test.ts:appDbPath
+scripts/ref-ec/functions.test.ts:applyManifestDdl
+scripts/ref-ec/functions.test.ts:createRecord
+scripts/ref-ec/functions.test.ts:ensureIslandRuntimeReady
+scripts/ref-ec/functions.test.ts:listRecords
+scripts/ref-ec/journey-e2e.test.ts:CapabilityStore
+scripts/ref-ec/journey-e2e.test.ts:DIFF_OPS
+scripts/ref-ec/journey-e2e.test.ts:InboundStore
+scripts/ref-ec/journey-e2e.test.ts:KernelMetaStore
+scripts/ref-ec/journey-e2e.test.ts:appDbPath
+scripts/ref-ec/journey-e2e.test.ts:appManifestPath
+scripts/ref-ec/journey-e2e.test.ts:applyDiff
+scripts/ref-ec/journey-e2e.test.ts:applyManifest
+scripts/ref-ec/journey-e2e.test.ts:createApp
+scripts/ref-ec/journey-e2e.test.ts:createRecord
+scripts/ref-ec/journey-e2e.test.ts:dispatchOutbox
+scripts/ref-ec/journey-e2e.test.ts:ensureIslandRuntimeReady
+scripts/ref-ec/journey-e2e.test.ts:listRecords
+scripts/ref-ec/journey-e2e.test.ts:writeRecords
+scripts/ref-ec/manifest.test.ts:DIFF_OPS
+scripts/ref-ec/manifest.test.ts:KernelMetaStore
+scripts/ref-ec/manifest.test.ts:applyManifest
+scripts/ref-ec/manifest.test.ts:createApp
+scripts/scan-orphans.ts:auditAllSnapshots
+src/cli/requirements-doc.ts:generateRequirementsDoc
+src/cli/validate.ts:formatValidationErrors
+src/cli/validate.ts:validateDiff
+src/cli/validate.ts:validateManifestFull
+src/mcp/app-guard.test.ts:KernelMetaStore
+src/mcp/app-guard.test.ts:createApp
+src/mcp/app-guard.ts:KernelMetaStore
+src/mcp/cp-5-scenario.test.ts:UNDO_PREVIEW_NOTE
+src/mcp/cp-5-scenario.test.ts:appDbPath
+src/mcp/cp-5-scenario.test.ts:listSnapshots
+src/mcp/cp-5-scenario.test.ts:quoteIdentifier
+src/mcp/cp-5-scenario.test.ts:snapshotDir
+src/mcp/descriptions.test.ts:DRY_RUN_NOTE
+src/mcp/error-self-correction.test.ts:DIFF_OPS
+src/mcp/error-self-correction.test.ts:FIELD_TYPES
+src/mcp/index.test.ts:KernelMetaStore
+src/mcp/index.test.ts:appDbPath
+src/mcp/index.test.ts:appDir
+src/mcp/index.test.ts:applyManifest
+src/mcp/index.test.ts:createApp
+src/mcp/index.test.ts:createRecord
+src/mcp/index.ts:ensureIslandRuntimeReady
+src/mcp/index.ts:recover
+src/mcp/tools/drift-report.test.ts:KernelMetaStore
+src/mcp/tools/drift-report.test.ts:appManifestPath
+src/mcp/tools/drift-report.test.ts:createApp
+src/mcp/tools/list-comments.test.ts:CommentStore
+src/mcp/tools/read.test.ts:DRY_RUN_NOTE
+src/mcp/tools/read.test.ts:KernelMetaStore
+src/mcp/tools/read.test.ts:appDbPath
+src/mcp/tools/read.test.ts:applyDiff
+src/mcp/tools/read.test.ts:createApp
+src/mcp/tools/read.test.ts:createRecord
+src/mcp/tools/read.test.ts:dryRunDiff
+src/mcp/tools/read.test.ts:listSnapshots
+src/mcp/tools/read.test.ts:readCurrentManifest
+src/mcp/tools/read.ts:CommentStore
+src/mcp/tools/read.ts:DRY_RUN_NOTE
+src/mcp/tools/read.ts:KernelMetaStore
+src/mcp/tools/read.ts:SORT_ORDERS
+src/mcp/tools/read.ts:appDbPath
+src/mcp/tools/read.ts:dryRunDiff
+src/mcp/tools/read.ts:generateRequirementsDoc
+src/mcp/tools/read.ts:getChangelog
+src/mcp/tools/read.ts:previewRedo
+src/mcp/tools/read.ts:previewUndo
+src/mcp/tools/read.ts:readCurrentManifest
+src/mcp/tools/read.ts:readRecordCount
+src/mcp/tools/read.ts:readRecordList
+src/mcp/tools/read.ts:renderRequirementsMarkdown
+src/mcp/tools/unique-dual-path.test.ts:KernelMetaStore
+src/mcp/tools/unique-dual-path.test.ts:applyDiff
+src/mcp/tools/unique-dual-path.test.ts:createApp
+src/mcp/tools/write.test.ts:EscapeHatchStore
+src/mcp/tools/write.test.ts:InboundStore
+src/mcp/tools/write.test.ts:KernelMetaStore
+src/mcp/tools/write.test.ts:appDbPath
+src/mcp/tools/write.test.ts:applyDiff
+src/mcp/tools/write.test.ts:beginApply
+src/mcp/tools/write.test.ts:createApp
+src/mcp/tools/write.test.ts:endApply
+src/mcp/tools/write.test.ts:readCurrentManifest
+src/mcp/tools/write.test.ts:readOnlyTableError
+src/mcp/tools/write.ts:AiCapabilityStore
+src/mcp/tools/write.ts:CONCURRENT_WRITE_WAIT_PRAGMA
+src/mcp/tools/write.ts:CapabilityStore
+src/mcp/tools/write.ts:EscapeHatchStore
+src/mcp/tools/write.ts:InboundStore
+src/mcp/tools/write.ts:KernelMetaStore
+src/mcp/tools/write.ts:appDbPath
+src/mcp/tools/write.ts:applyDiff
+src/mcp/tools/write.ts:concurrentWriteBusyErrors
+src/mcp/tools/write.ts:createApp
+src/mcp/tools/write.ts:createRecord
+src/mcp/tools/write.ts:deleteApp
+src/mcp/tools/write.ts:deleteRecord
+src/mcp/tools/write.ts:isApplyInProgress
+src/mcp/tools/write.ts:isValidResourceId
+src/mcp/tools/write.ts:previewRedo
+src/mcp/tools/write.ts:previewUndo
+src/mcp/tools/write.ts:readCurrentManifest
+src/mcp/tools/write.ts:readOnlyTableError
+src/mcp/tools/write.ts:redo
+src/mcp/tools/write.ts:resetWorkflowHistoryFailureHandler
+src/mcp/tools/write.ts:setWorkflowHistoryFailureHandler
+src/mcp/tools/write.ts:undo
+src/mcp/tools/write.ts:unknownTableError
+src/mcp/tools/write.ts:updateRecord
+src/mcp/tools/write.ts:writeRecords
+src/mcp/vocabulary.test.ts:DIFF_OPS
+src/mcp/vocabulary.test.ts:FIELD_TYPES
+src/mcp/vocabulary.test.ts:RESOURCE_KINDS
+src/mcp/vocabulary.ts:DIFF_OPS
+src/mcp/vocabulary.ts:FIELD_TYPES
+src/mcp/vocabulary.ts:RESOURCE_KINDS
+src/server/ai-capability-issuance.test.ts:AiCapabilityStore
+src/server/ai-capability-issuance.test.ts:KernelMetaStore
+src/server/ai-capability-issuance.test.ts:applyManifest
+src/server/ai-capability-issuance.test.ts:createApp
+src/server/ai-dispatcher-scheduler.ts:dispatchAiJobs
+src/server/app.test.ts:KernelMetaStore
+src/server/app.test.ts:appDbPath
+src/server/app.test.ts:appManifestPath
+src/server/app.test.ts:applyDiff
+src/server/app.test.ts:applyManifest
+src/server/app.test.ts:createApp
+src/server/app.test.ts:unknownTableError
+src/server/app.ts:CONCURRENT_WRITE_WAIT_PRAGMA
+src/server/app.ts:KernelMetaStore
+src/server/app.ts:appDbPath
+src/server/app.ts:applyDiff
+src/server/app.ts:concurrentWriteBusyErrors
+src/server/app.ts:createRecord
+src/server/app.ts:deleteRecord
+src/server/app.ts:generateRequirementsDoc
+src/server/app.ts:getBlob
+src/server/app.ts:getChangelog
+src/server/app.ts:getRecord
+src/server/app.ts:isApplyInProgress
+src/server/app.ts:previewUndo
+src/server/app.ts:putBlob
+src/server/app.ts:readCurrentManifest
+src/server/app.ts:readOnlyTableError
+src/server/app.ts:readRecord
+src/server/app.ts:readRecordCountAndSum
+src/server/app.ts:readRecordList
+src/server/app.ts:renderRequirementsMarkdown
+src/server/app.ts:resetWorkflowHistoryFailureHandler
+src/server/app.ts:resolveTable
+src/server/app.ts:setWorkflowHistoryFailureHandler
+src/server/app.ts:undo
+src/server/app.ts:unknownTableError
+src/server/app.ts:updateRecord
+src/server/app.ts:writeRecords
+src/server/auth-boundary.test.ts:KernelMetaStore
+src/server/auth-boundary.test.ts:applyManifest
+src/server/auth-boundary.test.ts:createApp
+src/server/auth-routes.test.ts:KernelMetaStore
+src/server/auth-routes.test.ts:applyManifest
+src/server/auth-routes.test.ts:createApp
+src/server/auth-routes.ts:AiCapabilityStore
+src/server/auth-routes.ts:CapabilityStore
+src/server/auth-routes.ts:CommentStore
+src/server/auth-routes.ts:EscapeHatchStore
+src/server/auth-routes.ts:putEscapeHatchBody
+src/server/authz.test.ts:KernelMetaStore
+src/server/authz.test.ts:applyManifest
+src/server/authz.test.ts:createApp
+src/server/backup-restore.test.ts:KernelMetaStore
+src/server/backup-restore.test.ts:appBlobsDir
+src/server/backup-restore.test.ts:appDbPath
+src/server/backup-restore.test.ts:appManifestPath
+src/server/backup-restore.test.ts:applyManifest
+src/server/backup-restore.test.ts:createApp
+src/server/backup-restore.test.ts:createRecord
+src/server/backup-restore.test.ts:getBlob
+src/server/backup-restore.test.ts:kernelDbPath
+src/server/backup-restore.test.ts:putBlob
+src/server/backup.test.ts:KernelMetaStore
+src/server/backup.test.ts:appDbPath
+src/server/backup.test.ts:applyManifest
+src/server/backup.test.ts:createApp
+src/server/backup.test.ts:createRecord
+src/server/backup.ts:appBlobsDir
+src/server/backup.ts:appDbPath
+src/server/backup.ts:appManifestPath
+src/server/backup.ts:appsDir
+src/server/backup.ts:isApplyInProgress
+src/server/backup.ts:kernelDbPath
+src/server/backup.ts:systemClock
+src/server/batch.test.ts:KernelMetaStore
+src/server/batch.test.ts:applyManifest
+src/server/batch.test.ts:createApp
+src/server/capability-issuance.test.ts:CapabilityStore
+src/server/capability-issuance.test.ts:KernelMetaStore
+src/server/capability-issuance.test.ts:appDbPath
+src/server/capability-issuance.test.ts:applyManifest
+src/server/capability-issuance.test.ts:createApp
+src/server/capability-issuance.test.ts:createRecord
+src/server/capability-issuance.test.ts:dispatchOutbox
+src/server/change-api.test.ts:KernelMetaStore
+src/server/change-api.test.ts:UNDO_PREVIEW_NOTE
+src/server/change-api.test.ts:applyManifest
+src/server/change-api.test.ts:createApp
+src/server/comment-api.test.ts:COMMENT_ANCHOR_FORMS
+src/server/comment-api.test.ts:COMMENT_STATES
+src/server/comment-api.test.ts:CommentStore
+src/server/comment-api.test.ts:KernelMetaStore
+src/server/comment-api.test.ts:appDbPath
+src/server/comment-api.test.ts:applyManifest
+src/server/comment-api.test.ts:createApp
+src/server/comment-api.test.ts:validateDiff
+src/server/comment-backup-inclusion.test.ts:CommentStore
+src/server/comment-backup-inclusion.test.ts:KernelMetaStore
+src/server/comment-backup-inclusion.test.ts:applyManifest
+src/server/comment-backup-inclusion.test.ts:createApp
+src/server/comment-visibility-backup-inclusion.test.ts:KernelMetaStore
+src/server/comment-visibility-backup-inclusion.test.ts:applyManifest
+src/server/comment-visibility-backup-inclusion.test.ts:createApp
+src/server/comment-visibility-http.test.ts:KernelMetaStore
+src/server/comment-visibility-http.test.ts:applyManifest
+src/server/comment-visibility-http.test.ts:createApp
+src/server/comment-visibility.test.ts:COMMENT_ANCHOR_FORMS
+src/server/comment-visibility.test.ts:CommentStore
+src/server/comment-visibility.test.ts:foldOperations
+src/server/concurrent-write-wait.test.ts:KernelMetaStore
+src/server/concurrent-write-wait.test.ts:appDbPath
+src/server/concurrent-write-wait.test.ts:applyManifest
+src/server/concurrent-write-wait.test.ts:concurrentWriteBusyErrors
+src/server/concurrent-write-wait.test.ts:createApp
+src/server/concurrent-write-wait.test.ts:createRecord
+src/server/concurrent-write-wait.test.ts:readCurrentManifest
+src/server/customer-scope.test.ts:KernelMetaStore
+src/server/customer-scope.test.ts:applyManifest
+src/server/customer-scope.test.ts:createApp
+src/server/escape-hatch-issuance.test.ts:EscapeHatchStore
+src/server/escape-hatch-issuance.test.ts:KernelMetaStore
+src/server/escape-hatch-issuance.test.ts:appEscapeHatchDir
+src/server/escape-hatch-issuance.test.ts:appManifestPath
+src/server/escape-hatch-issuance.test.ts:applyManifest
+src/server/escape-hatch-issuance.test.ts:createApp
+src/server/escape-hatch-issuance.test.ts:escapeHatchBodyExists
+src/server/escape-hatch-issuance.test.ts:getEscapeHatchBody
+src/server/files-delivery.test.ts:KernelMetaStore
+src/server/files-delivery.test.ts:applyManifest
+src/server/files-delivery.test.ts:createApp
+src/server/files-upload.test.ts:KernelMetaStore
+src/server/files-upload.test.ts:appDbPath
+src/server/files-upload.test.ts:applyManifest
+src/server/files-upload.test.ts:createApp
+src/server/inbound-route.test.ts:InboundStore
+src/server/inbound-route.test.ts:KernelMetaStore
+src/server/inbound-route.test.ts:appDbPath
+src/server/inbound-route.test.ts:applyManifest
+src/server/inbound-route.test.ts:createApp
+src/server/inbound-route.ts:CONCURRENT_WRITE_WAIT_PRAGMA
+src/server/inbound-route.ts:InboundStore
+src/server/inbound-route.ts:appDbPath
+src/server/inbound-route.ts:concurrentWriteBusyErrors
+src/server/inbound-route.ts:createRecord
+src/server/inbound-route.ts:readCurrentManifest
+src/server/inbound-route.ts:resolveSecret
+src/server/inbound-route.ts:verifyInboundSignature
+src/server/index.test.ts:KernelMetaStore
+src/server/index.test.ts:appDbPath
+src/server/index.test.ts:appDir
+src/server/index.test.ts:applyManifest
+src/server/index.test.ts:createApp
+src/server/index.test.ts:createRecord
+src/server/index.ts:ensureIslandRuntimeReady
+src/server/index.ts:recover
+src/server/index.ts:resolveTimeZone
+src/server/index.ts:startWorkflowScheduler
+src/server/manifest-reflection.test.ts:KernelMetaStore
+src/server/manifest-reflection.test.ts:applyManifest
+src/server/manifest-reflection.test.ts:createApp
+src/server/outbox-scheduler.test.ts:CapabilityStore
+src/server/outbox-scheduler.ts:dispatchOutbox
+src/server/owner-scope.test.ts:KernelMetaStore
+src/server/owner-scope.test.ts:applyManifest
+src/server/owner-scope.test.ts:createApp
+src/server/public-read.test.ts:KernelMetaStore
+src/server/public-read.test.ts:applyManifest
+src/server/public-read.test.ts:createApp
+src/server/red-team-http.test.ts:CapabilityStore
+src/server/red-team-http.test.ts:KernelMetaStore
+src/server/red-team-http.test.ts:appDbPath
+src/server/red-team-http.test.ts:applyManifest
+src/server/red-team-http.test.ts:createApp
+src/server/red-team-http.test.ts:createRecord
+src/server/red-team-http.test.ts:dispatchOutbox
+src/server/restore.ts:appBlobsDir
+src/server/restore.ts:appDbPath
+src/server/restore.ts:appManifestPath
+src/server/restore.ts:kernelDbPath
+web/e2e/fixture-server.ts:KernelMetaStore
+web/e2e/fixture-server.ts:RESOURCE_ID_MAX_LENGTH
+web/e2e/fixture-server.ts:applyManifest
+web/e2e/fixture-server.ts:createApp
+web/e2e/list-view.e2e.ts:normalizeSort
+web/src/api.ts:normalizeSort
+web/test/api.test.ts:KernelMetaStore
+web/test/api.test.ts:applyManifest
+web/test/api.test.ts:createApp
+web/test/comment-panel.test.tsx:COMMENT_ANCHOR_FORMS
+web/test/composite-sort.test.tsx:KernelMetaStore
+web/test/composite-sort.test.tsx:appDbPath
+web/test/composite-sort.test.tsx:applyManifest
+web/test/composite-sort.test.tsx:createApp
+web/test/composite-sort.test.tsx:createRecord
+web/test/composite-sort.test.tsx:readRecordList
+web/test/theme-candidates.test.ts:KernelMetaStore
+web/test/theme-candidates.test.ts:applyDiff
+web/test/theme-candidates.test.ts:checkThemeContrast
+web/test/theme-candidates.test.ts:createApp
+web/test/theme-candidates.test.ts:dryRunDiff
+web/test/theme-candidates.test.ts:redo
+web/test/theme-candidates.test.ts:undo
+
+# --- V3-M5-T02(逃げ道の配信。D-G5 / ADR-0055 限定6・限定7)------------------------
+# **5件増え、0件減った。**うち**製品コードの層またぎは2件**で、2件とも本タスクの目的である:
+#   src/server/app.ts:EscapeHatchStore    —— 参照(名前 + ダイジェスト)を発行済み資産に
+#                                            突き合わせる。**未登録なら fail-closed かつ loud**(限定6)。
+#   src/server/app.ts:getEscapeHatchBody  —— 突き合ってはじめて本体を読む。**作用域の宣言外なら
+#                                            読む前に拒否する**(限定7)。
+# 残る3件(`src/server/app.test.ts` の EscapeHatchStore / putEscapeHatchBody /
+# appEscapeHatchDir)は配信テストのセットアップである(owner の発行 HTTP を通す代わりに
+# store を直接叩いて前提を作る。`escape-hatch-issuance.test.ts` が既に採っている組の反復)。
+# **`normalizeSort` 系は1件も含まず、依存の向き(web → src の一方向)も逆転していない。**
+src/server/app.test.ts:EscapeHatchStore
+src/server/app.test.ts:appEscapeHatchDir
+src/server/app.test.ts:putEscapeHatchBody
+src/server/app.ts:EscapeHatchStore
+src/server/app.ts:getEscapeHatchBody
+
+# --- V3-M6-T01(既存資産の取り込み。D-G9)---------------------------------------------
+# **1件増え、0件減った。** 増えたのはテストからの1件だけである:
+#   web/test/theme-import.test.ts:checkThemeContrast
+#     —— 取り込んだ配色がコントラスト検査を通ること・通らない配色が落ちることを
+#        **カーネルの検査関数そのもの**で確かめる(web 側に規則を再実装しない)。
+# **審査が先に許容範囲を定めた増分である** —— `docs/plan/v3/records/v3-m6.md` §2a 裁定1 /
+# `v3-m6-gate-a.md` §6-3 の4 が、`web/test/theme-candidates.test.ts` が既に採っている
+# 7識別子(KernelMetaStore / applyDiff / checkThemeContrast / createApp / dryRunDiff /
+# redo / undo)の集合の内側なら差し戻しではないと定めている。**増えた1件はその内側である。**
+# **製品コードの層またぎは0件**(増えたのは `web/test/` の1本だけ)。**`normalizeSort` 系も
+# `storage-paths.ts` の関数も1件も含まない**(Δ8 の当て先に触っていない)。
+web/test/theme-import.test.ts:checkThemeContrast
+
+# --- V3-M6-T02(取り込みの入口 = owner 確認 UI。D-G9)-----------------------------------
+# **1件増え、0件減った。** 件数: 354(+1)。増えたのはテストからの1件だけである:
+#   web/test/theme-import-panel.test.tsx:checkThemeContrast
+#     —— **画面に出す拒否の文をカーネルに作らせるため**である。取り込み提案が
+#        コントラスト検査に落ちたときの応答をテストが自分で書くと、「テストが自分で
+#        書いた文をテストが確かめる」循環になり、**画面がカーネルの言葉をそのまま
+#        出していること**を測れなくなる(web 側に検査の写しを作らない = 線10 の裏返し)。
+# **審査が先に許容範囲を定めた増分である** —— `docs/plan/v3/records/v3-m6.md` §2a 裁定1 /
+# `v3-m6-gate-a.md` §6-3 の4 の7識別子(KernelMetaStore / applyDiff / checkThemeContrast /
+# createApp / dryRunDiff / redo / undo)の集合の内側である。**T01 が同じ理由で同じ識別子を
+# 採ったのに続く2件目で、集合は1つも広がっていない。**
+# **製品コードの層またぎは0件**(`web/src/ThemeImportPanel.tsx` は `Manifest` / `Theme` /
+# `View` を **型としてしか** import していない。先例は `web/src/ThemeExportPanel.tsx` /
+# `web/src/theme-candidates.ts` / `web/src/ThemePreviewPanel.tsx`)。
+# **`normalizeSort` 系も `storage-paths.ts` の関数も1件も含まない**(Δ8 の当て先に触っていない)。
+web/test/theme-import-panel.test.tsx:checkThemeContrast
+
+# --- V3-M11-T03(滞留注文の打ち切りを参照 EC に当てる。D-G16a / D-G16b)-----------------
+# **7件増え、0件減った。** 件数: 361(+7)。**増えたのは実証テスト1本(scripts/ref-ec/
+# manifest.test.ts)からだけであり、製品コードの層またぎは0件である** —— 参照 EC の
+# マニフェスト本体(scripts/ref-ec/manifest.ts)は今日も `type { Manifest }` の型 import
+# しか持たない(型 import は限定2 の対象外)。
+#   scripts/ref-ec/manifest.test.ts:runSchedulerTick
+#   scripts/ref-ec/manifest.test.ts:setWorkflowClock
+#   scripts/ref-ec/manifest.test.ts:resetWorkflowClock
+#     —— **この3本は今日まで src/kernel/ の外から1件も値 import されていなかった。**
+#        3本とも「実時間を1ミリ秒も待たずに schedule 発火を検証する」ための注入/観測の口で
+#        あり、src/kernel/workflow-scheduler.ts の runSchedulerTick 自身の doc が
+#        「**テストがタイマーを待たずに周期処理そのものを呼べるようにするため**に公開して
+#        いる」と明記している(同ファイルの doc)。src/kernel/clock.ts も「Clock は引数と
+#        して渡すか、workflow-runner.ts の set/reset 対で差し替える」「**挙動を変える口では
+#        なく、観測/注入のための口である**」と書いている。**この3本を使わずに
+#        「打ち切りが実際に起きること」を本物のワークフローランナー経由で測る手段は無い**
+#        (V3-M11-T03 完了条件5)。
+#        **上の V1-M2-T08 の注(「runSchedulerTick / SCHEDULER_TICK_INTERVAL_MS は製品コード
+#        から1度も値 import していない」)は、今日も真である** —— 増えたのはテスト1本からで
+#        あり、製品コードからの runSchedulerTick の値 import は今日も0件である
+#        (SCHEDULER_TICK_INTERVAL_MS は本タスクもどこからも import していない)。
+#   scripts/ref-ec/manifest.test.ts:appDbPath
+#   scripts/ref-ec/manifest.test.ts:createRecord
+#   scripts/ref-ec/manifest.test.ts:listRecords
+#   scripts/ref-ec/manifest.test.ts:updateRecord
+#     —— 発火の前提(order 行)を作り、発火後の状態と履歴を読み返すためのセットアップである。
+#        **同じ組を scripts/ref-ec/functions.test.ts / journey-e2e.test.ts が既に採っている**
+#        (appDbPath / createRecord / listRecords は同ディレクトリの既存3本と同一)。
+#        updateRecord だけが scripts/ 配下で初出だが、src/mcp/tools/write.ts /
+#        src/server/app.ts が既に値 import している既存の公開APIである(新しい export は0件)。
+# **ADR-0009 限定2 の照合**: 7件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない(src/ の差分は0行。
+# scripts/kernel-export-snapshot.txt も1バイトも変えていない)。
+# **依存の向きも逆転していない**(src/kernel/ は scripts/ を1バイトも参照しない)。
+scripts/ref-ec/manifest.test.ts:appDbPath
+scripts/ref-ec/manifest.test.ts:createRecord
+scripts/ref-ec/manifest.test.ts:listRecords
+scripts/ref-ec/manifest.test.ts:resetWorkflowClock
+scripts/ref-ec/manifest.test.ts:runSchedulerTick
+scripts/ref-ec/manifest.test.ts:setWorkflowClock
+scripts/ref-ec/manifest.test.ts:updateRecord
+
+# --- V3-M13-T02(アクション失敗を発火元の書込ごと致命にする。ADR-0066)-------------------
+# **3件増え、0件減った。** **増えたのは実証テスト1本(scripts/ref-ec/manifest.test.ts)から
+# だけであり、製品コードの層またぎは0件である。**
+#   scripts/ref-ec/manifest.test.ts:CapabilityStore
+#   scripts/ref-ec/manifest.test.ts:AiCapabilityStore
+#   scripts/ref-ec/manifest.test.ts:ensureIslandRuntimeReady
+#     —— ADR-0066 により、**`order` の書込が checkout ワークフローの成否に依存するように
+#        なった**(アクションが1つでも失敗すれば書込は成立しない)。本テストはこれまで
+#        「アクションが失敗しても注文行は残る」ことに黙って依存しており、接続も AI capability も
+#        島ランタイムも用意していなかった。**前提を明示的に整えるための3本である。**
+#        CapabilityStore は同ディレクトリの journey-e2e.test.ts が既に値 import しており
+#        (上の V2-M7-T04 の行)、**新しい層またぎの種類は AiCapabilityStore と
+#        ensureIslandRuntimeReady の2本だけ**である。どちらも owner の発行 API と
+#        「同期発火経路に入る前に島を1回ロードする」口であり、src/kernel/island-runner.ts の
+#        doc が「ワークフローが発火しうる async 境界で await しておく」ための公開口だと
+#        明記している。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+# (scripts/kernel-export-snapshot.txt は1バイトも変えていない)。
+scripts/ref-ec/manifest.test.ts:AiCapabilityStore
+scripts/ref-ec/manifest.test.ts:CapabilityStore
+scripts/ref-ec/manifest.test.ts:ensureIslandRuntimeReady
+#
+# --- V4-M1-T00(参照ショップを起動できるようにする。D-V4-28)-----------------------------
+# **11件増え、0件減った。** **増えたのは仕込みスクリプト1本(scripts/ref-ec/serve.ts)と
+# その検査(scripts/ref-ec/serve.test.ts)からだけであり、製品コード(src/ / web/)の
+# 層またぎは0件である。**
+#   scripts/ref-ec/serve.ts:KernelMetaStore / createApp / applyManifest / CapabilityStore /
+#                           ensureIslandRuntimeReady / listRecords / appDbPath
+#   scripts/ref-ec/serve.test.ts:KernelMetaStore / listRecords / appDbPath / appManifestPath
+#     —— 参照 EC(scripts/ref-ec/manifest.ts)は今日まで「Manifest を返す関数」であって
+#        ディスク上のアプリではなく、立ち上げる口が1つも無かった(04-pre-execution-checks
+#        §2-4 の実測)。D-V4-28 は「コマンド1発で立ち上がる形にする」と定めたので、
+#        dataRoot にアプリ実体を組み立てる口(台帳への登録 = createApp / KernelMetaStore、
+#        マニフェストの適用 = applyManifest、接続の発行 = CapabilityStore、
+#        島の事前ロード = ensureIslandRuntimeReady、行数の実測 = listRecords / appDbPath /
+#        appManifestPath)が要る。
+# **新しい層またぎの種類は0本である。** 8つの識別子はすべて、同じディレクトリの
+# 既存3本(manifest.test.ts / functions.test.ts / journey-e2e.test.ts)が既に値 import
+# しており、上の V2-M7-T04 / V3-M11-T02 / V3-M13-T02 の行に載っている。**増えたのは
+# 「どのファイルから」の組み合わせだけである。**
+# **ADR-0009 限定2 の照合**: 11件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+# (scripts/kernel-export-snapshot.txt は1バイトも変えていない)。
+# 審査の記録: docs/plan/v4/records/v4-m1.md §1-7。
+scripts/ref-ec/serve.ts:KernelMetaStore
+scripts/ref-ec/serve.ts:createApp
+scripts/ref-ec/serve.ts:applyManifest
+scripts/ref-ec/serve.ts:CapabilityStore
+scripts/ref-ec/serve.ts:ensureIslandRuntimeReady
+scripts/ref-ec/serve.ts:listRecords
+scripts/ref-ec/serve.ts:appDbPath
+scripts/ref-ec/serve.test.ts:KernelMetaStore
+scripts/ref-ec/serve.test.ts:listRecords
+scripts/ref-ec/serve.test.ts:appDbPath
+scripts/ref-ec/serve.test.ts:appManifestPath
+
+# ============================================================================================
+# 【`work/v4-m4` と `work/v4-m3` のマージ(2026-08-03)】
+# **2本のブランチが同じ末尾に別々の追記を行ったため、このファイルはテキスト衝突した。**
+# 解決は**両方を残す**である(片方を捨てていない)。**下に並ぶ順は main へのマージ順**
+# (`work/v4-m4` が先、`work/v4-m3` が後)であり、**検査は集合として比較するので順序に
+# 意味は無い**(scripts/kernel-import-drift.test.ts:149-150 は added / removed の差集合しか見ない)。
+# **マージ時に両ブロックを合算して実測し直した**(記録: docs/plan/v4/records/v4-m3-m4-merge.md §2-2):
+#   - 増えたエントリは**合計15件**(V4-M4 が3件 / V4-M3 が12件)。**減ったエントリは0件。**
+#   - **15件すべてが `src/server/*.test.ts` である。製品コード(非テスト)の層またぎは0件。**
+#   - **識別子は3種類だけ**(KernelMetaStore / applyManifest / createApp)で、**この3つは
+#     同ディレクトリの既存検査が既に値 import している**(customer-scope.test.ts:639-641 /
+#     owner-scope.test.ts:686-688 / public-read.test.ts:689-691 ほか多数)。
+#     **したがって新しい層またぎの種類は0本である。**
+#   - **ADR-0009 限定2 が名指しした3本(normalizeSort / sortErrorPath / validateSortKeys)に
+#     1件も当たっていない**(15件を1件ずつ照合。0ヒット)。
+#   - **Δ8 の照合**: scripts/kernel-export-snapshot.txt はこのマージで1バイトも変わっていない。
+# **新しい層またぎの種類は増えていないので、門A の再審査は要らないと判断した。**
+# ============================================================================================
+#
+# --- V4-M4-T05(B-G8 / ADR-0073。2026-08-03)-------------------------------------------
+# 削除不可規約(st_undeletable)のサーバ層テストを1本足した
+# (src/server/row-delete-protection.test.ts)。値 import は3件で、**新しい層またぎの種類は
+# 0本である** —— 同じディレクトリの既存 src/server/customer-scope.test.ts(:639-641)/
+# owner-scope.test.ts(:686-688)/ public-read.test.ts(:689-691)が同じ3つを既に値 import
+# している。**増えたのは「どのファイルから」の組み合わせだけである。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも normalizeSort / sortErrorPath / validateSortKeys
+# ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+# (scripts/kernel-export-snapshot.txt は1バイトも変えていない)。
+# 審査の記録: docs/adr/0073-row-state-delete-protection.md / docs/plan/v4/records/v4-m4-t00.md。
+src/server/row-delete-protection.test.ts:KernelMetaStore
+src/server/row-delete-protection.test.ts:applyManifest
+src/server/row-delete-protection.test.ts:createApp
+
+# --- ここから下は `work/v4-m3` の追記(B-G1 / B-G2。ADR-0070 / ADR-0071)-----------------
+# --- V4-M3-T02(見せ分けの宣言の置き場。`B-G1` / ADR-0070 限定1・限定3)-----------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/view-audience.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **`audience` を書いたマニフェストが実際に適用でき、`anonymous` を書いたものが
+#        適用できないことを、schema の読み比べではなく `applyManifest` の実行で確かめる**
+#        (`V4-M3-T02` 完了条件1)。**同じ3本を `src/server/public-read.test.ts` /
+#        `customer-scope.test.ts` が既に値 import している**(上の既存行)ので、
+#        **新しい層またぎの種類は0本である** —— 増えたのは「どのファイルから」の組み合わせだけ。
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+# (scripts/kernel-export-snapshot.txt は1バイトも変えていない = `ADR-0070` 限定5)。
+# **`src/kernel/validate.ts` の `MANIFEST_SCHEMA_PATH` は値 import していない** ——
+# schema のパスは検査ファイル側で組む(層またぎを1本も増やさないため)。
+# 審査の記録: docs/plan/v4/records/v4-m0-gate-a-view-visibility.md / docs/adr/0070-view-audience-declaration.md。
+src/server/view-audience.test.ts:KernelMetaStore
+src/server/view-audience.test.ts:applyManifest
+src/server/view-audience.test.ts:createApp
+
+# --- V4-M3-T03(サーバのレコード経路で宣言を読む。`B-G1` / ADR-0070 限定3)---------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/view-audience-enforcement.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **宣言で「運営だけ」とした画面を customer が URL 直打ちで取ると拒否されることを、
+#        一覧と単件の両方について本物の HTTP で固定する**(`ADR-0070` 限定3 の第4列)。
+# **同じ3本を `src/server/customer-scope.test.ts` / `public-read.test.ts` が既に値 import
+# している**ので、**新しい層またぎの種類は0本である。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。`src/server/app.ts` が新しく値 import
+# したのは `owner-scope.ts` の述語2本だけで、これは `src/kernel/` の外どうしである。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない。
+src/server/view-audience-enforcement.test.ts:KernelMetaStore
+src/server/view-audience-enforcement.test.ts:applyManifest
+src/server/view-audience-enforcement.test.ts:createApp
+
+# --- V4-M3-T05(項目単位の宣言の置き場。`B-G2` / ADR-0071 限定1)-------------------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/field-audience.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **`audience` を書いたフィールド定義が適用でき、`anonymous` を書いたものが適用
+#        できないことを、schema の読み比べではなく `applyManifest` の実行で確かめる。**
+# **新しい層またぎの種類は0本**(同じ3本を同ディレクトリの既存検査が引いている)。
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない(`ADR-0071` 限定6)。
+src/server/field-audience.test.ts:KernelMetaStore
+src/server/field-audience.test.ts:applyManifest
+src/server/field-audience.test.ts:createApp
+
+# --- V4-M3-T06(読取経路で項目を落とす。`B-G2` / ADR-0071 限定5)-------------------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/field-audience-projection.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **宣言した項目が匿名 / customer / viewer の GET の応答に1件も含まれないことを、
+#        本物の HTTP で固定する**(`ADR-0071` 限定5 の第4列)。あわせて**宣言し忘れた項目が
+#        今日どおり出ること**(限定7 / 限定8 の「静かに漏れる」)も実測で固定する。
+# **新しい層またぎの種類は0本 / 製品コードの層またぎは0件。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない(`ADR-0071` 限定6)。
+src/server/field-audience-projection.test.ts:KernelMetaStore
+src/server/field-audience-projection.test.ts:applyManifest
+src/server/field-audience-projection.test.ts:createApp
+
+# --- V4-M2-T05(未ログインでも見られる画面。`B-G5` / ADR-0074 限定1・限定5・限定7)-------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/anonymous-view-audience.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **`audience` に `anonymous` を書いたビュー定義が適用でき、6値目・空配列・重複が
+#        適用できないことを、schema の読み比べではなく `applyManifest` の実行で確かめる。**
+#        **あわせて `field.audience` には `anonymous` を書けないこと**(`ADR-0074` §3a-4 =
+#        項目単位へ匿名を1ミリも広げない)**も実行で確かめる。**
+# **新しい層またぎの種類は0本** —— 同じ3本を同ディレクトリの既存検査
+#   (`src/server/view-audience.test.ts` / `field-audience.test.ts` /
+#    `field-audience-projection.test.ts` ほか)が既に値 import している。
+#   **増えたのは「どのファイルから」の組み合わせだけである。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **`ADR-0009` 限定2 が名指しした3本**(normalizeSort / sortErrorPath / validateSortKeys)に
+#   **1件も当たっていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない(`ADR-0074` 限定11)。
+src/server/anonymous-view-audience.test.ts:KernelMetaStore
+src/server/anonymous-view-audience.test.ts:applyManifest
+src/server/anonymous-view-audience.test.ts:createApp
+
+# --- V4-M11(参照 EC で `E-G` 76件の再現を測る。`D-V4-40`)---------------------------------
+# **6件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   scripts/ref-ec/eg-reproduction.test.ts:
+#     KernelMetaStore / createApp / applyManifest / CapabilityStore / AiCapabilityStore /
+#     ensureIslandRuntimeReady
+#     —— 参照 EC のマニフェストを本物の SQLite(mkdtemp)へ流し込み、本物の HTTP
+#        (createServerApp)で `E-G` の症状が起きるかどうかを測る検査である。
+#        **接続(mock-psp / mail-gateway)と AI capability(ai-copywriter)を先に発行するのは、
+#        未発行だと注文の作成と更新が「守りが効いた」ではなく「配線が足りない」で落ち、
+#        測りたいものを測れなくなるためである。**
+# **新しい層またぎの種類は0本** —— 6つの識別子はすべて、同じディレクトリの既存4本
+#   (manifest.test.ts / functions.test.ts / journey-e2e.test.ts / serve.ts)が既に値 import
+#   しており、上の V2-M7-T04 / V3-M13-T02 / V4-M1-T00 の行に載っている。
+#   **増えたのは「どのファイルから」の組み合わせだけである。**
+# **製品コードの層またぎは0件**(6件とも1本の `*.test.ts` から)。
+#   **`scripts/ref-ec/manifest.ts` / `functions.ts` は1バイトも変えていない。**
+# **`ADR-0009` 限定2 が名指しした3本**(normalizeSort / sortErrorPath / validateSortKeys)に
+#   **1件も当たっていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (scripts/kernel-export-snapshot.txt は1バイトも変えていない)。
+# 実測の記録: docs/plan/v4/records/v4-m11-refec.md
+scripts/ref-ec/eg-reproduction.test.ts:KernelMetaStore
+scripts/ref-ec/eg-reproduction.test.ts:createApp
+scripts/ref-ec/eg-reproduction.test.ts:applyManifest
+scripts/ref-ec/eg-reproduction.test.ts:CapabilityStore
+scripts/ref-ec/eg-reproduction.test.ts:AiCapabilityStore
+scripts/ref-ec/eg-reproduction.test.ts:ensureIslandRuntimeReady
+
+# --- V4-FIX1 項目(1) / 項目(4)(宣言した境界の抜け道を塞ぐ)------------------------------
+# **8件増え、0件減った。** 増えたのは**新しい検査ファイル2本から**である:
+#   src/server/batch-view-audience.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **`POST /api/apps/:app/batch?view=` が画面の宣言(`view.audience`)の判定を受ける
+#        ことを、本物の HTTP で固定する**(`cp-v4.md` §6-3 の #10 が実測した迂回を塞ぐ)。
+#   src/server/inbound-owner-scope.test.ts:createApp / KernelMetaStore / applyManifest /
+#                                          appDbPath / InboundStore
+#     —— **受信口(`POST /inbound/:endpoint_id`)が行の持ち主(`st_owner`)を送り手の言い値で
+#        受け入れないことを、本物の SQLite を直接開いて固定する**(`cp-v4.md` §9 の 7)。
+# **新しい層またぎの種類は0本である** —— 5本とも `src/server/inbound-route.test.ts` /
+# `view-audience-enforcement.test.ts` が既に値 import しているものと同じである。
+# **製品コードの層またぎは0件**(8件とも `*.test.ts`)。`src/server/inbound-route.ts` が新しく
+# 値 import したのは `owner-scope.ts` の `judgeOwnerScopedOp` だけで、`src/kernel/` の外どうしである。
+# **ADR-0009 限定2 の照合**: 8件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない。
+src/server/batch-view-audience.test.ts:KernelMetaStore
+src/server/batch-view-audience.test.ts:applyManifest
+src/server/batch-view-audience.test.ts:createApp
+src/server/inbound-owner-scope.test.ts:InboundStore
+src/server/inbound-owner-scope.test.ts:KernelMetaStore
+src/server/inbound-owner-scope.test.ts:appDbPath
+src/server/inbound-owner-scope.test.ts:applyManifest
+src/server/inbound-owner-scope.test.ts:createApp
+
+# --- V4-M10-T01 / T02 / T03(項目ごとに「誰が書けるか」を宣言する。ADR-0076)---------------
+# **6件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/field-write-control.test.ts:createApp / KernelMetaStore / applyManifest /
+#                                          applyDiff / createRecord / updateRecord
+#     —— **`writable_by` の宣言が `POST` / `PATCH` / `/batch` の3経路で効き、`DELETE` と
+#        カーネル経路(ワークフロー / 島)には1ミリも効かないことを、本物の HTTP と本物の
+#        SQLite で固定する**(`ADR-0076` 限定4 / 限定10)。`applyDiff` は `change_field` で
+#        後から付けられない `(穴)` を実測で固定するために要る(`ADR-0076` 限定7 と限定9 の
+#        衝突の記録)。
+# **新しい層またぎの種類は0本である** —— 6本とも `src/server/row-delete-protection.test.ts` /
+# `src/kernel/workflow-runner.test.ts` などが既に値 import しているものと同じである。
+# **製品コードの層またぎは0件**(6件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 6件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない(`src/kernel/` の差分は0行)。
+src/server/field-write-control.test.ts:KernelMetaStore
+src/server/field-write-control.test.ts:applyDiff
+src/server/field-write-control.test.ts:applyManifest
+src/server/field-write-control.test.ts:createApp
+src/server/field-write-control.test.ts:createRecord
+src/server/field-write-control.test.ts:updateRecord
+
+# --- V4-M10-T04 / T05(「このテーブルへは直接作らせない」。予約規約フィールドの5本目。ADR-0077)---
+# **4件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/direct-create-suppression.test.ts:createApp / KernelMetaStore / applyManifest /
+#                                                createRecord
+#     —— **宣言した表への `POST` と `/batch` の create op が 403 になり、`PATCH` / `DELETE` /
+#        update op とカーネル経路(ワークフロー / 島)の create が1ミリも止まらないことを、
+#        本物の HTTP と本物の SQLite で固定する**(`ADR-0077` 限定3 / 限定4)。
+# **新しい層またぎの種類は0本である**(4本とも既存の検査が値 import しているものと同じ)。
+# **製品コードの層またぎは0件**(4件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない。
+# **Δ8 の照合**: `schemas/` と `src/kernel/` に1バイトの差分も出していない(`ADR-0077` 限定1)。
+src/server/direct-create-suppression.test.ts:KernelMetaStore
+src/server/direct-create-suppression.test.ts:applyManifest
+src/server/direct-create-suppression.test.ts:createApp
+src/server/direct-create-suppression.test.ts:createRecord
+
+# --- V4-M10-T09 / T10(自動処理が「誰の行として書くか」を宣言する。ADR-0079)---------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である
+# (`src/kernel/workflow-act-as-owner.test.ts` は `src/kernel/` の中なので、この走査の
+#  対象外である —— こちらが数えるのは「`src/kernel/` の**外**からの値 import」だけである):
+#   src/server/workflow-proxy-write-audit.test.ts:createApp / KernelMetaStore / applyManifest /
+#                                                 createRecord / ensureIslandRuntimeReady
+#     —— **代理で書いた事実が `GET /auth/activity` から読めることを、本物の HTTP で固定する**
+#        (`ADR-0079` 限定8 / `V4-M10-T10` 完了条件4)。
+# **新しい層またぎの種類は0本である**(既存の検査が値 import しているものと同じ)。
+# **製品コードの層またぎは0件**(`*.test.ts` のみ)。
+# **【製品コードで1本増えた層またぎを隠さない】** **`src/kernel/workflow-runner.ts` が
+# `src/auth/store.ts` から `recordActivity` / `ensureAuthActivitySchema` を値 import した。**
+# **これは本スナップショットの対象外である**(こちらが数えるのは「`src/kernel/` の外から
+# `src/kernel/` を値 import するもの」であり、向きが逆である)。**`src/kernel/` の公開 export は
+# 1本も増えていない**(Δ8 非発火。`scripts/kernel-export-drift.test.ts` が緑)。
+# **前例**: 同ファイルは既に `../server/owner-scope.ts` から `judgeOwnerScopedOp` を値 import
+# している。**循環にはならない**(`src/auth/store.ts` が見るのは `src/kernel/storage-paths.ts` だけ)。
+# **ADR-0009 限定2 の照合**: 8件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない。
+src/server/workflow-proxy-write-audit.test.ts:KernelMetaStore
+src/server/workflow-proxy-write-audit.test.ts:applyManifest
+src/server/workflow-proxy-write-audit.test.ts:createApp
+src/server/workflow-proxy-write-audit.test.ts:createRecord
+src/server/workflow-proxy-write-audit.test.ts:ensureIslandRuntimeReady
+
+# --- V4-M22-T04(検索の口が境界を迂回しないことの実測。`E-G7` の (C) 側 / ADR-0112 限定6・限定9)---
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/list-view-search-boundary.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **`audience` を宣言した項目を `search_fields` に書いた差分が本物の SQLite で拒否
+#        されることと、`st_owner` の post-filter / `view.audience` の遮断 / 画面の `view.filter` を
+#        検索の入力が1件も迂回しないことを、schema の読み比べではなく `applyManifest` の実行と
+#        本物の HTTP で確かめる**(`V4-M22-T04` の完了条件。`V4-M10-T30` 完了条件5 と同じ検査)。
+# **同じ3本を `src/server/customer-scope.test.ts`(:639-641)/ `view-audience.test.ts` /
+# `field-audience.test.ts` が既に値 import している**ので、**新しい層またぎの種類は0本である**
+# —— 増えたのは「どのファイルから」の組み合わせだけである。
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+# (scripts/kernel-export-snapshot.txt は1バイトも変えていない = `ADR-0112` 限定11)。
+# 審査の記録: docs/adr/0112-view-search-fields.md / docs/plan/v4/records/v4-m22.md。
+src/server/list-view-search-boundary.test.ts:KernelMetaStore
+src/server/list-view-search-boundary.test.ts:applyManifest
+src/server/list-view-search-boundary.test.ts:createApp
+
+# --- V4-M23-T02(合計の母集団が total と割れないことの実測。`D-V4-89` / `E-G31` / ADR-0104 限定5〜限定7・限定11)---
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/list-view-sum-boundary.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **合計の母集団が `total` の母集団と1件も割れないこと**(非スコープ / 匿名公開の
+#        post-filter / `st_owner` 個人スコープの3分岐すべて)**と、`audience` を宣言した項目が
+#        宣言でも読取パラメータでも合計できないことを、schema の読み比べではなく
+#        `applyManifest` の実行と本物の HTTP で確かめる**(`V4-M23-T02` の完了条件 (3))。
+# **同じ3本を `src/server/list-view-search-boundary.test.ts` / `customer-scope.test.ts` /
+# `view-audience.test.ts` / `field-audience.test.ts` が既に値 import している**ので、
+# **新しい層またぎの種類は0本である** —— 増えたのは「どのファイルから」の組み合わせだけである。
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: `src/kernel/` の export は **2本増えた**
+# (`records.ts:countAndSumRecords` / `read-records.ts:readRecordCountAndSum`)。
+# **理由**: 件数と合計を**同じ1文**で採るため(`ADR-0104` 限定6)。**`countRecords` /
+# `readRecordCount` を1バイトも触っていない**(`ADR-0113` 限定6 が不可侵にしているため)。
+# scripts/kernel-export-snapshot.txt を同じ差分で更新した。
+# 審査の記録: docs/adr/0104-list-view-aggregate.md / docs/plan/v4/records/v4-m23.md。
+src/server/list-view-sum-boundary.test.ts:KernelMetaStore
+src/server/list-view-sum-boundary.test.ts:applyManifest
+src/server/list-view-sum-boundary.test.ts:createApp
+
+# --- V4-M21-T01(同じ品を2行に増やさないことを既存語彙だけで示す。`E-G30` / `D-V4-72`)---
+# **4件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   scripts/ref-ec/cart-dedupe.test.ts:createApp / KernelMetaStore / applyManifest /
+#     ensureIslandRuntimeReady
+#     —— **`boolean` フィールド + 島の `update` op(`write_ops`)+ `filter` の `not` / `equals`
+#        だけで「同じ品をもう一度カートに入れても客の画面に2行出ない」状態になることを、
+#        schema の読み比べではなく本物の SQLite(`mkdtemp`)と本物の HTTP で確かめる**
+#        (`V4-M21-T01` の完了条件。門A 本審査 = **却下**の帰属先の履行)。
+# **同じ4本を `scripts/ref-ec/eg-reproduction.test.ts`(:1009-1014)が既に値 import している**
+# ので、**新しい層またぎの種類は0本である** —— 増えたのは「どのファイルから」の組み合わせだけである。
+# **製品コードの層またぎは0件**(4件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+# `validateSortKeys` ではない —— 限定2 が名指しした3本の射程に1件も触れていない。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+# (scripts/kernel-export-snapshot.txt は1バイトも変えていない)。
+# 審査の記録: docs/plan/v4/records/v4-m21-gate-a-workflow-row-removal.md / v4-m21-impl.md。
+scripts/ref-ec/cart-dedupe.test.ts:KernelMetaStore
+scripts/ref-ec/cart-dedupe.test.ts:applyManifest
+scripts/ref-ec/cart-dedupe.test.ts:createApp
+scripts/ref-ec/cart-dedupe.test.ts:ensureIslandRuntimeReady
+
+# --- V4-M23-T05(参照ショップに合計を実地に当て、外せたもの・外せないものを実測する。`D-V4-89` / `E-G31` / ADR-0104)---
+# **4件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   scripts/ref-ec/cart-sum.test.ts:createApp / KernelMetaStore / applyManifest /
+#     ensureIslandRuntimeReady
+#     —— **買い物かごの合計が、集計テーブル(cart_totals)も集計の島(fn-cart-totals)も
+#        毎日03:00の定時再集計(wf-totals-sweep)も1つも通らずに出ることと、**
+#        **それでも外せないもの(fn-line-total / wf-cart-line-total / order.total /
+#        order_totals + fn-order-totals + order-totals-list / cart_totals の残り4列)を、**
+#        **本物の SQLite と本物の HTTP で1件ずつ実測する**(`V4-M23-T05` の完了条件)。
+# **同じ4本を `scripts/ref-ec/cart-dedupe.test.ts` が既に値 import している**ので、
+# **新しい層またぎの種類は0本である。**
+# **製品コードの層またぎは0件**(4件とも `*.test.ts`)。
+# **`scripts/ref-ec/manifest.ts` を1バイトも書き換えていない** —— 合計の宣言はその場で
+# 組み立てた変種に足しており、参照ショップ本体の差分は0行である。
+# 審査の記録: docs/adr/0104-list-view-aggregate.md / docs/plan/v4/records/v4-m23.md。
+scripts/ref-ec/cart-sum.test.ts:KernelMetaStore
+scripts/ref-ec/cart-sum.test.ts:applyManifest
+scripts/ref-ec/cart-sum.test.ts:createApp
+scripts/ref-ec/cart-sum.test.ts:ensureIslandRuntimeReady
+
+# --- V4-M23-T06(合計の費用を実サーバ経路で測る。`ADR-0104` §限界6 / 憲法7)---
+# **5件増え、0件減った。** 増えたのは**新しい計測ファイル1本から**である:
+#   src/server/list-view-sum-bench.test.ts:createApp / KernelMetaStore / applyManifest /
+#     createRecord / appDbPath
+#     —— **審査(v4-m23.md §2-5)は repo 外の使い捨てスクリプト(bun:sqlite のメモリ DB)
+#        でしか測っていなかった。** **本ファイルは実ディスクの app.sqlite を本物の HTTP 経路で
+#        叩き、1,000 / 10,000 / 100,000 行と post-filter 分岐(2,000行)を測る。**
+#        `appDbPath` / `createRecord` は**行の投入**のためだけに使う(計測対象ではない)。
+# **同じ5本を `src/auth/authz.test.ts` ほかが既に値 import している**ので、
+# **新しい層またぎの種類は0本である。**
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **時間を判定に使っていない** —— `expect` は構造的事実(SQL の本数・索引0件)だけを見る。
+# 審査の記録: docs/adr/0104-list-view-aggregate.md / docs/plan/v4/records/v4-m23.md。
+src/server/list-view-sum-bench.test.ts:KernelMetaStore
+src/server/list-view-sum-bench.test.ts:appDbPath
+src/server/list-view-sum-bench.test.ts:applyManifest
+src/server/list-view-sum-bench.test.ts:createApp
+src/server/list-view-sum-bench.test.ts:createRecord
+
+# --- V4-M28-T01(隠した項目を読取の要求の条件に書けなくする。`D-V4-93` / ADR-0120 限定1)---
+# **5件増え、0件減った。** 内訳は**製品コード2件 + 新しい検査ファイル1本から3件**である:
+#   src/server/app.ts:filterFieldRefs / normalizeSort
+#     —— **読取のリクエスト引数(`?filter=<JSON>` / `?filter.<field>=` / `?sort=`)に現れた
+#        フィールドIDを取り出し、`audience` の宣言と突き合わせるために使う**(`ADR-0120` 限定1)。
+#        **判定そのものは既存の `fieldAudience`(`src/server/owner-scope.ts`)1本であり、
+#        新しい述語を1つも作っていない**(限定表が明文で禁じている)。
+#        **カーネルの走査をそのまま使う理由**: filter の深さ・結合3種・葉演算子5種の読み方が
+#        サーバ層とカーネル層で2通りに割れると、**片方だけが宣言つき項目を見落とす**。
+#   src/server/hidden-field-query.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **本物の SQLite + 本物の HTTP で 400 を実測する検査**(`ADR-0120` 限定1〜3・8・12)。
+#        **同じ3本を同ディレクトリの既存検査(field-audience-projection.test.ts ほか)が
+#        既に値 import しており、新しい層またぎの種類は0本である。**
+# **`ADR-0009` 限定2 が名指しした3本の扱い(逐語で照合した)**:
+#   - `normalizeSort` … **層をまたいでよい唯一の1本である**(限定2 の本文がそう書いている)。
+#   - `sortErrorPath` … **取っていない。** 限定2 が「`src/kernel/` 内部からのみ参照する」と
+#     禁じているので、**path の組み立てを `src/server/app.ts` の `hiddenFieldQueryErrors` へ
+#     写した**(写しであることを同関数のコメントに明記してある)。
+#   - `validateSortKeys` … **取っていない。**
+# **`filterFieldRefs` は限定2 が名指しした3本に含まれない** —— **限定2 が制約したことのない
+#   事柄であり(検査自身のコメントが射程を明記している)、本行は「新しい層またぎが1件入った」
+#   ことの記録である。** **製品コードの層またぎである点を隠さない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない(`ADR-0120` 限定4。
+#   `git diff --numstat -- src/kernel` が 0 行)。
+# 審査の記録: docs/adr/0120-hidden-field-query-restriction.md / docs/plan/v4/records/v4-m28.md。
+src/server/app.ts:filterFieldRefs
+src/server/app.ts:normalizeSort
+src/server/hidden-field-query.test.ts:KernelMetaStore
+src/server/hidden-field-query.test.ts:applyManifest
+src/server/hidden-field-query.test.ts:createApp
+# --- V4-M35(隠した項目に残る漏れ口3つ。ユーザ決定 `D-V4-124`)---
+# **3件増え、0件減った。****すべて新しい検査ファイル1本からである。製品コードの層またぎは
+# 1件も増えていない**(`src/server/app.ts` / `src/server/owner-scope.ts` の値 import は
+# 着手前と1件も違わない —— **新設した `scrubHiddenFieldIds` は `owner-scope.ts` の中の純粋
+# 関数で、`src/kernel/` に値としての依存を持たない**)。
+#   src/server/hidden-field-leak.test.ts:createApp / KernelMetaStore / applyManifest
+#     —— **本物の SQLite + 本物の HTTP で、書込の応答と 400 の `allowed_values` を実測する検査。**
+#        **同じ3本を同ディレクトリの既存検査(hidden-field-query.test.ts /
+#        field-audience-projection.test.ts ほか)が既に値 import しており、
+#        新しい層またぎの種類は0本である。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **`SYSTEM_COLUMN_NAMES` を取らなかったことを記録する** —— `scrubHiddenFieldIds` は
+#   「システム列かどうか」を `_` 始まりの綴りで見ている。**値 import すれば正確になるが、
+#   製品コードの層またぎが1件増える。****増やさない側を選んだ**(判断であって、正確さの
+#   放棄ではない —— この選択の代償は `owner-scope.ts` の同関数の doc に書いてある)。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`git diff --numstat -- src/kernel schemas` が 0 行)。
+# 記録: docs/plan/v4/records/v4-m35.md。
+src/server/hidden-field-leak.test.ts:KernelMetaStore
+src/server/hidden-field-leak.test.ts:applyManifest
+src/server/hidden-field-leak.test.ts:createApp
+
+# --- V5-M15(ADR-0160。G-G9 / G-G10)で増えた/減った層またぎ ---
+# **10件増え、1件減った。**
+# **製品コードの層またぎは1件減って0件増えた** —— 減ったのは
+# `src/server/inbound-route.ts:INBOUND_SIGNATURE_HEADER` である。**受信ルートが
+# 「グローバルに固定された署名ヘッダ名」を値として import するのをやめ、受信口ごとの宣言
+# (`endpoint.signatureHeader`)を読むようになったためである**(G-G9 の中身そのもの)。
+# **増えた10件はすべて新規テスト `src/server/inbound-signature-shape.test.ts` のセットアップである**
+# —— 3値 x 3形式の署名付き HTTP リクエストを実際に投げ、遮断側で DB の行が増えないことを
+# 直接数える統合テストで、既存の `src/server/inbound-route.test.ts` と同じ形の層またぎしか使っていない。
+#   INBOUND_SIGNATURE_HEADERS / INBOUND_SIGNATURE_FORMATS  値域を回して 9通りを1本ずつ組み立てる。
+#   RESOURCE_KINDS / FIELD_TYPES / DIFF_OPS                 ADR-0160 限定10(語彙ゼロ増)の実測。
+#   InboundStore / KernelMetaStore / createApp /            受信口の発行とアプリの用意
+#   applyManifest / appDbPath                               (inbound-route.test.ts と同一の5本)。
+# **新しい層またぎの種類は0本である。**
+src/server/inbound-signature-shape.test.ts:INBOUND_SIGNATURE_FORMATS
+src/server/inbound-signature-shape.test.ts:INBOUND_SIGNATURE_HEADERS
+src/server/inbound-signature-shape.test.ts:InboundStore
+src/server/inbound-signature-shape.test.ts:KernelMetaStore
+src/server/inbound-signature-shape.test.ts:appDbPath
+src/server/inbound-signature-shape.test.ts:applyManifest
+src/server/inbound-signature-shape.test.ts:createApp
+# --- V5-M16(ADR-0161 + D-V5-84。G-G12 / G-G13。汎用の file フィールド型)で増えた層またぎ ---
+# **3件増え、0件減った。** **製品コードの層またぎは0件増えた。**
+# **増えた3件はすべて新規テスト `src/server/file-attachment.test.ts` のセットアップである**
+# —— HTML / SVG / PDF / CSV / JSON / zip / 実行形式を実際に POST し、応答ヘッダを1本ずつ
+# 読む統合テストで、既存の `src/server/files-upload.test.ts` /
+# `src/server/files-delivery.test.ts` と**同じ3本**しか使っていない。
+#   KernelMetaStore / createApp / applyManifest            アプリの用意(既存2ファイルの反復)。
+# **新しい層またぎの種類は0本である。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (アップロードの入口 `kind` も配信の `Content-Disposition` も server 層に閉じており、
+#    `putBlob` / `getBlob`(V2-M2 で既に在る2本)以外の kernel 公開面を使っていない)。
+#   **`ADR-0161` 限定8 の「`src/kernel/` に増える公開面は0本を目標とする」は達成した**
+#   —— **`scripts/kernel-export-snapshot.txt` は1バイトも動いていない。**
+# 記録: docs/plan/v5/records/v5-m16.md。
+src/server/file-attachment.test.ts:KernelMetaStore
+src/server/file-attachment.test.ts:applyManifest
+src/server/file-attachment.test.ts:createApp
+
+# --- V5-M23(ADR-0177。L-G13 / L-G14 / L-G16)で増えた層またぎ ---
+# **3件増え、0件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **増えた3件はすべて新規テスト `src/server/view-action-audience.test.ts` のセットアップである**
+# —— **サーバのレコード経路が「見せる相手」の宣言を実際に読むかどうかを、本物の HTTP 要求で
+# 測る統合テストである**(`V5-M23-T05`)。**同じ3本(`createApp` / `KernelMetaStore` /
+# `applyManifest`)を同ディレクトリの既存検査 `view-audience-enforcement.test.ts` が
+# 既に値 import しており、新しい層またぎの種類は0本である。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m23.md。
+src/server/view-action-audience.test.ts:KernelMetaStore
+src/server/view-action-audience.test.ts:applyManifest
+src/server/view-action-audience.test.ts:createApp
+
+# --- V5-M25(ADR-0174 / ADR-0175 / ADR-0176。L-G8 / L-G10 / L-G11a / L-G12)で増えた層またぎ ---
+# **5件増え、0件減った。****うち製品コードの層またぎは2件増えた**(0件ではない。丸めない)。
+#   src/server/app.ts:beginManualRun      手動起動の在席台帳(ADR-0175 限定1)。**在席を取るのは
+#                                         入口である** —— カーネルの中で取ると、実行が同期なので
+#                                         窓に入る余地が構造的に無く、規則が飾りになる
+#                                         (理由は src/kernel/workflow-runner.ts の
+#                                          manualRunsInFlight の doc)。
+#   src/server/app.ts:runManualWorkflow   手動起動の実行(ADR-0174)。**入口は HTTP に1本だけで
+#                                         あり(ADR-0176 限定1)、その1本がこれを呼ぶ。**
+# **残る3件は新規テスト src/server/manual-trigger-route.test.ts のセットアップである**
+# —— **同じ3本(KernelMetaStore / applyManifest / createApp)を同ディレクトリの
+# view-action-audience.test.ts などが既に値 import しており、新しい層またぎの種類は0本である。**
+# **ADR-0009 限定2 が名指しした3本(normalizeSort / sortErrorPath / validateSortKeys)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export は**3件増えた**
+#   (types.ts:WorkflowTriggerManual / workflow-runner.ts:beginManualRun /
+#    workflow-runner.ts:runManualWorkflow)。**ADR-0176 限定8 の申告として
+#    scripts/kernel-export-snapshot.txt を3行更新し、記録に1件ずつ書いた。**
+#   **「増えていない」とは書けない。**
+# 記録: docs/plan/v5/records/v5-m25.md。
+src/server/app.ts:beginManualRun
+src/server/app.ts:runManualWorkflow
+src/server/manual-trigger-route.test.ts:KernelMetaStore
+src/server/manual-trigger-route.test.ts:applyManifest
+src/server/manual-trigger-route.test.ts:createApp
+
+# --- V5-M17(ADR-0158 / ADR-0159 / ADR-0232 / ADR-0233。G-G5〜G-G8)で増えた層またぎ ---
+# **4件増え、0件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **増えた4件はすべて新規テスト `src/server/declared-user-kind-scope.test.ts` のセットアップである**
+# —— **アプリが宣言した利用者の種類が `customer` とまったく同じ扱いを受けることを、本物の
+# HTTP 要求と本物の SQLite で測る統合テストである**(`V5-M17-T04` / `T05` / `T07`)。
+# **`createApp` / `KernelMetaStore` / `applyManifest` の3本は同ディレクトリの既存検査
+# (`customer-scope.test.ts` / `view-action-audience.test.ts` ほか)が既に値 import している。**
+# **4本目の `validateManifestFull` だけが新しい種類の層またぎである** —— **`audience` の値域が
+# スキーマでは閉じられなくなり(`ADR-0159` §1 (a))、宣言していない種類名を弾くのが
+# 適用時の参照整合検査に移ったので、「拒否されること」を測るには構造検査(`validateManifest`)
+# ではなく適用時の検査を呼ぶ必要がある。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m17.md。
+src/server/declared-user-kind-scope.test.ts:KernelMetaStore
+src/server/declared-user-kind-scope.test.ts:applyManifest
+src/server/declared-user-kind-scope.test.ts:createApp
+src/server/declared-user-kind-scope.test.ts:validateManifestFull
+# --- V5-M18(G-G21 / D-V5-86。参照アプリの作り直し)で増えた層またぎ ---
+# **7件増え、0件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **増えた7件はすべて新規テスト `scripts/ref-ec/checkout-journey.test.ts` のセットアップである**
+# —— **参照 EC のマニフェストを本物の SQLite に流し込み、本物の HTTP 要求で
+# 「買い物かご → 会計の入力 → 注文 → 一覧の行のボタンから手動起動」を通す統合テストである。**
+# **7本とも `scripts/ref-ec/manifest.test.ts` / `scripts/ref-ec/journey-e2e.test.ts` が
+# 既に同じ形で値 import しているものである** —— **新しい種類の層またぎは1件も無い。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m18.md。
+scripts/ref-ec/checkout-journey.test.ts:AiCapabilityStore
+scripts/ref-ec/checkout-journey.test.ts:CapabilityStore
+scripts/ref-ec/checkout-journey.test.ts:KernelMetaStore
+scripts/ref-ec/checkout-journey.test.ts:appDbPath
+scripts/ref-ec/checkout-journey.test.ts:applyManifest
+scripts/ref-ec/checkout-journey.test.ts:createApp
+scripts/ref-ec/checkout-journey.test.ts:ensureIslandRuntimeReady
+# --- V5-M26(L-G20 / L-G21。カートから注文への実地確認)で増えた層またぎ ---
+# **9件増え、0件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **内訳は3ファイルである**:
+#   - `scripts/ref-ec/user-kinds-trial.test.ts`(5件)…… **`V5-M17b` が足した `set_user_kinds` を
+#     実際に走らせ、`v5-m18.md` §5-1 の 3 の予測(宣言すると `audience: ["customer"]` が拒否される)
+#     を実測する。** `applyDiff` を値 import しているのは**差分操作そのものを測る**からである。
+#   - `scripts/ref-ec/admin-readable-manual-run.test.ts`(3件)…… **`st_admin_readable` を宣言した
+#     `order` で「読めるが押せない」を再現する。**
+#   - `web/e2e/fixture-server.ts`(1件 = `ensureIslandRuntimeReady`)…… **これだけが既存ファイルへの
+#     追加である。** **足す前、`run_function` を含むワークフローを発火させるレコード書込が
+#     「island runtime not ready」で 400 になり、参照 EC の「カートに入れる」がブラウザから
+#     1度も通らなかった**(実測)。**製品の起動経路 `src/server/index.ts` /
+#     `scripts/ref-ec/serve.ts` は着手前からこれを呼んでいる** —— **E2E のフィクスチャサーバだけが
+#     呼んでいなかった。** **`scripts/ref-ec/checkout-journey.test.ts` も同じシンボルを取っている。**
+# **9本とも既存のどれかのファイルが同じ形で値 import しているものである** ——
+# **新しい種類の層またぎは1件も無い。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m26.md。
+scripts/ref-ec/admin-readable-manual-run.test.ts:KernelMetaStore
+scripts/ref-ec/admin-readable-manual-run.test.ts:applyManifest
+scripts/ref-ec/admin-readable-manual-run.test.ts:createApp
+scripts/ref-ec/user-kinds-trial.test.ts:DIFF_OPS
+scripts/ref-ec/user-kinds-trial.test.ts:KernelMetaStore
+scripts/ref-ec/user-kinds-trial.test.ts:applyDiff
+scripts/ref-ec/user-kinds-trial.test.ts:applyManifest
+scripts/ref-ec/user-kinds-trial.test.ts:createApp
+web/e2e/fixture-server.ts:ensureIslandRuntimeReady
+
+# --- V5-M28(ADR-0249。A-G1 = 操作起点の「見せる相手」から立てた書込の壁)で増えた層またぎ ---
+# **3件増え、0件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **増えた3件はすべて新規テスト `src/server/view-action-write-wall.test.ts` のセットアップである**
+# —— **`V5-M28-T02`(単件 POST / PATCH)と `V5-M28-T03`(バッチ)が結線した 403 を、
+# 本物の HTTP 要求と本物の SQLite で測る統合テストである。**
+# **同じ3本(`KernelMetaStore` / `applyManifest` / `createApp`)を同ディレクトリの既存検査
+# `src/server/view-action-audience.test.ts` が**着手前から**値 import しており
+# (本ファイル `:1314`〜`:1316`)、**新しい層またぎの種類は0本である**
+# (`git show 69c9641^:src/server/view-action-audience.test.ts` の `:43` で実測した)。
+# **HTTP だけでアプリを作る経路は存在しない**(`POST /api/apps` というルートは無く、
+# 在るのは `POST /api/apps/:app_id/diffs` だけである)—— **値 import を避ける形は取れなかった。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m28.md §6-2 T02 (j) / T03。
+src/server/view-action-write-wall.test.ts:KernelMetaStore
+src/server/view-action-write-wall.test.ts:applyManifest
+src/server/view-action-write-wall.test.ts:createApp
+
+# --- V5-M28-T06(ADR-0249 §4-5 の穴1〜6 の実測)で増えた層またぎ ---
+# **7件増え、0件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **増えた7件はすべて新規テスト `src/server/view-action-write-wall-gaps.test.ts` の
+# セットアップである** —— **壁が止めない経路(受信口 / ワークフロー / DELETE / 誰も通さない壁 /
+# コードの島)を、本物の HTTP・本物の SQLite・本物の QuickJS-WASM で測る統合テストである。**
+# **新しい層またぎの「種類」は0本である** —— **7本とも既に別ファイルが値 import している**:
+#   InboundStore(:657 `src/server/inbound-route.test.ts` ほか)/ KernelMetaStore(:1430)/
+#   appDbPath(:657 近傍の受信口検査ほか)/ applyDiff(:1409 `scripts/ref-ec/user-kinds-trial.test.ts` ほか)/
+#   applyManifest(:1431)/ createApp(:1432)/ ensureIslandRuntimeReady(:1412 `web/e2e/fixture-server.ts`)。
+# **HTTP だけで受信口を発行する経路も、HTTP だけでアプリを作る経路も存在しない**
+#   (`InboundStore.issueInboundEndpoint` は人間専用ストア直叩き = `inbound-route.test.ts` と同型)
+#   —— **値 import を避ける形は取れなかった。**
+# **`ensureIslandRuntimeReady` を取ったのは、島が同期発火(`runIslandSync`)であり、
+#   事前ロードしていないと fail-closed して「島が壁を越えたか」が測れないためである。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **`src/mcp/tools/write.test.ts` は1件も増えていない**(`(G-M0)`〜`(G-M3)` が使う
+#   `KernelMetaStore` / `createApp` / `appDbPath` は着手前から同ファイルが取っている)。
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m28.md §6-2 T06。
+src/server/view-action-write-wall-gaps.test.ts:InboundStore
+src/server/view-action-write-wall-gaps.test.ts:KernelMetaStore
+src/server/view-action-write-wall-gaps.test.ts:appDbPath
+src/server/view-action-write-wall-gaps.test.ts:applyDiff
+src/server/view-action-write-wall-gaps.test.ts:applyManifest
+src/server/view-action-write-wall-gaps.test.ts:createApp
+src/server/view-action-write-wall-gaps.test.ts:ensureIslandRuntimeReady
+
+# --- V5-M29(ADR-0250。A-G2 = 語彙の本数の焼き込みを名前の一覧1本へ寄せる)で動いた層またぎ ---
+# **3件増え、9件減った。****製品コードの層またぎは0件増えて0件減った。**
+# **これまでの6ブロックはすべて「増えた」だけであり、減ったのは本ブロックが初めてである。**
+#
+# 【減った9件】**`V5-M29-T05` が語彙の総量を測る `expect` を消した結果、
+# `FIELD_TYPES` / `RESOURCE_KINDS` / `DIFF_OPS` を値として読む理由が消えた4ファイルである。**
+#   scripts/mock-psp/payment-flow-e2e.test.ts:FIELD_TYPES / :RESOURCE_KINDS
+#   scripts/ref-ec/journey-e2e.test.ts:FIELD_TYPES / :RESOURCE_KINDS
+#   scripts/ref-ec/manifest.test.ts:FIELD_TYPES / :RESOURCE_KINDS
+#   src/server/inbound-signature-shape.test.ts:DIFF_OPS / :FIELD_TYPES / :RESOURCE_KINDS
+# **3ファイルの `DIFF_OPS` は今日も使われているので残っている**(`DIFF_OPS_AT_V2_COMPLETION`
+#   との和集合を作る箇所)。**`V5-M29-T05` は import を消さずに残して `TS6133` 9件 と
+#   `noUnusedImports` 4件 を残し、判断をメインへ送った。`V5-M29-T06` が消す側を採った。**
+#
+# 【増えた3件】**新設の中央の検査 `scripts/vocabulary-drift.test.ts` である。**
+# **`V5-M29-T01` はこの3本を動的 `import()` で読んでいた** —— **本台帳の doc コメントが
+#   「動的 `import()` と `require()` は拾わない」と書いているとおり、その形では中央の検査の
+#   カーネル依存が本台帳に1行も載らなかった。`T01` はそれを損として自ら申告している。**
+# **`V5-M29-T06` が静的 import へ戻し、この3行を足した。**
+# **新しい層またぎの「種類」は0本である** —— **3本とも既に別ファイルが値 import している**
+#   (`DIFF_OPS` / `FIELD_TYPES` は `src/mcp/error-self-correction.test.ts`、
+#    `RESOURCE_KINDS` は `src/mcp/vocabulary.test.ts` ほか)。
+# **中央の検査は `schemas/` の2本を `readFileSync` で読むので、スキーマ側の層またぎは0件である。**
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`bun test scripts/kernel-export-drift.test.ts` が緑)。
+# 記録: docs/plan/v5/records/v5-m29.md §9 / 同 v5-m29-t05.md §0 / 同 v5-m29-t01.md §8 の 1。
+scripts/vocabulary-drift.test.ts:DIFF_OPS
+scripts/vocabulary-drift.test.ts:FIELD_TYPES
+scripts/vocabulary-drift.test.ts:RESOURCE_KINDS
+
+# --- V5-M2(R-G5 / R-G11 / R-G14。配布物用の data/ を1アプリ分だけ組み立てる)で増えた層またぎ ---
+# **16件増え、0件減った。****製品コードの層またぎは0件増えて0件減った** ——
+# **16件はすべて scripts/ 配下のビルド時スクリプトとその検査である。**
+#
+# 【裁定を下したのは誰か】**メイン(計画側)である。門A の本審査ではない。**
+# **V5-M2 の実施は、この赤に当たった時点でスナップショットを1バイトも更新せずに手を止め、
+#   メインへ報告した**(docs/plan/v5/records/v5-m2.md §3-4)。**メインが下した裁定は
+#   「更新してよい」ではなく「1行ずつ列挙して理由を書いたうえで更新する」である。**
+# **ADR-0009 限定2 を1バイトも引き直していない。** 条文も front matter も動かしていない。
+# **スナップショット冒頭が要求する「審査」の主体は今日も定まっていない**(ADR-0007 限界9)。
+#   **V5-M2 はこれを解消していない。**
+#
+# 【裁定の根拠3点】
+# 1. **新しい類型ではない。** scripts/ から src/kernel/ への値 import は本ブロックの前に
+#    135行が載っている(V5-M2 の実測。着手前の本ファイルは 1,484行)。
+#    **【正直に書く。数え方で答が変わる】**
+#    - **シンボル単位で数えると 1件だけ新規である** —— **APP_SCOPED_KERNEL_TABLES の既存行は
+#      着手前 0件であった**(実測)。16行のうち2行がこのシンボルの最初の層またぎである。
+#      **残る13シンボルはすべて既存行がある**(quoteIdentifier 1 / kernelDbPath 3 / appDir 2 /
+#      appDbPath 35 / appManifestPath 9 / KernelMetaStore 77 / createApp 72 /
+#      CapabilityStore 12 / AiCapabilityStore 7 / EscapeHatchStore 6 / InboundStore 9 /
+#      putEscapeHatchBody 2 / readRecordList 5)。
+#    - **モジュール単位で数えると新規ではない** —— 同じ src/kernel/delete-app.ts の deleteApp が
+#      着手前から src/mcp/tools/write.ts:deleteApp として載っている(着手前の :517)。
+#    - **「定数を値 import する」という形でも新規ではない** —— scripts/cp-v1-8-audit.ts が
+#      CHANGELOG_KINDS / DIFF_OPS / FIELD_TYPES / RESOURCE_KINDS / SORT_ORDERS / VIEW_TYPES の
+#      6定数を着手前から値 import している。
+#    **メインの裁定の根拠1 は後ろ2つの数え方では成り立ち、最初の数え方では成り立たない。**
+#    **どちらが正しいかを本ブロックは判定しない。数えた結果をそのまま書く。**
+# 2. **ADR-0009 限定2 の条文の主語3本(normalizeSort / sortErrorPath / validateSortKeys)に
+#    1本も触れていない。** 条文を直接照合する検査(scripts/kernel-import-drift.test.ts:155)は
+#    今日も緑である。
+# 3. **同じ形の先例が2つある。** (i) 直上の V5-M29 のブロック(新しい類型が0本であることを
+#    確かめてから更新した)。(ii) **ADR-0252 限定5**(逐語:「**scripts/kernel-import-snapshot.txt
+#    の更新は、増えた行を審査してから行う**」/ 完了条件欄「**実装タスクの記録に、増えた行を
+#    1行ずつ列挙して理由を書くことを完了条件に含める**」)—— **スナップショットの成長を門では
+#    なく記録の要件として扱う形を、審査自身が既に採っている。**
+#
+# 【構造上の発見】**「取り出しの単一ソースを共有せよ」(V5-M0 §2-5 の逐語「配列をコピーして
+#   別の一覧を作らない」)と「層をまたぐ値 import を増やすな」(ADR-0009 限定2 / 本検査)は
+#   正面から当たる。** **V5-M0 の歯止め1 の宣言(§2-5 / §2-11 / §2-14)は、この帰結を
+#   1行も予見していない**(3節のどこにも本ファイルの名前が無い)。
+#   **本検査の doc コメントが自ら申告しているとおり動的 import() なら素通りできるが、
+#   それは検査の回避であり、V5-M2 は採らなかった。**
+#
+# 【本体 4件】scripts/build-runner-data.ts。**配布物用の data/ を組み立てるビルド時スクリプト。**
+#   :APP_SCOPED_KERNEL_TABLES … **取り出しの単一ソース。** V5-M0 §2-5 が「配列をコピーして
+#                                別の一覧を作らない」と明示的に要求した1本である。
+#   :kernelDbPath / :appDir    … 保存レイアウト(<dataRoot>/kernel.sqlite / apps/<appId>/)を
+#                                ハードコードしないためのパス関数。scripts/bench/ が同じ理由で
+#                                appDbPath / appSnapshotsDir を既に取っている。
+#   :quoteIdentifier           … SQL 識別子の引用。**自前に書き直すと同じ規則が2箇所に生まれる**
+#                                —— ADR-0009 限定2 の趣旨がまさにそれを避けることである。
+scripts/build-runner-data.ts:APP_SCOPED_KERNEL_TABLES
+scripts/build-runner-data.ts:appDir
+scripts/build-runner-data.ts:kernelDbPath
+scripts/build-runner-data.ts:quoteIdentifier
+#
+# 【検査のセットアップ 12件】scripts/build-runner-data.test.ts。**製品コードは1行も無い。**
+# **本物の SQLite に2アプリ分の行を作り、取り出したあとを読むためだけに引いている。**
+#   :KernelMetaStore / :createApp … 台帳とアプリディレクトリを作る(authz.test.ts /
+#                                   owner-scope.test.ts / customer-scope.test.ts が同一目的で
+#                                   既に採っている組と同型)。
+#   :CapabilityStore / :AiCapabilityStore / :EscapeHatchStore / :InboundStore / :putEscapeHatchBody
+#                                 … 横断テーブルに行を入れる。**これらを呼ばないと
+#                                   CREATE TABLE が走らず、取り出しの検査が空回りする。**
+#                                   src/kernel/delete-app.test.ts の seedCrossCuttingRows と同じ組に、
+#                                   V5-M2-T01 が足した受信口の2テーブルを加えたものである。
+#   :APP_SCOPED_KERNEL_TABLES     … **走査対象の単一ソース。** sqlite_master を走査していない
+#                                   (「次に足し忘れたら赤くなる」検査を V5-M0 §2-14 が禁じている)。
+#   :readRecordList               … R-G11 の確認。**_changelog の投影に他アプリの行が出ないことを、
+#                                   投影の本物の入口で読む。** scripts/bench/scenarios.ts が
+#                                   同じ関数を同じ理由(本物の read パスを通す)で既に取っている。
+#   :kernelDbPath / :appDbPath / :appManifestPath
+#                                 … 出力の物理パスをハードコードしないため。
+scripts/build-runner-data.test.ts:AiCapabilityStore
+scripts/build-runner-data.test.ts:APP_SCOPED_KERNEL_TABLES
+scripts/build-runner-data.test.ts:CapabilityStore
+scripts/build-runner-data.test.ts:EscapeHatchStore
+scripts/build-runner-data.test.ts:InboundStore
+scripts/build-runner-data.test.ts:KernelMetaStore
+scripts/build-runner-data.test.ts:appDbPath
+scripts/build-runner-data.test.ts:appManifestPath
+scripts/build-runner-data.test.ts:createApp
+scripts/build-runner-data.test.ts:kernelDbPath
+scripts/build-runner-data.test.ts:putEscapeHatchBody
+scripts/build-runner-data.test.ts:readRecordList
+#
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+#   (bun test scripts/kernel-export-drift.test.ts が 2 pass / 0 fail)。
+# 記録: docs/plan/v5/records/v5-m2.md §6(増えた16行の1行ずつの列挙)/ §7(裁定)/ §8(構造上の発見)。
+# --- V5-M9(R-G15-a / R-G15-c。MCP の2本目の入口 = Streamable HTTP)で増えた層またぎ ---
+# **8件増え、0件減った。****新しいシンボルは1つも増えていない** ——
+# 増えたのは「どのファイルから」の組み合わせだけである。
+#
+# 【製品コード +2件】`src/mcp/http-entry.ts` の `ensureIslandRuntimeReady` / `recover`。
+# **どちらも `src/mcp/index.ts`(stdio のエントリ)が既に値 import している同じ2本である。**
+# HTTP のエントリが stdio のエントリと**同じ起動時処理(復旧 → 島ランタイムの事前ロード)**を
+# 行うためであり、その判断(常駐プロセスでも接続のたびではなくプロセスの起動時に1回だけ
+# 判断する)は `docs/plan/v5/records/v5-m9.md` §3-6 の末尾に書いた。
+#
+# 【テスト +6件】`src/mcp/http-entry.test.ts` の
+# KernelMetaStore / appDbPath / appDir / applyManifest / createApp / createRecord。
+# **`src/mcp/index.test.ts` が既に採っている組と1シンボルも違わない。**
+#
+# **`ADR-0009` 限定2 が名指しした3本(`normalizeSort` / `sortErrorPath` / `validateSortKeys`)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: `src/kernel/` の export を1つも増やしていない
+#   (`src/kernel/` に1バイトも差分が無い。Δ7 = 門外の根拠そのもの)。
+# 記録: docs/plan/v5/records/v5-m9.md §6-3。
+src/mcp/http-entry.test.ts:KernelMetaStore
+src/mcp/http-entry.test.ts:appDbPath
+src/mcp/http-entry.test.ts:appDir
+src/mcp/http-entry.test.ts:applyManifest
+src/mcp/http-entry.test.ts:createApp
+src/mcp/http-entry.test.ts:createRecord
+src/mcp/http-entry.ts:ensureIslandRuntimeReady
+src/mcp/http-entry.ts:recover
+# --- V5-M6(R-G4。ADR-0252。配布先のボリュームを移行する器)で増えた層またぎ ---
+# **24件増え、0件減った。****製品コードの層またぎは0件増えて0件減った** ——
+# **24件はすべて scripts/ 配下の実行時スクリプト(移行器)とその検査である。**
+# **移行器は Runner のイメージに1本も入らない**(ADR-0252 限定4。検査は V5-M7 が持つ)。
+#
+# 【この赤は審査が予告していた】**ADR-0252 §1 の逐語**「**scripts/kernel-import-drift.test.ts:47
+#   逐語 `const SEARCH_ROOTS = [...]` —— 移行器をこの6ルートのどこに置いても、src/kernel/ から
+#   値 import した瞬間に検査が赤くなる。**」/ **同 S3 の (b)**「**scripts/kernel-import-drift.test.ts
+#   は確実に赤くなる。**」**限定5 はその更新の作法(増えた行を1行ずつ列挙して理由を書く)を
+#   実装タスクの完了条件として先に定めている。** 本ブロックがそれである。
+# **ADR-0009 限定2 を1バイトも引き直していない。** 条文も front matter も動かしていない。
+# **スナップショット冒頭が要求する「審査」の主体は今日も定まっていない**(ADR-0007 限界9)。
+#   **V5-M6 はこれを解消していない。**
+#
+# 【正直に書く。先行9ブロックより1段大きい】
+# **「新しい種類の層またぎは1件も無い」とは書けない。** 数え方ごとの実測は次のとおり:
+# - **モジュール単位: 2本が初めて層をまたぐ。**
+#   **src/kernel/migrate.ts**(既存の層またぎ 0件 —— applyAddTable / applyAddField /
+#   migrateSchema のいずれも着手前 0件)と **src/kernel/convert.ts**(同 0件 —— convertValue /
+#   conversionVerdict / conversionLayer / checkFieldConversions / UNCONVERTIBLE_SAMPLE_LIMIT の
+#   いずれも着手前 0件)。**V5-M2 のブロックは「モジュール単位で数えると新規ではない」と
+#   書けたが、V5-M6 は書けない。**
+# - **シンボル単位: 6本が初めて層をまたぐ**(planMigration / applyMigrationPlan /
+#   checkFieldConversions / UNCONVERTIBLE_SAMPLE_LIMIT / foldOperations / restoreSnapshot)。
+#   **行数では8行**(planMigration と foldOperations は本体と検査の2箇所)。
+# - **残る10シンボルはすべて既存行がある**(着手前の実測。KernelMetaStore 79 / createApp 74 /
+#   appDbPath 37 / applyDiff 18 / appManifestPath 11 / readCurrentManifest 10 / kernelDbPath 5 /
+#   appDir 4 / quoteIdentifier 2 / takeSnapshot 2)。
+# - **「scripts/ から src/kernel/ を値 import する」という形では新規ではない** ——
+#   着手前の本ファイルに scripts/ 起点の行が **151件**ある(データ行の総数は 531行)。
+#
+# 【理由。なぜ他の形では組めなかったか】
+# 1. **ADR-0252 限定1 / 限定2 が「src/kernel/ に export を1本も足さず、src/kernel/ 配下に
+#    1ファイルも新設しない」と定めた。** **移行器は既存 export だけで組み立てる。**
+#    **既存 export を使うとは、層をまたいで値 import することである。**
+#    **限定1 を守ることと、この台帳を増やさないことは同時に成り立たない。**
+# 2. **ADR-0252 §2 が ②(POST /diffs を移行専用コンテナに載せる。新しい移行器を1バイトも
+#    書かない)を **W-D** と判定している** —— 逐語「**したがって ② では破壊的な移行が1件も
+#    できない。これは目的の中核であり、W-B ではなく W-D。**」**層またぎを 0件に保つ道は、
+#    目的の中核を落とす道であった。**
+# 3. **動的 import() なら本検査を素通りできる**(本検査の doc コメントが自ら申告している)が、
+#    **それは検査の回避である。V5-M2 が採らなかったのと同じ理由で、V5-M6 も採らない。**
+# 4. **ADR-0009 限定2 の条文の主語3本(normalizeSort / sortErrorPath / validateSortKeys)に
+#    1本も触れていない。** 条文を直接照合する検査(scripts/kernel-import-drift.test.ts の
+#    「sortErrorPath / validateSortKeys は …値として import されない」)は今日も緑である。
+#
+# 【本体 14件】scripts/migrate-volume.ts。**配布先のボリュームを移行する実行時スクリプト。**
+#   :planMigration / :applyMigrationPlan
+#                              … 実行計画の導出と適用。**src/kernel/migrate.ts が層をまたぐのは
+#                                これが初めてである。** **ADR-0252 §5 限定2 が名指しした
+#                                「既存 export だけで組み立てる」の中核2本。**
+#   :foldOperations            … operations を現行マニフェストに畳み込んで移行先を作る。
+#                                **これが無いと破壊的な移行が1件もできない**(ADR-0252 §2 の ②)。
+#   :checkFieldConversions / :UNCONVERTIBLE_SAMPLE_LIMIT
+#                              … 変換可否の事前検証と、その打ち切り件数。**src/kernel/convert.ts が
+#                                層をまたぐのはこれが初めてである。** **打ち切り件数は
+#                                再実装に写さず値 import した**(写すと3箇所目の正が生まれる)。
+#   :takeSnapshot / :restoreSnapshot
+#                              … 移行の前に控えを取り、失敗したら戻す(ADR-0252 限定8)。
+#                                **restoreSnapshot は初めて層をまたぐ。**
+#   :readCurrentManifest       … 移行前のマニフェストを読む。scripts/bench/ が同じ理由で既に取っている。
+#   :KernelMetaStore           … kernel.sqlite の遅延 ALTER(migrateChangelogColumns)を1回通す。
+#                                **kernel.sqlite の移行手段はこれしか無い**(src/kernel/meta-store.ts
+#                                の非 export な関数であり、開くこと以外に入口が無い)。
+#   :quoteIdentifier           … 再実装した checkUniqueBackfills の SQL 識別子の引用。
+#                                **自前に書き直すと同じ規則が3箇所に生まれる**(本体 / build-runner-data /
+#                                移行器)。**ADR-0009 限定2 の趣旨がまさにそれを避けることである。**
+#   :appDbPath / :appManifestPath / :appDir / :kernelDbPath
+#                              … 保存レイアウト(ADR-0002)をハードコードしないためのパス関数。
+#                                **src/server/runner-version-gate.ts は同じレイアウトを手書きしている
+#                                (v5-m5.md §1-3)。移行器はそれを繰り返さず、正を1つにした。**
+scripts/migrate-volume.ts:KernelMetaStore
+scripts/migrate-volume.ts:UNCONVERTIBLE_SAMPLE_LIMIT
+scripts/migrate-volume.ts:appDbPath
+scripts/migrate-volume.ts:appDir
+scripts/migrate-volume.ts:appManifestPath
+scripts/migrate-volume.ts:applyMigrationPlan
+scripts/migrate-volume.ts:checkFieldConversions
+scripts/migrate-volume.ts:foldOperations
+scripts/migrate-volume.ts:kernelDbPath
+scripts/migrate-volume.ts:planMigration
+scripts/migrate-volume.ts:quoteIdentifier
+scripts/migrate-volume.ts:readCurrentManifest
+scripts/migrate-volume.ts:restoreSnapshot
+scripts/migrate-volume.ts:takeSnapshot
+#
+# 【検査のセットアップ 10件】scripts/migrate-volume.test.ts。**製品コードは1行も無い。**
+#   :KernelMetaStore / :createApp / :applyDiff
+#                              … 本物のアプリと本物のテーブルを作る(build-runner-data.test.ts /
+#                                authz.test.ts が同一目的で既に採っている組と同型)。
+#                                **:applyDiff にはもう1つの役目がある** —— **ADR-0252 限定3 の
+#                                「本体と食い違ったら赤くなる検査」で、非 export な
+#                                checkUniqueBackfills の出力を逐語で取り出す唯一の経路である**
+#                                (apply-diff.ts が後付け unique で落ちるとき、返す errors は
+#                                 checkUniqueBackfills の返り値そのものである)。
+#   :foldOperations / :planMigration
+#                              … イメージ側に置く「移行先マニフェスト」を本物の経路で作り、
+#                                本体と同じ uniqueChecks を再実装へ渡す。**検査が手で組み立てた
+#                                期待値と本物の判定がずれないようにするため。**
+#   :readCurrentManifest       … 移行の前後でマニフェストが入れ替わったことを読む。
+#   :appDbPath / :appManifestPath / :appDir / :kernelDbPath
+#                              … 出力の物理パスをハードコードしないため。
+scripts/migrate-volume.test.ts:KernelMetaStore
+scripts/migrate-volume.test.ts:appDbPath
+scripts/migrate-volume.test.ts:appDir
+scripts/migrate-volume.test.ts:appManifestPath
+scripts/migrate-volume.test.ts:applyDiff
+scripts/migrate-volume.test.ts:createApp
+scripts/migrate-volume.test.ts:foldOperations
+scripts/migrate-volume.test.ts:kernelDbPath
+scripts/migrate-volume.test.ts:planMigration
+scripts/migrate-volume.test.ts:readCurrentManifest
+#
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+#   (bun test scripts/kernel-export-drift.test.ts が 2 pass / 0 fail。
+#    src/kernel/ への差分は 0行 = ADR-0252 限定1 / 限定2)。
+# 記録: docs/plan/v5/records/v5-m6.md §5(増えた24行の1行ずつの列挙と理由)。
+
+# 更新: V5-M7-T01(2026-08-06)。+6件。**門外(記録)。ADR-0252 限定5 と同じ作法で、
+# 増えた行を1行ずつ審査してから足した。**
+#
+# **増えたのは1ファイルだけである** —— scripts/runner-image/seed-demo-app.ts。
+# 配布物のイメージを組むために、**その場で1アプリを作る**器である
+# (今日ディスクにある実アプリは user_version = 0 なので版のゲートに止められる。
+#  ADR-0251 限定6。実測は docs/plan/v5/records/v5-m7.md §1)。
+#
+# **6件とも、既に別のファイルから値 import されているシンボルである**
+# (新しい層またぎのシンボルは0件。scripts/bench/fixture.ts / scripts/cp4-evidence.ts /
+#  scripts/mock-psp/payment-flow-e2e.test.ts が同じ組を既に採っている):
+#   :createApp / :KernelMetaStore … アプリを1件作る(台帳行 + ディレクトリ + 第0行)。
+#   :applyDiff                    … カーネルの本物の経路で定義を入れる。
+#                                   applyManifest の近道を採らない(changelog に載らない)。
+#   :readCurrentManifest          … createRecord に渡すマニフェストを読む。
+#   :createRecord                 … レコードを3件入れる。
+#   :appDbPath                    … app.sqlite の物理パスをハードコードしないため。
+#
+# **ADR-0009 限定2 の normalizeSort 系は1つも含まない。**
+# **製品コードの層またぎは0件**(seed-demo-app.ts はビルド時の器であり、配布物に入らない ——
+#  scripts/ 配下はイメージに1ファイルも COPY されない。検査は scripts/runner-image/verify-image.ts の N6)。
+#
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+#   (git diff --numstat で src/kernel/ が0行)。
+# 記録: docs/plan/v5/records/v5-m7.md §0。
+scripts/runner-image/seed-demo-app.ts:KernelMetaStore
+scripts/runner-image/seed-demo-app.ts:appDbPath
+scripts/runner-image/seed-demo-app.ts:applyDiff
+scripts/runner-image/seed-demo-app.ts:createApp
+scripts/runner-image/seed-demo-app.ts:createRecord
+scripts/runner-image/seed-demo-app.ts:readCurrentManifest
+
+# 更新: V5-M7f-T01 / V5-M7f-T02(2026-08-06)。+4件。**門外(記録)。V5-M2 / V5-M7 と同じ作法で、
+# 増えた行を1行ずつ審査してから足した。**
+#
+# **増えたのは2ファイル(製品側1 / 検査側1)で、シンボルは2種類だけである** ——
+# **どちらも `src/kernel/storage-paths.ts` の保存レイアウト関数であり、新しい種類の
+#   層またぎではない**(同ファイルからの値 import は本ブロックの前に多数載っている。
+#   scripts/bench/fixture.ts が appDbPath / appSnapshotsDir の組を既に採っている ——
+#   その旨は本ファイルの scripts/build-runner-data.ts の節が自ら書いている)。
+#
+# 【本体 +2件】scripts/build-runner-data.ts
+#   :appDbPath        … **焼いた app.sqlite の印を器の版に合わせる**(V5-M7f-T01)ために、
+#                       出力側の app.sqlite の物理パスが要る。**ファイル名を手で書くと
+#                       ADR-0002 のレイアウトが3箇所目に生まれる**(同ファイルは既に
+#                       appDir / kernelDbPath を同じ理由で採っている)。
+#   :appSnapshotsDir  … **過去の控えを器に入れない**(V5-M7f-T02 / D-V5-97)ために、
+#                       cpSync の filter が「どのディレクトリを落とすか」を知る必要がある。
+#                       同上の理由でディレクトリ名を手で書かない。
+#
+# 【検査のセットアップ +2件】scripts/build-runner-data.test.ts。**製品コードは1行も無い。**
+#   :appDir           … 焼いたアプリディレクトリの中身を歩いて、控えが1件も残っていないことを見る。
+#   :appSnapshotsDir  … 元の data/ に控えを2件置き、出力側に同じ場所が無いことを見る。
+#
+# **ADR-0009 限定2 の normalizeSort 系は1つも含まない。**
+# **製品コードの層またぎは0件**(build-runner-data.ts はビルド時の器であり、配布物に入らない ——
+#  scripts/ 配下はイメージに1ファイルも COPY されない。検査は verify-image.ts の N6)。
+#
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+#   (git diff --numstat で src/kernel/ が0行)。
+# 記録: docs/plan/v5/records/v5-m7f.md §5。
+scripts/build-runner-data.test.ts:appDir
+scripts/build-runner-data.test.ts:appSnapshotsDir
+scripts/build-runner-data.ts:appDbPath
+scripts/build-runner-data.ts:appSnapshotsDir
+
+# --- V6-M13-T01(H-G5 / H-G19。配布物の skill と語彙の正の突き合わせ検査)で増えた層またぎ ---
+# **3件増え、0件減った。****製品コードの層またぎは0件増えて0件減った** ——
+# **3件はすべて scripts/ 配下の新設の検査 scripts/skill-vocabulary-drift.test.ts である。**
+#
+# 【新しい層またぎの「種類」は0本である】**3本とも既に別ファイルが値 import している** ——
+#   直前のブロックの scripts/vocabulary-drift.test.ts が同じ3本を同じ理由(語彙の名前の正を
+#   カーネルから導き、字面で書かない)で取っており、**本件はその反復である。**
+# **静的 import である**(V5-M29-T06 と同じ判断 —— 動的 import() にすると本台帳に1行も
+#   載らず、カーネル依存が見えなくなる)。
+# **schemas/ の2本は readFileSync で読むので、スキーマ側の層またぎは0件である。**
+# **src/mcp/vocabulary.ts からの CANNOT_DO も値 import しているが、本台帳の対象は
+#   src/kernel/ を指す import だけなので載らない**(scripts/kernel-import-drift.test.ts:47 の
+#   pointsToKernel)。**載らないことを隠さずに書いておく。**
+# **ADR-0009 限定2 が名指しした3本(normalizeSort / sortErrorPath / validateSortKeys)は
+#   1本も新しく取っていない。**
+# **Δ8 の照合**: src/kernel/ の export を1つも増やしていない
+#   (git diff --numstat -- src/kernel/ schemas/ が0行。bun test scripts/kernel-export-drift.test.ts が緑)。
+# 記録: docs/plan/v6/records/v6-m13.md §3。
+scripts/skill-vocabulary-drift.test.ts:DIFF_OPS
+scripts/skill-vocabulary-drift.test.ts:FIELD_TYPES
+scripts/skill-vocabulary-drift.test.ts:RESOURCE_KINDS
+
+# --- V7-M2-T02(権限名ごとの「読む / 書く / 消す」がサーバの判定に効く。`Z-G11`)------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-verbs.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                           createRecord / appDbPath
+#     —— **`read` だけの付与では `GET` が通り `PATCH` が 403 になること、`write` を持つ付与では
+#        `PATCH` が通ること、一覧に付与のある行だけが返ることを、**本物の HTTP と本物の
+#        SQLite** で固定する**(`v7-m2.md` の完了条件 (i)(ii))。**`appDbPath` は、配線して
+#        いない `DELETE` が今日も素通りすることを測るために版(`_updated_at`)を直接読む
+#        1箇所だけで使う。**
+# **新しい層またぎの種類は0本である**(5本とも既存の検査が値 import しているものと同じ。
+#   直上の V4-M10-T04 / T05 のブロックが同じ4本を同じ理由で取っている)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m2.md §2-2。
+src/server/access-control-verbs.test.ts:KernelMetaStore
+src/server/access-control-verbs.test.ts:appDbPath
+src/server/access-control-verbs.test.ts:applyManifest
+src/server/access-control-verbs.test.ts:createApp
+src/server/access-control-verbs.test.ts:createRecord
+
+# --- V7-M2-T03(運営3ロール・宣言された利用者の種類と、権限名との優先順位。`Z-G13`)--------
+# **6件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-role-precedence.test.ts:KernelMetaStore / createApp /
+#                                           applyManifest / createRecord / appDbPath /
+#                                           validateManifestFull
+#     —— **運営ロール(owner)が付与の無い行を `API` から取れないこと、付与を1件入れたら
+#        見えるようになること、宣言していない表では今日どおり全行を見られること(オプトインの
+#        側)を、**本物の HTTP と本物の SQLite** で固定する**(`v7-m2.md` の完了条件 (ii))。
+#        **`validateManifestFull` は、`st_admin_readable` / `st_public` との同居が適用時に
+#        拒否されること(完了条件 (iii))を測る1箇所だけで使う** —— **その拒否を実装したのは
+#        `V7-M1-T05` であって本タスクではない。本タスクは実装済みであることを測っているだけである。**
+# **新しい層またぎの種類は0本である**(6本とも既存の検査が値 import しているものと同じ。
+#   直上の V7-M2-T02 のブロックが5本を、V7-M1-T05 が `validateManifestFull` を同じ理由で取っている)。
+# **製品コードの層またぎは0件**(6件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 6件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m2.md §2-3。
+src/server/access-control-role-precedence.test.ts:KernelMetaStore
+src/server/access-control-role-precedence.test.ts:appDbPath
+src/server/access-control-role-precedence.test.ts:applyManifest
+src/server/access-control-role-precedence.test.ts:createApp
+src/server/access-control-role-precedence.test.ts:createRecord
+src/server/access-control-role-precedence.test.ts:validateManifestFull
+
+# --- V7-M3-T02(8経路すべてが判定を受ける。抜けを機械で捕まえる)------------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-paths.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                           createRecord / appDbPath
+#     —— **`POST` / 画面の操作起点 / バッチの3経路に判定を配線したことを、**本物の HTTP と
+#        本物の SQLite** で固定する**(`v7-m3.md` §2-2)。**`createRecord` は、メンバー行と
+#        既存の付与行を仕込むために使う。** **`appDbPath` は、作成者への付与が付与表に
+#        実際に1件入ったことを直接読んで確かめる箇所で使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M2-T02 / V7-M2-T03 のブロックが
+#   同じ理由で取っているものと同じ)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m3.md §2-2。
+src/server/access-control-paths.test.ts:KernelMetaStore
+src/server/access-control-paths.test.ts:appDbPath
+src/server/access-control-paths.test.ts:applyManifest
+src/server/access-control-paths.test.ts:createApp
+src/server/access-control-paths.test.ts:createRecord
+
+# --- V7-M3-T03(付与を作れる相手を絞る。`Z-G5` / `D-V7-14`)-------------------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-grant-write.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                                 createRecord / appDbPath
+#     —— **付与表への `POST` / `PATCH` / `DELETE` / バッチが、付与の指す行への権限で
+#        絞られることを、**本物の HTTP と本物の SQLite** で固定する**(`v7-m3.md` §2-3)。
+#        **`createRecord` はメンバー行を仕込むために使い、`appDbPath` は付与表の中身を
+#        直接読んで「1行も増えていない」を確かめる箇所で使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M3-T02 のブロックと同じ理由)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m3.md §2-3。
+src/server/access-control-grant-write.test.ts:KernelMetaStore
+src/server/access-control-grant-write.test.ts:appDbPath
+src/server/access-control-grant-write.test.ts:applyManifest
+src/server/access-control-grant-write.test.ts:createApp
+src/server/access-control-grant-write.test.ts:createRecord
+
+# --- V7-M3-T05(相手が消えたあとの付与と、id の再利用。`Z-G32`)---------------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-stale-grant.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                                 createRecord / appDbPath
+#     —— **(a) `_auth_users` から消えたユーザの id を指す付与行と、(b) 消えたグループ行を
+#        指す付与行の2つを、**本物の HTTP と本物の SQLite** で別々に測る**(`v7-m3.md` §2-5)。
+#        **`createRecord` はグループ行・メンバー行を仕込むために使い、`appDbPath` は
+#        「付与行もメンバー行も1件も消えていない」ことを直接 SELECT で確かめる箇所で使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M3-T03 のブロックと同じ理由)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m3.md §2-5。
+src/server/access-control-stale-grant.test.ts:KernelMetaStore
+src/server/access-control-stale-grant.test.ts:appDbPath
+src/server/access-control-stale-grant.test.ts:applyManifest
+src/server/access-control-stale-grant.test.ts:createApp
+src/server/access-control-stale-grant.test.ts:createRecord
+
+# --- V7-M3-T06(`DELETE` に「消す」を効かせ、境界を書く。`Z-G34` / `Z-G25`)---------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-delete.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                            createRecord / appDbPath
+#     —— **`DELETE` の関門4段((1) 所有者スコープ 404 →(2) 付与の可視性 404 →
+#        (3) 付与の「消す」403 →(4) 削除保護 409)を、**本物の HTTP と本物の SQLite** で
+#        1段ずつ測る**(`v7-m3.md` §2-6)。**`createRecord` は付与行・メンバー行・削除保護の
+#        立った行を仕込むために使い、`appDbPath` は「行が1件も減っていない」ことを直接
+#        SELECT COUNT で確かめる箇所で使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M3-T05 のブロックと同じ理由)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m3.md §2-6。
+src/server/access-control-delete.test.ts:KernelMetaStore
+src/server/access-control-delete.test.ts:appDbPath
+src/server/access-control-delete.test.ts:applyManifest
+src/server/access-control-delete.test.ts:createApp
+src/server/access-control-delete.test.ts:createRecord
+
+# --- V7-M3-T07(ファイル配信に判定を掛ける。`Z-G36`)---------------------------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-file-delivery.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                                   createRecord / appDbPath
+#     —— **行が見えない人(運営ロールを含む)がその行の image / file を取れないことを、
+#        **本物の HTTP と本物の SQLite** で測る**(`v7-m3.md` §2-7)。**`createRecord` は
+#        付与行・メンバー行と、file を参照する行を仕込むために使う。** **`appDbPath` は
+#        その仕込みで開く app.sqlite の場所を引くために使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M3-T06 のブロックと同じ理由)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m3.md §2-7。
+src/server/access-control-file-delivery.test.ts:KernelMetaStore
+src/server/access-control-file-delivery.test.ts:appDbPath
+src/server/access-control-file-delivery.test.ts:applyManifest
+src/server/access-control-file-delivery.test.ts:createApp
+src/server/access-control-file-delivery.test.ts:createRecord
+
+# --- V7-M3-T09(`ADR-0296`。`V7-M3-T07` の fail-open に検査を当てる)-----------------------
+# **1件増え、0件減った。** 増えたのは**既存の検査ファイル1本から**である:
+#   src/server/access-control-file-delivery.test.ts:appManifestPath
+#     —— **マニフェストが JSON として読めないとき、予約3ロールには今日どおり file が配信される**
+#        ことを固定する検査 (G) が、**ディスク上のマニフェスト1ファイルを壊す**ために使う
+#        (`v7-m3.md` §2-9)。**パスを検査の側で組み直さない**(組み直すと `storage-paths.ts` の
+#        規約が2箇所に散る)。
+# **新しい層またぎの種類は0本である**(直上の V7-M3-T07 のブロックと同じ理由。同じファイルが
+#   同じ `src/kernel/index.ts` から値を引いているだけである)。
+# **製品コードの層またぎは0件**(1件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m3.md §2-9。
+src/server/access-control-file-delivery.test.ts:appManifestPath
+
+# --- V7-M4-T02(親 → 子 → 孫の3段で付与が届く。`Z-G14`)-----------------------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-inheritance.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                                 createRecord / appDbPath
+#     —— **親(プロジェクト)に付けた付与だけで、子(課題)と孫(コメント)が **本物の HTTP と
+#        本物の SQLite** から見えることを測る**(`v7-m4.md` の `V7-M4-T02`)。
+#        **`createRecord` は3段の行・付与行・メンバー行を仕込むために使い、`appDbPath` は
+#        その仕込みで開く app.sqlite の場所を引くために使う**(`related` の行集合が動かない
+#        ことを測る (G) では、付与を1件あとから足すのにも使う)。
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M3-T07 のブロックと同じ理由。
+#   同じ `src/kernel/index.ts` から同じ5シンボルを引いている検査ファイルがもう1本増えた)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。**`src/server/owner-scope.ts` は
+#   引き継ぎの読み出しを**呼び出し側から渡されたコールバック**で受けるので、値 import を
+#   1件も増やしていない**(`Z-G14` 限定7)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m4.md の `V7-M4-T02`。
+src/server/access-control-inheritance.test.ts:KernelMetaStore
+src/server/access-control-inheritance.test.ts:appDbPath
+src/server/access-control-inheritance.test.ts:applyManifest
+src/server/access-control-inheritance.test.ts:createApp
+src/server/access-control-inheritance.test.ts:createRecord
+
+# --- V7-M4-T03(循環したときに止まることの専用検査。`Z-G16`)-------------------------------
+# **【`V7-M4-T04` が足した記録。`V7-M4-T03` の時点でスナップショットの更新が漏れていた】**
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-cycle.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                           createRecord / appDbPath
+#     —— **A の親が B、B の親が A のマニフェストで `API` が応答を返す**ことを、**本物の HTTP と
+#        本物の SQLite** から測る(`v7-m4.md` の `V7-M4-T03`)。**`createRecord` は環を作る行と
+#        付与行・メンバー行を仕込むために使い、`appDbPath` は循環を閉じる2度目の書込で開く
+#        app.sqlite の場所を引くために使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の V7-M4-T02 のブロックと同じ理由。
+#   同じ `src/kernel/index.ts` から同じ5シンボルを引いている検査ファイルがもう1本増えた)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。**`V7-M4-T03` は実装を1バイトも
+#   足していない**(訪問済み集合は `V7-M4-T02` が既に持っていた)。
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない。
+# 記録: docs/plan/v7/records/v7-m4.md の `V7-M4-T03`。
+src/server/access-control-cycle.test.ts:KernelMetaStore
+src/server/access-control-cycle.test.ts:appDbPath
+src/server/access-control-cycle.test.ts:applyManifest
+src/server/access-control-cycle.test.ts:createApp
+src/server/access-control-cycle.test.ts:createRecord
+
+# --- V7-M4-T04(段数と件数の上限に当たったことを正直に出す。`Z-G17`)------------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-limit-honesty.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                                   createRecord / appDbPath
+#     —— **6段目で拒否されること・1001 行目で拒否されること・上限に当たった状態と「本当に
+#        見えない」状態が応答の上で区別できることを、**本物の HTTP と本物の SQLite** から測る
+#        (`v7-m4.md` の `V7-M4-T04`)。**`createRecord` は7段の鎖・環・付与行・998 件の
+#        メンバー行を仕込むために使い、`appDbPath` はその仕込みで開く app.sqlite の場所を
+#        引くために使う。**
+# **新しい層またぎの種類は0本である**(5本とも直上の2ブロックと同じ理由。同じ
+#   `src/kernel/index.ts` から同じ5シンボルを引いている検査ファイルがもう1本増えた)。
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)。**上限の定数2本は
+#   `src/server/owner-scope.ts` に在り、`src/kernel/` からは1つも import していない。**
+# **ADR-0009 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat d6a1f3d -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m4.md の `V7-M4-T04`。
+src/server/access-control-limit-honesty.test.ts:KernelMetaStore
+src/server/access-control-limit-honesty.test.ts:appDbPath
+src/server/access-control-limit-honesty.test.ts:applyManifest
+src/server/access-control-limit-honesty.test.ts:createApp
+src/server/access-control-limit-honesty.test.ts:createRecord
+
+# --- V7-M5-T01(付与が1件も無い行が誰からも見えない。`Z-G18`)-----------------------------
+# **6件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/record-access-visibility.test.ts:KernelMetaStore / createApp /
+#                                           applyManifest / createRecord / appDbPath /
+#                                           validateManifestFull
+#     —— **付与が1件も無い行が、5通りの相手(owner / editor / viewer / 宣言された種類 /
+#        未認証)のどれからも一覧にも単件にも出ないこと、付与を1件入れればその相手からは
+#        見えるようになること、**`limit` / `offset` を変えても `total` と返る行の集合が
+#        可視集合と食い違わないこと**を、**本物の HTTP と本物の SQLite** から測る
+#        (`v7-m5.md` の `V7-M5-T01` の完了条件 (i)(ii)(iii))。**`createRecord` は付与0件の
+#        行・他人にだけ付与された行・ページングの母集団11行・利用者行・付与行を仕込むために
+#        使い、`appDbPath` はその仕込みで開く app.sqlite の場所を引くために使う。**
+#        **`validateManifestFull` は、`st_admin_readable` との同居が適用時に拒否されること
+#        (`Z-G18` 限定4)を測る1箇所だけで使う** —— **その拒否を実装したのは `V7-M1-T05`
+#        であって本タスクではない。本タスクは実装済みであることを測っているだけである。**
+# **新しい層またぎの種類は0本である**(6本とも既存の検査が値 import しているものと同じ。
+#   直上の V7-M2-T03 のブロックが同じ6本を、同じ理由で取っている)。
+# **製品コードの層またぎは0件**(6件とも `*.test.ts`)。**本タスクは `src/server/` の製品
+#   コードに1行も足していない** —— **増えたのは検査ファイル1本だけである。**
+# **ADR-0009 限定2 の照合**: 6件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat 7058683 -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m5.md の `V7-M5-T01`。
+src/server/record-access-visibility.test.ts:KernelMetaStore
+src/server/record-access-visibility.test.ts:appDbPath
+src/server/record-access-visibility.test.ts:applyManifest
+src/server/record-access-visibility.test.ts:createApp
+src/server/record-access-visibility.test.ts:createRecord
+src/server/record-access-visibility.test.ts:validateManifestFull
+
+# --- V7-M5-T02(「誰にも見えない行」を見つける運営専用の口。`Z-G19`)-----------------------
+# **6件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/record-access-orphans.test.ts:KernelMetaStore / createApp /
+#                                           applyManifest / createRecord / appDbPath /
+#                                           deleteRecord
+#     —— **運営専用の口(`GET …/tables/:table_id/unreachable-records`)に、付与が0件の行
+#        だけが並ぶこと、他人に付与された行も運営自身に付与された行も1件も並ばないこと、
+#        運営以外は 403 / 未認証は 401 になること、`limit` / `offset` を変えても `total` が
+#        狂わないこと、この口から取れた行が通常の単件 `GET` では今日も 404 であること**を、
+#        **本物の HTTP と本物の SQLite** から測る(`v7-m5.md` の `V7-M5-T02` の完了条件)。
+#        **`createRecord` は付与0件の行7件・他人に付与された行・運営に付与された行・
+#        相手のメンバー行が消える行・引き継ぎの子の行・利用者行・付与行を仕込むために使い、
+#        `appDbPath` はその仕込みで開く app.sqlite の場所を引くために使う。**
+#        **`deleteRecord` は「付与は在るが相手のメンバー行が消えた行」を作る1箇所だけで
+#        使う** —— **その行がこの口に1件も並ばないこと(付与が0件ではないため)を、
+#        限界として測って記録するためである。**
+# **新しい層またぎの種類は0本である**(6本とも既存の import と同じシンボルであり、
+#   `deleteRecord` は `src/server/app.ts` と `src/mcp/tools/write.ts` が今日も値 import して
+#   いる。**新しいシンボルを1つも増やしていない。**)。
+# **製品コードの層またぎは0件**(6件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 6件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat 7058683 -- src/kernel/ schemas/` が0行)。
+# 記録: docs/plan/v7/records/v7-m5.md の `V7-M5-T02`。
+src/server/record-access-orphans.test.ts:KernelMetaStore
+src/server/record-access-orphans.test.ts:appDbPath
+src/server/record-access-orphans.test.ts:applyManifest
+src/server/record-access-orphans.test.ts:createApp
+src/server/record-access-orphans.test.ts:createRecord
+src/server/record-access-orphans.test.ts:deleteRecord
+
+# --- V7-M5-T04(付与の巻き戻し。`Z-G31`)---------------------------------------------------
+# **7件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-undo.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                          createRecord / appDbPath / snapshotDir / redo
+#     —— **付与を作った後に `undo` すると再び見えなくなること、付与を消した後に `undo` すると
+#        復活すること(= 実測の結論。`01` §8 の14 の「黙って復活する」に当たる)、その行を
+#        `T02` の道(`GET …/unreachable-records`)で見つけられること、`D-V7-25` の後からの
+#        有効化と一括の付与が巻き戻しの対象であること、消したユーザが同じ id で戻ること、
+#        添付ファイルの実体が1バイトも動かないこと**を、**本物の HTTP と本物の SQLite** から
+#        測る(`v7-m5.md` の `V7-M5-T04` の完了条件)。
+#        **`createRecord` は付与0件の行4件・利用者行3件・宣言していない表の行3件を仕込むために
+#        使い、`appDbPath` はその仕込みで開く app.sqlite の場所を引くために使う。**
+#        **`snapshotDir` は「スナップショットの中に `blobs/` が1つも無い」ことを
+#        ディスクから確かめる1箇所だけで使う**(`src/kernel/snapshot.ts` の逐語
+#        「`apps/<app_id>/blobs/` 配下の画像 blob 実体はコピーしない。これは意図的な
+#        不変条件である。」の実測)。
+#        **`redo` は `redo` に HTTP の口が1本も無いために使う** —— **状態を動かすところだけ
+#        カーネルを直接呼び、結果の確認は HTTP で行う。** **これは「API から示す」を全段で
+#        満たせていない唯一の場所であり、限界として記録している。**
+# **新しい層またぎの種類は0本である**(7本とも既存の import と同じシンボルであり、
+#   `redo` は `src/mcp/tools/write.ts` と `web/test/theme-candidates.test.ts` が、
+#   `snapshotDir` は `src/mcp/cp-5-scenario.test.ts` が今日も値 import している。
+#   **新しいシンボルを1つも増やしていない。**)。
+# **製品コードの層またぎは0件**(7件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 7件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat 7058683 -- src/kernel/ schemas/` が0行)。
+#   **`src/kernel/undo.ts` / `src/kernel/snapshot.ts` は読むだけで1バイトも書き換えていない。**
+# 記録: docs/plan/v7/records/v7-m5.md の `V7-M5-T04`。
+src/server/access-control-undo.test.ts:KernelMetaStore
+src/server/access-control-undo.test.ts:appDbPath
+src/server/access-control-undo.test.ts:applyManifest
+src/server/access-control-undo.test.ts:createApp
+src/server/access-control-undo.test.ts:createRecord
+src/server/access-control-undo.test.ts:redo
+src/server/access-control-undo.test.ts:snapshotDir
+
+# --- V7-M5-T06(オプトインの証明を検査として置く。`Z-G20`。**計画外タスク**)---------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/access-control-optin.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **`access_control` を1文字も書かない表と、同じ内容で `enabled: false` を書いた表の
+#        応答が、行の操作7本(一覧GET(0件)/ POST作成 / 一覧GET(1件)/ 単件GET / PATCH /
+#        DELETE / 削除後の単件GET)で**本文単位で一致する**こと、未認証でも `owner` でも
+#        一致すること、`enabled: false` の表には取り残し一覧の口が無く `enabled: true` では
+#        開くこと、`enabled: false` の表では付与表に行を作っても判定に1ミリも効かないこと、
+#        `change_table` の差分を **HTTP から** 投げて `enabled: true` に切り替えると同じ表の
+#        ふるまいが変わること**を、**本物の HTTP と本物の SQLite** から測る
+#        (`v7-m0.md` §6-3 `Z-G20` の限定(2)(3))。
+#        **3件は測定台の準備だけに使う** —— `KernelMetaStore` / `createApp` はアプリを1つ作り、
+#        `applyManifest` はその3つの表(宣言なし / `enabled: false` / `enabled: true`)を
+#        置くために使う。**行の作成・更新・削除は1件も `createRecord` を使っていない** ——
+#        **すべて HTTP の `POST` / `PATCH` / `DELETE` を打っている**(限定(3)「測るのは
+#        HTTP の応答である」を、仕込みの側でも崩さないため)。**したがって `createRecord` /
+#        `appDbPath` は1つも import していない**(直上の3ブロックとはここが違う)。
+# **新しいシンボルの種類は0本である** —— **3件とも既存の検査が値 import しているものと同じ。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。**本タスクは製品コードに1行も足して
+#   いない** —— **増えたのは検査ファイル1本だけである。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **Δ8 の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`git diff --numstat 9c4daf6 -- src/kernel/ schemas/` が0行)。
+# **【はみ出しを正直に書く】本ファイルは `V7-M5-T06` の発注書が名指しした変更対象ではない。**
+#   **発注書が「赤くなったら旧値を消さず注を足して更新する」と先に指示した2本のうちの1本である。**
+# 記録: docs/plan/v7/records/v7-m5.md の `V7-M5-T06`(**計画外タスク**)。
+src/server/access-control-optin.test.ts:KernelMetaStore
+src/server/access-control-optin.test.ts:applyManifest
+src/server/access-control-optin.test.ts:createApp
+
+# --- V8-M16-T05 / T06(1人が複数の役割を持てるようにする。`J-G3`)------------------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/multi-role-http.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **実効ロール集合(`{_auth_users.role の1値}` ∪ `{_auth_user_roles に在る付与}`)が
+#        判定に効くことを、**本物の HTTP と本物の SQLite** から測る検査である**
+#        (`J-G3` の限定の逐語「**複数の役割は和集合1本で合成する**」)。
+#        **3件は測定台の準備だけに使う** —— `KernelMetaStore` / `createApp` はアプリを1つ作り、
+#        `applyManifest` は判定の材料になる表(項目の `audience` 宣言つき)を1つ置くために使う。
+#        **行の作成・更新は1件も `createRecord` を使っていない** —— **すべて HTTP の
+#        `POST` / `PATCH` / `DELETE` を打っている。****役割の付け外しも HTTP の
+#        `PATCH /api/apps/:app_id/auth/users/:user_id` である**(**HTTP の口は1本も足していない**)。
+# **新しいシンボルの種類は0本である** —— **3件とも既存の検査が値 import しているものと同じ**
+#   (`src/server/authz.test.ts` / `access-control-optin.test.ts` と同一の3点)。
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **`src/kernel/` と `schemas/` に本タスク経由の差分は1バイトも出していない。**
+src/server/multi-role-http.test.ts:KernelMetaStore
+src/server/multi-role-http.test.ts:applyManifest
+src/server/multi-role-http.test.ts:createApp
+
+# --- V8-M17(役割に束ねた権限を実際に効かせる。`J-G6`〜`J-G11`)---------------------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/role-rules-enforcement.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **面(役割に束ねた権限)が4対象(表・項目・画面・ボタン)それぞれで実際に止めることを、
+#        **本物の HTTP と本物の SQLite** から測る検査である。**
+#        **3件は測定台の準備だけに使う** —— `KernelMetaStore` / `createApp` はアプリを1つ作り、
+#        `applyManifest` は規則の指す先(表・項目・画面・ボタン)を置くために使う。
+#        **行の作成・更新・削除は1件も `createRecord` を使っていない** —— **すべて HTTP の
+#        `POST` / `PATCH` / `DELETE` を打っている。****宣言の書き換えも HTTP の
+#        `POST /api/apps/:app_id/diffs` と `POST /api/apps/:app_id/undo` である**
+#        (**HTTP の口は1本も足していない**)。
+# **新しいシンボルの種類は0本である** —— **3件とも既存の検査が値 import しているものと同じ**
+#   (`src/server/multi-role-http.test.ts` / `access-control-optin.test.ts` と同一の3点)。
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **`src/server/owner-scope.ts` が足した `import type { RoleRuleVerb } from "../kernel/types.ts"`
+#   は本ファイルに1行も現れない** —— **本ファイルは値の import だけを採っており
+#   (冒頭の逐語「**import type は含まない**」)、型は transpile で消えるためである。**
+# **`src/kernel/` と `schemas/` に本タスク経由の差分は1バイトも出していない。**
+src/server/role-rules-enforcement.test.ts:KernelMetaStore
+src/server/role-rules-enforcement.test.ts:applyManifest
+src/server/role-rules-enforcement.test.ts:createApp
+
+# --- V8-M18(権限に書いた条件を実際に評価する。`J-G12`〜`J-G16`)---------------------------
+# **4件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/role-conditions-enforcement.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **測定台の準備だけに使う**(アプリを1つ作り、条件の指す先の表と項目を置く)。
+#        **行の作成・更新・削除は1件も `createRecord` を使っていない** —— **すべて HTTP の
+#        `POST` / `GET` を打っている。****宣言の書き換えも HTTP の
+#        `POST /api/apps/:app_id/diffs` である**(**HTTP の口は1本も足していない**)。
+#   src/server/role-conditions-enforcement.test.ts:dryRunDiff
+#     —— **`J-G16` の知らせが `dry_run_diff` の側にも出ることを測るために呼ぶ。**
+#        **裁定 `R-17-6` が「MCP と HTTP の応答に出す」と書いており、
+#        `m18-vocab-report.md` §9 の 3 が「`dry_run_diff` には出ていない」と申告した穴を
+#        本タスクが塞いだ** —— **その塞ぎ方を実測する1本である。**
+#        **既に `src/mcp/tools/read.ts` / `read.test.ts` / `descriptions.test.ts` が
+#        同じシンボルを値 import しており、新しいシンボルの種類は0本である。**
+# **製品コードの層またぎは0件**(4件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **`src/server/owner-scope.ts` の評価器はカーネルから値を1つも import していない** ——
+#   **深さの上限(`MAX_FILTER_DEPTH`)は適用時にカーネルが検査済みなので、評価器は定数を
+#   1つも持たない**(メインの裁定 `R-17-4`)。**製品コードの行を1行も足していない。**
+# **`schemas/` / `docs/` / `plugins/` に本タスク経由の差分は1バイトも出していない。**
+src/server/role-conditions-enforcement.test.ts:KernelMetaStore
+src/server/role-conditions-enforcement.test.ts:applyManifest
+src/server/role-conditions-enforcement.test.ts:createApp
+src/server/role-conditions-enforcement.test.ts:dryRunDiff
+
+# --- V8-M19(面と点を `OR` で重ね、所属の穴を塞ぐ。`J-G17`〜`J-G20` / `J-G33`)-------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/role-grant-union.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **測定台の準備だけに使う**(アプリを1つ作り、行ごとの付与を宣言した表と、
+#        参加者の表・グループの表・付与の表を置く)。
+#        **行の作成・更新・削除は1件も `createRecord` を使っていない** —— **すべて HTTP の
+#        `POST` / `PATCH` / `DELETE` / `GET` を打っている**(**HTTP の口は1本も足していない**)。
+# **新しいシンボルの種類は0本である** —— **3件とも `role-rules-enforcement.test.ts`
+#   (`V8-M16` / `V8-M17`)と同一の3点である。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **`src/server/owner-scope.ts` が足した合成の関数(`resolveCombinedRecordAccess` /
+#   `roleGateBlocksWithoutGrants`)はカーネルから値を1つも import していない** ——
+#   **製品コードの行を1行も足していない。**
+# **`schemas/` / `src/kernel/` / `src/mcp/` / `docs/` / `plugins/` に本タスク経由の差分は
+#   1バイトも出していない。**
+src/server/role-grant-union.test.ts:KernelMetaStore
+src/server/role-grant-union.test.ts:applyManifest
+src/server/role-grant-union.test.ts:createApp
+
+# --- V8-M20(既存の宣言を撤去する。`J-G27`〜`J-G30` / `ADR-0301`)-------------------------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/role-read-crosses-owner-scope.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **`st_owner`(個人スコープ)の**読取**の重ね順を変えたことの検査である**
+#        (ユーザ決定 `D-V8-35`。メインの裁定「越えるのは読取だけ」)。
+#        **測定台の準備だけに使う**(アプリを1つ作り、`st_owner` を持つ表を1本置く)。
+#        **行の作成・更新・削除は1件も `createRecord` を使っていない** ——
+#        **すべて HTTP を通している**(実 HTTP + 本物の SQLite)。
+#        **既に `role-rules-enforcement.test.ts` / `role-conditions-enforcement.test.ts` /
+#        `role-grant-union.test.ts` が同じ3シンボルを値 import しており、
+#        新しいシンボルの種類は0本である。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+#
+# **【この更新は「減る側」を1行も持たない。誇張しない】**
+# **`V8-M20` は語彙を5件・予約規約フィールドを1本減らしたが、この一覧からは1行も減っていない。**
+# **撤去で消えたファイル(`web/src/views/action-audience.ts` /
+# `src/kernel/view-action-audience.test.ts` / `scripts/ref-ec/audience-crosscheck.test.ts`)は、
+# どれもカーネルシンボルを値として import していなかったためである。**
+# **【禁止の履行】これを「層またぎが減った」と書かない。**
+src/server/role-read-crosses-owner-scope.test.ts:KernelMetaStore
+src/server/role-read-crosses-owner-scope.test.ts:applyManifest
+src/server/role-read-crosses-owner-scope.test.ts:createApp
+
+# --- V8-M21 前半(受信口 / 自動処理 / コードの島に判定を配線する。`J-G21` / `J-G22a` / `J-G23`)---
+# **16件増え、0件減った。** **内訳は 製品コード1件 + 新しい検査ファイル2本から15件 である。**
+#
+# **(1) 製品コードの層またぎ = 1件**:
+#   src/server/inbound-route.ts:listRecords
+#     —— **受信口が、判定に要るメンバー表の行を読むために使う**(台帳 `J-G21` の限定の逐語
+#        「**その主体がメンバー表に行を持つときだけ通す**」)。
+#        **同ファイルは既に createRecord / readCurrentManifest / appDbPath /
+#        CONCURRENT_WRITE_WAIT_PRAGMA など7件をカーネルから値 import しており
+#        (:656-:663)、**新しい層またぎの種類ではない**。
+#        **ADR-0009 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` の
+#        いずれでもない。**整列規則の再実装ではなく、行を読む既存のカーネル関数である。**
+#        **判定式そのものは1行も持たない** —— 判定は `src/server/owner-scope.ts` の
+#        既存の述語(`creatorGrantPlan`)に閉じている。
+#
+# **(2) 検査ファイル2本 = 15件**(どちらも実 HTTP + 本物の SQLite):
+#   src/server/inbound-access-control.test.ts:
+#     InboundStore / KernelMetaStore / appDbPath / applyManifest / createApp / createRecord / listRecords
+#     —— **`src/server/inbound-route.test.ts`(:651-:655)と同じ形の層またぎである。**
+#        `createRecord` は**メンバー表に主体の行を1件置く台の準備**にだけ使い、
+#        受信そのものは HTTP(`POST /inbound/:endpoint_id`)を打っている。
+#   src/server/automation-access-control.test.ts:
+#     KernelMetaStore / appDbPath / applyManifest / createApp / createRecord /
+#     listRecords / ensureIslandRuntimeReady / runScheduledWorkflow
+#     —— **自動処理と島の発火は HTTP(`POST` / `PATCH`)から起こしている。**
+#        `createRecord` は台の準備(付与行・代理行・出力先の既存行)にだけ使う。
+#        **`runScheduledWorkflow` は「時刻起動が今日も素通りする」ことを実測するために要る**
+#        (`D-V8-33` / `J-G22b` = 保留 / `docs/plan/undecided.md` の `U-3`)——
+#        **時刻起動には HTTP の入口が1本も無いので、カーネルの入口を直接呼ぶしかない。**
+#        `ensureIslandRuntimeReady` は `src/kernel/workflow-act-as-owner.test.ts` /
+#        `src/server/workflow-proxy-write-audit.test.ts` が既に同じ用途で値 import している。
+# **ADR-0009 限定2 の照合**: 16件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。
+# **`schemas/` / `src/mcp/` / `web/` / `docs/` / `plugins/` / `src/server/app.ts` に
+#   本タスク経由の差分は1バイトも出していない。**
+src/server/automation-access-control.test.ts:KernelMetaStore
+src/server/automation-access-control.test.ts:appDbPath
+src/server/automation-access-control.test.ts:applyManifest
+src/server/automation-access-control.test.ts:createApp
+src/server/automation-access-control.test.ts:createRecord
+src/server/automation-access-control.test.ts:ensureIslandRuntimeReady
+src/server/automation-access-control.test.ts:listRecords
+src/server/automation-access-control.test.ts:runScheduledWorkflow
+src/server/inbound-access-control.test.ts:InboundStore
+src/server/inbound-access-control.test.ts:KernelMetaStore
+src/server/inbound-access-control.test.ts:appDbPath
+src/server/inbound-access-control.test.ts:applyManifest
+src/server/inbound-access-control.test.ts:createApp
+src/server/inbound-access-control.test.ts:createRecord
+src/server/inbound-access-control.test.ts:listRecords
+src/server/inbound-route.ts:listRecords
+
+# --- V8-M26(既定を「閉じる」側へ倒す / 作るたびに既定3役割の規則を自動で足す)---
+# **7件増え、0件減った。** **全件が新しい検査ファイル2本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` にも `src/server/*.ts` の
+#  製品コードにも、本タスク経由の値 import は1件も足していない)。
+#
+#   src/server/role-default-closed.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **`V8-M26-T03`(面の既定を閉じる)の実測。**
+#        **`src/server/role-rules-enforcement.test.ts`(:2227-:2229)とまったく同じ3件であり、
+#        新しい層またぎの種類ではない。** 判定は実 HTTP + 本物の SQLite で測っている。
+#   src/server/role-default-grant-http.test.ts:
+#     KernelMetaStore / applyDiff / applyManifest / createApp
+#     —— **`V8-M26-T04`(作るたびに既定3役割の規則を自動で足す)の実測。**
+#        **`applyDiff` の値 import が、上の3件に足された4件目である** ——
+#        **自動付与が走るのは差分の畳み込み(`applyDiff`)だけであり、`applyManifest` では
+#        1本も走らないので、この経路を通らずには測れない**(`D-V8-56` の逐語
+#        「表を**作ると**…1行が自動で入ります」)。
+#        **`applyDiff` は既に `src/mcp/` / `src/cli/` / `web/test/` が値 import しており
+#        (本ファイルの既存行)、新しい層またぎの種類ではない。**
+# **ADR-0009 限定2 の照合**: 7件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/role-default-closed.test.ts:KernelMetaStore
+src/server/role-default-closed.test.ts:applyManifest
+src/server/role-default-closed.test.ts:createApp
+src/server/role-default-grant-http.test.ts:KernelMetaStore
+src/server/role-default-grant-http.test.ts:applyDiff
+src/server/role-default-grant-http.test.ts:applyManifest
+src/server/role-default-grant-http.test.ts:createApp
+
+# --- V8-M26-T05(「ログインなしでも見せる」と書いた画面を、未ログインで実際に開ける)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` に足したのは
+#  `publicTablesForView` という同ファイル内の関数だけであり、値 import は1件も増えていない)。
+#
+#   src/server/anonymous-public-view.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **台帳 `T-G27b` の再審査(限定採用)/ ユーザ決定 `D-V8-57` / `D-V8-64` の実測。**
+#        **`src/server/anonymous-view-audience.test.ts`(:977-:979)/
+#        `src/server/role-default-closed.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **本物の SQLite に本物のマニフェストを適用しないと、`D-V8-64`(表にも規則を
+#        書いて初めて行が並ぶ)も、項目の規則が適用時に拒否されること(`D-V8-57` の代償)も
+#        測れない** —— **どちらも `applyManifest` の戻り値そのものが証拠である。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/anonymous-public-view.test.ts:KernelMetaStore
+src/server/anonymous-public-view.test.ts:applyManifest
+src/server/anonymous-public-view.test.ts:createApp
+
+# --- V8-M27-T03(まとめ書き込みとファイルのアップロードに役割の規則を配線する)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` に足したのは
+#  `judgeRoleAccess` / `roleGateBlocksWithoutGrants` / `recordAccessSourceTables` の呼び出し
+#  だけで、これらは同じ `src/server/` 層の `owner-scope.ts` である。カーネルからの値 import は
+#  1件も増えていない)。
+#
+#   src/server/batch-files-role-access.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **ユーザ決定 `D-V8-71`(先に権限を繋いでから外す)の実測。**
+#        **`src/server/role-rules-enforcement.test.ts`(:2227-:2229)/
+#        `src/server/role-default-closed.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **`POST .../batch` と `POST .../files` を実 HTTP で叩き、本物の SQLite に
+#        本物のマニフェスト(役割の規則つき)を適用しないと、
+#        「触る表を1つでも書けなければ要求全体が 403」も
+#        「着地しうる表への書込を1つも許されていない相手のアップロードが 403」も測れない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/batch-files-role-access.test.ts:KernelMetaStore
+src/server/batch-files-role-access.test.ts:applyManifest
+src/server/batch-files-role-access.test.ts:createApp
+
+# --- V8-M27-T04(「運営か否か」で表単位の可否を決める古い層の撤去)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` からは値 import が
+#  むしろ2件**減って**いる: `isReservedRole`(`src/auth/types.ts`)と
+#  `nonAdminTableAccess`(`src/server/owner-scope.ts`)。**どちらも `src/kernel/` では
+#  ないので、このスナップショットの行は1つも減っていない。**)
+#
+#   src/server/nonadmin-layer-removal.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **台帳 `T-G5` / ユーザ決定 `D-V8-38` / `D-V8-72` / `D-V8-73` の実測。**
+#        **`src/server/role-default-closed.test.ts` /
+#        `src/server/batch-files-role-access.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **本物の SQLite に本物のマニフェスト(役割の規則つき)を適用しないと、
+#        「旧『運営テーブル』に読取の規則を1本書けば非運営にも読める」も
+#        「規則を書かなければ 200 + 0件 / 単件 404」も
+#        「定義が読めないときはファイルを誰にも配らない(`D-V8-73`)」も測れない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/nonadmin-layer-removal.test.ts:KernelMetaStore
+src/server/nonadmin-layer-removal.test.ts:applyManifest
+src/server/nonadmin-layer-removal.test.ts:createApp
+
+# --- V8-M27(ユーザ決定 `D-V8-74`。システムが持つ表を持ち主にだけ見せる)---
+# **4件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` が足したのは
+#  `forbiddenSystemTableReadError` の1本と、既に値 import 済みだった
+#  `isSystemTableId`(`src/shared/system-tables.ts`)の呼び出し1箇所だけであり、
+#  **`src/kernel/` からの新しい値 import は1件も無い。**)
+#
+#   src/server/system-table-owner-read.test.ts:
+#     KernelMetaStore / applyManifest / createApp / applyDiff
+#     —— **ユーザ決定 `D-V8-74`(2026-08-11。見出しの逐語「持ち主にだけ見せる」)の実測。**
+#        **前3件は `src/server/nonadmin-layer-removal.test.ts` /
+#        `src/server/role-default-closed.test.ts` /
+#        `src/server/batch-files-role-access.test.ts` とまったく同じ組であり、
+#        新しい層またぎの種類は0本である。**
+#        **4件目の `applyDiff` も新種ではない** —— **既に 22 箇所が値として import して
+#        いる**(`scripts/bench/` / `scripts/ref-ec/` / `src/server/app.test.ts` ほか)。
+#        **`_changelog` に `apply` の行を1件も作らずに測ると、「持ち主には見える」が
+#        空配列でも通ってしまう** —— **`applyManifest` 経由の投入は `_changelog` に
+#        記録されない(`ADR-0006` §6b / CP-4 既知の限界①)ので、
+#        本物の差分を1本適用する以外に「中身が本当に返る」を測る手立てが無い。**
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/system-table-owner-read.test.ts:KernelMetaStore
+src/server/system-table-owner-read.test.ts:applyDiff
+src/server/system-table-owner-read.test.ts:applyManifest
+src/server/system-table-owner-read.test.ts:createApp
+
+# --- V8-M28 第2波(定義を変える口と役割を配る口を、役割の規則の判定へ寄せた)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` / `src/server/auth-routes.ts` /
+#  `src/server/owner-scope.ts` に足したのは同じ層(`src/server/`)の関数の呼び出しだけであり、
+#  カーネルからの値 import は1件も増えていない)。
+#
+#   src/server/role-definition-distribution-http.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **台帳 `T-G15` / `T-G18` / `T-G20` の実測**(ユーザ決定 `D-V8-40` / `D-V8-41` /
+#        `D-V8-75` / `D-V8-76` / `D-V8-77`)。
+#        **`src/server/role-default-closed.test.ts` /
+#        `src/server/anonymous-public-view.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **本物のマニフェスト(`app.roles[].rules` に `target: "app"` / `target: "role"`)を
+#        本物の SQLite へ適用しないと、`POST /diffs` と `PATCH .../auth/users/:user_id` の
+#        403/201/200 を分けて測れない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/role-definition-distribution-http.test.ts:KernelMetaStore
+src/server/role-definition-distribution-http.test.ts:applyManifest
+src/server/role-definition-distribution-http.test.ts:createApp
+
+# --- V8-M29 第1波(人に付けられる値と登録で名乗れる値の出所に app.roles[].id を立てた)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` / `src/server/auth-routes.ts` /
+#  `src/server/owner-scope.ts` に足したのは同じ層(`src/server/`)の関数の呼び出しだけであり、
+#  カーネルからの値 import は1件も増えていない)。
+#
+#   src/server/role-value-domain.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **台帳 `T-G10` の実測**(ユーザ決定 `D-V8-78` / `D-V8-79` / `D-V8-80`)。
+#        **`src/server/role-definition-distribution-http.test.ts` /
+#        `src/server/role-default-closed.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **本物のマニフェスト(`app.roles` に独自の役割)を本物の SQLite へ適用しないと、
+#        `PATCH .../auth/users/:user_id` の 200/400 と登録の口の 200/422 を分けて測れない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/role-value-domain.test.ts:KernelMetaStore
+src/server/role-value-domain.test.ts:applyManifest
+src/server/role-value-domain.test.ts:createApp
+
+# --- V8-M30(締め出しの防止を作り直した。台帳 `T-G29` = 限定採用)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` / `src/server/auth-routes.ts` /
+#  `src/server/change-routes.ts` / `src/auth/store.ts` に足したのは同じ層の関数の呼び出しと
+#  注入だけであり、カーネルからの値 import は1件も増えていない。
+#  **`src/server/owner-scope.ts` は1バイトも触っていない。**)
+#
+#   src/server/grant-lockout-http.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **台帳 `T-G29` の実測**(ユーザ決定 `D-V8-47`)。
+#        **`src/server/role-value-domain.test.ts` /
+#        `src/server/role-definition-distribution-http.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **本物のマニフェスト(`app.roles[].rules` に `target: "role"`)を本物の SQLite へ
+#        適用しないと、`POST /diffs` の 409/201 と `DELETE .../auth/me` の 409/200 を
+#        分けて測れない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/grant-lockout-http.test.ts:KernelMetaStore
+src/server/grant-lockout-http.test.ts:applyManifest
+src/server/grant-lockout-http.test.ts:createApp
+
+# --- V8-M30 第2波(最初の1人は必ず持ち主。ユーザ決定 `D-V8-82`)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— 足したのは `src/server/auth-routes.ts` の中の
+#  関数1本(`bootstrapFirstUserOwner`)だけであり、カーネルからの値 import は1件も増えていない)。
+#
+#   src/server/first-user-owner.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **ユーザ決定 `D-V8-82` の実測**。
+#        **`src/server/grant-lockout-http.test.ts` / `src/server/role-value-domain.test.ts` と
+#        まったく同じ3件であり、新しい層またぎの種類は0本である。**
+#        **本物のマニフェスト(`app.roles` に独自の役割)を本物の SQLite へ適用しないと、
+#        「名乗った役割が持ち主に足される」を実効ロール集合で測れない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/first-user-owner.test.ts:KernelMetaStore
+src/server/first-user-owner.test.ts:applyManifest
+src/server/first-user-owner.test.ts:createApp
+
+# --- V8-M31(AI 経由に名乗りと判定を配線した。台帳 `T-G21`〜`T-G25`)---
+# **3件増え、0件減った。**
+# **【前の2つの MS と違い、製品コードの層またぎが 2件ある】** —— **隠さずに書く。**
+#
+#   src/mcp/tools/write.ts:
+#     getRecord / listRecords
+#     —— **台帳 `T-G23a` / `T-G23b` の実装**(ユーザ決定 `D-V8-43` / `D-V8-46`)。
+#        **行ごとの判定(`resolveCombinedRecordAccess`)は「その行」と「付与元の表の全行」を
+#        読まないと下せない。** **HTTP 側の読み手(`memoizedRowReaders`)は `ReadSource` を
+#        前提にした `src/server/` 内部の非 export 関数であり、MCP からは呼べない。**
+#        **同じ形の先例がカーネルの中にある** —— `src/kernel/workflow-runner.ts` の
+#        `judgeAutomationWrite` も生の `Database` から `readRows` / `readRow` を組んでいる。
+#        **`src/mcp/tools/write.ts` は既に `createRecord` / `updateRecord` / `deleteRecord` /
+#        `writeRecords` を値 import しており(上の 516 / 530 / 518 / 531 行)、
+#        新しい層またぎの種類は0本である**(同じ `src/kernel/records.ts` の読取側2本)。
+#
+#   src/mcp/tools/write.test.ts:
+#     createRecord
+#     —— **検査の下ごしらえ**(`V8-M31` 第3波の反転4)。**壁の立った表に行を1件だけ
+#        用意する必要があるが、その表は MCP からも HTTP からも書けなくなった**
+#        (それを測るのがこの検査である)。**`beforeEach` が `applyDiff` を直に呼ぶのと
+#        同じ立場で、カーネルの `createRecord` で作っている。**
+#        **このファイルは既に 10件の値 import を持つ**(上の 496-505 行)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/mcp/tools/write.test.ts:createRecord
+src/mcp/tools/write.ts:getRecord
+src/mcp/tools/write.ts:listRecords
+
+# --- V8-M39(止め方を伝える。台帳 `F-G7` / `F-G8`)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` が足したのは
+#  `src/server/owner-scope.ts` からの **`import type { AccessLayerName }`** 1本だけであり、
+#  **`import type` はこの表の対象外である**(先頭の注記の逐語:「**import type は含まない**」)。
+#  **`src/server/owner-scope.ts` と `src/mcp/tools/write.ts` の変更は文面と doc だけで、
+#  カーネルからの値 import は1件も増やしていない。**)
+#
+#   src/server/role-403-layer-message.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **台帳 `F-G7` / `F-G8` の実測**。
+#        **`src/server/manual-trigger-route.test.ts` /
+#        `src/server/grant-lockout-http.test.ts` /
+#        `src/server/first-user-owner.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#        **本物のマニフェスト(役割ごとに規則の持ち方を変えたもの)を本物の SQLite へ
+#        適用しないと、「表の面が止めた 403」と「ボタンの規則が止めた 403」を
+#        同じ表・同じ動詞で撃ち分けられない。**
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/role-403-layer-message.test.ts:KernelMetaStore
+src/server/role-403-layer-message.test.ts:applyManifest
+src/server/role-403-layer-message.test.ts:createApp
+
+# --- V8-M41(断りの文面と手引き / 規則ゼロの取り残し。台帳 `F-G12` / `F-G13`)---
+# **9件増え、0件減った。** **全件が新しい検査ファイル2本から出ている**
+# (**製品コードの層またぎは0件である** —— `src/server/app.ts` が足したのは
+#  `src/server/owner-scope.ts` からの `resolveRecordUnreachableByRoles`(同じ層の中)
+#  1本だけであり、`src/server/owner-scope.ts` はカーネルからの値 import を1件も増やして
+#  いない。**`docs/manual.md` の手引きはコードではない。**)
+#
+#   src/server/not-a-member-guidance.test.ts:
+#     KernelMetaStore / appDbPath / applyManifest / createApp
+#     —— **台帳 `F-G12` の実測**。**本物のマニフェスト(行ごとのアクセス権を宣言した表と、
+#        その利用者の表・付与の表)を本物の SQLite へ適用しないと、
+#        「利用者の表に行が無い → 400」「ログイン名を入れても 400」
+#        「利用者IDを入れると 201 で付与が1件立つ」の3つを同じ台で撃ち分けられない。**
+#        **`appDbPath` は行数を `SELECT COUNT(*)` で数えるためだけに使っている。**
+#
+#   src/server/role-unreachable-records.test.ts:
+#     KernelMetaStore / appDbPath / applyManifest / createApp / createRecord
+#     —— **台帳 `F-G13` の実測**。**`src/server/record-access-orphans.test.ts` が採っている
+#        組の部分集合である**(あちらは `deleteRecord` も採る)—— **新しい層またぎの種類は
+#        0本である。** **規則を1本も書いていない表へ HTTP から行を入れる道は無い
+#        (面の既定が閉じているので 403 になる)ので、題材の行はカーネルの
+#        `createRecord` で直接入れている。**
+# **ADR-0009 限定2 の照合**: 9件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/not-a-member-guidance.test.ts:KernelMetaStore
+src/server/not-a-member-guidance.test.ts:appDbPath
+src/server/not-a-member-guidance.test.ts:applyManifest
+src/server/not-a-member-guidance.test.ts:createApp
+src/server/role-unreachable-records.test.ts:KernelMetaStore
+src/server/role-unreachable-records.test.ts:appDbPath
+src/server/role-unreachable-records.test.ts:applyManifest
+src/server/role-unreachable-records.test.ts:createApp
+src/server/role-unreachable-records.test.ts:createRecord
+
+# --- V8-M41 後半(受信口を人が発行できる口。台帳 `F-G14` / `ADR-0332`)---
+# **6件増え、0件減った。**
+#
+# **製品コードの層またぎは1件である**:
+#   src/server/auth-routes.ts:InboundStore
+#     —— **受信口の**発行**(`POST /api/apps/:app_id/inbound-endpoints`)を1本だけ結線した。**
+#        **`src/kernel/inbound-store.ts` は1バイトも変えていない** —— `issueInboundEndpoint`
+#        は `ADR-0041`(`V2-M5-T01`)が既に置いたものであり、ここは**呼ぶだけ**である。
+#     —— **新しい層またぎの種類は0本である。** **`auth-routes.ts` は既に
+#        `AiCapabilityStore` / `CapabilityStore` / `EscapeHatchStore` / `putEscapeHatchBody` の
+#        4件を値 import しており、そのいずれもが「capability の**発行 seam** を owner の
+#        HTTP に結線するため」に取ったものである。** **`InboundStore` は同じ理由で取る
+#        4つ目のストアであり、形も置き場所も既存3つと同じである**(受信 = `ADR-0041` は
+#        送信 = `ADR-0020` の鏡写しなので、消費側も鏡写しになる)。
+#     —— **`src/server/inbound-route.ts:InboundStore`(受信そのもの)は今日も在り、
+#        1バイトも触っていない。**
+#
+# **残る5件は新規検査 src/server/inbound-endpoint-issuance.test.ts のセットアップである**:
+#   src/server/inbound-endpoint-issuance.test.ts:
+#     InboundStore / KernelMetaStore / appDbPath / applyManifest / createApp
+#     —— **`src/server/inbound-route.test.ts` が採っている組そのものである**
+#        (あちらは InboundStore / KernelMetaStore / appDbPath / applyManifest / createApp)——
+#        **新しい層またぎの種類は0本。**
+#     —— **`InboundStore` は「発行の応答だけでは足りない」を測るために要る** ——
+#        **HTTP の口が1件も発行していないこと(403 / 401 / 400 の各拒否)と、
+#        失効の口が無いので消えないことを、kernel.sqlite を直に読んで確かめている。**
+#        **`appDbPath` は受信後の行数を `SELECT COUNT(*)` で数えるためだけに使っている。**
+# **ADR-0009 限定2 の照合**: 6件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/auth-routes.ts:InboundStore
+src/server/inbound-endpoint-issuance.test.ts:InboundStore
+src/server/inbound-endpoint-issuance.test.ts:KernelMetaStore
+src/server/inbound-endpoint-issuance.test.ts:appDbPath
+src/server/inbound-endpoint-issuance.test.ts:applyManifest
+src/server/inbound-endpoint-issuance.test.ts:createApp
+
+# =====================================================================================
+# 更新: V8-M1-T04(2026-08-14。台帳 `I-G5` / `I-G7` / `I-G24` / `I-G26` = 4件とも
+#       限定採用。ADR-0335)。**3件増え、0件減った。**
+# =====================================================================================
+#
+# **増分はすべて新規検査 src/server/signup-mode-enforcement.test.ts のセットアップである**:
+#   src/server/signup-mode-enforcement.test.ts:
+#     KernelMetaStore / applyManifest / createApp
+#     —— **`src/server/role-default-closed.test.ts` /
+#        `src/server/role-definition-distribution-http.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの種類は0本である。**
+#     —— **どれもテストの土台(アプリを1本作り、`app.roles[].signup` を書いた
+#        マニフェストを投入する)のためだけに使っている。** **製品コードの層またぎは
+#        1件も増えていない** —— **`src/server/auth-routes.ts` も `src/server/app.ts` も
+#        値 import を1本も足していない**(登録の可否の判定はサーバ層に閉じており、
+#        カーネルの読取 API を1本も呼ばない。ADR-0334 限定7)。
+# **ADR-0009 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/signup-mode-enforcement.test.ts:KernelMetaStore
+src/server/signup-mode-enforcement.test.ts:applyManifest
+src/server/signup-mode-enforcement.test.ts:createApp
+#
+# =====================================================================================
+# 更新: V8-M2-T04 / V8-M2-T05(2026-08-14。台帳 `I-G9` / `I-G12` / `I-G13` / `I-G17` /
+#       `I-G18` = 限定採用。ADR-0336)。**4件増え、0件減った。**
+# =====================================================================================
+#
+# **増分はすべて新規検査 src/server/invitation-issuance.test.ts のセットアップである**:
+#   src/server/invitation-issuance.test.ts:
+#     KernelMetaStore / applyManifest / createApp / appDbPath
+#     —— **`src/server/inbound-endpoint-issuance.test.ts`(1つ前の「発行の口」の検査)と
+#        まったく同じ4件であり、新しい層またぎの種類は0本である。**
+#     —— **どれもテストの土台のためだけに使っている**(アプリを1本作り、マニフェストを
+#        投入し、`app.sqlite` の物理パスを解いて `_auth_invitations` の行を直に読む)。
+#     —— **`appDbPath` を値 import しているのは、招待の行が本当に1本しか無いこと・
+#        使用時刻が入っていることを、HTTP の応答ではなく**本物の SQLite**で確かめるためである。**
+# **製品コードの層またぎは1件も増えていない** —— **`src/server/auth-routes.ts` は値 import を
+#   1本も足していない**(招待の保管は `src/auth/store.ts` に閉じており、カーネルの API を
+#   1本も呼ばない)。**`src/kernel/` と `schemas/` は1バイトも変えていない**(ADR-0336 限定6)。
+# **`src/auth/undo-invitations.test.ts`(巻き戻しの実測)はこの一覧に1行も足していない** ——
+#   **`scripts/kernel-import-drift.test.ts` の `SEARCH_ROOTS` が `src/auth` を含まないからである**
+#   (`src/auth/undo-role-grants.test.ts` と同じ理由の、同じ配置。ADR-0336 限定10)。
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/invitation-issuance.test.ts:KernelMetaStore
+src/server/invitation-issuance.test.ts:appDbPath
+src/server/invitation-issuance.test.ts:applyManifest
+src/server/invitation-issuance.test.ts:createApp
+#
+# =====================================================================================
+# 更新: V8-M3-T02〜T06(2026-08-14。台帳 `I-G19` / `I-G20` / `I-G22` / `I-G23` = 限定採用。
+#       ADR-0337)。**4件増え、0件減った。**
+# =====================================================================================
+#
+# **増分はすべて新規検査 src/server/invitation-redemption.test.ts のセットアップである**:
+#   src/server/invitation-redemption.test.ts:
+#     KernelMetaStore / applyManifest / createApp / appDbPath
+#     —— **1つ前の `src/server/invitation-issuance.test.ts`(招待の発行の検査)と
+#        まったく同じ4件であり、新しい層またぎの種類は0本である。**
+#     —— **どれもテストの土台のためだけに使っている**(アプリを1本作り、マニフェストを
+#        投入し、`app.sqlite` の物理パスを解いて `_auth_invitations` の行を直に読む)。
+#     —— **`appDbPath` を値 import しているのは、招待の使用時刻が入ったこと・期限切れの
+#        行が掃除で消えたことを、HTTP の応答ではなく**本物の SQLite**で確かめるためと、
+#        期限を過去へずらす(24時間固定なので外から縮める道が1本も無い)ためである。**
+# **製品コードの層またぎは1件も増えていない** —— **`src/server/auth-routes.ts` が足した
+#   値 import は `findUsableInvitation`(`src/auth/invitations.ts`)と
+#   `InvitationUnavailableError`(`src/auth/store.ts`)の2本であり、**どちらも `src/auth/` で
+#   ある**(`SEARCH_ROOTS` はカーネルへの import だけを見る)。
+#   **`src/kernel/` と `schemas/` は1バイトも変えていない**(ADR-0337 限定3)。
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/invitation-redemption.test.ts:KernelMetaStore
+src/server/invitation-redemption.test.ts:appDbPath
+src/server/invitation-redemption.test.ts:applyManifest
+src/server/invitation-redemption.test.ts:createApp
+#
+# =====================================================================================
+# 更新: V8-M4-T04(2026-08-14。台帳 `I-G3` / `I-G7` / `I-G24` / `I-G25`。
+#       ADR-0334 限定1 / 限定3・ADR-0335 限定3 / 限定8 / 限定10)。**4件増え、0件減った。**
+# =====================================================================================
+#
+# **増分はすべて新規検査 src/server/registration-default-and-lockout.test.ts の
+#   セットアップである**:
+#   src/server/registration-default-and-lockout.test.ts:
+#     KernelMetaStore / applyManifest / createApp / appDbPath
+#     —— **1つ前の `src/server/invitation-redemption.test.ts` とまったく同じ4件であり、
+#        新しい層またぎの種類は0本である。**
+#     —— **どれもテストの土台のためだけに使っている**(アプリを1本作り、マニフェストを
+#        投入し、`app.sqlite` の物理パスを解いて `_auth_users` / `_auth_user_roles` の
+#        持ち主を落とす —— **持ち主0人の状態を作る道が API に1本も無いためである**)。
+# **製品コードの層またぎは1件も増えていない** —— **`V8-M4` が触った非テストファイルは
+#   `src/server/auth-routes.ts`(403 の hint とコード注釈)/ `src/auth/store.ts`
+#   (`.immediate` とコード注釈)/ `src/auth/invitations.ts`(コード注釈)の3本であり、
+#   値 import を1本も足していない。**
+#   **`src/kernel/` と `schemas/` と `web/` は1バイトも変えていない。**
+# **ADR-0009 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+src/server/registration-default-and-lockout.test.ts:KernelMetaStore
+src/server/registration-default-and-lockout.test.ts:appDbPath
+src/server/registration-default-and-lockout.test.ts:applyManifest
+src/server/registration-default-and-lockout.test.ts:createApp
+# 更新: V8-M5-T06(2026-08-14)。件数: +4
+# **審査**(この4件を載せてよいか。**更新より先に行った**):
+# - **4件はすべて新規検査 `src/server/user-creation-paths.test.ts` の組である**
+#   (`I-G32` / `I-G33` の「新しい利用者を生む道がそもそも無い」ことの固定)。
+# - **3件は先行する検査群とまったく同じ `KernelMetaStore` / `applyManifest` / `createApp` である**
+#   (`src/server/registration-default-and-lockout.test.ts` と同じ組。**新しい種類ではない**)。
+# - **4件目の `resolveTable` は本リポジトリで初の値 import である。**
+#   **審査**: **この検査は「`_auth_*` が解決しないこと」を測るものであり、解決の規則を
+#   画面側やサーバ側で**再実装しない**ために、カーネルの当の関数そのものを呼んでいる。**
+#   **写しを作ると、2つ目の正が生まれて `ADR-0006` §7(テーブル解決の一本化)を壊す。**
+#   **`ADR-0009` 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` の
+#   いずれでもなく、**整列規則の再実装は1本も無い。**
+# - **製品コードの層またぎは0件である** —— **`web/src/` にも `src/mcp/` にも値 import を
+#   1本も足していない**(`web/` からの値 import は今日も `normalizeSort` の2箇所だけ)。
+src/server/user-creation-paths.test.ts:KernelMetaStore
+src/server/user-creation-paths.test.ts:applyManifest
+src/server/user-creation-paths.test.ts:createApp
+src/server/user-creation-paths.test.ts:resolveTable
+# 更新: V8-M8(2026-08-14)。件数: +5
+# **審査**(この4件を載せてよいか。**更新より先に行った**):
+# - **1件は既存の検査 `scripts/vocabulary-drift.test.ts` が4本目の主題として読む `VIEW_TYPES` である**
+#   (台帳 `Q-G1`。門A 本審査 = `V8-M7`)。**同ファイルは既に `DIFF_OPS` / `FIELD_TYPES` /
+#   `RESOURCE_KINDS` の3本を同じ理由(語彙の名前の正をカーネルから読む)で値 import しており、
+#   **種類は1つも増えていない。** **写しを作ると語彙の正が2箇所に住む。**
+# - **3件は新規検査 `src/server/report-declaration-boundary.test.ts` の組である**
+#   (`KernelMetaStore` / `applyManifest` / `createApp`)。**先行する検査群
+#   (`src/server/list-view-sum-boundary.test.ts` / `registration-default-and-lockout.test.ts` /
+#   `user-creation-paths.test.ts`)とまったく同じ組であり、新しい種類ではない。**
+# - **`ADR-0009` 限定2 の照合**: 4件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **5件目は製品コードの層またぎである。隠さない**: `src/server/app.ts:computeReport`。
+#   **集計表の計算(`src/kernel/report.ts`)を HTTP の入口が1回呼ぶ。**
+#   **審査**: **入口に計算を写すと、束ね方・日付の丸め・並び順の正が2箇所に住む。**
+#   **`src/server/app.ts` は既に `createRecord` / `readRecordList` / `writeRecords` ほかを
+#   同じ理由で値 import しており、種類は1つも増えていない。**
+#   **`ADR-0009` 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` の
+#   いずれでもなく、**整列規則の再実装は1本も無い**(群の並べ替えはカーネル側に閉じている)。
+# - **`web/src/` にも `src/mcp/` にも値 import を1本も足していない**
+#   (`web/` からの値 import は今日も `normalizeSort` の2箇所だけである)。
+# - **新設の `src/kernel/report.ts` はカーネルの中なので、この台帳の対象ではない**
+#   (そちらで発火するのは `Δ8` = `scripts/kernel-export-snapshot.txt` であり、
+#   **そのファイルは審査より先に直さない規律に従って赤いまま残してある**)。
+scripts/vocabulary-drift.test.ts:VIEW_TYPES
+src/server/app.ts:computeReport
+src/server/report-declaration-boundary.test.ts:KernelMetaStore
+src/server/report-declaration-boundary.test.ts:applyManifest
+src/server/report-declaration-boundary.test.ts:createApp
+# 更新: V8-M9(2026-08-14)。件数: +3
+# **審査**(この3件を載せてよいか。**更新より先に行った**):
+# - **3件とも新規検査 `src/server/report-join-boundary.test.ts` の組である**
+#   (`KernelMetaStore` / `applyManifest` / `createApp`)。**直前の `V8-M8` が載せた
+#   `src/server/report-declaration-boundary.test.ts` とまったく同じ3つであり、
+#   **新しい種類は1つも無い。****新しいシンボルも1つも無い**(3つとも既に台帳に在る)。
+# - **製品コードの層またぎは0件である** —— **`src/server/app.ts` に値 import を1本も
+#   足していない**(結合は `computeReport` の中で完結しており、入口は今日も1回呼ぶだけ)。
+#   **`web/src/` にも `src/mcp/` にも1本も足していない。**
+# - **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)と語彙の一覧
+#   (`scripts/vocabulary-snapshot.txt`)は、審査より先に直さない規律に従って
+#   **赤いまま残してある**(`V8-M9` の実装ブリーフ §1-5)。
+src/server/report-join-boundary.test.ts:KernelMetaStore
+src/server/report-join-boundary.test.ts:applyManifest
+src/server/report-join-boundary.test.ts:createApp
+# 更新: V8-M10-T03(2026-08-15)。件数: +7
+# **審査**(この7件を載せてよいか。**更新より先に行った**):
+# - **5件は新規検査 `src/server/report-visibility.test.ts` の組である**
+#   (`KernelMetaStore` / `applyManifest` / `createApp` / `createRecord` / `appDbPath`)。
+#   **`V1-M1-T04` の注記が名指しした「`web/test/composite-sort.test.tsx` が既に採っている
+#   のと同一の組」そのものであり、新しい種類も新しいシンボルも1つも無い**
+#   (5つとも既に台帳に在る)。**理由**: **この検査は「誰に何行見えるか」を測るので、
+#   `st_owner` / 担当者 / 付与の配り方を1行ずつ指定して作る必要がある** ——
+#   **HTTP の `POST` では `st_owner` がサーバ層で要求者に固定されるため、他人の行を作れない。**
+# - **2件は `src/server/list-view-sum-boundary.test.ts` の `appDbPath` / `createRecord` である。**
+#   **これは `V8-M10-T03` が足したものではない** —— **`V8-M10-T06`(コミット `01c0ad6`)が
+#   足した import であり、その時点でこの台帳が更新されていなかった。**
+#   **`T03` の着手時点で `scripts/kernel-import-drift.test.ts` は既に赤かった**(実測)。
+#   **審査**: **同ファイルは既に `KernelMetaStore` / `applyManifest` / `createApp` を
+#   載せており、`appDbPath` / `createRecord` も上と同じ組の一部である。新しい種類は無い。**
+# - **製品コードの層またぎは0件である** —— **`src/server/app.ts` に値 import を1本も
+#   足していない**(可視性は既存の `owner-scope.ts` の綴りで呼んでおり、`computeReport` の
+#   呼び出しは今日も1回である)。**`web/src/` にも `src/mcp/` にも1本も足していない。**
+# - **`ADR-0009` 限定2 の照合**: 7件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない** ——
+#   **`src/kernel/report.ts` に足した型(`ReportReadSource`)を `export` しなかったので、
+#   カーネルの公開識別子は1つも増えていない**(実測: 同検査は緑のまま)。
+src/server/report-visibility.test.ts:KernelMetaStore
+src/server/report-visibility.test.ts:applyManifest
+src/server/report-visibility.test.ts:createApp
+src/server/report-visibility.test.ts:createRecord
+src/server/report-visibility.test.ts:appDbPath
+src/server/list-view-sum-boundary.test.ts:appDbPath
+src/server/list-view-sum-boundary.test.ts:createRecord
+
+# 更新: V8-M10-T05(2026-08-15)。件数: +5。審査は docs/plan/v8/records/v8-m10.md §1 の `T05`。
+# - **5件とも新規検査 `src/server/report-limit-boundary.test.ts` の組である**
+#   (`KernelMetaStore` / `applyManifest` / `createApp` / `createRecord` / `appDbPath`)。
+#   **`V1-M1-T04` の注記が名指しした「`web/test/composite-sort.test.tsx` が既に採っている
+#   のと同一の組」そのものであり、新しい種類も新しいシンボルも1つも無い**
+#   (5つとも既に台帳に在る。直前の `src/server/report-visibility.test.ts` と同じ5つ)。
+#   **理由**: **上限に当たるかどうかは行の**数**で決まるので、1つの表に 10,001 行、
+#   別の表に 10,000 行を入れた台が要る** —— **HTTP の `POST` で2万行を入れると、
+#   検査1本の中で認証・整合・監査の全経路を2万回通ることになる。**
+# - **製品コードの層またぎは0件である** —— **`src/server/app.ts` に値 import を1本も
+#   足していない**(足したのは同じ層の `./report-limits.ts` と `./errors.ts` だけ)。
+#   **`src/kernel/report.ts` は1バイトも触っていない。**
+# - **`ADR-0009` 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない** ——
+#   **カーネルの公開識別子は1つも増えていない**(上限の定数は `src/server/` に置いた)。
+src/server/report-limit-boundary.test.ts:KernelMetaStore
+src/server/report-limit-boundary.test.ts:applyManifest
+src/server/report-limit-boundary.test.ts:createApp
+src/server/report-limit-boundary.test.ts:createRecord
+src/server/report-limit-boundary.test.ts:appDbPath
+#
+# 更新: V8-M13-T01(2026-08-15)。件数: +5。審査は docs/plan/v8/records/v8-m13.md §3-1。
+# - **5件とも新規検査 `src/server/report-undo-boundary.test.ts` の組である**
+#   (`KernelMetaStore` / `createApp` / `appDbPath` / `redo` / `previewRedo`)。
+#   **新しいシンボルは1つも無い** —— **5つとも既に台帳に在る**
+#   (実測: `redo` 3件 / `previewRedo` 2件 / `createApp` 120件 / `KernelMetaStore` 126件 /
+#   `appDbPath` 65件。いずれも本行を足す前の値)。
+# - **理由**: **`redo` には HTTP の口が1本も無い**(`POST /api/apps/:id/redo` も
+#   `GET /redo/preview` も 404「対応するエンドポイントはありません」。`T01` が実測した)。
+#   **したがって「巻き戻して、戻す」を HTTP だけで検査することはできない。**
+#   **`V8-M12-T02` が採った「層またぎを避けて HTTP へ倒す」作法は、この2本には使えない。**
+# - **製品コードの層またぎは0件である** —— **`src/kernel/undo.ts` にも `src/server/app.ts` にも
+#   1バイトも触っていない**(`T01` が触ったのは新規の検査1本だけ)。
+# - **`ADR-0009` 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない。**
+src/server/report-undo-boundary.test.ts:KernelMetaStore
+src/server/report-undo-boundary.test.ts:createApp
+src/server/report-undo-boundary.test.ts:appDbPath
+src/server/report-undo-boundary.test.ts:redo
+src/server/report-undo-boundary.test.ts:previewRedo
+#
+# 更新: V8-M50(2026-08-16)。件数: +3。実施記録は docs/plan/v8/records/v8-m50.md。
+# - **3件とも新規の種まきスクリプト `scripts/mcp-trial/seed-shared-app.ts` とその検査の組である**
+#   (`KernelMetaStore` / `createApp`)。**新しいシンボルは1つも無い** ——
+#   **どちらも隣の `scripts/mcp-trial/seed.ts` が既に値として import しており**(本台帳の
+#   `scripts/mcp-trial/seed.ts:KernelMetaStore` / `:createApp` の2行)、**同じ層・同じ用途である。**
+# - **理由**: **`V8-M31` 以降、アプリを名指しする21本の MCP ツールは「名乗った利用者がその
+#   アプリに登録されていること」を要求する**(`src/mcp/actor-guard.ts`)。**`create_app` は
+#   利用者を1人も作らない**ので、**AI が自分で作ったアプリでは続く `apply_diff` が必ず落ちる。**
+#   **前後比較の試行を走らせるには、空のアプリ1つと登録済みの利用者1人を、走行の前に
+#   カーネル経由で作るしかない**(HTTP の登録口を試行のたびに叩く形は採らなかった)。
+# - **製品コードの層またぎは0件である** —— **`src/kernel/` にも `schemas/` にも1バイトも
+#   触っていない**(`git diff --numstat 7be6158..HEAD -- src/kernel/ schemas/` が空)。
+# - **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない。**
+# - **【この行を足すのが遅れた。正直に書く】** **`V8-M50` のハーネス改修(`43a217a`)が
+#   この3件を増やしたのに、本台帳を更新しなかった。** **ローカルでは
+#   `bun test scripts/mcp-trial/` しか走らせておらず、この検査は `scripts/` の別ファイルなので
+#   1度も走っていない。** **赤くなったのは実CI(run 31949617150)である。**
+#   **「ローカル緑 ≠ 実CI 緑」がこの軸で2度目に出た形である。**
+scripts/mcp-trial/seed-shared-app.ts:KernelMetaStore
+scripts/mcp-trial/seed-shared-app.ts:createApp
+scripts/mcp-trial/seed-shared-app.test.ts:KernelMetaStore
+#
+# 更新: `V10-M10-T01`(2026-08-23)。件数: +1。実施記録は docs/plan/v10/records/v10-m10.md。
+# - **1件は既存の検査 `scripts/build-runner-data.test.ts` が `CommentStore` を値として
+#   import した行である。** **`comment-store.ts` 自体は本台帳を1ミリも動かさない** ——
+#   `kernel-import-drift.test.ts` の `SEARCH_ROOTS` に `src/kernel` が無いからである。
+#   **動かしたのは `APP_SCOPED_KERNEL_TABLES` に `gp_comments` を足したこと**であり、
+#   同ファイルの `seedCrossCuttingRows` に種まきを1行積まないと
+#   `SQLiteError: no such table: gp_comments` で落ちる(空振りではなく例外である)。
+# - **同じ層・同じ用途である** —— 隣に `EscapeHatchStore` / `InboundStore` /
+#   `CapabilityStore` / `AiCapabilityStore` が既に値として並んでおり、いずれも
+#   「横断テーブルに種を播く」ための import である。**新しい層またぎは1つも作っていない。**
+# - **`ADR-0009` 限定2 の照合**: `CommentStore` は `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は同じコミットで5件増えている**
+#   (`comment-store.ts` の公開エクスポート。門A の本審査 `V10-M0` を通っている)。
+scripts/build-runner-data.test.ts:CommentStore
+#
+# 更新: `V10-M11-T01`(2026-08-24。台帳 `CM-G4` = **門外**(`Δ7`)/ 判定値 = 限定採用)。件数: **+6**。
+# 実施記録は docs/plan/v10/records/v10-m11.md。
+# - **製品コードの層またぎは 1件ちょうどである** —— `src/server/auth-routes.ts:CommentStore`。
+#   **HTTP の書込の口(`POST /api/apps/:app_id/comments`)が器を**呼ぶだけ**のための値 import であり、
+#   **`src/kernel/comment-store.ts` は1バイトも変えていない**(`CM-G4` 限定4 = 門外の主張の
+#   唯一の機械的な担保)。**隣に `CapabilityStore` / `EscapeHatchStore` / `AiCapabilityStore` /
+#   `InboundStore` が既に値として並んでおり、いずれも「カーネルの器を HTTP の口から呼ぶ」ための
+#   import である。****新しい層またぎの向きは1つも作っていない。**
+# - **残る5件は新設の検査 `src/server/comment-api.test.ts` の分である**(`COMMENT_ANCHOR_FORMS` /
+#   `CommentStore` / `KernelMetaStore` / `applyManifest` / `createApp`)。**題材のアプリを1本作り、
+#   書けた行を器の直読みで確かめるために要る** —— **HTTP の読み出しの口は今日1本も無いので、
+#   別経路はこれしかない**(足すのは `V10-M15-T05`)。
+#   **`KernelMetaStore` / `applyManifest` / `createApp` は `src/server/backup.test.ts` ほかが、
+#   `CommentStore` は `src/server/comment-backup-inclusion.test.ts` が既に同じ形で値 import している。**
+#   **`COMMENT_ANCHOR_FORMS` は本台帳では新しい綴りだが、**手で焼いた11に依らずに検査を書く**ため
+#   (登録簿から導く)であり、`V10-M0` の門A を通った `comment-store.ts` の公開エクスポートである。**
+# - **`ADR-0009` 限定2 の照合**: 6件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない。**
+#
+# 更新: `V10-M11-T01` の2手目(2026-08-24。台帳 `CM-G4`)。件数: **+1**。
+# 実施記録は docs/plan/v10/records/v10-m11.md。
+# - **製品コードの層またぎは 0件である** —— **足した1件は新設の検査
+#   `web/test/comment-panel.test.tsx` が `COMMENT_ANCHOR_FORMS` を値として import した行だけ。**
+#   **画面から指せる宛先の形と部品の数を「手で焼かずに登録簿から導く」ために要る。**
+# - **`web/src/CommentPanel.tsx` は `CommentAnchorForm` を**型としてだけ** import している** ——
+#   **`import type` は本台帳の対象外であり、製品コードは1行も増やしていない**
+#   (`web/src/ThemeExportPanel.tsx` と同じ作法)。
+# - **`ADR-0009` 限定2 の照合**: `COMMENT_ANCHOR_FORMS` は `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない。**
+#
+# 更新: `V10-M11-T02`(2026-08-24。台帳 `CM-G5` = **門外**(`Δ7`)/ 判定値 = 限定採用)。件数: **+3**。
+# 実施記録は docs/plan/v10/records/v10-m11.md。
+# - **製品コードの層またぎは 0件である** —— **足した3件はすべて新設の検査
+#   `src/server/comment-visibility.test.ts` の分である**(`COMMENT_ANCHOR_FORMS` /
+#   `CommentStore` / `foldOperations`)。
+#   **合成の本体 `src/server/comment-visibility.ts` は `src/kernel/` から**型だけ**を
+#   import している**(`import type { Comment } from "../kernel/comment-store.ts";`)——
+#   **`import type` は本台帳の対象外であり、製品コードは1行も増やしていない。**
+# - **3件が要る理由**:
+#   **`CommentStore` は器の直読みで題材の行を作るため**(**`V10-M11-T02` の時点で
+#   コメントを読み出せる HTTP の口も MCP の道具も1本も無い**。足すのは `V10-M15-T05` /
+#   `V10-M12-T01`)、**`COMMENT_ANCHOR_FORMS` は画面宛ての形を手で焼かずに登録簿から
+#   導くため**(メインの裁定8。手書きの配列を置かない)、
+#   **`foldOperations` は「実物の `remove_view` を当てたあと」を測るためである**
+#   (メインの裁定5。**規則を手で外した題材で緑にしない**)。
+# - **`CommentStore` / `COMMENT_ANCHOR_FORMS` は `src/server/comment-api.test.ts` が
+#   既に同じ形で値 import している。** **`foldOperations` は本台帳では
+#   `scripts/migrate-volume.ts` / `scripts/migrate-volume.test.ts` が既に持っている綴りであり、
+#   `src/server/` からは本件が1本目である。**
+# - **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない。**
+#
+# **【2026-08-24。`V10-M12-T01`(`CM-G7` / 門A / 限定採用 / `ADR-0368`)。既存行を
+#   1バイトも消していない】** **2件足した。**
+#
+#   src/mcp/tools/read.ts:CommentStore               (製品コード。`list_comments` が器を開く)
+#   src/mcp/tools/list-comments.test.ts:CommentStore (テスト。題材のコメントを器に積む)
+#
+# - **製品コードの層またぎが1件増えた** —— **`V10-M11-T02` の3件は全部テストだったが、
+#   本件は `src/mcp/tools/read.ts` である。** **丸めない。**
+# - **なぜ要るのか**: **可視性の合成 `src/server/comment-visibility.ts` は器を1度も開かない**
+#   (`{ manifest, roles, comments }` を受け取る形である)。 **したがって行を読む側が
+#   器を開くしかない。** **`src/server/auth-routes.ts:CommentStore`(書込の口)が
+#   既に同じ形を採っている。**
+# - **器を迂回して `gp_comments` を直に SQL で読む案は採らなかった** —— **読み方が2本目に
+#   なるからである。** **`read.ts` は `bun:sqlite` の `Database` を既に持っており、
+#   採ろうと思えば採れた。** **採らなかったことを名指しで書く。**
+# - **`ADR-0009` 限定2 の照合**: 2件とも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない** ——
+#   **`src/kernel/` に export を1本も足していない。**
+#
+# **【2026-08-24。`V10-M13-T01`(`CM-G10` / 門A / 限定採用 / `ADR-0369`)。既存行を
+#   1バイトも消していない】** **1件足した。**
+#
+#   src/server/comment-api.test.ts:appDbPath (テスト。「セッションは有効だが指す利用者が
+#     もう居ない」行を作るため app.sqlite を直に開く)
+#
+# - **製品コードの層またぎは0件である** —— **足した1件はテスト(`comment-api.test.ts`)だけ。**
+#   **`src/server/auth-routes.ts` は `resolveOptionalUser`(新設)の中で `AuthStore` /
+#   `resolveSession` / `getCookie` のみを使い、`appDbPath` を1度も値 import していない。**
+# - **なぜ要るのか**: **`CM-G10` 限定2(器は書き手を1度も検査しない)を実地で示す検査
+#   「口は書き手を1度も検証しない(存在しない利用者のセッションでも 201)」が、
+#   「セッションは有効だが指す利用者がもう居ない」状態をわざと作る必要がある。**
+#   **`AuthStore.deleteUser` はセッション行も道連れに消すので使えない**(そのために
+#   セッションだけが残る状態を作れない)。**`appDbPath(dataRoot, appId)` で `app.sqlite`
+#   のパスを取り、`bun:sqlite` を直に開いて `_auth_users` の行だけを削除している。**
+#   **`appDbPath` は本台帳では新しい綴りではない**(`access-control-*.test.ts` ほか多数の
+#   既存テストが同じ形で値 import している)——**新しいのは
+#   `comment-api.test.ts` という**ファイル**との組である。**
+# - **`ADR-0009` 限定2 の照合**: `appDbPath` は `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない** ——
+#   **`src/kernel/` に export を1本も足していない。**
+#
+# **【2026-08-24。`V10-M13-T02`(`CM-G19` / 門A / 限定採用 / `ADR-0369`。裁定6)。
+#   既存行を1バイトも消していない】** **1件足した。**
+#
+#   src/server/comment-api.test.ts:COMMENT_STATES (テスト。4値目を送った拒否の検査で、
+#     受け付ける3値の名前がエラー文に全部並ぶことを、手で焼かずに登録簿から導くため)
+#
+# - **裁定6(`RULINGS-M13.md`)により「値として import する側」を採った** —— **手書きの
+#   配列("open" / "not_applicable" / "applied" を検査側に焼く形)を置かなかった。**
+# - **製品コードの層またぎは0件である** —— **足した1件はテスト(`comment-api.test.ts`)だけ。**
+#   **`src/server/auth-routes.ts` の update 枝は `state` を文字列のまま
+#   `CommentStore.updateCommentState` へそのまま渡すだけであり、`COMMENT_STATES` を
+#   1度も値 import していない**(口は値域に絞らない設計。`CM-G19` 限定4 と同じ理由)。
+# - **`ADR-0009` 限定2 の照合**: `COMMENT_STATES` は `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は1バイトも触っていない** ——
+#   **こちらは `src/kernel/comment-store.ts` の側で `COMMENT_STATES` を新設 export した
+#   ときに既に発火・更新済みであり(本ファイルの更新とは別の更新である)、本更新は
+#   その export 済みの識別子を消費側が値 import したことの記録である。**
+#
+# **【2026-08-25。`V10-M28-T03`(ドライランの報告から認証まわりを落とす)。
+#   既存行を1バイトも消していない】** **1件足した。**
+#
+#   src/mcp/tools/read.test.ts:dryRunDiff (テスト。**落とす層が MCP であってカーネルでは
+#     ないこと**を実出力で示すため。MCP の返り値だけを見ると「どちらの層が落としたか」を
+#     測ったことにならないので、同じ差分をカーネルの `dryRunDiff` に直に渡し、
+#     カーネルのレポートには `_auth_*` が今日どおり全部入っていることを測っている)
+#
+# - **製品コードの層またぎは0件である** —— **足した1件はテストだけ。**
+#   **`src/mcp/tools/read.ts` は `dryRunDiff` を着手前から値 import しており
+#   (本ファイルの `src/mcp/tools/read.ts:dryRunDiff`)、新しい綴りを1つも足していない。**
+#   **`V10-M28` が `read.ts` に足した import は `isAuthTableName`(`src/auth/types.ts`)と
+#   `denyAppSettingWrite`(`src/mcp/tools/write.ts`)の2本だが、どちらも `src/kernel/` では
+#   ないので本台帳には1行も現れない。**
+# - **`ADR-0009` 限定2 の照合**: `dryRunDiff` は `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`src/kernel/` と `schemas/` は1バイトも変えていない** —— **`Δ8`
+#   (`scripts/kernel-export-snapshot.txt`)は発火していない**(export を1本も足していない)。
+#
+# **【2026-08-25。`V10-M30-T01`(アプリごとのコメント表示設定の器。`CM-G36` / `ADR-0377`)。
+#   既存行を1バイトも消していない】** **3件足した。**
+#
+#   src/server/comment-visibility-backup-inclusion.test.ts:KernelMetaStore
+#   src/server/comment-visibility-backup-inclusion.test.ts:applyManifest
+#   src/server/comment-visibility-backup-inclusion.test.ts:createApp
+#     (テスト。**日次バックアップの世代に設定の列2本が入ることの実測**。`ADR-0377`
+#      §Consequences が「日次バックアップは列の追加を1バイトの変更もなく引き継ぐ**見込み**
+#      である —— 見込みであって、測っていない」と書いた点を埋める。3件とも
+#      `src/server/comment-backup-inclusion.test.ts` が既に同じ形で値 import している綴りで
+#      あり、**新しい綴りを1つも足していない**)
+#
+# - **製品コードの層またぎは0件である** —— **足した3件はテストだけ。**
+# - **`ADR-0009` 限定2 の照合**: `KernelMetaStore` / `applyManifest` / `createApp` は
+#   `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は本単位で発火しており、そちらも更新した**
+#   (`meta-store.ts:CommentVisibility` の1件。門A の本審査 `V10-M29` = 限定採用の後である)。
+#   **本ファイルの更新はそれとは別の更新であり、消費側が値 import したことの記録である。**
+
+# **【2026-08-25。`V10-M31-T01`(定義の取得の応答にコメント設定をマージする。`CM-G38` /
+#   `ADR-0377`)。既存行を1バイトも消していない】** **3件足した。**
+#
+#   src/server/comment-visibility-http.test.ts:KernelMetaStore
+#   src/server/comment-visibility-http.test.ts:applyManifest
+#   src/server/comment-visibility-http.test.ts:createApp
+#     (テスト。**`GET /api/apps/:app_id/manifest` の応答に兄弟キー `comment_visibility` が
+#      載ることの実測**。台を組むのに要る3本であり、直前の `V10-M30-T01` が
+#      `comment-visibility-backup-inclusion.test.ts` で採ったのと**同じ綴りの3本**である。
+#      **新しい綴りを1つも足していない**)
+#
+# - **製品コードの層またぎは0件である** —— **足した3件はテストだけ。**
+#   **`src/server/app.ts` が足したのは既存の `withStore` 経由の
+#   `store.getCommentVisibility(appId)` 1本であり、`src/kernel/` からの import は
+#   1件も増えていない**(`KernelMetaStore` は着手前から値 import 済み)。
+# - **`ADR-0009` 限定2 の照合**: `KernelMetaStore` / `applyManifest` / `createApp` は
+#   `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は本単位で発火していない** ——
+#   **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(export を1本も足していない)。
