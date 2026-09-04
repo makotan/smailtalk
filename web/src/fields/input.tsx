@@ -61,6 +61,11 @@ import {
   referencePopupColumns,
   referenceSearchFields,
 } from "./reference-label.ts";
+// **利用者IDの書き写しを不要にする選択肢の型**(`UM-G2`。`V13-M1-T02`)——
+// **型だけを取る。** 一覧を読む口(`listAppUsers`)はここに1バイトも import しない
+// (`web/test/reference-candidate-permission.test.tsx` が
+//  「入力欄が `../api.ts` から取る名前は5本」を固定している)。
+import type { UserAccountChoice } from "./user-account.ts";
 
 /**
  * フォームが保持する入力値。
@@ -710,6 +715,16 @@ export type FieldInputProps = {
    * **「打って絞れません」と正直に出す**(黙って全件のプルダウンに倒さない)。
    */
   manifest?: Manifest;
+  /**
+   * **名簿の `account` 欄に出す、利用者の選択肢**(`UM-G2`。`V13-M1-T02`)。
+   *
+   * **渡ってくるのはその1項目のときだけである** —— どの項目がその欄かを解くのは
+   * `views/FormRenderer.tsx` 側の `accountFieldFor` 1本であり、**ここに再実装しない。**
+   *
+   * **`undefined` なら今日どおりの `<input type="text">` に倒す**(一覧が読めない立場・
+   * 名簿でない表・そもそも宣言が無いアプリは、すべてこちらに落ちる)。
+   */
+  userAccountChoices?: readonly UserAccountChoice[] | undefined;
 };
 
 /**
@@ -728,6 +743,7 @@ export function FieldInput({
   invalid,
   view,
   manifest,
+  userAccountChoices,
 }: FieldInputProps) {
   const common: CommonInputProps = {
     id: inputId,
@@ -739,12 +755,21 @@ export function FieldInput({
 
   switch (field.type) {
     case "text":
-      return (
+      // **選択肢が渡ってきたときだけプルダウンにする**(`UM-G2`。`V13-M1-T02`)——
+      // **それ以外は着手前と1バイトも同じ `<input type="text">` である。**
+      return userAccountChoices === undefined ? (
         <Input
           {...common}
           type="text"
           value={asText(value)}
           onChange={(event) => onChange(event.target.value)}
+        />
+      ) : (
+        <UserAccountInput
+          common={common}
+          choices={userAccountChoices}
+          value={asText(value)}
+          onChange={onChange}
         />
       );
     case "long_text":
@@ -1020,6 +1045,45 @@ function GeneralFileInput({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * **名簿の `account` 欄**(`UM-G2`。`V13-M1-T02`)。**生の利用者IDを打たせない。**
+ *
+ * **保存される値は利用者IDのままである** —— 変えたのは「打つ」を「選ぶ」にしたことだけで、
+ * ログイン名を値として書き込む経路を1本も作っていない。
+ *
+ * **今入っている値がどの利用者にも一致しないときは、黙って消さない。**
+ * その値の選択肢を**先頭**に足し、**一致していないことが分かるラベル**を付ける
+ * (書き写しの事故で入った値を、画面が勝手に別人へ付け替えない)。
+ */
+function UserAccountInput({
+  common,
+  choices,
+  value,
+  onChange,
+}: {
+  common: CommonInputProps;
+  choices: readonly UserAccountChoice[];
+  value: string;
+  onChange: (value: FieldInputValue) => void;
+}) {
+  const known = choices.some((choice) => choice.id === value);
+  return (
+    /* **素の `<select>` である**(`ADR-0087` 限定8)。重ねて出すメニューにしない。 */
+    <Select {...common} value={value} onChange={(event) => onChange(event.target.value)}>
+      {value !== UNSELECTED && !known && (
+        <option value={value}>{`${value}(該当する利用者が居ません)`}</option>
+      )}
+      {/* 未選択。**文言は参照のプルダウンに倣う**(空のまま)。 */}
+      <option value={UNSELECTED} />
+      {choices.map((choice) => (
+        <option key={choice.id} value={choice.id}>
+          {choice.label}
+        </option>
+      ))}
+    </Select>
   );
 }
 

@@ -392,6 +392,15 @@ export function UserAdmin({
                   <TableHead scope="col" className="px-s2 py-s1">
                     ロール
                   </TableHead>
+                  {/*
+                   * **【`V13-M1-T01` / 台帳 `UM-G1`】利用者IDの列を足した。**
+                   * **既存3本の見出しの文言も順序も1バイト変えていない** —— 足したのは
+                   * **後ろ(ロールの右)の1本だけ**である(`web/test/user-admin-user-id.test.tsx`
+                   * が4本の並びを逐語で固定する)。
+                   */}
+                  <TableHead scope="col" className="px-s2 py-s1">
+                    利用者ID
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -428,6 +437,9 @@ export function UserAdmin({
                         ))}
                       </Select>
                     </TableCell>
+                    <TableCell className="px-s2 py-s1">
+                      <UserIdCell userId={user.id} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -435,6 +447,80 @@ export function UserAdmin({
           </TableFrame>
         ))}
     </Card>
+  );
+}
+
+/**
+ * **利用者IDのセル**(`V13-M1-T01` / 台帳 `UM-G1`)。
+ *
+ * ## なぜ足したか
+ *
+ * **説明書は着手前から「画面なら利用者管理の一覧。そこに出る `id` が利用者IDである」と
+ * 書いていたが、その `id` は `<tr data-user-id>` の属性に入っているだけで、画面には
+ * 1文字も出ていなかった** —— **利用者は開発者ツールを開かないと自分のIDを読めなかった。**
+ * **この工程がその記述を真に戻す。**
+ *
+ * ## 作りの2点
+ *
+ * - **`data-testid="user-row-user-id"` を持つのは値そのものだけである**(ボタンの文言や
+ *   結果の文言を含まない)。**API の返した `id` と逐語一致させるためであり、
+ *   `web/test/user-admin-user-id.test.tsx` がその一致を機械的に固定する。**
+ * - **コピーの形は発明していない** —— `RequirementsDocPanel` の `CopyMarkdownButton` /
+ *   `ThemeExportPanel` の `CopyThemeCssButton` / `ListViewRenderer` の CSV コピーと
+ *   **同一の形**である(`navigator.clipboard as Clipboard | undefined` を取り、
+ *   `undefined` なら失敗として出す)。**クリップボードは環境によって使えない
+ *   (非セキュアコンテキストなど)ので、使えなかったことを黙って隠さない**(憲法6)。
+ *
+ * ## 【正直に書く】ここで担保していないこと
+ *
+ * - **`data-testid="role-select"` を1つも増やしていない** ——
+ *   `web/test/customer-signup.test.tsx` が `getAllByTestId("role-select")` の**添字**で
+ *   行を特定しており、増やすと黙って別の行を指すからである。**この規律を守っていることの
+ *   見張りは検査側に置いた**(個数 = 人数)が、**「将来この画面に `role-select` を足さない」
+ *   ことを構造で禁じてはいない。**
+ * - **`data-user-id` 属性は残してある**(`web/e2e/authz.e2e.ts` /
+ *   `web/e2e/customer-signup.e2e.ts` が行の同定に使っている)。
+ * - **「コピーできた」ことの実証はしていない** —— 検査が見ているのは `writeText` に
+ *   渡った引数までであり、OS のクリップボードの中身は1バイトも読んでいない。
+ */
+function UserIdCell({ userId }: { userId: string }) {
+  const [copied, setCopied] = useState<boolean | null>(null);
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-s1")}>
+      <span data-testid="user-row-user-id" className={cn("text-note")}>
+        {userId}
+      </span>
+      <Button
+        size="sm"
+        variant="secondary"
+        data-testid="user-row-copy-id"
+        onClick={() => {
+          // クリップボードは環境によって使えない(非セキュアコンテキストなど)。
+          // 使えなかったことを黙って隠さず、失敗として出す(憲法6)。形は
+          // `ThemeExportPanel` の `CopyThemeCssButton` と同一である。
+          const clipboard = navigator.clipboard as Clipboard | undefined;
+          if (clipboard === undefined) {
+            setCopied(false);
+            return;
+          }
+          void clipboard.writeText(userId).then(
+            () => setCopied(true),
+            () => setCopied(false),
+          );
+        }}
+      >
+        コピー
+      </Button>
+      {copied !== null && (
+        <span
+          className={cn("text-note text-muted-foreground")}
+          data-testid="user-row-copy-id-result"
+        >
+          {copied ? "コピーしました。" : "コピーできませんでした。"}
+        </span>
+      )}
+    </div>
   );
 }
 

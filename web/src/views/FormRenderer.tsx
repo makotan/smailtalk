@@ -91,6 +91,9 @@ import {
   usePermittedGrantMemberIds,
   useReferenceChoices,
 } from "../fields/input.tsx";
+// **名簿の `account` 欄を「利用者を選ぶプルダウン」にする**(`UM-G2`。`V13-M1-T02`)——
+// **どの項目がその欄かを解くのも、一覧を1度だけ読むのも、この1本に住んでいる。**
+import { accountFieldFor, useUserAccountChoices } from "../fields/user-account.ts";
 import { navigate, resolveDetailViewTarget } from "../navigation.tsx";
 import type { RoutePrefill } from "../route.ts";
 import { resolveViewTable } from "../table-resolution.ts";
@@ -260,6 +263,19 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
   }, []);
 
   const values = state.status === "ready" ? state.value : undefined;
+
+  /**
+   * **名簿の `account` 欄を「利用者を選ぶプルダウン」にする**(`UM-G2`。`V13-M1-T02`)。
+   *
+   * **解決はマニフェストの宣言だけから行う**(`accountFieldFor`)。名簿でない表では
+   * `undefined` のままで、**利用者の一覧を1度も読まない。**
+   *
+   * **【画面に出ることを権限の担保にしていない】** 一覧が読めない立場では
+   * `undefined` に倒れ、**着手前どおりのテキスト欄**になる —— 書込を止めているのは
+   * サーバであって、この欄の見た目ではない。
+   */
+  const accountFieldId = accountFieldFor(manifest, view.table);
+  const userAccountChoices = useUserAccountChoices(appId, accountFieldId !== undefined);
 
   /**
    * **付与表の「相手」の候補を、親の行に権限を持つ人へ絞る**(`Z-G27`。`V7-M6-T02`)。
@@ -456,6 +472,9 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
           // **エラーがある欄にだけ `aria-invalid` が付く**(`V4-M15-T14` の一部)。
           // 判定はここ(`groupErrorsByField` の結果)1箇所だけである。
           invalid={fieldErrors.length > 0}
+          // **渡すのは名簿の `account` 欄ちょうど1つだけである**(`UM-G2`)——
+          // **他の `text` 項目の DOM は1バイトも変わらない。**
+          userAccountChoices={field.id === accountFieldId ? userAccountChoices : undefined}
         />
         {fieldErrors.length > 0 && (
           <div data-testid={`field-error-${field.id}`}>

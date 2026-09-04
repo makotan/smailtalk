@@ -112,6 +112,11 @@ const ALLOWED_OUTSIDE_SERVER: readonly { path: string; reason: string }[] = [
     reason:
       "要件ドキュメントの文章化(`V7-M6-T03` / `Z-G28`。宣言だけを文にする。付与の行の中身を1文字も出さず、判定式は1つも持たない)",
   },
+  {
+    path: join("web", "src", "fields", "user-account.ts"),
+    reason:
+      "名簿の `account` 欄をプルダウンにするための解決(`V13-M1-T02` / `UM-G2`。`members.table` と `members.account` の**宣言だけ**を読み、どの項目がその欄かを解く。**権限の判定式は1つも持たず、`permissions` / `grant` / `inherit_from` を1バイトも読まない**)",
+  },
 ];
 
 /** `src` / `web/src` 配下の非テスト `.ts` / `.tsx` を全部読む。 */
@@ -156,14 +161,20 @@ describe("V7-M1-T04 (iii): access_control の綴りの置き場所を固定す�
   // **【`V7-M6-T03` による期待値の更新。検査は1本も消していない】** **直前は6本だった。**
   // **7本目は `src/kernel/requirements-doc.ts`**(理由は `ALLOWED_OUTSIDE_SERVER` の doc)。
   // **旧のテスト名は「…列挙した6本だけである」/「列挙した6本にはすべて理由が…」だった。**
-  test("(2) src/server/ の外で access_control を持つ非テスト製品ファイルは、列挙した7本だけである", async () => {
+  // **【`V13-M1-T02` による期待値の更新。検査は1本も消していない】** **直前は7本だった。**
+  // **8本目は `web/src/fields/user-account.ts`**(理由は `ALLOWED_OUTSIDE_SERVER` の doc)。
+  // **旧のテスト名は「…列挙した7本だけである」/「列挙した7本にはすべて理由が…」だった。**
+  // **【この検査が守っているものを緩めていない】** **8本目も `web/src/fields/input.tsx`(6本目)と同じ性質である**
+  // —— **読むのは宣言だけで、判定式を1つも持たない。** **判定の家は今日も `src/server/owner-scope.ts` の1本である**
+  // (検査(1) と (1b) は1バイトも動いていない)。
+  test("(2) src/server/ の外で access_control を持つ非テスト製品ファイルは、列挙した8本だけである", async () => {
     const hits = await filesContaining("access_control");
     const outsideServer = hits.filter((path) => !path.startsWith(`${join("src", "server")}/`));
     expect(outsideServer).toEqual(ALLOWED_OUTSIDE_SERVER.map((entry) => entry.path).sort());
   });
 
-  test("(2b) 列挙した7本にはすべて理由が書かれている(「今日そこに在るから許す」にしない)", () => {
-    expect(ALLOWED_OUTSIDE_SERVER).toHaveLength(7);
+  test("(2b) 列挙した8本にはすべて理由が書かれている(「今日そこに在るから許す」にしない)", () => {
+    expect(ALLOWED_OUTSIDE_SERVER).toHaveLength(8);
     for (const entry of ALLOWED_OUTSIDE_SERVER) {
       expect(entry.reason.length).toBeGreaterThan(0);
     }
