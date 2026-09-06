@@ -3158,3 +3158,89 @@ scripts/build-runner-data.test.ts:CommentStore
 #   `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
 # - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は本単位で発火していない** ——
 #   **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(export を1本も足していない)。
+
+# =====================================================================================
+# **【2026-09-05。`V14-M1-T01` / `V14-M1-T02` / `V14-M1-T03`(行ごとの判定を応答に載せる。
+#   台帳 `RB-G1` / `RB-G2` / `RB-G3`)。既存行を1バイトも消していない】** **5件足した。**
+#
+#   src/server/record-row-access-response.test.ts:KernelMetaStore
+#   src/server/record-row-access-response.test.ts:appDbPath
+#   src/server/record-row-access-response.test.ts:applyManifest
+#   src/server/record-row-access-response.test.ts:createApp
+#   src/server/record-row-access-response.test.ts:createRecord
+#     (テスト。**一覧・単票の応答に `access`(行ごとの判定)が載ることの実測**。
+#      台を組むのに要る5本であり、`record-access-visibility.test.ts` が着手前から
+#      使っている綴りと**同じ**である。**新しい綴りを1つも足していない**)
+#
+# - **製品コードの層またぎは0件である** —— **足した5件はテストだけ。**
+#   **`src/server/app.ts` / `src/server/owner-scope.ts` が `src/kernel/` から
+#   import する値は1件も増えていない。**
+# - **`ADR-0009` 限定2 の照合**: 5本はいずれも `normalizeSort` /
+#   `sortErrorPath` / `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# - **`Δ8`(`scripts/kernel-export-snapshot.txt`)は本単位で発火していない** ——
+#   **`src/kernel/` にも `schemas/` にも1バイトも触っていない。**
+# =====================================================================================
+src/server/record-row-access-response.test.ts:KernelMetaStore
+src/server/record-row-access-response.test.ts:appDbPath
+src/server/record-row-access-response.test.ts:applyManifest
+src/server/record-row-access-response.test.ts:createApp
+src/server/record-row-access-response.test.ts:createRecord
+
+# =====================================================================================
+# --- V15-M2-T01(`inherit_from` を宣言した表の作成に、親への書込を要求する。`CR-G1`)-------
+# =====================================================================================
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/create-parent-write.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                          createRecord / appDbPath
+#     —— **親の行への書込を持たない人が、子の表に行を作れないことを **本物の HTTP と
+#        本物の SQLite** から測る**(`docs/plan/v15/03-v15-m2-tasks.md` の `V15-M2-T01`)。
+#        **`createRecord` は親の行・付与行・利用者行と、段数/件数の上限に当てる台を仕込む
+#        ために使い、`appDbPath` はその仕込みで開く app.sqlite の場所を引くために使う。**
+# **新しい層またぎの種類は0本である** —— **5本とも `access-control-inheritance.test.ts` /
+#   `record-row-access-response.test.ts` などが着手前から使っている綴りとまったく同じで
+#   あり、同じ `src/kernel/index.ts` から同じ5シンボルを引いている検査ファイルが1本増えた
+#   だけである。** **新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)——
+#   **`src/server/app.ts` / `src/server/owner-scope.ts` が `src/kernel/` から値として
+#   import するものは1件も増えていない**(`ADR-0404` 限定8: `src/kernel/` に1バイトも
+#   差分を出さない)。
+# **`ADR-0009` 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない。
+# 記録: docs/plan/v15/records/v15-m2.md の `V15-M2-T01`。
+src/server/create-parent-write.test.ts:KernelMetaStore
+src/server/create-parent-write.test.ts:appDbPath
+src/server/create-parent-write.test.ts:applyManifest
+src/server/create-parent-write.test.ts:createApp
+src/server/create-parent-write.test.ts:createRecord
+
+# =====================================================================================
+# --- V15-M3-T01(まとめ書き `POST /batch` にも同じ関門を掛ける。`CR-G5`)---------------
+# =====================================================================================
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本から**である:
+#   src/server/batch-create-parent-write.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                                createRecord / appDbPath
+#     —— **まとめ書き(`POST /api/apps/:app_id/batch`)の作成 op にも、単件 `POST` と
+#        まったく同じ「親の行に書けるか」の関門が掛かることを、**本物の HTTP と本物の
+#        SQLite** から測る**(`docs/plan/v15/04-v15-m3-tasks.md` の `V15-M3-T01`)。
+#        **題材は `src/server/create-parent-write.test.ts` と同一であり、
+#        `createRecord` は親の行・付与行・利用者行と、段数/件数の上限に当てる台を仕込む
+#        ために使い、`appDbPath` はその仕込みで開く app.sqlite の場所を引くために使う。**
+#        **`appDbPath` は「部分適用がゼロであること」を SELECT COUNT(*) で直に見るのにも
+#        使っている**(`(p-1)` / `(p-2)`)。
+# **新しい層またぎの種類は0本である** —— **5本とも `create-parent-write.test.ts` /
+#   `access-control-inheritance.test.ts` などが着手前から使っている綴りとまったく同じで
+#   あり、同じ `src/kernel/index.ts` から同じ5シンボルを引いている検査ファイルが1本増えた
+#   だけである。** **新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)——
+#   **`src/server/app.ts` が `src/kernel/` から値として import するものは1件も増えていない**
+#   (`ADR-0404` 限定8: `src/kernel/` に1バイトも差分を出さない)。
+# **`ADR-0009` 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない。
+# 記録: docs/plan/v15/records/v15-m3.md の `V15-M3-T01`。
+src/server/batch-create-parent-write.test.ts:KernelMetaStore
+src/server/batch-create-parent-write.test.ts:appDbPath
+src/server/batch-create-parent-write.test.ts:applyManifest
+src/server/batch-create-parent-write.test.ts:createApp
+src/server/batch-create-parent-write.test.ts:createRecord

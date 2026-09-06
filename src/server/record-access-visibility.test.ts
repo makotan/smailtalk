@@ -430,9 +430,20 @@ describe("V7-M5-T01 (A): 付与0件の行は、5通りの相手すべての一�
       // **未認証は認証の壁で 401** —— **判定より手前で止まる。**
       { who: "未認証", status: 401 },
     ]);
-    expect(measured[0]?.body).toBe('{"records":[],"total":0}');
-    expect(measured[1]?.body).toBe('{"records":[],"total":0}');
-    expect(measured[3]?.body).toBe('{"records":[],"total":0}');
+    // **【`V14-M1-T01`(台帳 `RB-G1` / `RB-G2`)。2026-09-05。期待値を入れ替えた。
+    //   旧の3行を逐語で残す】**
+    // **旧**:
+    //   `expect(measured[0]?.body).toBe('{"records":[],"total":0}');`
+    //   `expect(measured[1]?.body).toBe('{"records":[],"total":0}');`
+    //   `expect(measured[3]?.body).toBe('{"records":[],"total":0}');`
+    // **宣言つきの表の一覧応答に `access`(行ごとの判定。鍵は返した行の `_id`)が
+    // 載るようになった。** **可視行が0件なので、写像も空である。**
+    // **測っているもの(付与0件の行が1件も出ないこと)は1ミリも弱めていない** ——
+    // **`records` も `total` も着手前と1バイトも同じ値である。**
+    // **宣言していない表の応答は1バイトも変わっていない**((E) が別に固定する)。
+    expect(measured[0]?.body).toBe('{"records":[],"total":0,"access":{}}');
+    expect(measured[1]?.body).toBe('{"records":[],"total":0,"access":{}}');
+    expect(measured[3]?.body).toBe('{"records":[],"total":0,"access":{}}');
     // **`viewer` の本文には、付与0件の行の `_id` が1件も現れない。**
     const viewerBody = measured[2]?.body ?? "";
     for (const id of [...orphans, ownedByOther]) {

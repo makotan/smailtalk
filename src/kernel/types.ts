@@ -522,6 +522,25 @@ export type Table = {
     members?: { table: ResourceId; account: ResourceId; group?: ResourceId };
     groups?: { table: ResourceId };
     inherit_from?: ResourceId[];
+    /**
+     * **【`V15-M1-T03`。`CR-G2` / `ADR-0405`】8キー目。**
+     * **この表に行を作れる権限名**(`permissions[].id` のいずれか)を並べる。
+     *
+     * **`creator_permission` とは別のものである** —— あちらは「行を作った人に
+     * **何が渡るか**」、こちらは「**そもそも誰が作れるか**」であり、1つのキーに
+     * 2つの意味を持たせない(`D-V15-4`「分ける(兼用をやめる)」)。
+     *
+     * **型は `ResourceId` ではなく素の文字列である** —— 指すのは表や項目のIDでは
+     * なく、この表が宣言した権限名だからである。**新しい型エイリアスを1本も
+     * 新設していない**(`export` を1本も増やさない。`Δ8` は空のまま)。
+     *
+     * **【正直に書く】判定の実装は今日1バイトも無い**(当たり先は `V15-M2`)——
+     * **今日この宣言を書いても、行を作れるかどうかのふるまいは今日どおりである。**
+     * **書けるのは `inherit_from` を宣言した表だけで、要素が `permissions[].id` に
+     * 実在することも含めて、見るのは適用時検査(`referential-integrity.ts` の項目10)
+     * である**(`ADR-0405` 限定5 / 限定6)。
+     */
+    creatable_by?: readonly string[];
   };
 };
 

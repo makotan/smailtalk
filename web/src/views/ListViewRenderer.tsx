@@ -135,6 +135,8 @@ import {
   isWriteConflict,
   type RecordRow,
   type Role,
+  // **【`V14-M2-T01` / `RB-G1`】行1件ぶんの判定の型**(`ADR-0402` §Decision 4)。
+  type RowAccess,
   // **【`V5-M25-T08` / `L-G8`】手動起動の入口を叩く1本**(`ADR-0176` 限定1: 入口は HTTP に1本)。
   runViewAction,
   // **【`V5-M25-T07` / `L-G3`】一覧の行の set 形は、既存のレコード更新経路をそのまま通る**
@@ -186,6 +188,9 @@ import {
 import { cn } from "../ui/utils.ts";
 // **打った語から `filter` を組み立てる規則は、製品にただ1本しか無い**
 // (`V4-M22-T02` / `ADR-0112` 限定7・限定9。`V6-M4-T01` が共有先へ切り出した)。
+// **【`V14-M2-T04`】形 → 動詞の写像は製品にちょうど1本である**(`ADR-0402` 線2)——
+// **一覧の側に2本目を書かない。** **詳細画面(`DetailViewRenderer.tsx`)も同じ1本を呼ぶ。**
+import { rowAccessAllows, rowActionVerb } from "./row-action-verb.ts";
 import { buildSearchFilter } from "./search-filter.ts";
 import type { ListViewRendererProps } from "./types.ts";
 import { visibleWhenMatches } from "./visible-when.ts";
@@ -704,6 +709,20 @@ type ListData = {
    * 画面は合計を1つも描かない。**
    */
   sum?: number;
+  /**
+   * **行ごとの判定**(`V14-M2-T01`。鍵は行の `_id`。`ADR-0402` §Decision 4)。
+   * **サーバが返したときだけ持つ** —— **宣言していない表ではキーごと存在しない**(限定4)。
+   * **【正直に書く】`V14-M2-T01` の時点では、ここへ値を入れる行がまだ1本も無い。**
+   * **入れるのは `V14-M2-T04` である。**
+   *
+   * **【`V14-M2-T04` の訂正。上の2行を1バイトも消していない】**
+   * **旧文「ここへ値を入れる行がまだ1本も無い」は今日から偽である** ——
+   * **`V14-M2-T04` が取得の `setState`(下の `Promise.all` の `then`)で
+   * `page.access` を載せた。** **載せ方は `sum` と1バイトも同じ条件スプレッドであり、
+   * **サーバが返さなければキーごと持たない**(`{}` に倒さない —— 倒すと
+   * 「誰も何もできない」という嘘になる)。
+   */
+  access?: Record<string, RowAccess>;
   referenceLabels: ReferenceLabelIndex;
 };
 
@@ -1105,6 +1124,12 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
               total: page.total,
               // **サーバが返したときだけ持つ**(返さなければキーごと持たない)。
               ...(page.sum === undefined ? {} : { sum: page.sum }),
+              // **【`V14-M2-T04`】行ごとの判定も `sum` と1バイトも同じ形で載せる**
+              // (`ADR-0402` §Decision 4)—— **サーバが返さなければキーごと持たない。**
+              // **`{}` に倒さない** —— **`{}` は「どの行にも何もできない」という嘘になる。**
+              // **追加の問い合わせを1本も作っていない** —— **この `access` は一覧APIの
+              // 同じ応答に載って来たものである**(`ADR-0402` 限定12)。
+              ...(page.access === undefined ? {} : { access: page.access }),
               referenceLabels: buildReferenceLabelIndex(referenceSources),
             },
           });
@@ -1303,7 +1328,9 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
     );
   }
 
-  const { records, total, sum, referenceLabels } = state.value;
+  // **【`V14-M2-T04`】`access` は「行ごとの判定」であり、器(表 / カード)を素通りして
+  // `RowActionOrigins` まで運ぶ** —— **運ぶ先で引くのは「その行1件ぶん」だけである。**
+  const { records, total, sum, access, referenceLabels } = state.value;
 
   /*
    * --- 画面で選んでまとめて操作する(`V4-M20-T03`)--------------------------------
@@ -1817,6 +1844,7 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
                   onOpen={openRecord(record)}
                   own={isOwnRow(ownerFieldPresent, record, actorId)}
                   actions={writableActions}
+                  {...(access === undefined ? {} : { access })}
                   viewId={view.id}
                   tableId={view.table}
                 />
@@ -1838,6 +1866,7 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
               actorId={actorId}
               selection={selection}
               actions={writableActions}
+              {...(access === undefined ? {} : { access })}
             />
           )}
           {/*
@@ -1902,6 +1931,7 @@ function RowActionOrigins({
   manifest,
   actions,
   record,
+  rowAccess,
 }: {
   appId: string;
   /**
@@ -1921,6 +1951,17 @@ function RowActionOrigins({
   manifest: Manifest;
   actions: readonly RowAction[];
   record: RecordRow;
+  /**
+   * **【`V14-M2-T04`】この行1件ぶんの判定**(`ADR-0402` §Decision 4 / §Decision 6)。
+   *
+   * **受け取るのは行1件ぶんである** —— **`access` 全体を渡さない**(行のことは行が知る)。
+   * **`undefined` のとき、ボタンの出方は着手前と1バイトも変わらない**(限定4)——
+   * **その表がアクセス権管理を宣言していないか、サーバが判定を載せなかったときである。**
+   *
+   * **【禁止】これを「押せなくなった」と読まない**(`ADR-0402` 限定7 / 限定8)——
+   * **出さないだけである。** **最終防衛線は今日どおりサーバの 403 / 404 である。**
+   */
+  rowAccess?: RowAccess;
 }) {
   /*
    * **表示条件は行ごとに1回ずつ評価する**(`ADR-0171` §Decision 4)。
@@ -1928,9 +1969,21 @@ function RowActionOrigins({
    * **詳細画面と同じ実装である** —— ここに2本目を書かない。
    * **条件を書かなかった起点は今日どおり必ず出る**(既定を反転させていない)。
    */
+  /*
+   * **【`V14-M2-T04` / `ADR-0402` §Decision 6】2項目の `AND` を足した。**
+   *
+   * **面(ボタンの規則)は呼び出し側の `writableActions` が1回だけ済ませてある** ——
+   * **ここで足すのは「行の判定」だけである。** **これは面と点の `OR` の再実装ではなく、
+   * 2つの別の問いの積である**(`ADR-0402` §Decision 8 の線4)。
+   * **形 → 動詞の写像は `row-action-verb.ts` の1本を呼ぶ**(線2)——
+   * **ここに写像を書き写さない。**
+   * **`rowAccess` が `undefined` の行では `rowAccessAllows` が真を返すので、
+   * 着手前と1バイトも同じ結果になる。**
+   */
   const visible = actions.filter(
     (action) =>
-      action.visible_when === undefined || visibleWhenMatches(action.visible_when, record),
+      (action.visible_when === undefined || visibleWhenMatches(action.visible_when, record)) &&
+      rowAccessAllows(rowAccess, rowActionVerb(manifest, tableId, action)),
   );
   /**
    * **起動中の自動処理のID**(`V5-M25-T08`)。**押している間だけそのボタンを止める。**
@@ -2151,6 +2204,7 @@ function TableShape({
   actorId,
   selection,
   actions,
+  access,
 }: {
   appId: string;
   manifest: Manifest;
@@ -2180,6 +2234,14 @@ function TableShape({
    * (`writableActions`)であり、ここに規約を置かない。**
    */
   actions: readonly RowAction[];
+  /**
+   * **【`V14-M2-T04`】行ごとの判定**(鍵は行の `_id`。`ADR-0402` §Decision 4)。
+   * **この器は中身を1度も読まない** —— **`ListRow` へそのまま渡すだけである。**
+   * **`undefined` のあいだ、表の DOM もボタンの出方も着手前と1バイトも変わらない。**
+   * **列数を1つも動かさない** —— **セル / 列の有無を決めているのは今日どおり
+   * `actions.length === 0` だけであり、行ごとの絞りは `RowActionOrigins` の中で起きる。**
+   */
+  access?: Record<string, RowAccess>;
 }) {
   return (
     <>
@@ -2328,6 +2390,7 @@ function TableShape({
                 own={isOwnRow(ownerFieldPresent, record, actorId)}
                 selection={selection}
                 actions={actions}
+                {...(access === undefined ? {} : { access })}
                 viewId={view.id}
                 tableId={view.table}
               />
@@ -2362,6 +2425,7 @@ function ListRow({
   own,
   selection,
   actions,
+  access,
   viewId,
   tableId,
 }: {
@@ -2398,6 +2462,12 @@ function ListRow({
    * 変わらない** —— セルが1つも増えない。
    */
   actions: readonly RowAction[];
+  /**
+   * **【`V14-M2-T04`】行ごとの判定**(鍵は行の `_id`)。**この行のぶんだけを取り出して
+   * `RowActionOrigins` へ渡す** —— **中で全体を引かせない**(行のことは行が知る)。
+   * **`undefined` のあいだ、行の DOM もボタンの出方も着手前と1バイトも変わらない。**
+   */
+  access?: Record<string, RowAccess>;
   /**
    * **【`V5-M25-T08`】この行が乗っている画面のID。** **手動起動の入口が「どの画面から
    * 押されたか」を要る**(`ADR-0176`)—— **入口はその画面が宣言した操作起点だけを受ける。**
@@ -2515,6 +2585,7 @@ function ListRow({
             manifest={manifest}
             actions={actions}
             record={record}
+            {...(access?.[record._id] === undefined ? {} : { rowAccess: access[record._id] })}
           />
         </TableCell>
       )}
@@ -2563,6 +2634,7 @@ function ListCard({
   own,
   selection,
   actions,
+  access,
   viewId,
   tableId,
 }: {
@@ -2592,6 +2664,13 @@ function ListCard({
    * 1バイトも変わらない。**
    */
   actions: readonly RowAction[];
+  /**
+   * **【`V14-M2-T04`】行ごとの判定**(鍵は行の `_id`)。**表(`ListRow`)と同じものを
+   * そのまま受け取る** —— **2本目の判定を作らない。** **カード形式と表形式のどちらか
+   * 片方だけに当てない**(`ADR-0402` 限定15)。
+   * **`undefined` のあいだ、カードの DOM もボタンの出方も着手前と1バイトも変わらない。**
+   */
+  access?: Record<string, RowAccess>;
   /**
    * **【`V5-M25-T08`】この行が乗っている画面のID。** **手動起動の入口が「どの画面から
    * 押されたか」を要る**(`ADR-0176`)—— **入口はその画面が宣言した操作起点だけを受ける。**
@@ -2700,6 +2779,7 @@ function ListCard({
           manifest={manifest}
           actions={actions}
           record={record}
+          {...(access?.[record._id] === undefined ? {} : { rowAccess: access[record._id] })}
         />
       )}
     </div>

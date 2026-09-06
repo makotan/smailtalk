@@ -160,15 +160,131 @@ describe("fetchRecordPage のページネーション(EC-G11 / ADR-0042)", () =>
     await fetchRecordPage("demo", "things");
     expect(calls[0]?.url).toBe("/api/apps/demo/tables/things/records");
   });
+
+  // **`V14-M2-T01`(`RB-G1`)。行ごとの判定を、画面が受け取る。**
+  // **正はサーバの `recordRowAccessMap`(`src/server/owner-scope.ts`)である。**
+  test("(RB-G1/api-1) 一覧: サーバが access を返したらそのまま持つ", async () => {
+    stubFetch(() =>
+      jsonResponse({
+        records: [{ _id: "r1" }, { _id: "r2" }],
+        total: 2,
+        access: {
+          r1: { read: true, write: true, delete: false, grant_write: true },
+          r2: { read: true, write: false, delete: false, grant_write: false },
+        },
+      }),
+    );
+    const page = await fetchRecordPage("demo", "things");
+    expect(page.access).toEqual({
+      r1: { read: true, write: true, delete: false, grant_write: true },
+      r2: { read: true, write: false, delete: false, grant_write: false },
+    });
+  });
+
+  // **`{}` に倒さない** —— **`{}` は「誰も何もできない」という嘘になる。**
+  test("(RB-G1/api-2) 一覧: サーバが返さなければ access キーが存在しない", async () => {
+    stubFetch(() => jsonResponse({ records: [{ _id: "r1" }], total: 1 }));
+    const page = await fetchRecordPage("demo", "things");
+    expect(page).not.toHaveProperty("access");
+  });
 });
 
 describe("単体取得・書き込み系の URL とメソッド", () => {
-  test("fetchRecord は record キーを剥がして返す", async () => {
+  // **【`V14-M2-T01` の訂正。旧名を1バイトも残さない代わりに、何が変わったかをここに書く】**
+  // **着手前の名前は「fetchRecord は record キーを剥がして返す」だった。**
+  // **T01 で `{ record, access }` を返す形に変えたので、その名前は今日から偽である。**
+  test("fetchRecord は record キーを剥がさず { record, access } の形で返す", async () => {
     const calls = stubFetch(() => jsonResponse({ record: { _id: "r1" } }));
-    const record = await fetchRecord("demo", "things", "r 1");
+    const { record } = await fetchRecord("demo", "things", "r 1");
     expect(calls[0]?.url).toBe("/api/apps/demo/tables/things/records/r%201");
     expect(calls[0]?.method).toBe("GET");
     expect(record._id).toBe("r1");
+  });
+
+  // **【`V14-M4-T01` の訂正。この検査が何を前提にしていたかを消さずに書く】**
+  // **着手前のこの検査は、サーバの `access` を**裸の判定オブジェクト**
+  // (`{ read, write, delete, grant_write }`)として `fetch` に返させていた。**
+  // **本物のサーバはそう返さない** —— **行の `_id` を鍵にした写像で返す**
+  // (`src/server/app.ts` の `recordRowAccessMap`)。**この前提が偽だったので、
+  // `fetchRecord` の取り違えがこの検査では1度も赤くならなかった。**
+  // **土台を本物の形に直した。撃っている中身(`record` が1バイトも変わらないこと・
+  // 判定がそのまま返ること)は1つも減らしていない。**
+  test("(RB-G1/api-3) 単票: { record, access } を返し、record の形が1バイトも変わらない", async () => {
+    stubFetch(() =>
+      jsonResponse({
+        record: { _id: "r1", name: "椅子", count: 3 },
+        access: { r1: { read: true, write: false, delete: false, grant_write: true } },
+      }),
+    );
+    const fetched = await fetchRecord("demo", "things", "r1");
+    // **`record` の形が1バイトも変わっていない**(剥がした値がそのまま入っている)。
+    expect({ ...fetched.record } as Record<string, unknown>).toEqual({
+      _id: "r1",
+      name: "椅子",
+      count: 3,
+    });
+    expect(fetched.access).toEqual({ read: true, write: false, delete: false, grant_write: true });
+  });
+
+  test("(RB-G1/api-4) 単票: サーバが返さなければ access キーが存在しない", async () => {
+    stubFetch(() => jsonResponse({ record: { _id: "r1" } }));
+    const fetched = await fetchRecord("demo", "things", "r1");
+    expect(fetched.record._id).toBe("r1");
+    expect(fetched).not.toHaveProperty("access");
+  });
+
+  /**
+   * **【`V14-M4-T01` の実地で見つかった欠陥】**
+   *
+   * **サーバが単票の口で返す `access` は、行の `_id` を鍵にした**写像**である** ——
+   * **一覧の口と1バイトも同じ形である**(`src/server/app.ts` の `recordRowAccessMap` /
+   * `accessForPage` が両方に同じ形を作る)。**本物のサーバの実測:**
+   *
+   * ```
+   * {"record":{...},"access":{"c6721f33-...":{"read":true,"write":true,"delete":true,"grant_write":true}}}
+   * ```
+   *
+   * **着手前の `fetchRecord` は、これを裸の判定オブジェクトだと綴っていた** ——
+   * **`access["write"]` も `access["grant_write"]` も `undefined` になり、
+   * `rowAccessAllows` がすべて偽に倒れ、詳細画面の行ごとの判定が当たるボタンが
+   * 権限を持つ人からも全部消えていた**(本物のサーバとブラウザで3人ぶん実測)。
+   * **一覧側は着手前から正しく写像として読んでいたので、一覧だけが正しく動いていた。**
+   */
+  test("(RB-G1/api-3c) 単票: access は行の _id を鍵にした写像で来る。その行ぶんを取り出す", async () => {
+    stubFetch(() =>
+      jsonResponse({
+        record: { _id: "c6721f33-4282-4ddc-8cda-be9ccd9fc91c", name: "椅子" },
+        access: {
+          "c6721f33-4282-4ddc-8cda-be9ccd9fc91c": {
+            read: true,
+            write: true,
+            delete: true,
+            grant_write: true,
+          },
+        },
+      }),
+    );
+    const fetched = await fetchRecord("demo", "things", "c6721f33-4282-4ddc-8cda-be9ccd9fc91c");
+    expect(fetched.access).toEqual({
+      read: true,
+      write: true,
+      delete: true,
+      grant_write: true,
+    });
+  });
+
+  test("(RB-G1/api-3d) 単票: 写像に自分の行が無ければ、access キーごと持たない", async () => {
+    stubFetch(() =>
+      jsonResponse({
+        record: { _id: "r1" },
+        // **別の行の鍵しか載っていない。** **その値を取り違えて当てないことを撃つ。**
+        access: { other: { read: true, write: true, delete: true, grant_write: true } },
+      }),
+    );
+    const fetched = await fetchRecord("demo", "things", "r1");
+    // **既定は「出す」に倒れる**(`rowAccessAllows` の doc / `ADR-0402` 限定4)——
+    // **【禁止】`{}` にも「全部偽」にも倒さない。**
+    expect(fetched).not.toHaveProperty("access");
   });
 
   test("createRecord は POST で JSON ボディを送る", async () => {
@@ -435,10 +551,16 @@ describe("実サーバ(createServerApp)との突き合わせ", () => {
     expect(both.map((row) => row._id)).toEqual([a._id]);
 
     const fetched = await fetchRecord("demo", "things", a._id);
-    expect(fetched.name).toBe("椅子");
+    expect(fetched.record.name).toBe("椅子");
 
     // 楽観ロック(M9-T02): 読んだ版を If-Match に載せて更新する。
-    const updated = await updateRecord("demo", "things", a._id, { count: 9 }, fetched._updated_at);
+    const updated = await updateRecord(
+      "demo",
+      "things",
+      a._id,
+      { count: 9 },
+      fetched.record._updated_at,
+    );
     expect(updated.count).toBe(9);
     expect(updated.name).toBe("椅子");
 

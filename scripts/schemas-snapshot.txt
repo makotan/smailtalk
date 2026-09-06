@@ -34,8 +34,15 @@ files:manifest.schema.json
 # --- バイト列(長さと sha256)------------------------------------------------------
 diff.schema.json:bytes:100822
 diff.schema.json:sha256:3a97e9c675067a953f46f0b211999a5438f64ec7e76bd4de5c6eb9391391df6a
-manifest.schema.json:bytes:370527
-manifest.schema.json:sha256:cfa97b1f4b4ddc47c060d2ed275a83a9b951cb47d2a51453b0a7e29ea5d23608
+# 【2026-09-06。V15-M1-T05。CR-G2 / ADR-0405(門A・限定採用)】manifest.schema.json の
+# 2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:370527
+#   manifest.schema.json:sha256:cfa97b1f4b4ddc47c060d2ed275a83a9b951cb47d2a51453b0a7e29ea5d23608
+# 動かしたのは $defs/table.properties.access_control に8キー目 creatable_by を足したことと、
+# 同じ $comment への訂正の追記(既存の文は1バイトも消していない)の2箇所だけである。
+# diff.schema.json の2行は1バイトも動いていない(値域を書き写していない。ADR-0405 限定7)。
+manifest.schema.json:bytes:378026
+manifest.schema.json:sha256:de8745c75b14ada19d67dc88fed2f4f95d7b2af68b8d6899b6ac479f48768919
 
 # --- manifest.schema.json の $defs(宣言順)---------------------------------------------
 manifest.schema.json:$defs:resource_id

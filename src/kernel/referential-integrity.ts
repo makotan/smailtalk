@@ -3600,6 +3600,51 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
       );
     });
 
+    // --- 項目10: 行を作れる権限名(`creatable_by`)-------------------------------------
+    //
+    // **`CR-G2` / `ADR-0405`(門A・限定採用)の限定5 と限定6 を、ここ1箇所で見る。**
+    // **書き方は上の項目4(`creator_permission` が `permissions[].id` に実在するか)と
+    // 同じ形である** —— `ADR-0405` §Decision の 3 が「(1) を採る理由」の3として
+    // 「適用時検査の形が既にある」と書いた、その形のことである。
+    //
+    // **2本とも差分全体を拒否する**(「全か無か」。`ADR-0047` 限定9)。
+    // **限定6(`inherit_from` を宣言していない表には書けない)を置く理由は、
+    // 「書けるが黙って効かない」宣言を1本も作らないためである** —— 親が決まらない表では
+    // 「誰が作れるか」を判定する材料が1つも無い。**上の `representative_field` が自認して
+    // いる同じ型の穴を、本キーでは踏まない。**
+    //
+    // **【正直に書く】判定の実装は今日1バイトも無い**(当たり先は `V15-M2`)——
+    // **ここで通った宣言は、今日は行の作成のふるまいを1ミリも変えない。**
+    const creatableBy = Array.isArray(declaration.creatable_by)
+      ? declaration.creatable_by
+      : undefined;
+    if (creatableBy !== undefined) {
+      // **限定6。** **キーが無い場合と空配列を同じに扱う** —— `inheritFrom` は上の項目6 が
+      // 「配列でなければ空配列」として作っており、どちらも「親が1件も決まらない」である。
+      if (inheritFrom.length === 0) {
+        errors.push({
+          path: `${base}/creatable_by`,
+          message:
+            "creatable_by は inherit_from を宣言した表にしか書けません(親が決まらない表では、誰が行を作れるかを判定する材料がありません)。",
+          hint: "この表の行が何を親とみなすかを inherit_from に書くか、creatable_by を消してください。",
+        });
+      }
+      // **限定5。** **要素は宣言済みの権限名でなければならない**(新しい名前空間を作らない)。
+      creatableBy.forEach((permissionId, index) => {
+        if (typeof permissionId !== "string" || seenPermissionIds.has(permissionId)) {
+          return;
+        }
+        errors.push({
+          path: `${base}/creatable_by/${index}`,
+          message: `権限名 "${permissionId}" は宣言されていません(宣言されているのは ${permissionIds
+            .map((id) => `"${id}"`)
+            .join(" / ")} です)。`,
+          allowed_values: unique(permissionIds),
+          hint: "この表に行を作れる権限は、この表で宣言した権限名の中から選んでください。",
+        });
+      });
+    }
+
     // --- 項目7: グループの中にグループを入れない(`Z-G8`)-----------------------------
     //
     // **禁じるのはグループ表 → グループ表だけである。** **利用者の表 → グループの表

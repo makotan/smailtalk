@@ -69,6 +69,8 @@ import {
   isForbidden,
   isWriteConflict,
   type RecordRow,
+  // **【`V14-M2-T01` / `RB-G1`】行1件ぶんの判定の型**(`ADR-0402` §Decision 4)。
+  type RowAccess,
   // **【`V5-M25-T08` / `L-G8`】手動起動の入口を叩く1本**(`ADR-0176` 限定1)。
   runViewAction,
   updateRecord,
@@ -118,6 +120,7 @@ import {
 } from "../ui/table.tsx";
 import { cn } from "../ui/utils.ts";
 import { flowNextRoute } from "./flow.ts";
+import { rowAccessAllows, rowActionVerb } from "./row-action-verb.ts";
 import type { DetailViewRendererProps } from "./types.ts";
 import { visibleWhenMatches } from "./visible-when.ts";
 import { ApplyInProgress, WriteConflict } from "./WriteConflict.tsx";
@@ -141,6 +144,25 @@ function detailViewFields(view: DetailView): ResourceId[] | undefined {
 /** 詳細の描画に必要な、取得済みのデータ一式。 */
 type DetailData = {
   record: RecordRow;
+  /**
+   * **この行1件ぶんの判定**(`V14-M2-T01`。`ADR-0402` §Decision 4)。
+   * **サーバが返したときだけ持つ** —— **宣言していない表ではキーごと存在しない**(限定4)。
+   * **【正直に書く】`V14-M2-T01` の時点では、ここへ値を入れる行がまだ1本も無い。**
+   * **入れるのは `V14-M2-T03` である。**
+   *
+   * **【`V14-M2-T03` の追記。上の2行を1バイトも消していない】**
+   * **上の「値を入れる行がまだ1本も無い」は今日の正ではない** —— **`V14-M2-T03` が
+   * 取得の `.then`(下の `setState`)で入れた。** **`sum` と同じく「サーバが返したときだけ
+   * 持つ」形であり、`{}` に倒していない**(`{}` は「誰も何もできない」という嘘になる)。
+   *
+   * **【`V14-M2-T03`。書き換えた直後の行の判定は取り直していない】**
+   * **`set` 形で書き換えた直後の `setState` は `{...previous.value}` でこの `access` を
+   * **持ち越す**。** **`updateRecord` は `RecordRow` しか返さないので、判定は初回 GET の
+   * ままであり、書込によって行の判定が変わった場合でも画面は追随しない。**
+   * **壊れはしない**(値は残る)が、**古くなる。** **最終防衛線はサーバの 403 / 404 である**
+   * (`ADR-0402` 限定7 / 限定8)。**再取得の口を1本も開いていない。**
+   */
+  access?: RowAccess;
   referenceLabels: ReferenceLabelIndex;
 };
 
@@ -429,11 +451,24 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
         })),
       ),
     ]).then(
-      ([record, referenceSources]) => {
+      // **`V14-M2-T01`: `fetchRecord` の戻りが `{ record, access? }` になった。**
+      // **`access`(行ごとの判定)を `state.value` に載せるのは `V14-M2-T03` である** ——
+      // **本段は受け取り方を直しただけで、ボタンの出し分けを1バイトも変えていない。**
+      //
+      // **【`V14-M2-T03` の追記。上の3行を1バイトも消していない】**
+      // **その `V14-M2-T03` がここである** —— **下の `setState` が `access` を載せる。**
+      // **`sum` と同じ条件スプレッドであり、サーバが返さなければキーごと持たない**
+      // (**`{}` に倒さない**。`ADR-0402` 限定4 —— 宣言していない表では画面は着手前と
+      // 1バイトも同じ見え方をする)。
+      ([fetched, referenceSources]) => {
         if (!cancelled) {
           setState({
             status: "ready",
-            value: { record, referenceLabels: buildReferenceLabelIndex(referenceSources) },
+            value: {
+              record: fetched.record,
+              ...(fetched.access === undefined ? {} : { access: fetched.access }),
+              referenceLabels: buildReferenceLabelIndex(referenceSources),
+            },
           });
         }
       },
@@ -538,6 +573,14 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
       );
       // 書けたら画面の値を更新後のものに差し替える。**再取得はしない**(新しい読取経路を
       // 1本も開かない)—— サーバが返した行をそのまま使う(編集フォームと同じ作法)。
+      //
+      // **【`V14-M2-T03` の追記。上の2行を1バイトも消していない】**
+      // **`{...previous.value}` は `access`(行ごとの判定)を**持ち越す**。**
+      // **`updateRecord` は `RecordRow` しか返さないので、書き換えた直後の行の判定を
+      // 取り直していない** —— **判定は初回 GET のままであり、この書込で行の判定が
+      // 変わっていても、ボタンの出し分けは次にこの画面を開き直すまで追随しない。**
+      // **壊れはしない**(値は残る)が、**古くなる。** **最終防衛線はサーバの 403 / 404
+      // である**(`ADR-0402` 限定7 / 限定8)。**再取得の口を1本も開いていない。**
       setState((previous) =>
         previous.status === "ready"
           ? { status: "ready", value: { ...previous.value, record: updated } }
@@ -711,7 +754,9 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
     );
   }
 
-  const { record, referenceLabels } = state.value;
+  // **`V14-M2-T03`: `access`(この行1件ぶんの判定)も取り出す。**
+  // **サーバが返していない表では `undefined` のままであり、下の述語は既定の「出す」に倒れる。**
+  const { record, access, referenceLabels } = state.value;
 
   /**
    * **描く操作起点**(`V4-M20-T02` / `ADR-0101`)—— ロールで残ったもののうち、
@@ -727,10 +772,37 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
    * と同じ挙動。繰り上げない)。
    *
    * **ボタンを隠すことは書込を止めることではない**(限定6)—— 最終防衛線はサーバである。
+   *
+   * ## **【`V14-M2-T03` / `RB-G1` / `ADR-0402` §Decision 5・6】行ごとの判定を `AND` で足した**
+   *
+   * **足したのは `AND` の1項だけである** —— **「面(ボタンの規則)`AND` 行の判定」であって、
+   * **面と点の `OR` の再実装ではない**(`ADR-0402` 越えてはならない線1・線4)。
+   * **先例が既に在る** —— 下の `canWriteRecord`(`canWrite && canWriteRowScope(...)`)と同じ形である。
+   *
+   * **面の判定は今日どおり1回だけ済ませてある**(上の `writableActions` の `useMemo`)——
+   * **`canUseAction` を1バイトも触っていないし、依存配列に `record` を入れていない**
+   * (`ADR-0402` §Decision 6。入れると面の評価回数が行に比例して増える)。
+   *
+   * **形 → 動詞の写像は `./row-action-verb.ts` の `rowActionVerb` 1本である**(線2)——
+   * **ここに写像を書き直していない。** **`table?.id` を渡すのは、`form` 形の判定が
+   * 「作る先が**今開いている表の**付与表か」を問うからである**(`access` の鍵は
+   * 今開いている表の行の `_id` なので、別の親の付与表へ向かう起点にこの行の判定を当てられない)。
+   *
+   * **既定は「出す」に倒れている**(`rowAccessAllows`)—— **サーバが `access` を返さない表
+   * (= アクセス権管理を宣言していない表)では、この1項は必ず真であり、画面は着手前と
+   * 1バイトも同じ見え方をする**(`ADR-0402` 限定4)。
+   *
+   * **主副の位置は1バイトも動かない** —— **`declaredIndex` は上の `.map` で `filter` の前に
+   * 付いているからである。** **その代わり、既存の規約(1番目が消えたら主のボタンが出ない。
+   * 繰り上げない)が**行ごとにも**及ぶ** —— **行によって主のボタンが出たり出なかったりする。**
+   *
+   * **【禁止】これを「押せなくなった」と読まない**(`ADR-0402` 限定7 / 限定8)——
+   * **出さないだけであり、URL を直接叩く経路は今日どおり 403 / 404 に到達する。**
    */
   const visibleActions = writableActions.filter(
     ({ action }) =>
-      action.visible_when === undefined || visibleWhenMatches(action.visible_when, record),
+      (action.visible_when === undefined || visibleWhenMatches(action.visible_when, record)) &&
+      rowAccessAllows(access, rowActionVerb(manifest, table?.id, action)),
   );
 
   /**
@@ -1240,7 +1312,52 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
             閲覧のみ(書き込み権限がありません)。
           </p>
         )}
-        {formView !== undefined && canWriteRecord && (
+        {/*
+          **【`V14-M6-T03`。単位 `RB-G8`(門外・限定採用。`ADR-0007` §8 台帳)】
+          その行を書き換えられない人には、組み込みの「編集」ボタンを出さない。**
+
+          **出所はユーザ決定 `D-V14-5`(2026-09-05 取得。逐語「削除と編集の両方を直す」)。**
+
+          **見る動詞が `write` である理由 = 押した先(入力画面の保存)でサーバが見る動詞に
+          合わせる。** **`src/server/app.ts:6079`-`:6080` 逐語(自分で開いて確かめた):**
+          `if (!access.verdict.write) {` /
+          `return c.json(errorBody([forbiddenRecordWriteError()]), 403);`
+          **その 403 の文面は同 `:496` 逐語「この行を書き換える権限がありません(読むことは
+          できます)。」である**(実測: 読むだけの人の `PATCH` はここで 403 になる)。
+
+          **`delete` で代用しない理由** —— **`write: true` / `delete: false` の人
+          (編集はできるが消せない)から編集ボタンを奪ってしまうからである。**
+          **`web/test/row-grant-detail-buttons.test.tsx` の `(RB-G8/detail-4)` が、
+          `write: false` / `delete: true` の行で撃っている。**
+
+          **足したのは `AND` の1項だけである** —— **「面(役割の規則)`AND` 行の判定」であって、
+          面と点の合成規則ではない**(`ADR-0402` 越えてはならない線4)。
+          **先例が既に在る** —— 上の `canWriteRecord`(`canWrite && canWriteRowScope(...)`)と同じ形。
+
+          **形 → 動詞の写像(`rowActionVerb`)を1度も通らない** —— **このボタンは `set` /
+          `run` / `view` / `form` のどの「形」も持たないので、動詞を直に書く**
+          (`ADR-0402` 越えてはならない線2。写像を2本目に増やさない)。
+
+          **既定は「出す」に倒れている** —— **アクセス権管理を宣言していない表では
+          `access` が `undefined` なので、この1項は必ず真であり、着手前と1バイトも
+          同じ見え方をする**(`ADR-0402` 限定4)。
+
+          **`formView` の枝も `canWriteRecord` の定義(`:820`)も1バイトも変えていない** ——
+          **足したのは3項目の `AND` 1つだけである。**
+
+          **【この段が引き受ける代償。隠さない】**
+          **付与で編集ボタンが消えた人には「閲覧のみ(書き込み権限がありません)。」という
+          説明が1文字も出ない** —— **`canWriteRecord` は真のままなので、上の注記の条件
+          (`:1307`)が立たないためである。** **その条件は本段で1バイトも変えていない。**
+          **これは `D-V14-1`(逐語「出さない(隠す)」)が既に引き受けた代償と同じものであり、
+          「そもそも無い」と「自分に権限が無い」を利用者は見分けられない。**
+          **本段はこれを直さない。** **直すなら別の単位であり、門の判定からやり直す。**
+          **`(RB-G8/detail-5)` がこの代償をそのまま固定している。**
+
+          **【禁止】これを「押せなくなった」と読まない**(`ADR-0402` 限定7 / 限定8)——
+          **出さないだけであり、URL を直接叩けば入力画面は今日どおり開き、保存で 403 になる。**
+        */}
+        {formView !== undefined && canWriteRecord && rowAccessAllows(access, "write") && (
           <Button
             type="button"
             data-testid="detail-edit"
@@ -1263,7 +1380,40 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
           **重ねて出す表現(モーダル / トースト / 開くメニュー)を1つも作らない** ——
           着手前もその場に開く形であり、**この載せ替えで重ね方を1つも増やしていない。**
         */}
-        {readOnly || !canWriteRecord ? null : confirmingDelete ? (
+        {/*
+          **【`V14-M6-T02`。単位 `RB-G7`(門外・限定採用。`ADR-0007` §8 台帳)】
+          その行を消せない人には、組み込みの「削除」ボタンを出さない。**
+
+          **見る動詞が `delete` である理由 = 押した先でサーバが見る動詞に合わせる。**
+          **`src/server/app.ts:6243`-`:6244` 逐語(自分で開いて確かめた):**
+          `if (!access.verdict.delete) {` /
+          `return c.json(errorBody([forbiddenRecordDeleteError()]), 403);`
+          **したがって `write` で代用しない** —— **`write: false` / `delete: true` の行では
+          サーバは 403 を返さないので、導線を消してはならない**
+          (`web/test/row-grant-detail-buttons.test.tsx` の `(RB-G7/detail-4)` が撃っている)。
+
+          **足したのは `AND` の1項だけである** —— **「面(役割の規則)`AND` 行の判定」であって、
+          面と点の合成規則ではない**(`ADR-0402` 越えてはならない線4)。
+          **先例が既に在る** —— 上の `canWriteRecord`(`canWrite && canWriteRowScope(...)`)と同じ形。
+
+          **形 → 動詞の写像(`rowActionVerb`)を1度も通らない** —— **このボタンは `set` /
+          `run` / `view` / `form` のどの「形」も持たないので、動詞を直に書く**
+          (`ADR-0402` 越えてはならない線2。写像を2本目に増やさない)。
+
+          **既定は「出す」に倒れている** —— **アクセス権管理を宣言していない表では
+          `access` が `undefined` なので、この1項は必ず真であり、着手前と1バイトも
+          同じ見え方をする**(`ADR-0402` 限定4)。
+
+          **`readOnly` の枝も `canWriteRecord` の定義も1バイトも変えていない** ——
+          **システムテーブルは今日どおり削除の導線を持たない。**
+
+          **【禁止】これを「安全になった」と読まない**(`ADR-0402` 限定7)——
+          **遮断は今日どおりサーバの 403 である。画面は出さないだけである。**
+          **URL を直接叩く経路・MCP・受信口には1バイトも掛かっていない。**
+        */}
+        {readOnly ||
+        !canWriteRecord ||
+        !rowAccessAllows(access, "delete") ? null : confirmingDelete ? (
           <div
             className={cn("flex flex-wrap items-center gap-s2")}
             data-testid="detail-delete-confirm"

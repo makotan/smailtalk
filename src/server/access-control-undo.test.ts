@@ -522,7 +522,16 @@ describe("V7-M5-T04 (B): 付与を消した後に巻き戻すと、復活する"
     const revived = await get("B-2 after undo", recordPath("docs", docB), bob.cookie);
     expect(revived.status).toBe(200);
     // 応答は通常の単件 GET と同じ形で、警告のキーを1つも持たない。
-    expect(Object.keys(JSON.parse(revived.body) as Record<string, unknown>)).toEqual(["record"]);
+    // **【`V14-M1-T02`(台帳 `RB-G1`)。2026-09-05。期待値を入れ替えた。旧の1行を逐語で残す】**
+    // **旧: `expect(Object.keys(JSON.parse(revived.body) as Record<string, unknown>)).toEqual(["record"]);`**
+    // **宣言つきの表の単票応答は今日 `{ record, access }` である**(`access` は
+    // 行ごとの判定であって、警告でも復活の通知でもない)。
+    // **測っているもの(「権限が復活した」に当たる欄を持たないこと)は1ミリも弱めて
+    // いない** —— **キーの全量を今日も1件のずれも許さずに見ている。**
+    expect(Object.keys(JSON.parse(revived.body) as Record<string, unknown>)).toEqual([
+      "record",
+      "access",
+    ]);
   });
 
   test("(B-3) 事前確認(`GET /undo/preview`)は「付与が戻る」ことを名指ししない", async () => {

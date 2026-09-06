@@ -500,6 +500,29 @@ export async function fetchRecords(
 }
 
 /**
+ * **行1件ぶんの判定**(`V14-M2-T01`。台帳 `RB-G1`。`ADR-0402` §Decision 4)。
+ *
+ * **正はサーバの `recordRowAccessMap`(`src/server/owner-scope.ts` の `RecordRowAccess`)であり、
+ * ここはそれを受け取る側の写しである。** **画面側で値を作らない・和も積も取らない。**
+ *
+ * **キーは4つちょうどである**(`ADR-0402` 限定2)—— **`blockedBy`(止めた層の名前)を
+ * 1バイトも持たない。** **`grant_write` は `read` / `write` / `delete` とは
+ * **別の問い**であり、同じ入れ物に置くが混ぜない**(限定18)。
+ *
+ * **【禁止】`grant_write: true` を「押せば必ず作れる」と読まない** —— **真が意味するのは
+ * 「関門 (1)(2) で止まらない」ことだけである**(`ADR-0402` §Decision 5)。
+ *
+ * **宣言していない表では、この値がそもそも返ってこない**(限定4)。**そのとき画面は
+ * 着手前と1バイトも同じ見え方をする。**
+ */
+export type RowAccess = {
+  readonly read: boolean;
+  readonly write: boolean;
+  readonly delete: boolean;
+  readonly grant_write: boolean;
+};
+
+/**
  * GET .../records with pagination — records と total を返す(EC-G11 / ADR-0042)。
  *
  * `fetchRecords`(配列だけ返す)は参照ラベル取得など「全件を1回だけ引く」用途に残し、
@@ -523,11 +546,22 @@ export async function fetchRecordPage(
      */
     sumField?: string;
   } = {},
-): Promise<{ records: RecordRow[]; total: number; sum?: number }> {
-  const body = await getJson<{ records: RecordRow[]; total?: number; sum?: number }>(
-    `${recordsPath(appId, tableId)}${buildListQuery(options)}`,
-    { appId },
-  );
+): Promise<{
+  records: RecordRow[];
+  total: number;
+  sum?: number;
+  /**
+   * **行ごとの判定**(`V14-M2-T01`。鍵は行の `_id`)。**サーバが返したときだけ持つ。**
+   * **宣言していない表では、このキーごと存在しない**(`ADR-0402` 限定4)。
+   */
+  access?: Record<string, RowAccess>;
+}> {
+  const body = await getJson<{
+    records: RecordRow[];
+    total?: number;
+    sum?: number;
+    access?: Record<string, RowAccess>;
+  }>(`${recordsPath(appId, tableId)}${buildListQuery(options)}`, { appId });
   return {
     records: body.records,
     total: body.total ?? body.records.length,
@@ -535,6 +569,10 @@ export async function fetchRecordPage(
     // **`0` に倒すと「合計は0円だった」という嘘になる。** 表示層は `undefined` のとき
     // 合計を1つも描かない。
     ...(typeof body.sum === "number" ? { sum: body.sum } : {}),
+    // **`sum` と1バイトも同じ形で載せる**(`V14-M2-T01`)—— **サーバが返さなければ
+    // キーごと持たない。** **【禁止】`{}` に倒さない** —— **`{}` は「この一覧の行は
+    // 誰も何もできない」という嘘になる。**
+    ...(body.access === undefined ? {} : { access: body.access }),
   };
 }
 
@@ -627,19 +665,68 @@ export async function fetchReport(
  * (V4-M3-T03 / `B-G1` / ADR-0070 限定3)。**渡さなければ今日どおり**(限定4)。
  * **【`V8-M20` / `J-G27`】旧文は `audience` を名指ししていた。撤去された。**
  * **今日サーバが読むのは面の画面の規則(`judgeRoleAccess` の `target: "view"`)である。**
+ *
+ * **【`V14-M2-T01` の追記。上の説明を1バイトも消していない】** **戻りが `RecordRow`
+ * そのものだったのは着手前までである。** **今日は `{ record, access? }` を返す** ——
+ * **`access` は行1件ぶんの判定で、サーバが返したときだけキーを持つ**(`ADR-0402` 限定4)。
+ * **口を2本立てなかった** —— **一覧と詳細で別々の述語を書かないため**(限定13)。
+ *
+ * ## **【`V14-M4-T01` の実地で見つかった欠陥。旧文を1バイトも消していない】**
+ *
+ * **旧の綴りは、サーバから受ける型を `{ record: RecordRow; access?: RowAccess }` と
+ * 書いていた**(= 裸の判定オブジェクト)。**これは偽である。**
+ *
+ * **サーバが返すのは、行の `_id` を鍵にした**写像**である** —— **単票の口も一覧の口と
+ * 1バイトも同じ形である**(`src/server/app.ts` の `recordRowAccessMap` /
+ * `accessForPage` が両方に同じ形を作る)。**本物のサーバの実測:**
+ *
+ * ```
+ * {"record":{...},"access":{"c6721f33-...":{"read":true,"write":true,"delete":true,"grant_write":true}}}
+ * ```
+ *
+ * **なぜ取り違えたか** —— **`V14-M2-T01` は「行1件ぶんの判定」という**意味**を
+ * そのまま型に書き、サーバの**形**を確かめなかった。** **同じファイルの一覧側
+ * (`fetchRecordPage`)は着手前から正しく `Record<string, RowAccess>` と書いてあり、
+ * 単票側だけが食い違っていた。** **土台(`web/test/row-grant-detail-buttons.test.tsx`)も
+ * 裸の形で `fetch` を差し替えていたので、どの検査も赤くならなかった。**
+ *
+ * **帰結(本物のサーバとブラウザで3人ぶん実測)** —— **`access["write"]` も
+ * `access["grant_write"]` も `undefined` になり、`rowAccessAllows` がすべて偽に倒れ、
+ * **詳細画面の行ごとの判定が当たるボタンが、権限を持っている人からも全部消えていた。**
+ * **一覧は正しく動いていた**(`ListViewRenderer` は写像を行の `_id` で引いている)。
+ *
+ * **直した場所はここ1箇所である** —— **`DetailViewRenderer` の `access` の使い方も
+ * `rowAccessAllows` も1バイトも変えていない**(`ADR-0402` 越えてはならない線2:
+ * 形 → 動詞の写像を2本目にしない)。**返り値の型も `RowAccess` のままである。**
  */
 export async function fetchRecord(
   appId: string,
   tableId: string,
   recordId: string,
   viewId?: string,
-): Promise<RecordRow> {
+): Promise<{ record: RecordRow; access?: RowAccess }> {
   const query = viewId === undefined ? "" : `?view=${encodeURIComponent(viewId)}`;
-  const body = await getJson<{ record: RecordRow }>(
+  // **サーバから受ける形は、一覧と1バイトも同じ「行の `_id` を鍵にした写像」である**
+  // (`V14-M4-T01`)。**裸の `RowAccess` ではない。**
+  const body = await getJson<{ record: RecordRow; access?: Record<string, RowAccess> }>(
     `${recordPath(appId, tableId, recordId)}${query}`,
     { appId },
   );
-  return body.record;
+  // **鍵で引くだけである** —— **可否を1ミリも決めていない。** **鍵は URL に載せた
+  // `recordId` そのものを使う**(サーバ側の鍵は行の `_id` であり、同じ値である)——
+  // **射影(`projectForRoleFields`)が `_id` を落としうる `body.record._id` には
+  // 寄りかからない。**
+  const rowAccess = body.access === undefined ? undefined : body.access[recordId];
+  return {
+    record: body.record,
+    // **`sum` / 一覧の `access` と1バイトも同じ形である** —— **サーバが返さなければ
+    // キーごと持たない。** **【禁止】`{}` に倒さない。**
+    //
+    // **写像に**この行が載っていないとき**もキーごと持たない**(`V14-M4-T01`)——
+    // **既定は「出す」に倒れる**(`rowAccessAllows` の doc / `ADR-0402` 限定4)。
+    // **【禁止】「全部偽」に倒さない** —— **それは「この人は何もできない」という嘘になる。**
+    ...(rowAccess === undefined ? {} : { access: rowAccess }),
+  };
 }
 
 /** POST /api/apps/:app_id/tables/:table_id/records(成功は 201) */

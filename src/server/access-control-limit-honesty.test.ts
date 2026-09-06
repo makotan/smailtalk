@@ -36,6 +36,17 @@
  *     `judgeRecordAccess` を直接呼び、親を1段も辿らないからである。**
  *     **8経路のうち打ち切りが出うるのは7本であり、`POST` は「4xx になる」ではなく
  *     「上限に当たりうる判定を1つも行っていない」である。** **これを (E) で名指しする。**
+ *
+ *     **【`V15-M2`(`CR-G1` / `CR-G6` / `ADR-0404`)による訂正。上の3行は1バイトも
+ *     消していない】** **上の3行は今日は偽である。** **`V15-M2` が単件の `POST` に
+ *     「指した親の行に書けるか」を問う前提の関門を足し、その述語は引き継ぎを辿るので、
+ *     `POST` も打ち切りを返しうる** —— **したがって打ち切りが出うるのは今日 **8本**
+ *     (= 8経路すべて)である。**
+ *     **【それでも (E-1) が生の応答を撃つのは今日も7経路である。丸めない】** ——
+ *     **本ファイルの題材の鎖では、`POST` の側が上限に届かないためである。**
+ *     **作成の判定は**親**を段0 として数え直すので、同じ鎖でも子から数えるより1段浅く
+ *     なる**(`ADR-0404` `S3` (1) の3・4 が不利な材料として自分で挙げている)。
+ *     **これを (E-3) が名指しで測る。**
  *  2. **環の長さが5段を超えるときは、段数の上限が先に当たる** —— **したがって
  *     「循環は必ず正常完了する」とは書けない。** (D) が測るのは**長さ2の環**である。
  *  3. **件数の数え方は段0 を数えない**(下の `ROWS_AT_LIMIT` の doc)。**したがって
@@ -936,11 +947,29 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     expect(single.body).toContain(LIMIT_SENTENCE);
   });
 
-  test("(E-3) 【正直に書く】`POST` は上限に当たりうる判定を1つも行っていない", async () => {
-    // **作成の下見は親を1段も辿らない** —— **`app.ts` の `POST` ハンドラは
+  // **【`V15-M2`(`CR-G1` / `ADR-0404`)による打ち直し。旧のテスト名を1文字も消していない】**
+  //
+  // **旧(逐語)**: `test("(E-3) 【正直に書く】`POST` は上限に当たりうる判定を1つも行っていない", …)`
+  //
+  // **旧の名前は今日は偽である** —— **`V15-M2` が `POST` に前提の関門
+  // (`judgeCreateParentAccess`)を足し、その述語は引き継ぎを辿るからである。**
+  // **応答の期待値(`201` / 上限の文面を含まない)は1バイトも変えていない** ——
+  // **変わったのは「なぜ 201 なのか」の理由である**(下のコメントに書いた)。
+  // **【逐語の残置で検査を騙さないために、実物も撃つ】** —— **旧は「`POST` のハンドラに
+  // 配管の綴りが1件も無い」ことだけを撃っていた。** **その式は今日も真だが、それを
+  // 「判定が掛かっていない」と読むと嘘になる。** **関門の綴りが1件在ることを並べて撃つ。**
+  test("(E-3) 【`V15-M2` で変わった】`POST` も打ち切りを返しうる(この題材では上限に届かない)", async () => {
+    // **旧(逐語)**: 「**作成の下見は親を1段も辿らない** —— **`app.ts` の `POST` ハンドラは
     // `judgeRecordAccess` を直接呼んでおり、引き継ぎを辿る `recordAccessJudge` を
     // 1度も呼ばない。** **したがって `POST` では打ち切りが起きようが無い。**
-    // **「8経路すべてで 4xx になる」とは書けない。7経路である。**
+    // **「8経路すべてで 4xx になる」とは書けない。7経路である。**」
+    //
+    // **今日の正**: **`POST` は親の行に `resolveRecordAccess` を当てるので、打ち切りを
+    // 返しうる。** **それでもこの題材で 201 になるのは、作成の判定が**親**(`lvl1`)を
+    // 段0 として数え直すからである** —— **子(`lvl0`)から数えれば `lvl6` は段6 だが、
+    // 親から数えれば段5 であり、上限(5段)にちょうど届かない。**
+    // **【この非対称は隠さない】** **同じ鎖でも、読取と作成で辿れる深さが1段ずれる**
+    // (`ADR-0404` `S3` (1) の3・4)。
     const response = await send("POST", `/api/apps/${APP_ID}/tables/lvl0/records`, deep.cookie, {
       title: "作る",
       parent: chainRows[1],
@@ -949,13 +978,17 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     expect(out.status).toBe(201);
     expect(out.body).not.toContain(LIMIT_SENTENCE);
 
-    // **配線の実物でも名指しする** —— **`POST` のハンドラに引き継ぎの配管が1件も無い。**
+    // **配線の実物でも名指しする** —— **`POST` のハンドラに読取経路の配管は今日も1件も
+    // 無い**(旧の式。1バイトも変えていない)——
+    // **かわりに作成の前提の関門が1件在る**(`V15-M2-T04` が足した行)。
     const source = await Bun.file(join(PRODUCT_ROOT, "src", "server", "app.ts")).text();
     const start = source.indexOf('app.post("/api/apps/:app_id/tables/:table_id/records"');
     const end = source.indexOf('app.patch("/api/apps/:app_id/tables/:table_id/records/:record_id"');
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
-    expect(source.slice(start, end).includes("recordAccessJudge(")).toBe(false);
+    const handler = source.slice(start, end);
+    expect(handler.includes("recordAccessJudge(")).toBe(false);
+    expect(handler.split("judgeCreateParentAccess(").length - 1).toBe(1);
   });
 
   test("(E-4) 打ち切りを「見えない」に丸めた呼び出しが app.ts に1つも無い", async () => {
@@ -970,6 +1003,11 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     // **8件の内訳**: **7経路**(一覧 GET / 単件 GET / PATCH / DELETE / 画面の操作起点 /
     //   バッチ / ファイル配信)**+ 一覧 GET の2本目の分岐**(`st_owner` と同居する表)。
     // **`POST` は配管を1度も呼ばないので、この8件に入らない**((E-3) が名指ししている)。
+    // **【`V15-M2` による訂正。上の3行は1バイトも消していない】** **最後の1行の前半
+    //   (「配管を1度も呼ばない」)は今日も真である** —— **後半を「`POST` には打ち切りが
+    //   起きない」と読むと今日は嘘になる。** **`POST` は配管ではなく作成の関門
+    //   (`judgeCreateParentAccess`)を通って打ち切りを返しうるので、下の突き合わせでは
+    //   3本目の数え上げ(`createGates`)として数える。**
     // **【`V7-M5-T02`(`Z-G19`)による更新。旧文を1バイトも消していない】**
     // **旧: `expect({ pipeCalls, translations: countIn("recordAccessLimitError(") })`**
     // **`.toEqual({ pipeCalls: 8, translations: 8 });`。**
@@ -1000,12 +1038,79 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     // **【緩めていない】** **`pipeCalls + orphanScans === translations` は今日も1件のずれも
     //   許さずに成り立つ**(8 + 1 = 9)。**集計表も打ち切りを黙って「見えない」に丸めない**
     //   —— **1行でも上限に当たったら、群を作る前に 400 を返す。**
+    // **【`V15-M2-T04`(台帳 `CR-G1` / `CR-G6`)による更新。旧の式を1バイトも消していない】**
+    // **旧: `expect({ pipeCalls, orphanScans, translations: countIn("recordAccessLimitError(") })`**
+    // **`.toEqual({ pipeCalls: 8, orphanScans: 1, translations: 9 });`**
+    //   (その前は 8 / 1 / 9、その前は 7 / 1 / 8、その前は 8 / 1 / 9、さらにその前は 8 / —— / 8)。
+    // **理由は「実物が変わった」側である** —— **単件の作成(`POST`)に、親の行へ書けるかを
+    //   問う関門(`judgeCreateParentAccess`)が1件増えた。** **その述語は引き継ぎを辿るので
+    //   `limit_exceeded` を返しうる** —— **したがって打ち切りの翻訳も1件増えて 10 件になった。**
+    // **【緩めていない。突き合わせる相手を1本増やしただけである】** ——
+    //   **「打ち切りを返しうる呼び出しの本数」と「4xx へ翻訳する本数」が一致することを、
+    //   今日も1件のずれも許さずに見ている**(8 + 1 + 1 = 10)。
+    // **【なぜ `pipeCalls` に入らないか】** —— **作成の関門は配管(`recordAccessJudge`)を
+    //   1度も呼ばない。** **行がまだ無いので、判定の対象は「これから作る行」ではなく
+    //   **親の行**であり、`owner-scope.ts` の別の述語1本を通る**(`ADR-0404` §Decision の 4)。
+    // **【`V15-M3-T04`(台帳 `CR-G5`)による更新。旧の式を1バイトも消していない】**
+    // **旧: `expect({ pipeCalls, orphanScans, createGates, translations: … })`**
+    // **`.toEqual({ pipeCalls: 8, orphanScans: 1, createGates: 1, translations: 10 });`**
+    //   (その前は 8 / 1 / —— / 9、その前は 7 / 1 / —— / 8、その前は 8 / 1 / —— / 9、
+    //    さらにその前は 8 / —— / —— / 8)。
+    // **理由は「実物が変わった」側である** —— **`V15-M3` がまとめ書き(`POST /batch`)の
+    //   `create` op にも同じ関門(`judgeCreateParentAccess`)を配線したので、関門の
+    //   **呼び出し**が 1件 → 2件 になった。**
+    // **【ここで旧の突き合わせの形が成り立たなくなる。丸めずに書く】** ——
+    //   **旧は `pipeCalls + orphanScans + createGates === translations` を撃っていたが、
+    //   `translations`(`recordAccessLimitError(` の綴りの数)は **10 のまま動かない**。**
+    //   **`ADR-0404` 限定13 が「述語は1本。2箇所から呼ぶだけで、判定の式を写さない」と
+    //   定めており、翻訳も同じ `createParentDenial` 1本を2箇所から呼ぶので、
+    //   **呼び出しが1件増えても翻訳の綴りは1件も増えない**からである。**
+    //   **8 + 1 + 2 = 11 ≠ 10** —— **旧の式のまま数字だけを合わせると嘘になる。**
+    // **【緩めていない。2本に割って、両方を1件のずれも許さずに撃つ】**
+    //   1. **`pipeCalls + orphanScans + createGateTranslators === translations`**
+    //      —— **「打ち切りを 4xx へ翻訳する場所」の数え上げ**(8 + 1 + 1 = 10)。
+    //   2. **`createGates === createGateTranslated`**
+    //      —— **「関門を呼んだ場所」が1つ残らずその翻訳を通っている**(2 = 2)。
+    //   **1本でも翻訳を通さない関門の呼び出しがあれば 2 が赤くなる** —— **旧が塞いで
+    //   いた「打ち切りを黙って丸める経路」は、今日も1本も作れない。**
+    // **【`V15-M8-T03`(台帳 `CR-G9`)による更新。旧の式も旧の散文も1バイトも消していない】**
+    // **旧: `createGates: 2` / `createGateTranslated: 2`。**
+    // **理由は「実物が変わった」側である** —— **`V15-M8` が**更新**の2経路(単件 `PATCH` /
+    //   まとめ書きの `update` op)にも同じ関門(`judgeCreateParentAccess`)を配線したので、
+    //   関門の**呼び出し**が 2件 → 4件 になった**(`ADR-0408` が `ADR-0404` の限定7 /
+    //   限定13 を引き直した。**述語は今日も1本である**)。
+    // **`translations` は **10 のまま動かない**** —— **翻訳も同じ `createParentDenial` 1本を
+    //   4箇所から呼ぶだけで、新しいエラーの形を1つも作っていないからである。**
+    // **【緩めていない】** **上の2本の突き合わせは今日も1件のずれも許さずに成り立つ**:
+    //   **1. 8 + 1 + 1 = 10(据え置き)/ 2. `createGates`(4)= `createGateTranslated`(4)。**
+    //   **`ADR-0408` 限定5 が「効く経路は HTTP の4本ちょうど」を、この `createGates: 4` で
+    //   固定している** —— **5本目に広げたらこの検査が赤くなる。**
     const orphanScans = countIn("resolveRecordWithoutGrants(");
+    const createGates = countIn("judgeCreateParentAccess(");
+    /** **作成の関門の打ち切りを応答へ写す関数の**定義**の数**(`ADR-0404` 限定13 = 1本)。 */
+    const createGateTranslators = countIn("function createParentDenial(");
+    /** **その関数を**呼んでいる**場所の数**(定義そのものを引く)。 */
+    const createGateTranslated = countIn("createParentDenial(") - createGateTranslators;
     expect({
       pipeCalls,
       orphanScans,
+      createGates,
+      createGateTranslators,
+      createGateTranslated,
       translations: countIn("recordAccessLimitError("),
-    }).toEqual({ pipeCalls: 8, orphanScans: 1, translations: 9 });
+    }).toEqual({
+      pipeCalls: 8,
+      orphanScans: 1,
+      createGates: 4,
+      createGateTranslators: 1,
+      createGateTranslated: 4,
+      translations: 10,
+    });
+    // **突き合わせそのものを式で撃つ**(上の数値表が動いても、関係が崩れたら赤くなる)。
+    expect(pipeCalls + orphanScans + createGateTranslators).toBe(
+      countIn("recordAccessLimitError("),
+    );
+    expect(createGates).toBe(createGateTranslated);
     // **`import` 行では呼び出していない**(名前だけを持ち込んでいる)。
     // **【`V8-M10-T05`(台帳 `Q-G17`〜`Q-G19`)による更新。旧の式を1バイトも消していない】**
     // **旧: `expect(source.includes("recordAccessLimitError } from")).toBe(true);`**
@@ -1053,6 +1158,15 @@ describe("V7-M4-T04 (F): 上限は `src/server/` の定数であって語彙で�
   });
 
   test("(F-3) 上限を宣言するキーが `$defs/table.access_control` に1つも無い", async () => {
+    // **【2026-09-06。`V15-M1-T05`。断り。テスト名を1文字も書き換えていない】**
+    // **このテスト名は「上限を宣言するキーが1つも無い」と言っているが、本体は
+    // キー全量の `toEqual` である。** **したがって上限と1ミリも関係しない追加でも赤くなる。**
+    // **今回赤くしたのは `CR-G2` / `ADR-0405` が足した8キー目 `creatable_by` であり、
+    // これは上限を宣言するキーではない**(値域は `permissions[].id` の配列で、件数の上限を
+    // 1つも持たない —— `maxItems` を書いていない)。
+    // **名前が本体と食い違っていることは `ADR-0405` §Decision の 3(`S3` の4)が
+    // 不利な材料として自ら挙げている。** **名前の訂正は `CR-G7`(`V15-M4`)の領分であり、
+    // `V15-M1` はここで機械が要求する最小限(キー1本の追加)だけを行う。**
     const schema = JSON.parse(
       await Bun.file(join(PRODUCT_ROOT, "schemas", "manifest.schema.json")).text(),
     ) as {
@@ -1060,6 +1174,9 @@ describe("V7-M4-T04 (F): 上限は `src/server/` の定数であって語彙で�
     };
     expect(Object.keys(schema.$defs.table.properties.access_control.properties).sort()).toEqual(
       [
+        // **【2026-09-06。`V15-M1-T05`】8キー目。門A の本審査 = `V15-M0`。判定値 = 限定採用。**
+        // **上限を宣言するキーではない**(`maxItems` を1つも持たない)。
+        "creatable_by",
         "creator_permission",
         "enabled",
         "grant",

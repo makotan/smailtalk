@@ -5519,3 +5519,33 @@ test("V10-M34-T01 (4c): 入口の凍結値は 52 / 26 のまま動いていな�
   expect(source.split("toHaveLength(52)").length - 1).toBe(1);
   expect(source.split("toHaveLength(26)").length - 1).toBe(1);
 });
+
+test("V14-M3-T01: VOCABULARY_SCOPE は、ボタンが行ごとの付与でも出し分けられることと、掛からない5経路を両方述べている", () => {
+  // **【`V14-M3-T01`。台帳 `RB-G6`。`ADR-0403` 限定9(双方向)の機械的な固定】**
+  //
+  // **`ADR-0402` が挙動を変えた日から、`:744`-`:745` と `:754`-`:756` の2文は偽になった。**
+  // **旧文は1バイトも消さず、直後に訂正を継ぎ足す**(`ADR-0316` の作法)。
+  //
+  // **双方向で固定する** —— 片方だけ書くと逆向きの嘘に倒れる:
+  //   (1) **できるようになったこと** —— 行ごとの付与でもボタンを出し分ける。
+  //   (2) **形ごとの対象** —— `set` / `run` は write、`view` は read、`form` は付与を配れるか。
+  //   (3) **掛からない経路** —— MCP・受信口・自動処理・コードの島・URL の直叩き。
+  //   (4) **隠す代償** —— 「そもそも無い」と「権限が無い」を利用者が区別できない。
+  //   (5) **旧文が残っていること** —— これが落ちたら作法そのものが破られている。
+  expect(VOCABULARY_SCOPE).toContain("**重ねて訂正します。直前の2文は今日は偽です**");
+  expect(VOCABULARY_SCOPE).toContain(
+    "**行ごとの付与(access_control)を宣言した表では、ボタンが出る条件に「その行への付与」も入ります**",
+  );
+  expect(VOCABULARY_SCOPE).toContain(
+    "値の書換(set)と自動処理(run)はその行の write、別画面へ移るボタン(view)はその行の read、",
+  );
+  expect(VOCABULARY_SCOPE).toContain(
+    "**MCP・受信口・自動処理・コードの島・URL の直叩きには1バイトも掛かりません。**",
+  );
+  expect(VOCABULARY_SCOPE).toContain(
+    "**画面から消えるので、「そもそも無い」と「自分に権限が無い」を利用者は見分けられません。**",
+  );
+  expect(VOCABULARY_SCOPE).toContain(
+    "**規則が1本も無いボタンは既定で閉じ、対象 action に read を書いた役割にだけ出ます**",
+  );
+});

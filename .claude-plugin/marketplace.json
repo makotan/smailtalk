@@ -9,7 +9,7 @@
       "name": "smailtalk",
       "source": "./plugins/smailtalk",
       "description": "SmAIltalk の語彙の説明書。差分の形 / 画面の形 / 自動処理の形 / アプリの作り方の4本。",
-      "version": "0.3.1"
+      "version": "0.4.0"
     }
   ]
 }

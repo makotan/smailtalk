@@ -1734,7 +1734,52 @@ describe("`ADR-0163`(`G-G19`)の限定7点", () => {
     // **【同日の打ち直し】** 台帳の記号を `CM-G37`(道具の単位)から **`CM-G38`**(本単位)へ
     // 直したので、注記1行ぶんだけ基準の中身が動いた。**`2833bf4554e418f9` → 今日 `947544fa935e1113`。**
     // **層またぎの3行そのものは1バイトも動いていない**(動いたのは注記だけである)。
-    expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("947544fa935e1113");
+    // **【`V14-M1-T01` / `V14-M1-T02` / `V14-M1-T03`(台帳 `RB-G1` / `RB-G2` / `RB-G3`)。
+    //   2026-09-05】**
+    // **旧の基準値(逐語。1バイトも消していない)**:
+    // `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("947544fa935e1113");`
+    // **5件増え、0件減った** —— **5件とも新規テスト
+    // `src/server/record-row-access-response.test.ts` のセットアップ
+    // (`KernelMetaStore` / `appDbPath` / `applyManifest` / `createApp` / `createRecord`)
+    // であり、`record-access-visibility.test.ts` が着手前から値 import している
+    // 同じ綴りである。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`src/server/app.ts` / `src/server/owner-scope.ts` は `src/kernel/` からの
+    //  `import` を1件も増やしていない)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(5件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(`Δ8` は発火していない)。
+    // **当時 `947544fa935e1113` → 今日 `0ce746140395db96`。****旧値を消さずに残す。**
+    // **【`V15-M2-T01`(台帳 `CR-G1`。`ADR-0404`)。2026-09-06】**
+    // **旧の基準値(逐語。1バイトも消していない)**:
+    // `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("0ce746140395db96");`
+    // **5件増え、0件減った** —— **5件とも新規テスト
+    // `src/server/create-parent-write.test.ts` のセットアップ
+    // (`KernelMetaStore` / `appDbPath` / `applyManifest` / `createApp` / `createRecord`)
+    // であり、`access-control-inheritance.test.ts` が着手前から値 import している
+    // 同じ綴りである。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`src/server/app.ts` / `src/server/owner-scope.ts` は `src/kernel/` からの
+    //  `import` を1件も増やしていない。`ADR-0404` 限定8)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(5件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(`Δ8` は発火していない)。
+    // **当時 `0ce746140395db96` → 今日 `10e788de32d696f1`。****旧値を消さずに残す。**
+    // **【`V15-M3-T01`(台帳 `CR-G5`)による更新。旧の基準値を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("10e788de32d696f1");`**
+    // **5件増え、0件減った** —— **5件とも新規テスト
+    // `src/server/batch-create-parent-write.test.ts` のセットアップ
+    // (`KernelMetaStore` / `appDbPath` / `applyManifest` / `createApp` / `createRecord`)
+    // であり、すぐ上の `create-parent-write.test.ts` とまったく同じ5シンボルである
+    // (題材が同一で、撃つ口だけが単件 `POST` からまとめ書き `POST /batch` に変わった)。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`src/server/app.ts` は `src/kernel/` からの `import` を1件も増やしていない。
+    //  `ADR-0404` 限定8)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(5件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(`Δ8` は発火していない)。
+    // **当時 `10e788de32d696f1` → 今日 `ff800c5520c0c79e`。****旧値を消さずに残す。**
+    expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("ff800c5520c0c79e");
   });
 
   test("限定4: ADR 番号・限定番号への参照を1つも消していない", async () => {

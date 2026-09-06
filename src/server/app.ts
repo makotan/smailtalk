@@ -145,6 +145,7 @@ import {
   type AccessLayerName,
   type ActorRoles,
   type CombinedRecordAccessResolution,
+  type CreateParentAccessVerdict,
   type CreatorGrantPlan,
   combineRoleAndGrantAccess,
   creatorGrantPlan,
@@ -159,6 +160,7 @@ import {
   // このファイルからの参照が0件になった。** **`src/server/owner-scope.ts` の本体は
   // 1バイトも触っていない**(`ADR-0079` 限定5)—— **消えたのはこの import だけである。**
   // **`src/mcp/tools/write.ts` と `judgeOwnerScopedOp` は今日も直に呼んでいる。**
+  isCreatorGrantReachable,
   isDeleteProtectedRow,
   isDirectCreateSuppressed,
   // **【`V8-M37` / 台帳 `F-G3`】他人を持ち主にした**作成**を断る述語。**
@@ -168,6 +170,9 @@ import {
   isRoleActionWriteAllowed,
   isRoleGovernedField,
   isSharedOwner,
+  // **【`V15-M2-T02` / `CR-G1` / `ADR-0404`】行を作るときに、親の行へ書けるかを問う1本。**
+  // **前提の関門である** —— **`combineRoleAndGrantAccess` の `OR` の中には入らない。**
+  judgeCreateParentAccess,
   judgeGrantWrite,
   judgeOwnerScopedOp,
   // **【`V8-M37` / 台帳 `F-G5`】表示名のままの書き戻しを、付け替えと見なさない判定。**
@@ -188,14 +193,18 @@ import {
   publicField,
   type RecordAccessResolution,
   type RecordAccessSourceTables,
+  // **【`V14-M1-T01`】行と並べて返す判定の形(その組み立ては `recordRowAccessMap`)。**
+  type RecordRowAccess,
   recordAccessSourceTables,
   // **【`V8-M10-T02`】「絞りが要るか」を読取の**前**に決める(行を1件も見ない)。**
   recordPopulationScope,
+  recordRowAccessMap,
   resolveCombinedRecordAccess,
   resolveRecordUnreachableByRoles,
   resolveRecordWithoutGrants,
   roleGateBlocksWithoutGrants,
   roleReadCrossesOwnerScope,
+  rowGrantWriteJudge,
   scrubHiddenFieldIds,
 } from "./owner-scope.ts";
 import {
@@ -660,6 +669,141 @@ function creatorGrantUnreachableError(): ValidationError {
     message: "この表は、行を作った人に権限が1つも渡らない設定になっているため、行を作れません。",
     hint: "アプリを作った人に、行を作った人へ渡す権限の設定を見直してもらってください。",
   };
+}
+
+/**
+ * **元になる行に書けないので、その行を作れない(403)。** `V15-M2-T05` / `CR-G1` /
+ * `ADR-0404`。
+ *
+ * **判定そのものは `owner-scope.ts` の `judgeCreateParentAccess` 1本が持つ**
+ * (`ADR-0061` 限定4)—— **ここにあるのは、判定結果を HTTP の応答文へ翻訳することだけである。**
+ *
+ * **【文面の作法。`ADR-0404` 限定9 が固定している】** —— **内部の記号を1文字も出さない**
+ * (宣言のキー名 / 表ID / 述語名 / 審査単位の記号)。**`ValidationError` に5キー目を
+ * 足していない。**
+ *
+ * **【したがって診断にならない。丸めない】** —— **「どの元の行に書けないのか」を本文に
+ * 1文字も書けない**(表IDが内部記号だからである。`src/server/not-a-member-guidance.test.ts`
+ * の (B-1) が禁止語にしている)。**`ADR-0404` §6 の 4 が、書けるようにする提案を
+ * 「越えてはならない線」として名指ししており、書くには改めて門A が要る。**
+ *
+ * **【文面で誇張しない】**
+ *  - **止まったのはこの1件の作成だけである。** **行は1件も消えていないし、権限も1つも
+ *    変わっていない。**
+ *  - **運営ロールも同じ壁で止まる**(前提の関門である)—— **「管理者に頼めば作れる」とは
+ *    書かない。** **要るのは元の行への権限であって、役割ではない。**
+ */
+function forbiddenCreateParentAccessError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表の行は、元になる行に書き込める人だけが作れます。あなたには、指定された元の行を書き換える権限がありません。",
+    hint: "元になる行の権限を持っている人に、あなたへその行の書き込みの権限を渡してもらってください(役割を変えても作れるようにはなりません)。",
+  };
+}
+
+/**
+ * **元になる行には書けるが、アプリが名指しした種類の権限を持っていないので作れない(403)。**
+ * `V15-M6B-T03` / `CR-G2` の判定側 / `ADR-0404`。
+ *
+ * **判定そのものは `owner-scope.ts` の `judgeCreateParentAccess` 1本が持つ**
+ * (`ADR-0061` 限定4)—— **ここにあるのは、判定結果を HTTP の応答文へ翻訳することだけである。**
+ *
+ * **【なぜ3本目の文面を作ったか。実測が理由である】** —— **着手前、この場合には上の
+ * {@link forbiddenCreateParentAccessError} がそのまま返っていた。** **その本文は
+ * 「あなたには、指定された元の行を書き換える権限がありません。」であり、**事実として偽**で
+ * あった** —— **実地(`docs/plan/v15/records/v15-m6.md` §2 の 7b)で、同じ人が同じ親の行を
+ * `PATCH` して 200 を得ている。** **応答が嘘をつくと、受け取った人は「その行への書込権限を
+ * もらう」という、直らない一手を取る。**
+ * **`V15-M2` が `ungoverned_parent` に2本目を分けたのとまったく同じ理由である** ——
+ * **次の一手だけが違うことを、内部記号を出さずに書き分けている。**
+ *
+ * **【文面の作法。`ADR-0404` 限定9 が固定している】** —— **内部の記号を1文字も出さない**
+ * (宣言のキー名 / 表ID / 述語名 / 審査単位の記号)。**`ValidationError` に5キー目を
+ * 足していない。** **したがって「どの種類の権限が要るのか」を本文に1文字も書けない**
+ * —— **権限名はアプリが宣言した文字列であり、表IDと同じく内部記号だからである。**
+ *
+ * **【文面で誇張しない】**
+ *  - **止まったのはこの1件の作成だけである。** **行は1件も消えていないし、権限も1つも
+ *    変わっていない。**
+ *  - **応答コードは 403 のままで、止まる人も1人も増減していない**(`V15-M6B` が変えたのは
+ *    文面だけである)。
+ *  - **運営ロールも同じ壁で止まる** —— **「管理者に頼めば作れる」とは書かない。**
+ */
+function forbiddenNamedPermissionMissingError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表の行は、元になる行に対してアプリが決めた種類の権限を持つ人だけが作れます。あなたは元になる行を書き換えられますが、その種類の権限を持っていません。",
+    hint: "元になる行の権限を渡せる人に、この表が求めている種類の権限をあなたへ渡してもらってください(どの種類が要るかはアプリを作った人が決めています。書き込みの権限を持っているだけでは作れません)。",
+  };
+}
+
+/**
+ * **元になる行の側で、誰が何をできるかが決まっていないので作れない(403)。** `V15-M2-T05` /
+ * `CR-G3` / `D-V15-6`(fail-closed)。
+ *
+ * **【なぜ通さないか】** —— **権限を宣言していない表への判定は「この判定は何も絞らない」を
+ * 返す。** **それを作成の関門で通すと、宣言していない親を1つ挟むだけで壁が丸ごと消える**
+ * (読取の側が同じ理由で打ち切っている。`src/server/access-control-inheritance.test.ts` の (D))。
+ *
+ * **【代金を隠さない】** —— **この形のアプリでは、持ち主(`owner`)を含む誰も、その表に
+ * 行を作れなくなる。** **その形を作らせない適用時検査は今日1本も無いので、差分は今日どおり
+ * 通り、行を作れなくなる日だけが後から来る**(`ADR-0404` `S3` (2) の3)。
+ *
+ * **【断りを2つに分けた理由。判断と理由を書く】** —— **上の
+ * {@link forbiddenCreateParentAccessError} と同じ文面にすると、アプリを作る人が
+ * 「権限を渡せば直る」と読む。** **こちらは誰に何を渡しても直らず、直せるのはアプリの
+ * 設定だけである。** **内部記号を出さずに、次の一手だけが違うことを書き分けている。**
+ */
+function forbiddenUngovernedParentError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表の行は、元になる行の側で「誰が何をできるか」が決められていないため、今は誰も作れません。",
+    hint: "アプリを作った人に、元になる行を持つ表にも権限の設定を入れてもらってください(権限を渡しても、この断りは変わりません)。",
+  };
+}
+
+/**
+ * **行を作るときの「親の行へ書けるか」の判定を、HTTP の応答へ翻訳する**(`V15-M2-T04` /
+ * `CR-G6`。`ADR-0404` §Decision の 8)。
+ *
+ * **通す場合は `null` を返す。** **止める場合は本文と応答コードを返す。**
+ * **書き方は先に在る {@link grantWriteDenial} と同じ形である** —— **判定は1つも行わず、
+ * 4つの状態を応答へ写しているだけである。**
+ *
+ * **【`V15-M6B-T03` による訂正。上の行を1バイトも消していない】** —— **「4つの状態」は
+ * 今日は偽である。** **写すのは **5つ**であり、5つ目が
+ * {@link forbiddenNamedPermissionMissingError}(親には書けるが、名指しの権限名が無い)である。**
+ * **判定は今日も1つも行っていない** —— **`owner-scope.ts` の述語が返した `kind` を、
+ * 応答へ写しているだけである**(`ADR-0404` 限定1・限定13)。
+ *
+ * **応答コードの決め方**(`v15-m0.md` §5-1 の表 / `ADR-0404` §Decision の 3 の答え2):
+ *  - **段数・行数の上限に当たった → 400 + 既存の `recordAccessLimitError`**
+ *    (**新しいエラーの形を1つも作らない**)。
+ *  - **親に書けない → 403。**
+ *  - **親の表が宣言していない → 403**(fail-closed。**文面だけを分ける**)。
+ *
+ * **【3状態にしても、循環していることは応答から読めない】** —— **5段を超える環は段数の
+ * 上限として現れる**(`ADR-0298` §限界。**本 MS はそれを解消しない**)。
+ */
+function createParentDenial(
+  verdict: CreateParentAccessVerdict,
+): { readonly errors: ValidationError[]; readonly status: 400 | 403 } | null {
+  if (verdict.kind === "allowed") {
+    return null;
+  }
+  if (verdict.kind === "limit_exceeded") {
+    return { errors: [recordAccessLimitError(verdict.limit)], status: 400 };
+  }
+  if (verdict.kind === "ungoverned_parent") {
+    return { errors: [forbiddenUngovernedParentError()], status: 403 };
+  }
+  if (verdict.kind === "missing_named_permission") {
+    return { errors: [forbiddenNamedPermissionMissingError()], status: 403 };
+  }
+  return { errors: [forbiddenCreateParentAccessError()], status: 403 };
 }
 
 /**
@@ -2216,6 +2360,36 @@ function recordAccessJudge(
       readRows,
       readRow,
     });
+}
+
+/**
+ * **「その行に付与を配れるか」を答える配管**(`V14-M1-T01` / `V14-M1-T03`。台帳 `RB-G3`)。
+ *
+ * **{@link recordAccessJudge} と同じ形である** —— **DB を読む手を持っているのは
+ * サーバ層だけなので、読み手をここで組み、判定そのものは `owner-scope.ts` の1本
+ * ({@link rowGrantWriteJudge})に渡す。** **ここに条件式を1行も書かない**
+ * (`ADR-0061` 限定4)。
+ *
+ * **`sources` が `undefined`(= その表は宣言していない)なら `undefined` を返す** ——
+ * **呼び出し側は着手前と1バイトも変わらない応答を返す。**
+ *
+ * **【誇張しない】** **返る真は「押せば必ず作れる」ではない** ——
+ * **{@link rowGrantWriteJudge} の doc に、見ていない関門3つを名指しで書いてある。**
+ * **書込の壁は今日も `judgeGrantWrite` 1本であり、本配管はその手前にも後ろにも立たない。**
+ */
+function recordGrantWritePipe(
+  source: ReadSource,
+  manifest: Manifest,
+  tableId: string,
+  actorId: string | null,
+  sources: RecordAccessSourceTables | undefined,
+  roles: ActorRoles = null,
+): ((row: Record<string, unknown>) => boolean) | undefined {
+  if (sources === undefined) {
+    return undefined;
+  }
+  const { readRows } = memoizedRowReaders(source, manifest);
+  return rowGrantWriteJudge({ manifest, tableId, actorId, roles, readRows });
 }
 
 /**
@@ -4889,6 +5063,29 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     /** 合計を求められたときだけ応答に載せる(求められなければキーごと出さない)。 */
     const withSum = <T extends object>(body: T, value: number): T | (T & { sum: number }) =>
       sumField === undefined ? body : { ...body, sum: value };
+    /**
+     * **返す行ぶんだけの判定を取り出す**(`V14-M1-T01`)。**ページを切ったあとに掛ける**
+     * —— **母集団の側は可視行の全量ぶんを持っているが、応答に載せるのは返した行だけで
+     * よい**(`resolveOwnerDisplays` をページの後に掛けているのと同じ理由)。
+     * **可否を1ミリも決めていない** —— **鍵で引くだけである。**
+     */
+    const accessForPage = (
+      page: Record<string, unknown>[],
+      all: Record<string, RecordRowAccess> | undefined,
+    ): Record<string, RecordRowAccess> => {
+      const picked: Record<string, RecordRowAccess> = {};
+      if (all === undefined) {
+        return picked;
+      }
+      for (const row of page) {
+        const recordId = row._id;
+        const entry = typeof recordId === "string" ? all[recordId] : undefined;
+        if (typeof recordId === "string" && entry !== undefined) {
+          picked[recordId] = entry;
+        }
+      }
+      return picked;
+    };
 
     // 匿名公開 / 個人スコープは JS の post-filter で可視行を決めるため、**その可視集合を母集団として**
     // total を数え・ページングする。可視性(st_public / st_owner)は SQL に落とせないので、これらの
@@ -5035,6 +5232,17 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         accessSources,
         readerRoles,
       );
+      // **【`V14-M1-T01` / 台帳 `RB-G3`】「その行に付与を配れるか」の配管。**
+      // **`judge` と同じく、読む手はサーバ層が持ち、判定は `owner-scope.ts` の1本である。**
+      // **宣言していない表では `undefined` であり、応答は着手前と1バイトも変わらない。**
+      const grantWrite = recordGrantWritePipe(
+        source,
+        manifest,
+        tableId,
+        roleSubject,
+        accessSources,
+        readerRoles,
+      );
       const population = judgeRecordPopulation({
         manifest,
         table: resolved.table,
@@ -5046,6 +5254,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         accessSources,
         tableRead: roleTableRead,
         judge,
+        grantWrite,
       });
       // **1行でも上限に当たったら要求全体を 4xx にする**(`Z-G17` / `V7-M4-T04`)——
       // **黙って行を落とすと、上限に当たった状態と「本当に見えない」状態が
@@ -5098,17 +5307,54 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
                   // **射影は `owner-scope.ts` の1本**(ADR-0061 限定4)。
                   records: resolvedPage.map((row) => dropHidden(row)),
                   total: visible.length,
+                  // **【`V14-M1-T05` / 台帳 `RB-G1`】この枝も行ごとの判定を並べる。**
+                  // **`V14-M1-T01` はここを空けていた** —— **空けたままだと、個人所有と
+                  // 宣言を併せ持つ表で issue と同じ「出るのに押せない」が残る。**
+                  // **母集団が組まなかったとき(= 点が管轄外。`st_owner` は在るが
+                  // 行ごとのアクセス権を宣言していない表)は、キーごと足さない** ——
+                  // **`undefined` を代入して `JSON.stringify` が落とすのに頼らない**
+                  // (応答は着手前と1バイトも同じである、を明示的に組む)。
+                  // **引くのは `page` である**(`resolvedPage` は表示名を解決した写しで
+                  // あり、`_id` は同じだが、判定の引き先は射影前の行に固定しておく)。
+                  ...(population.access === undefined
+                    ? {}
+                    : { access: accessForPage(page, population.access) }),
                 },
                 sumVisible(visible),
               ),
             };
           }
-          case "record_access":
+          case "record_access": {
+            // **【`V14-M1-T01` / 台帳 `RB-G1` / `RB-G2`】この枝だけが `access` を載せる。**
+            //
+            // **【旧の姿を逐語で残す。消していない】** —— **着手前、この `case` は
+            // 下の `role_conditional` と束ねられており、注記はこうだった**:
+            //   `// **行ごとのアクセス権(`Z-G11`)と、条件つきの読取規則だけが立っている表`
+            //   `// (`J-G12`)は、返し方が1バイトも同じである** —— **着手前も2つの分岐の`
+            //   `// `return` は同じ形だった。** **違うのは母集団の決め方だけであり、それは`
+            //   `// `owner-scope.ts` の側に在る。**`
+            // **今日、返し方は同じではない** —— **こちらだけが行ごとの判定を並べる。**
+            // **束ねを割ったのは、`role_conditional` 枝が判定のクロージャを1度も
+            // 呼んでおらず、載せようとすると全行ぶんの判定を新しく走らせることになる
+            // からである**(計画 `A-8b` の実測)。
+            const visible = population.rows;
+            const page = slicePage(visible, limit, offset);
+            return {
+              status: 200 as const,
+              json: withSum(
+                {
+                  records: page.map((row) => dropHidden(row)),
+                  total: visible.length,
+                  access: accessForPage(page, population.access),
+                },
+                sumVisible(visible),
+              ),
+            };
+          }
           case "role_conditional": {
-            // **行ごとのアクセス権(`Z-G11`)と、条件つきの読取規則だけが立っている表
-            // (`J-G12`)は、返し方が1バイトも同じである** —— **着手前も2つの分岐の
-            // `return` は同じ形だった。** **違うのは母集団の決め方だけであり、それは
-            // `owner-scope.ts` の側に在る。**
+            // **条件つきの読取規則だけが立っている表(`J-G12`)。**
+            // **`access` は載せない**(この枝は判定のクロージャを1度も呼んでいない。
+            // **そもそもこの表は行ごとの付与を宣言していないので、点が無い**)。
             const visible = population.rows;
             return {
               status: 200 as const,
@@ -5213,9 +5459,20 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     const loadedRecord = withReadSource(dataRoot, manifest.app.id, (source) => {
       const read = readRecord(source, manifest, tableId, recordId);
       if (!read.ok || read.value === null) {
-        return { result: read, access: undefined };
+        return { result: read, access: undefined, grantWrite: false };
       }
       const judge = recordAccessJudge(
+        source,
+        manifest,
+        tableId,
+        actor?.id ?? null,
+        singleSources,
+        actor?.roles ?? null,
+      );
+      // **【`V14-M1-T01` / `V14-M1-T03`】「その行に付与を配れるか」も、同じ `ReadSource`
+      // の中で答える** —— **開き直しを増やさないためである**(判定の配管と同じ理由)。
+      // **宣言していない表では `undefined` であり、以下は着手前と1バイトも変わらない。**
+      const grantWrite = recordGrantWritePipe(
         source,
         manifest,
         tableId,
@@ -5226,6 +5483,8 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       return {
         result: read,
         access: judge === undefined ? undefined : judge(read.value as Record<string, unknown>),
+        grantWrite:
+          grantWrite === undefined ? false : grantWrite(read.value as Record<string, unknown>),
       };
     });
     const result = loadedRecord.result;
@@ -5316,6 +5575,25 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // **版(ETag)は射影の前に取ってある** —— 射影は `_updated_at` を1バイトも触らない。
     // **`B-G2`(V4-M3-T06 / ADR-0071 限定5)**: あわせて、その相手に見せないと宣言された
     // 項目も落とす。**判定は `owner-scope.ts` の1本**(ここに条件式を書かない)。
+    // **【`V14-M1-T02` / 台帳 `RB-G1`】行ごとの判定を、行と**並べて**返す。**
+    // **既存キー `record` の形は1バイトも変えていない** —— **足したのは兄弟の
+    // `access` 1本であり、一覧と同じく行の `_id` を鍵にした写像である。**
+    // **宣言していない表では、このキーごと存在しない**(`singleSources` が `undefined`
+    // なら判定そのものが `undefined` である)。
+    // **匿名公開の分岐はこの手前で `return` しており、そちらには載せていない** ——
+    // **一覧の `anonymous_public` 枝と同じ扱いである。**
+    const singleAccess =
+      loadedRecord.access === undefined
+        ? undefined
+        : recordRowAccessMap({
+            entries: [
+              {
+                row: result.value as Record<string, unknown>,
+                verdict: loadedRecord.access.verdict,
+              },
+            ],
+            grantWrite: () => loadedRecord.grantWrite,
+          });
     return c.json({
       // **【`V8-M17` / `J-G7`】面の項目の規則を旧層の射影の隣で当てる**(重ね順は AND)。
       record: projectForRoleFields({
@@ -5326,6 +5604,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
         subject: actor?.id ?? null,
       }),
+      ...(singleAccess === undefined ? {} : { access: singleAccess }),
     });
   });
 
@@ -5686,6 +5965,41 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           return { denied: denial.errors, status: denial.status };
         }
       }
+      // **【`V15-M2-T04` / `CR-G1` / `CR-G3` / `CR-G6`。`ADR-0404`】親の行への書込を要求する。**
+      //
+      // **前提の関門である**(`AND`)—— **`isDirectCreateSuppressed` /
+      // `isRoleActionWriteAllowed` とまったく同じ置き方で、**合成(`OR`)より先に落とす**。
+      // **`OR` の後ろに置くと、その表を名指しした役割の規則が1本あるだけで素通りする。**
+      // **判定は `owner-scope.ts` の1本**(ここに条件式を書かない。`ADR-0077` 限定6)——
+      // **本ファイルは行を読む手を渡し、返ってきた4状態を応答へ写しているだけである。**
+      // **書く前に判定する** —— **拒否されたとき1行も書かれない。**
+      //
+      // **【射程。誇張しない】** —— **効くのは HTTP のこの口だけである。**
+      // **まとめ書き(`POST /batch`)は `V15-M3` が同じ1本を呼ぶまで素通りする。**
+      // **MCP / 受信口 / ワークフロー / 島は `D-V15-3` が射程外にしたので今日も素通りする。**
+      //
+      // **【`V15-M3-T02` による訂正。上の3行は1バイトも消していない】** ——
+      // **前2行は今日は偽である。** **`V15-M3` がまとめ書き(`POST /batch`)の `create` op
+      // にも同じ `judgeCreateParentAccess` を配線した** —— **効くのは HTTP の2経路
+      // (単件 `POST` / `POST /batch`)であり、この口だけではない**(`ADR-0404` 限定7 /
+      // 限定13。**述語は1本のままで、判定の式を1バイトも写していない**)。
+      // **3行目(MCP / 受信口 / ワークフロー / 島)は今日も真である。**
+      {
+        const readers = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+        const denial = createParentDenial(
+          judgeCreateParentAccess({
+            manifest,
+            tableId,
+            values: body.value,
+            actorId,
+            readRows: readers.readRows,
+            readRow: readers.readRow,
+          }),
+        );
+        if (denial !== null) {
+          return { denied: denial.errors, status: denial.status };
+        }
+      }
       const rows =
         accessSources === undefined
           ? undefined
@@ -5716,7 +6030,26 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // **合成は `owner-scope.ts` の1本であり、ここに式は無い。**
         // **【正直に書く】** **作成には「その行」がまだ無いので、合成の単位の「行」は
         // これから作る行の下見である** —— **既存の行についての `OR` とは材料が違う。**
-        const reachable = verdict.read || verdict.write || verdict.delete;
+        // **【`V15-M2-T03` / `CR-G4` 限定1 / `ADR-0405`】fail-closed を独立の前提の関門に
+        // した。** **旧(逐語)**:
+        //
+        //     const reachable = verdict.read || verdict.write || verdict.delete;
+        //
+        // **式そのものは1バイトも変えずに `owner-scope.ts` の `isCreatorGrantReachable` へ
+        // 移した**(ここに条件式を書かない)。**変えたのは順序である** ——
+        // **「作った本人に何も渡らない」なら、合成(`OR`)に入る前に断る。**
+        // **今日までは `OR` の中に畳まれており、面(役割の規則)が表の書込を許していれば、
+        // その設定の表にも行を作れていた。**
+        //
+        // **【`T03` の実測。丸めない】** —— **葉タスクは「`grant` に `undefined` を渡す形を
+        // 試し、既存の検査が3本以内なら採る」と定めていた。** **実測は **94本** であり、
+        // 4本以上なので**採っていない**。** **したがって `grant` に渡る値は今日のまま
+        // (`creator_permission` から導いた到達可能性)であり、**「兼用をやめた」と書けるのは
+        // 意味の側だけである。** **【禁止】合成に渡る材料まで分けた、と書かない。**
+        const reachable = isCreatorGrantReachable(verdict);
+        if (!reachable) {
+          return { denied: [creatorGrantUnreachableError()], status: 400 as const };
+        }
         const combined = combineRoleAndGrantAccess({
           role: judgeRoleAccess({
             manifest,
@@ -5957,6 +6290,46 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             { ...(existing.value as Record<string, unknown>), ...body.value },
             c.get("user") as AuthUser | undefined,
           ),
+        );
+        if (denial !== null) {
+          return c.json(errorBody(denial.errors), denial.status);
+        }
+      }
+      // **【`V15-M8-T03` / `CR-G9`。`ADR-0408`】更新で親の参照を書き入れる要求にも、
+      // 作成とまったく同じ前提の関門を掛ける。**
+      //
+      // **塞ぐ穴は実物で再現している** —— **参照を空にしたまま行を作り(`(b-3)`。今日も
+      // `201`)、その行を `PATCH` して書けない親の `_id` を書き入れると、その行は壁の内側に
+      // 入っていた**(`src/server/create-parent-write.test.ts` の `(i-1)`)。
+      //
+      // **判定は `owner-scope.ts` の1本**(ここに条件式を書かない。`ADR-0077` 限定6)——
+      // **作成の2箇所が呼ぶのとまったく同じ述語であり、2本目の判定の家を作っていない。**
+      // **翻訳も作成と同じ `createParentDenial` 1本である**(断り文を1本も増やさない)。
+      //
+      // **`existing.value` を渡すのが要である** —— **述語はそれを受け取ったときだけ、
+      // 要求が参照の値を**変える**要素に絞って見る。** **参照を1文字も変えない更新
+      // (項目を送らない / 同じ値を送り直す)には1ミリも掛からない**(`(j-4)`)。
+      //
+      // **置き場所は行ごとの判定(見えない → 404 / 見えるが書けない → 403)の**後ろ**である**
+      // —— **前に置くと、見えない行の存在が 403 で漏れる**(`v7-m0.md` §5-4 の (vi) の並び)。
+      // **書く前に判定する** —— **拒否されたとき1バイトも書かれない。**
+      //
+      // **【射程。誇張しない】** —— **効くのは HTTP の4経路(作成2本 + 更新2本)である。**
+      // **MCP / 受信口 / ワークフロー / 島は `D-V15-3` により今日も素通りする。**
+      // **`DELETE` にも掛けていない。** **参照を**空にする**更新(壁の内側から抜き出す)は
+      // 今日も通る**(`ADR-0408` §限界3)。
+      {
+        const readers = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+        const denial = createParentDenial(
+          judgeCreateParentAccess({
+            manifest,
+            tableId,
+            values: body.value,
+            previous: existing.value as Record<string, unknown>,
+            actorId: (c.get("user") as AuthUser | undefined)?.id ?? null,
+            readRows: readers.readRows,
+            readRow: readers.readRow,
+          }),
         );
         if (denial !== null) {
           return c.json(errorBody(denial.errors), denial.status);
@@ -6261,6 +6634,16 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // **op の索引を鍵にして覚え、`writeRecords` が成功したあとで1件ずつ入れる**
       // (`onWritten` の中で書かないのは、あちらが `writeRecords` の IMMEDIATE tx の**中**で
       // あり、`createRecord` が自前の tx を開くためである)。
+      // **【`V15-M3-T02` / `CR-G5`。`ADR-0404`】作成の関門が行を読む手を、ループの**外**で
+      // 1度だけ作る。**
+      //
+      // **op ごとに作り直すと記憶(memo)が効かず、op 数に比例して同じ表を読み直す**
+      // (`ADR-0404` `S3` (4) の 計算量 = (op 数 × 行数 × 段数) が、そのまま効いてくる)。
+      // **ループの中では1行も書かない** —— **書込は下の `writeRecords` が1 IMMEDIATE tx で
+      // 行うので、記憶を op を跨いで持ち回っても古い値にならない。**
+      // **単件 `POST` が使うのとまったく同じ `memoizedRowReaders` である**(新しい読み手を
+      // 1本も作らない)。
+      const batchRowReaders = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
       const creatorPlans = new Map<number, Extract<CreatorGrantPlan, { kind: "grant" }>>();
       for (const [opIndex, rawOp] of (ops as unknown[]).entries()) {
         const rawTableId =
@@ -6471,6 +6854,44 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             return c.json(errorBody(denial.errors), denial.status);
           }
         }
+        // **【`V15-M3-T02` / `CR-G5` / `CR-G1` / `CR-G3` / `CR-G6`。`ADR-0404`】親の行への
+        // 書込を要求する。** **単件 `POST`(`:5944`)とまったく同じ述語を、まったく同じ
+        // 相対位置(付与表の関門の**直後**・`opAccessSources` を引く**前**)で当てる。**
+        //
+        // **前提の関門である**(`AND`)—— **`isDirectCreateSuppressed` /
+        // `isRoleActionWriteAllowed` と同じ置き方で、**合成(`OR`)より先に落とす**。
+        // **判定は `owner-scope.ts` の1本**(ここに条件式を書かない。`ADR-0077` 限定6)——
+        // **`ADR-0404` 限定13 の逐語「述語は1本。2箇所から呼ぶだけで、判定の式を写さない」。**
+        // **翻訳も単件と同じ `createParentDenial` 1本である**(2本目を作らない)。
+        //
+        // **`create` op だけを見る** —— **`update` op / `delete` op は1バイトも変わらない。**
+        //
+        // **部分適用は起きない**: **この `return` はカーネルの `writeRecords`(1 IMMEDIATE
+        // tx)を開く**前**にループごと抜ける** —— **既存の 403 群とまったく同じ抜け方であり、
+        // 1つでも当たれば1行も書かれない。** **同じ要求の中で作るつもりの親は、まだ
+        // ディスクに無いので判定からは見えない**(`ADR-0404` §Decision の 答え1「下見を
+        // 作らない / これから作る行を鎖の一部として辿らない」と同じ向きである)。
+        //
+        // **【射程。誇張しない】** —— **本 MS が足したのはこの2経路目までである。**
+        // **MCP / 受信口 / ワークフロー / 島は `D-V15-3` が射程外にしたので今日も素通りする。**
+        if (opKind === "create" && typeof rawTableId === "string") {
+          const denial = createParentDenial(
+            judgeCreateParentAccess({
+              manifest,
+              tableId: rawTableId,
+              values:
+                typeof opValues === "object" && opValues !== null && !Array.isArray(opValues)
+                  ? (opValues as Record<string, unknown>)
+                  : {},
+              actorId: actor.id,
+              readRows: batchRowReaders.readRows,
+              readRow: batchRowReaders.readRow,
+            }),
+          );
+          if (denial !== null) {
+            return c.json(errorBody(denial.errors), denial.status);
+          }
+        }
         const opAccessSources =
           typeof rawTableId === "string"
             ? recordAccessSourceTables(manifest, rawTableId)
@@ -6504,6 +6925,37 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
                 return c.json(errorBody([forbiddenRecordWriteError()]), 403);
               }
             }
+            // **【`V15-M8-T03` / `CR-G9`。`ADR-0408`】まとめ書きの `update` op にも、
+            // 単件 `PATCH` とまったく同じ述語を、まったく同じ相対位置(行ごとの
+            // 404 / 403 の**後ろ**)で当てる。** **判定は `owner-scope.ts` の1本であり、
+            // ここに条件式を1つも書いていない**(`ADR-0077` 限定6)。
+            //
+            // **この口は版の照合(`If-Match`)を1度も要求しない** —— **`(i-2)` が
+            // 実測したとおりであり、回り込みはこちらのほうが手数が少ない。**
+            //
+            // **部分適用は起きない**: **この `return` はカーネルの `writeRecords`
+            // (1 IMMEDIATE tx)を開く**前**にループごと抜ける。**
+            // **更新前の行が読めない op には1バイトも掛けない** —— **その op は
+            // 今日どおりカーネルが断る**(応答コードを1つも動かさない)。
+            if (existing?.ok === true && existing.value !== null) {
+              const denial = createParentDenial(
+                judgeCreateParentAccess({
+                  manifest,
+                  tableId: rawTableId,
+                  values:
+                    typeof opValues === "object" && opValues !== null && !Array.isArray(opValues)
+                      ? (opValues as Record<string, unknown>)
+                      : {},
+                  previous: existing.value as Record<string, unknown>,
+                  actorId: actor.id,
+                  readRows: batchRowReaders.readRows,
+                  readRow: batchRowReaders.readRow,
+                }),
+              );
+              if (denial !== null) {
+                return c.json(errorBody(denial.errors), denial.status);
+              }
+            }
           }
           if (opKind === "create") {
             const rows = recordAccessRows(opSource, manifest, rawTableId, opAccessSources);
@@ -6530,7 +6982,30 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
               });
               // **【`V8-M19` / `D-V8-23`】単件 `POST` とまったく同じ `OR` を、同じ順序で当てる**
               // (実測A の合流点(2)の2本目)。**入口を何本生やしても振る舞いが一致する。**
-              const reachable = access.read || access.write || access.delete;
+              //
+              // **【`V15-M3-T03` / `CR-G4` 限定1 / `ADR-0405`】fail-closed を、まとめ書き側でも
+              // 独立の前提の関門にした。** **旧(逐語。1バイトも消していない)**:
+              //
+              //     const reachable = access.read || access.write || access.delete;
+              //
+              // **式そのものは1バイトも変えずに `owner-scope.ts` の `isCreatorGrantReachable`
+              // を呼ぶ形に揃えた**(ここに条件式を書かない)。**変えたのは順序である** ——
+              // **「作った本人に何も渡らない」なら、合成(`OR`)に入る前に断る。**
+              // **`V15-M2` が単件側だけを並べ替えたので、着手時のまとめ書きは `OR` の中に
+              // 畳んだままであった** —— **その結果、同じ設定の表が単件では 400、まとめ書きでは
+              // 通る、という食い違いが実際に在った**(`batch-create-parent-write.test.ts`
+              // の `(q-1)` が着手前に「単件 400 / まとめ書き ok」を実測している)。
+              // **すぐ上の逐語「入口を何本生やしても振る舞いが一致する」(`V8-M19` /
+              // `D-V8-23`)が、今日ここで実際に成り立つようになった。**
+              //
+              // **`combineRoleAndGrantAccess` に渡る `grant` の値は今日のままである** ——
+              // **`V15-M2-T03` の実測(`undefined` を渡すと既存の検査が **94本** 赤くなる)に
+              // より、その形は採らないと決まっている**(`v15-m2.md` §2。再実験していない)。
+              // **`combineRoleAndGrantAccess` の本体を1バイトも変えていない**(`ADR-0404` 限定2)。
+              const reachable = isCreatorGrantReachable(access);
+              if (!reachable) {
+                return c.json(errorBody([creatorGrantUnreachableError()]), 400);
+              }
               if (
                 !combineRoleAndGrantAccess({
                   role: judgeRoleAccess({

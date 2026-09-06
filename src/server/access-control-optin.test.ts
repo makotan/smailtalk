@@ -612,8 +612,18 @@ describe("V7-M5-T06 / Z-G20: 宣言していない表と `enabled: false` の表
       (step, index) => step.status !== armed[index]?.status || step.body !== armed[index]?.body,
     );
     expect(differing.length).toBeGreaterThan(0);
-    // **最初に割れるのは「作成」である**(実測。**メンバー表に登録されていない相手は作れない**)。
-    expect(differing[0]?.label).toBe("2 POST作成");
+    // **【`V14-M1-T01`(台帳 `RB-G1` / `RB-G2`)。2026-09-05。期待値を入れ替えた。
+    //   旧の2行を逐語で残す】**
+    // **旧**:
+    //   `// **最初に割れるのは「作成」である**(実測。**メンバー表に登録されていない相手は作れない**)。`
+    //   `expect(differing[0]?.label).toBe("2 POST作成");`
+    // **宣言つきの表の一覧応答に `access`(行ごとの判定)が載るようになったので、
+    // 割れるのは**1本目**(一覧 GET)からである。** **宣言していない表(`PLAIN`)の
+    // 応答は着手前と1バイトも同じであり、だからこそここで割れる。**
+    // **測っているもの(「作成でも割れること」)は1ミリも弱めていない** ——
+    // **位置ではなく集合で見る1行を下に足した。**
+    expect(differing[0]?.label).toBe("1 一覧GET(0件)");
+    expect(differing.map((step) => step.label)).toContain("2 POST作成");
     expect(armed[1]?.status).toBe(400);
     // **【`V8-M41` / 台帳 `F-G12`。2026-08-13。期待値を入れ替えた。旧の1行を逐語で残す】**
     // **旧: `expect(armed[1]?.body).toContain("メンバー表に登録されていない");`**

@@ -124,6 +124,14 @@ test("Z-G2: access_control は object・additionalProperties: false・必須4本
   expect(key.type).toBe("object");
   expect(key.additionalProperties).toBe(false);
   expect(key.required).toEqual(["enabled", "permissions", "grant", "creator_permission"]);
+  // ---------------------------------------------------------------------------------
+  // **【2026-09-06。`V15-M1-T05`。`CR-G2` / `ADR-0405`(門A・限定採用)】期待値を7キー →
+  // 8キーへ打ち直した。****旧行の逐語**: 末尾が `"inherit_from",` で終わり `"creatable_by"`
+  // が無かった。**足したのは `access_control` の8キー目 `creatable_by` である。**
+  // **検査は1本も消していない・`.skip` にしていない・緩めていない**(`ADR-0053` 限定4)。
+  // **`required` は今日も4本のままである**(すぐ上の行。`ADR-0405` 限定4)——
+  // **`creatable_by` を書かない表は今日と1バイトも変わらない。**
+  // ---------------------------------------------------------------------------------
   expect(Object.keys(key.properties)).toEqual([
     "enabled",
     "permissions",
@@ -132,6 +140,7 @@ test("Z-G2: access_control は object・additionalProperties: false・必須4本
     "members",
     "groups",
     "inherit_from",
+    "creatable_by",
   ]);
 });
 

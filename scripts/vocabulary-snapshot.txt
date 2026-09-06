@@ -467,6 +467,7 @@ manifest.$defs.table.properties.access_control.properties:groups
 manifest.$defs.table.properties.access_control.properties.groups.properties:table
 manifest.$defs.table.properties.access_control.properties.groups.required:table
 manifest.$defs.table.properties.access_control.properties:inherit_from
+manifest.$defs.table.properties.access_control.properties:creatable_by
 manifest.$defs.table.properties.access_control.required:enabled
 manifest.$defs.table.properties.access_control.required:permissions
 manifest.$defs.table.properties.access_control.required:grant

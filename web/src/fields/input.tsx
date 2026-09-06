@@ -288,7 +288,8 @@ function useSelectedReferenceChoice(
     }
     let cancelled = false;
     fetchRecord(appId, tableId, value).then(
-      (row) => {
+      // **`V14-M2-T01`: 戻りが `{ record, access? }` になった。** **ここは行の値しか使わない。**
+      ({ record: row }) => {
         if (!cancelled) {
           setSelected(toReferenceChoice(table, row));
         }
@@ -489,6 +490,44 @@ export function grantMemberScope(
   return undefined;
 }
 
+/**
+ * **付与表を名指ししている保護対象の表の id**(`V14-M2-T02`。台帳 `RB-G3`。`ADR-0402`)。
+ *
+ * **`grant.table` だけを見る。** **`inherit_from` も `grant.member` も1度も参照しない** ——
+ * **サーバの `rowGrantWriteJudge`(`src/server/owner-scope.ts`)がそう判定しているからである。**
+ *
+ * **【なぜ {@link grantMemberScope} を使わないか。境界が違う】**
+ * **`grantMemberScope` は「参照候補を親で絞れるか」(`Z-G27`)のための関数で、その前提は
+ * 親を辿れることである** —— **`inherit_from` が空 / `grant.member` が無いと `undefined` に
+ * 落ちる。** **`grant_write` が答えるのは「この行に付与を配れるか」で、親は1段も要らない。**
+ * **別の問いに別の問いの前提条件を持ち込まないため、薄い口を隣に1本置いた** ——
+ * **`grantMemberScope` の本体は1バイトも書き換えていない。**
+ *
+ * **【ここに置く理由】** **`web/src/` で `access_control` を綴る製品ファイルは2本だけであり、
+ * 3本目を作ると `src/server/access-control-localization.test.ts` の列挙が赤くなる**
+ * (`ADR-0402` 限定10)。**既存の2本のうち、付与表を既に見ているのがこのファイルである。**
+ *
+ * **【正直に書く】この口は「押せば必ず作れるか」を1文字も答えない。**
+ * **書込を止めているのは今日どおりサーバ側の付与の判定(`src/server/owner-scope.ts`)である**
+ * (`ADR-0402` 限定22)。**この関数を書込の壁として使わないこと。**
+ */
+export function grantTableParentId(
+  manifest: Manifest,
+  formTableId: ResourceId,
+): ResourceId | undefined {
+  for (const table of manifest.app.tables) {
+    const declared = table.access_control;
+    if (declared === undefined || declared.enabled !== true) {
+      continue;
+    }
+    if (declared.grant?.table !== formTableId) {
+      continue;
+    }
+    return table.id;
+  }
+  return undefined;
+}
+
 /** 行の値を、参照先の `_id` として読む(空文字は「指していない」)。 */
 function referencedId(value: unknown): string {
   return typeof value === "string" && value !== "" ? value : "";
@@ -565,7 +604,8 @@ async function resolvePermittedGrantMemberIds(
   if (protectedTable === undefined) {
     return undefined;
   }
-  const targetRow = await fetchRecord(appId, scope.protectedTableId, targetRecordId);
+  // **`V14-M2-T01`: 戻りが `{ record, access? }` になった。** **ここは行の値しか使わない。**
+  const { record: targetRow } = await fetchRecord(appId, scope.protectedTableId, targetRecordId);
   let permitted: Set<string> | undefined;
   for (const fieldId of scope.inheritFrom) {
     const field = protectedTable.fields.find((candidate) => candidate.id === fieldId);

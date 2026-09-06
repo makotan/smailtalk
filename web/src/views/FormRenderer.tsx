@@ -237,7 +237,9 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
     // **渡すのは `audience` を書いた画面だけである**(限定4)。
     // **【`V8-M20` / `J-G27`】旧文の `audience` は撤去された。今日名乗る条件は「面の規則がその画面を名指ししているか」である。**
     fetchRecord(appId, view.table, recordId, namedViewId).then(
-      (row) => {
+      // **`V14-M2-T01`: 戻りが `{ record, access? }` になった。**
+      // **入力画面は行の値しか使わない**(ボタンの出し分けは詳細と一覧の担当である)。
+      ({ record: row }) => {
         if (!cancelled) {
           setVersion(row._updated_at);
           setState({ status: "ready", value: valuesFromRow(fields, row) });

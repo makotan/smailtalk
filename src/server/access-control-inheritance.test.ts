@@ -28,6 +28,13 @@
  *     行1件ごとに親を辿るので、計算量は (行数 × 段数) である**(`Z-G14` 限定9)。
  *  5. **`POST`(作成)の下見に引き継ぎを掛けていない** —— **`app.ts` の作成者への自動付与の
  *     下見は今日も `judgeRecordAccess` を直接呼んでおり、親を1段も辿らない。**
+ *
+ *     **【`V15-M2`(`CR-G1` / `ADR-0404`)による訂正。上の2行は1バイトも消していない】**
+ *     **上の2行のうち、**下見そのもの**についての記述は今日も真である**(作成者への自動付与の
+ *     下見は今日も親を1段も辿らない)。**しかし「`POST`(作成)に引き継ぎを掛けていない」を
+ *     `POST` 全体の話として読むと、今日は偽である** —— **`V15-M2` が、下見とは別の
+ *     **前提の関門**(親の行に書けるか)を作成の経路に足し、そこは引き継ぎを辿る。**
+ *     **本ファイルの (D-5) / (D-6) がそれを測る。**
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -457,6 +464,48 @@ describe("V7-M4-T02 (D): 宣言していない親は、判定に1ミリも寄与
   test("(D-3) 一覧にも1件も出ない", async () => {
     expect(await listIds("open_issues", none.cookie)).toEqual([]);
     expect(await listIds("open_issues", inheritor.cookie)).toEqual([]);
+  });
+
+  // **【`V15-M2`(`CR-G3` / `D-V15-6` / `ADR-0404`)が足した2本。**
+  //   **(D-1)〜(D-4) の読取の期待値を1つも変えていない**】
+  //
+  // **読取では「宣言していない親は判定に1ミリも寄与しない」で済んだ**(上の (D-1)〜(D-4))。
+  // **作成では済まない** —— **通すと、宣言していない親を1つ挟むだけで、`inherit_from` を
+  // 書いた表に誰でも行を作れるからである。** **したがって作成は fail-closed で断る。**
+  //
+  // **【代金を隠さない】** —— **この形の表には、今日から誰も行を作れない。**
+  // **持ち主(`owner`)も止まる。** **その形を作らせない適用時検査は今日1本も無いので、
+  // 差分は今日どおり通り、行を作れなくなる日だけが後から来る**(`ADR-0404` `S3` (2) の3)。
+  test("(D-5) 宣言していない親を指す表には、行を作れない(403)", async () => {
+    const response = await app.request(`/api/apps/${APP_ID}/tables/open_issues/records`, {
+      method: "POST",
+      headers: {
+        cookie: inheritor.cookie,
+        origin: TEST_ORIGIN,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ title: "作る", open_project: openProject }),
+    });
+    expect(response.status).toBe(403);
+    // **断り文に内部記号が1文字も無い**(`ADR-0404` 限定9)。
+    const body = await response.text();
+    for (const symbol of ["access_control", "inherit_from", "open_projects", "open_issues"]) {
+      expect({ symbol, leaked: body.includes(symbol) }).toEqual({ symbol, leaked: false });
+    }
+  });
+
+  test("(D-6) 宣言している親を持つ表なら、親に書ける人は今日どおり作れる(拒否側だけを示さない)", async () => {
+    // **`inheritor` は親(プロジェクト)に `writer` を持つ** —— **その付与だけで子を作れる。**
+    const response = await app.request(`/api/apps/${APP_ID}/tables/issues/records`, {
+      method: "POST",
+      headers: {
+        cookie: inheritor.cookie,
+        origin: TEST_ORIGIN,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ title: "作る", project: projectId }),
+    });
+    expect(response.status).toBe(201);
   });
 
   test("(D-4) 述語の側でも、宣言していない親は3つとも false に倒れる", () => {
