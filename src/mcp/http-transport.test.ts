@@ -259,6 +259,24 @@ test("段2: 期待オリジンは ST_MCP_HTTP_EXPECTED_ORIGIN から読み、ST_
   expect(fallback.expectedOrigins).toEqual(["http://127.0.0.1:3100"]);
 });
 
+/**
+ * **`ST_PREVIEW_BASE_URL` の既定は `http://localhost:3000` である**(2026-09-06)。
+ *
+ * **着手前は `http://127.0.0.1:3000` だった。** `get_preview_url` はこの値を基底に
+ * URL を組み立てるので、**AI が返したプレビュー URL をそのまま開くと、画面は出るのに
+ * 保存だけが 403 で断られていた**(書き込みを許す origin の既定に `127.0.0.1` は
+ * 1本も無く、`ST_AUTH_EXPECTED_ORIGIN` に書いて逃げることもできない ——
+ * rpID の登録可能サフィックス検査がリッスン前に落とす)。
+ *
+ * **これは既定を検査する初めての1本である**(着手前は0件だった)。
+ */
+test("ST_PREVIEW_BASE_URL の既定は http://localhost:3000(渡せば上書きできる)", () => {
+  expect(loadMcpHttpConfig({}).previewBaseUrl).toBe("http://localhost:3000");
+  expect(loadMcpHttpConfig({ ST_PREVIEW_BASE_URL: "http://example.test" }).previewBaseUrl).toBe(
+    "http://example.test",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // 段3: R-G15-d(セッション / プロトコル版 / 再開)
 // ---------------------------------------------------------------------------

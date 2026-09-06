@@ -5,7 +5,9 @@
 import { chromium } from "@playwright/test";
 
 const outPath = process.argv[2];
-const baseURL = process.argv[3] ?? "http://127.0.0.1:3000";
+// 既定は `localhost`(2026-09-06。着手前は `http://127.0.0.1:3000` だった)。
+// 書き込みを許す origin の既定に `127.0.0.1` が無いので、撮る先も localhost に揃える。
+const baseURL = process.argv[3] ?? "http://localhost:3000";
 if (outPath === undefined) {
   console.error("usage: screenshot-app-list.ts <out.png> [baseURL]");
   process.exit(1);

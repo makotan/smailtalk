@@ -212,6 +212,45 @@ describe("CSRF: Origin 検査(ADR-0014 §5)", () => {
     );
     expect(response.status).toBe(403);
   });
+
+  /**
+   * **403 の `hint` が、実際に起きていることを指していること**(2026-09-06)。
+   *
+   * **着手前の文面は「同一オリジンからアクセスしてください(クロスサイトの
+   * リクエストは拒否されます)。」だった。** この 403 を実地で踏むのは
+   * **`http://127.0.0.1:3000` で開いた本人**であって、クロスサイトの攻撃者ではない。
+   * **本人にとっては同一オリジンなので、読んでも原因に辿り着けない。**
+   *
+   * **`message` と `allowed_values` は1文字も変えていない**(この検査が固定する)。
+   */
+  test("403 の hint が、開き直す先と ST_AUTH_EXPECTED_ORIGIN と localhost を指す", async () => {
+    const response = await app.request(
+      postJson(
+        "/api/apps/inventory/auth/password/register",
+        { username: "dave", password: "p1234567" },
+        { origin: "http://127.0.0.1:3000" },
+      ),
+    );
+    expect(response.status).toBe(403);
+
+    const body = (await response.json()) as {
+      errors: { message: string; allowed_values?: string[]; hint?: string }[];
+    };
+    const error = body.errors[0];
+
+    // **message は着手前のまま。**
+    expect(error?.message).toBe('リクエスト元 "http://127.0.0.1:3000" は許可されていません。');
+    // **allowed_values は今日どおり `expectedOrigins` をそのまま返す**
+    // (何が許されているかを機械可読で返し続ける。**この台は既定の2本で起きている**)。
+    expect(error?.allowed_values).toEqual(["http://localhost:3000", ORIGIN]);
+    // **hint だけを実態に合わせた。**
+    expect(error?.hint).toBe(
+      "ブラウザで開いているアドレスが、書き込みを許可している出所(allowed_values)と" +
+        "一致していません。許可されている方のアドレスで開き直すか、環境変数 " +
+        "ST_AUTH_EXPECTED_ORIGIN に開きたいアドレスを渡してサーバを起動し直してください。" +
+        "127.0.0.1 は指定できません —— localhost で開いてください。",
+    );
+  });
 });
 
 describe("Passkey options 生成", () => {

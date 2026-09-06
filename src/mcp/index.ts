@@ -15,7 +15,7 @@
  * | 変数 | 既定値 | 意味 |
  * |---|---|---|
  * | `ST_DATA_ROOT` | `data` | データルート。**Webサーバ(`bun run server`)と同じ値**でなければならない |
- * | `ST_PREVIEW_BASE_URL` | `http://127.0.0.1:3000` | `get_preview_url` が返す URL の基底。Webサーバのリッスン先と揃える |
+ * | `ST_PREVIEW_BASE_URL` | `http://localhost:3000` | `get_preview_url` が返す URL の基底。Webサーバのリッスン先と揃える |
  * | `ST_MCP_ACTOR` | (無し) | **このサーバがどの利用者として動くか**(ログイン名または利用者ID)。`V8-M31-T02` |
  *
  * **`ST_MCP_ACTOR` を書き忘れても起動する** —— ただし**23本のツールがすべて失敗する**
@@ -32,7 +32,11 @@ import { normalizeActor } from "./actor-guard.ts";
 import { createMcpServer } from "./server.ts";
 
 const dataRoot = process.env.ST_DATA_ROOT ?? "data";
-const previewBaseUrl = process.env.ST_PREVIEW_BASE_URL ?? "http://127.0.0.1:3000";
+// **既定は `localhost` である**(2026-09-06。着手前は `http://127.0.0.1:3000` だった)。
+// `get_preview_url` が返した URL を人がそのまま開くと、**画面は出るのに保存だけが 403** に
+// なっていた —— 書き込みを許す origin の既定に `127.0.0.1` は1本も無く、
+// `ST_AUTH_EXPECTED_ORIGIN` に書いて逃げることもできない(rpID の検査が起動を止める)。
+const previewBaseUrl = process.env.ST_PREVIEW_BASE_URL ?? "http://localhost:3000";
 // **名乗りを読むのは、stdio ではこの1行だけである**(裁定 `M31-1`)。
 // **既定値を持たない** —— 「誰も指定しなかったときの既定の主体」を置くと、それが事実上の
 // 全権になる。**空白だけの指定も「名乗り無し」に倒す**(`normalizeActor`)。

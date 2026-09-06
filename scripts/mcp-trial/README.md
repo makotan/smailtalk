@@ -36,8 +36,14 @@ MCP サーバと Web サーバは**別プロセス**である。`get_preview_url
 
 ```console
 $ ST_DATA_ROOT=data-bootstrap mise exec -- bun run server
-smailtalk server: http://127.0.0.1:3000 (dataRoot=data-bootstrap)
+smailtalk server: http://127.0.0.1:3000 (dataRoot=data-bootstrap, timeZone=Asia/Tokyo)
+ブラウザで開くアドレス: http://localhost:3000 (127.0.0.1 でも画面は出ますが、そちらでは保存できません —— localhost で開いてください)
 ```
+
+**人間が確認するターンでは、2行目のアドレス(`localhost`)で開くこと。** 1行目の `127.0.0.1` で開くと
+画面は出るが保存だけが 403 で断られる(書き込みを許す出所の既定は `http://localhost:3000` /
+`http://localhost:5173` の2本で、`127.0.0.1` はどちらとも一致しない)。
+**既定と違うポートで起動したときは、その旨の警告が標準エラーに1行出る。**
 
 **既定のデータルートはシナリオごとに分かれる**(`data-<シナリオID>`。§データルートはシナリオごとに分かれる)。
 `--dry-run` は実行時の `ST_DATA_ROOT` を標準エラーに出すので、Web サーバに渡す値はそれを見れば分かる。

@@ -135,7 +135,10 @@ export function loadMcpHttpConfig(env: Record<string, string | undefined>): McpH
 
   return {
     dataRoot: env.ST_DATA_ROOT ?? "data",
-    previewBaseUrl: env.ST_PREVIEW_BASE_URL ?? "http://127.0.0.1:3000",
+    // **既定は `localhost` である**(2026-09-06。着手前は `http://127.0.0.1:3000` だった)。
+    // `get_preview_url` が返す URL をそのまま開いたときに、**保存だけが 403 になる**のを避ける
+    // (書き込みを許す origin の既定に `127.0.0.1` は1本も無い。`src/auth/config.ts` 参照)。
+    previewBaseUrl: env.ST_PREVIEW_BASE_URL ?? "http://localhost:3000",
     port,
     expectedOrigins,
     expectedOriginsFromEnv: fromEnv,

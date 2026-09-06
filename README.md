@@ -85,20 +85,24 @@ NG: fixtures/invalid/unknown-field-type.json の検証に失敗しました(マ�
 ```bash
 bun install                 # 依存パッケージを入れる
 bun run build:web           # 画面をビルドする(飛ばすと開いても 404 になります)
-ST_AUTH_EXPECTED_ORIGIN=http://localhost:3000 bun run server
+bun run server              # サーバを起動する
 ```
 
-起動すると、待ち受け先とデータの置き場が1行で出ます。
+起動すると、2行出ます。1行目が待ち受け先とデータの置き場、2行目が**ブラウザで開くアドレス**です。
 
 ```
 smailtalk server: http://127.0.0.1:3000 (dataRoot=data, timeZone=Asia/Tokyo)
+ブラウザで開くアドレス: http://localhost:3000 (127.0.0.1 でも画面は出ますが、そちらでは保存できません —— localhost で開いてください)
 ```
 
 ブラウザで **`http://localhost:3000`** を開きます。
 
 - **`localhost` で開いてください。** 数字の `127.0.0.1` で開くと、ログインの仕組みが受け付けません。
-- **`ST_AUTH_EXPECTED_ORIGIN` を忘れないでください。** 書き込みを受け付ける出所の既定値は、
-  開発用サーバの `http://localhost:5173` です。合っていないと、画面は出るのに保存だけが黙って弾かれます。
+- **既定で書き込みを受け付ける出所は、`http://localhost:3000` と `http://localhost:5173` の2つです。**
+  既定のポートのまま `localhost` で開くなら、`ST_AUTH_EXPECTED_ORIGIN` を指定する必要はありません。
+  **ただし `PORT` を変えたときは、`ST_AUTH_EXPECTED_ORIGIN=http://localhost:<そのポート>` を頭に付けて
+  起動し直してください。** 合っていないと、画面は出るのに保存だけが弾かれます(このときは起動時に警告が1行出ます)。
+  この食い違いは `curl` では露見しません —— `curl` は出所を名乗らないので、コマンド行での確認は全部通ってしまいます。
 - **最初に登録した人が、そのアプリの持ち主(管理者)になります。** ここは自分で登録してください。
   先に AI に登録させると、あなたが管理者になれません。
 
@@ -113,7 +117,7 @@ bun run dev:web             # もう片方のターミナル
 
 | コマンド | 内容 |
 |---|---|
-| `bun run server` | HTTP API と画面を1つのプロセスで動かす(既定 `http://127.0.0.1:3000`) |
+| `bun run server` | HTTP API と画面を1つのプロセスで動かす(既定 `http://127.0.0.1:3000` で待ち受け、**ブラウザは `http://localhost:3000` で開きます**) |
 | `bun run dev:server` | API を変更監視つきで動かす |
 | `bun run dev:web` | 画面の開発用サーバを動かす(既定 `http://localhost:5173`。**`http://127.0.0.1:5173` では繋がりません** —— このサーバは IPv6 のループバックだけを待ち受けます) |
 | `bun run build:web` | 画面を `web/dist` にビルドする |

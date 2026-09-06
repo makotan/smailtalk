@@ -20,7 +20,9 @@ describe("loadAuthConfig", () => {
     const config = loadAuthConfig({});
     expect(config.rpID).toBe("localhost");
     expect(config.rpName).toBe("SmAIltalk");
-    expect(config.expectedOrigins).toEqual(["http://localhost:5173"]);
+    // **既定は2本である**(先頭が `http://localhost:3000`)。並びは意味を持つ ——
+    // `auth-routes.ts` の `signupUrlFor` が `expectedOrigins[0]` を招待の登録URLに使う。
+    expect(config.expectedOrigins).toEqual(["http://localhost:3000", "http://localhost:5173"]);
     expect(config.cookieSecure).toBe(false);
     expect(config.sessionTtlSec).toBe(604800);
     expect(config.challengeTtlSec).toBe(300);
@@ -53,6 +55,13 @@ describe("loadAuthConfig", () => {
     expect(config.expectedOrigins).toEqual(["http://localhost:5173", "http://localhost:4173"]);
   });
 
+  test("ST_AUTH_EXPECTED_ORIGIN を渡すと完全な上書きになる(既定は足されない)", () => {
+    // **既定に足すのではなく、置き換える。**渡した人は「これだけを許した」つもりでいる。
+    const config = loadAuthConfig({ ST_AUTH_EXPECTED_ORIGIN: "http://localhost:5173" });
+    expect(config.expectedOrigins).toEqual(["http://localhost:5173"]);
+    expect(config.expectedOrigins).not.toContain("http://localhost:3000");
+  });
+
   test("COOKIE_SECURE は 1/0 も真偽として読む", () => {
     expect(loadAuthConfig({ ST_AUTH_COOKIE_SECURE: "1" }).cookieSecure).toBe(true);
     expect(loadAuthConfig({ ST_AUTH_COOKIE_SECURE: "0" }).cookieSecure).toBe(false);
@@ -62,6 +71,13 @@ describe("loadAuthConfig", () => {
 describe("validateAuthConfig", () => {
   test("妥当な config(localhost)は通る", () => {
     expect(() => validateAuthConfig(baseConfig())).not.toThrow();
+  });
+
+  test("既定の2本(3000 / 5173)は、既定の rpID(localhost)で両方とも通る", () => {
+    // **既定を増やしたのに起動が止まる、を防ぐ。** rpID `localhost` は
+    // `localhost:3000` / `localhost:5173` のどちらのホストに対しても登録可能サフィックス。
+    const config = loadAuthConfig({});
+    expect(() => validateAuthConfig(config)).not.toThrow();
   });
 
   test("rpID が origin のホストと一致すれば通る", () => {

@@ -25,6 +25,7 @@ import { createServerApp, resolveServerProfile, SERVER_PROFILE_ENV } from "./app
 import { startBackupScheduler } from "./backup.ts";
 import { startOutboxDispatcher } from "./outbox-scheduler.ts";
 import { checkRunnerVersionGate, formatGateFailure } from "./runner-version-gate.ts";
+import { startupNoticeLines } from "./startup-notice.ts";
 
 const DEFAULT_PORT = 3000;
 
@@ -318,3 +319,26 @@ console.log(
   `smailtalk server: http://${server.hostname}:${server.port} ` +
     `(dataRoot=${dataRoot}, timeZone=${timeZone})`,
 );
+
+// --- ブラウザで開くアドレスの案内(2026-09-06)---------------------------------
+//
+// **上の起動ログの URL をそのまま開くと、画面は出るのに保存だけが 403 になる。**
+// リッスンアドレスの既定は `127.0.0.1` だが、書き込みを許す origin の既定は
+// `http://localhost:3000` / `http://localhost:5173` であり、完全一致しないからである。
+// **原因が「保存だけ落ちる」という形でしか見えないので、起動の時点で書く**(憲法6)。
+//
+// **上の1行は1文字も変えていない。** 別の単位の駆動があの行から待ち受け番号を読み、
+// `src/server/index.test.ts` は「起動しなかったこと」を `smailtalk server:` の不在で
+// 見ている。**したがってここで足す行は、その綴りを1文字も含まない**(`startup-notice.ts`)。
+// `server.port` は型の上では `number | undefined` である。**実際に待ち受けた番号を正とし、
+// 読めなかったときだけ要求した番号に落とす**(`PORT=0` を渡すと両者は食い違うので、
+// 順序を逆にしてはならない)。
+const notice = startupNoticeLines({
+  port: server.port ?? port,
+  expectedOrigins: authConfig.expectedOrigins,
+});
+console.log(notice.info);
+if (notice.warning !== undefined) {
+  // 許可していないアドレスを案内してしまうときだけ。**黙って案内しない**(憲法6)。
+  console.error(notice.warning);
+}

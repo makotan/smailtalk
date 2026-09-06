@@ -33,7 +33,24 @@ export type AuthConfig = {
 const DEFAULTS = {
   rpID: "localhost",
   rpName: "SmAIltalk",
-  expectedOrigin: "http://localhost:5173",
+  /**
+   * **許す origin の既定。カンマ区切りで2本ある**
+   * (`loadAuthConfig` が既存のカンマ分解でそのまま2本に開く。型は `string` のまま)。
+   *
+   * **先頭は `http://localhost:3000` である。並びに意味がある** ——
+   * `src/server/auth-routes.ts` が **`expectedOrigins[0]`** を招待の登録URLの基底に
+   * 使うので、**先頭に置いた方が招待の案内に載る。**
+   * 一般の利用者が実際に開くのは配信サーバ(`bun run server` の既定 `3000`)であって、
+   * 開発サーバ(`5173`)ではない。したがって 3000 を先頭にする。
+   * (**その関数名も、綴りを含むファイル名も、ここには写していない。**
+   * 新規登録まわりの判定がこのファイルへ漏れていないことを**綴りで**見張る検査が
+   * `src/server/` に在り、写すと赤くなる。)
+   *
+   * **`5173` を落としていない** —— 開発2プロセス構成(Vite)は今日どおり動く。
+   *
+   * **`ST_AUTH_EXPECTED_ORIGIN` を渡した場合はこの既定を1本も足さない**(完全な上書き)。
+   */
+  expectedOrigin: "http://localhost:3000,http://localhost:5173",
   cookieSecure: false,
   sessionTtlSec: 604800,
   challengeTtlSec: 300,

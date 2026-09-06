@@ -17,7 +17,7 @@
  * | 変数 | 既定値 | 意味 |
  * |---|---|---|
  * | `ST_DATA_ROOT` | `data` | データルート。**Webサーバ(`bun run server`)と同じ値**でなければならない |
- * | `ST_PREVIEW_BASE_URL` | `http://127.0.0.1:3000` | `get_preview_url` が返す URL の基底 |
+ * | `ST_PREVIEW_BASE_URL` | `http://localhost:3000` | `get_preview_url` が返す URL の基底 |
  * | `ST_MCP_HTTP_PORT` | `3100` | リッスンポート。**ホスト名は変えられない**(`127.0.0.1` 固定) |
  * | `ST_MCP_HTTP_EXPECTED_ORIGIN` | `http://127.0.0.1:<port>` | 許可する `Origin`(カンマ区切り) |
  * | `ST_MCP_ACTOR` | (無し) | **この入口がどの利用者として動くか**(ログイン名または利用者ID)。`V8-M31-T02` |
