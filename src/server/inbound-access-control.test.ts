@@ -30,6 +30,22 @@
  *   **合成は `OR` なので、点が通せば今日どおり通る**(下の (F-6))。
  * - **受信で入った行に付与を1件も作らない** —— **入った行は誰からも読めないままである**
  *   (`D-V4-92` の逐語「解けないと書く」は今日も真である)。
+ *
+ * ## **【`V17-M2-T02a` による追記(2026-09-07)。上の節を1バイトも消していない】**
+ *
+ * **下に (AC-G7a) 群を足した**(`ADR-0411` / ユーザ決定 `D-V16-4` の逐語
+ * 「**全部の入口に立てる**」)。 **引き継ぎ元(`inherit_from`)を宣言した表を書込先にした
+ * 受信口は、受信の主体が**元になる行**に書けなければ 403 で止まる。**
+ *
+ * **【逃げ道が今日1本も無い。隠さない】**(`ADR-0411` §限界1)—— **受信の書込主体は
+ * 固定の `system:inbound` であり、その主体が元の行に権限を持つのは、人が付与を手で作った
+ * ときだけである。** **「この人として受信する」を宣言する語彙は今日1つも無く**
+ * (`ADR-0079` 限定2)、**`AC-G7b` の判定値は**保留**である。**
+ * **【禁止】これを「運用で付与すればよい」と丸めない** —— **元の行が増えるたびに付与が要り、
+ * 恒久的に累積する。** **その旨を応答の `hint` にも書いた。**
+ *
+ * **【変えていないこと】** —— **`inherit_from` を宣言していない受信先の応答は
+ * 1ミリも変わらない**(`(AC-G7a-0)`。`ADR-0411` 限定7)。
  */
 
 import { Database } from "bun:sqlite";
@@ -119,6 +135,61 @@ function manifest(): Manifest {
           ],
         },
         {
+          // **【`V17-M2-T02a`(`AC-G7a` / `ADR-0411`)が足した親の表】**
+          // **`inherit_from` は1本も宣言していない**(親は親を持たない)。
+          id: "parent_box",
+          name: "元になる箱",
+          fields: [{ id: "title", name: "名前", type: "text" }],
+          access_control: {
+            enabled: true,
+            permissions: [...PERMISSIONS],
+            creator_permission: "keeper",
+            grant: {
+              table: "kid_grant",
+              target: "parent",
+              member: "member",
+              permission: "permission",
+            },
+            members: { table: "inbox_member", account: "account" },
+          },
+        },
+        {
+          // **【`V17-M2-T02a`】親の行に書ける人だけが作れる、と宣言した受信先。**
+          // **受信の主体(`system:inbound`)が参加者の表に居ても、親の行に書けなければ
+          // 作れない** —— **`T02b` の後、ここへの受信は 403 になる。**
+          id: "child_inbox",
+          name: "元になる行を持つ受信箱",
+          fields: [
+            { id: "event_id", name: "イベントID", type: "text", required: true, unique: true },
+            { id: "body", name: "本文", type: "text" },
+            { id: "parent", name: "元になる箱", type: "reference", reference_table: "parent_box" },
+          ],
+          access_control: {
+            enabled: true,
+            permissions: [...PERMISSIONS],
+            creator_permission: "keeper",
+            grant: {
+              table: "kid_grant",
+              target: "kid",
+              member: "member",
+              permission: "permission",
+            },
+            members: { table: "inbox_member", account: "account" },
+            inherit_from: ["parent"],
+          },
+        },
+        {
+          // **【`V17-M2-T02a`】親と子の付与を書く表。**
+          id: "kid_grant",
+          name: "元になる箱の付与",
+          fields: [
+            { id: "parent", name: "箱", type: "reference", reference_table: "parent_box" },
+            { id: "kid", name: "行", type: "reference", reference_table: "child_inbox" },
+            { id: "member", name: "相手", type: "reference", reference_table: "inbox_member" },
+            { id: "permission", name: "権限", type: "select", options: ["keeper"] },
+          ],
+        },
+        {
           // **【`D-V8-67`】持ち主(`owner`)に書込の規則が在る受信先。**
           // **点(行ごとのアクセス権)は1つも宣言していない** —— **面だけで通る道を測る。**
           id: "owner_inbox",
@@ -167,6 +238,8 @@ let openEndpointId: string;
 let roleEndpointId: string;
 /** **持ち主(`owner`)に書込の規則が在る受信先**(`D-V8-67`)。 */
 let ownerEndpointId: string;
+/** **`inherit_from` を宣言した受信先**(`V17-M2-T02a` / `AC-G7a`)。 */
+let childEndpointId: string;
 
 beforeEach(async () => {
   dataRoot = await mkdtemp(join(tmpdir(), "gp-inbound-guard-"));
@@ -203,6 +276,13 @@ beforeEach(async () => {
       name: "owner-ruled",
       secretSource: { kind: "env", value: KEY_ENV_VAR },
       targetTable: "owner_inbox",
+    }).id;
+    // **【`V17-M2-T02a`】`inherit_from` を宣言した受信先の口。**
+    childEndpointId = inbound.issueInboundEndpoint({
+      appId: APP_ID,
+      name: "child-guarded",
+      secretSource: { kind: "env", value: KEY_ENV_VAR },
+      targetTable: "child_inbox",
     }).id;
   } finally {
     inbound.close();
@@ -387,6 +467,127 @@ test("(F-5) 面だけを宣言した表への受信は 403 で止まる(点は1�
   // **`role_inbox` が今日も 403 なのは、規則を持っているのが `editor` だけだからである。**
   expect(body.errors[0]?.hint).toContain("持ち主");
   expect(rowCount("role_inbox")).toBe(0);
+});
+
+// =====================================================================================
+// (AC-G7a) **親の行に書ける人だけが作れる、を受信口にも掛けた**
+// (`V17-M2-T02a` / `T02b`。`ADR-0411` §Decision の 2 / ユーザ決定 `D-V16-4` の逐語
+//  「**全部の入口に立てる**」)
+//
+// ## **着手前(`T02a`)の実測 —— 下の2本は赤だった**
+//
+// **署名の正しい通知が、`inherit_from` を宣言した表へ、親に1件の付与も持たない主体
+// (`system:inbound`)として **201** で入っていた。** **同じ表・同じ親への HTTP の単件
+// `POST` は 403 である**(`src/server/create-parent-write.test.ts` の `(a-3)`)。
+//
+// ## **【逃げ道が今日1本も無いことを、隠さずに書く】**(`ADR-0411` §限界1)
+//
+// **受信の書込主体は固定の `system:inbound` であり、その主体が親の行に付与を持つのは、
+// **人が付与表に手で行を作ったときだけ**である。** **親の行が増えるたびに付与行が要る。**
+// **「この人として受信する」を宣言する語彙は今日1つも無い**(`ADR-0079` 限定2 が
+// 固定 actor の宣言そのものを閉じている)—— **`AC-G7b` の判定値は**保留**である。**
+// **したがって `inherit_from` を宣言した表を書込先にした受信口は、
+// 「止まったまま逃げ道が無い」形になりうる。** **【禁止】これを「運用で付与すればよい」と
+// 丸めない。**
+// =====================================================================================
+
+/** **受信の主体を参加者の表に登録し、その行の `_id` を返す**(付与の相手として名指しする)。 */
+function seedInboundMemberRow(): string {
+  const db = new Database(appDbPath(dataRoot, APP_ID));
+  try {
+    const created = createRecord(db, manifest(), "inbox_member", { account: "system:inbound" });
+    expect(created.ok).toBe(true);
+    return created.ok ? String((created.value as unknown as Record<string, unknown>)._id) : "";
+  } finally {
+    db.close();
+  }
+}
+
+/** 判定の外側で1行作る(題材を組むため)。 */
+function kernelCreate(tableId: string, values: Record<string, unknown>): string {
+  const db = new Database(appDbPath(dataRoot, APP_ID));
+  try {
+    const created = createRecord(db, manifest(), tableId, values);
+    expect(created.ok, `${tableId} の作成に失敗した`).toBe(true);
+    return created.ok ? String((created.value as unknown as Record<string, unknown>)._id) : "";
+  } finally {
+    db.close();
+  }
+}
+
+test("(AC-G7a-0)【`T00` のベースライン】`inherit_from` を宣言していない受信先の応答は1ミリも変わらない", async () => {
+  // **`inbox` は点を宣言しているが `inherit_from` は1本も持たない。**
+  // **`ADR-0411` 限定7 の相手になる着手前の応答は、この2つである。**
+  seedInboundMember();
+  const guarded = await postInbound({ event_id: "evt_base_1", body: "基準" });
+  expect(guarded.status).toBe(201);
+  expect(rowCount("inbox")).toBe(1);
+
+  // **宣言そのものを持たない受信先も今日どおりである。**
+  const open = await postInbound({ event_id: "evt_base_2", body: "基準" }, openEndpointId);
+  expect(open.status).toBe(201);
+  expect(rowCount("open_inbox")).toBe(1);
+});
+
+test("(AC-G7a-5) 親の行に書けない受信は 403 で止まり、1バイトも書かれない", async () => {
+  // **参加者の表には居る** —— **止めるのは作成の下見ではなく、親の関門だけである。**
+  seedInboundMemberRow();
+  const parentId = kernelCreate("parent_box", { title: "外の箱" });
+  const before = rowCount("child_inbox");
+
+  const res = await postInbound(
+    { event_id: "evt_kid_1", body: "外から", parent: parentId },
+    childEndpointId,
+  );
+  expect(res.status).toBe(403);
+  const body = (await res.json()) as { errors: { message: string; hint?: string }[] };
+  expect(body.errors[0]?.message).toContain("元になる行");
+
+  // **1バイトも書かれていない**(前後の行数を本物の SQLite から数える)。
+  expect(before).toBe(0);
+  expect(rowCount("child_inbox")).toBe(0);
+});
+
+test("(AC-G7a-6) 受信の主体が親の行に書けるなら、同じ通知は今日どおり 201 で通る", async () => {
+  const memberRowId = seedInboundMemberRow();
+  const parentId = kernelCreate("parent_box", { title: "中の箱" });
+  kernelCreate("kid_grant", {
+    parent: parentId,
+    member: memberRowId,
+    permission: "keeper",
+  });
+
+  const res = await postInbound(
+    { event_id: "evt_kid_2", body: "中から", parent: parentId },
+    childEndpointId,
+  );
+  expect(res.status).toBe(201);
+  expect(rowCount("child_inbox")).toBe(1);
+});
+
+// **【`V17-M2-T08a`。`ADR-0411` 限定4 の【実装時に置く】検査の、受信口の側】**
+//
+// **限定4 の逐語**: **「更新側の射程を1ミリも広げない。本単位が触るのは『作る』だけである」。**
+//
+// **受信口だけは、この限定を**源の走査で**測れる** —— **このルートは今日も
+// `createRecord` を1回呼ぶだけで、更新も削除も1度も呼ばないからである**
+// (`ADR-0041` 限定3・C の「1行 create 限定を構造で守る」)。
+// **`write.ts` と `workflow-runner.ts` の側は同じ形では測れず、実行で撃っている** ——
+// `src/mcp/actor-authz.test.ts` の `(AC-G7a-4b)` /
+// `src/server/automation-access-control.test.ts` の `(AC-G7a-11)` / `(AC-G7a-12)`。
+test("(AC-G7a-6b)【限定4 の源での固定】受信口は作成しか持たない(更新も削除も1度も呼ばない)", async () => {
+  const source = await Bun.file(join(import.meta.dir, "inbound-route.ts")).text();
+  const gateCall = `${["judge", "Create", "Parent", "Access"].join("")}(`;
+  // **関門は1件ちょうど**(`ADR-0411` 限定12 の内訳。`inbound-route.ts` は 1)。
+  expect(source.split(gateCall).length - 1).toBe(1);
+  // **書込は `createRecord` だけである** —— **更新・削除の呼び出しが1件も無いので、
+  // 上の1件が更新の枝に入りようが無い。**
+  expect(source.includes("updateRecord(")).toBe(false);
+  expect(source.includes("deleteRecord(")).toBe(false);
+  expect(source.split("createRecord(").length - 1).toBeGreaterThan(0);
+  // **`AC-G8`(古い親にも問う)は HTTP の更新2経路だけである** ——
+  // **このルートは `previous` を1度も渡していない。**
+  expect(source.includes("previous:")).toBe(false);
 });
 
 test("(F-6) 面が止めても、点が通せば受信は通る(OR は書ける側に倒れる)", async () => {

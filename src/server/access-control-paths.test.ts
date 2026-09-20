@@ -128,6 +128,12 @@ function bodyOf(source: string, registrations: Registration[], key: string): str
 const JUDGE_PIPE = "recordAccessJudge(";
 const JUDGE_HOME = "judgeRecordAccess(";
 /**
+ * **段ごとの点の解決**(`V17-M10B-T06`)。 **混ぜる前の2段
+ * (**∪ すべての付与** / **∩ 符号を持つ付与**)を返す、非公開の1本である。**
+ * **{@link JUDGE_HOME} も {@link JUDGE_RESOLVER} も、今日この1本を通る。**
+ */
+const JUDGE_STAGES = "recordAccessStages(";
+/**
  * **引き継ぎ(`inherit_from`)を辿ってから各段で {@link JUDGE_HOME} を呼ぶ側**
  * (`V7-M4-T02` / `Z-G14`)。**配管が今日呼んでいるのはこちらである。**
  */
@@ -265,6 +271,25 @@ describe("V7-M3-T02 (B): 8経路すべてが判定を受けているかを1本�
    *
    * **【この検査が言わないこと】** **「時刻起動が安全である」とは1文字も言っていない** ——
    * **素通りしていることを固定しているだけである。**
+   *
+   * **【2026-09-07 の訂正(`V17-M3-T11`。独立点検の指摘7)。上の文も下の doc も
+   * 1バイトも消していない】**
+   *
+   * **下の逐語「判定を掛けるかどうかを決める分岐は、この述語の呼び出しだけである。」は、
+   * 今日は偽である。** **2本目の分岐が `src/kernel/ai-dispatcher.ts:381` に在る** ——
+   * **`writeBackJudgmentApplies` が、その述語の答えに `workflow !== undefined &&` を
+   * 1つ足した形で、AI の書き戻しに判定を掛けるかを決めている**(`V17-M3-T03b` / `ADR-0415`)。
+   * **「ワークフロー定義を引けなかったジョブは通す」という素通しの条件が1つ増えており、
+   * それは `workflow-runner.ts` の側には1文字も無い。**
+   *
+   * **下の式は `workflow-runner.ts` **1本だけ**を読むので、この2本目の分岐が足されても
+   * 緑のままである** —— **検査が赤くならずに doc だけが嘘になった型である**
+   * (既知の躓き `checks-go-false-after-writing` / `verbatim-residue-fools-source-scanning-tests`)。
+   *
+   * **【この訂正が言わないこと】** **「2本目の分岐が間違いである」とは書いていない** ——
+   * **時刻起動を素通しにする答えそのものは1つの述語が決めており、`ai-dispatcher.ts` の側は
+   * その答えを別プロセスから引き直すための手当てである**(`ADR-0415` §限界)。
+   * **偽になったのは「分岐が1箇所しかない」という主張の側だけである。**
    */
   test("(B-5) 時刻起動の素通しは1本の述語で決まっている(条件式が散らばっていない)", async () => {
     const text = await Bun.file(join(PRODUCT_ROOT, "src", "kernel", "workflow-runner.ts")).text();
@@ -436,7 +461,23 @@ describe("V7-M3-T02 (C): 判定の戻り値を捨てる呼び出しが1つも無
     const resolverAt = ownerScope.indexOf(`export function ${JUDGE_RESOLVER}`);
     expect(resolverAt).toBeGreaterThan(0);
     const resolverBody = ownerScope.slice(resolverAt, ownerScope.indexOf("\n}\n", resolverAt));
-    expect(resolverBody.split(JUDGE_HOME).length - 1).toBe(1);
+    // **【`V17-M10B-T06`(`ADR-0430` (δ))による更新。旧の assert を1バイトも消していない】**
+    // **旧(逐語)**: `expect(resolverBody.split(JUDGE_HOME).length - 1).toBe(1);`
+    // **旧は「`resolveRecordAccess` の中で `judgeRecordAccess(` が1度だけ呼ばれている」を
+    // 撃っていた。** **今日そこで呼ばれるのは `recordAccessStages(` である** ——
+    // **上限を段どうしでまたいで重ねるため、混ぜる前の2段のまま受け取る必要が出た。**
+    // **判定の家は今日も1本であり、`judgeRecordAccess` 自身が同じ1本を通る**
+    // (下の assert)。
+    // **【差で失われた入力の例(1つ)】** —— **`resolveRecordAccess` が
+    // `recordAccessStages(` を1度だけ呼びながら、その答えを捨てて別の綴りの第2の判定
+    // (たとえば `looseRecordAccess(`)の答えを返す実装。** **旧の assert は
+    // `judgeRecordAccess(` が0件になるので落としたが、今日の assert は通してしまう。**
+    // **【禁止】これを「不要になった」と書かない。**
+    expect(resolverBody.split(JUDGE_STAGES).length - 1).toBe(1);
+    const judgeHomeAt = ownerScope.indexOf(`export function ${JUDGE_HOME}params: {`);
+    expect(judgeHomeAt).toBeGreaterThan(0);
+    const judgeHomeBody = ownerScope.slice(judgeHomeAt, ownerScope.indexOf("\n}\n", judgeHomeAt));
+    expect(judgeHomeBody.split(JUDGE_STAGES).length - 1).toBe(1);
     // **【`V8-M19`】合成の側が、点の解決を実際に1度だけ呼んでいる。**
     const combinerAt = ownerScope.indexOf(`export function ${JUDGE_COMBINER}`);
     expect(combinerAt).toBeGreaterThan(0);
@@ -512,6 +553,33 @@ describe("V7-M3-T02 (C): 判定の戻り値を捨てる呼び出しが1つも無
   // **撤去の記録として `owner-scope.ts` のコメントに旧の宣言が逐語で残っているので、
   // `includes` は今日も真を返す。** **コメント行を除いて見なければ測れない。**
   // =====================================================================================
+  /*
+   * **【`V17-M6-T04` / 台帳 `AC-G24` が足した1本。既存の検査を1つも書き換えていない】**
+   *
+   * **門外の限定4 の逐語**: 「**判定式を1本も増やさない**(`judgeRecordAccess` の呼び出しを
+   * 増やすだけ)」。 **その【実装時に置く】固定がこの項である。**
+   *
+   * **【何を測っているか。緩めずに書く】** —— **付与の出どころを組む述語の本文が、
+   * (1) `judgeRecordAccess` を呼んでいること、(2) 宣言の `permissions` を1度も読まないこと、
+   * (3) 権限名の突き合わせ(`resolveGrantedPermissionNames`)を自分で呼ばないことの3つである。**
+   * **(2)(3) のどちらかを書いた瞬間、それは「動詞を自分で決める2本目の判定式」になる。**
+   *
+   * **【この検査が測っていないもの。誇張しない】** —— **本文に条件分岐(`if`)が在ることは
+   * 止めていない**(相手の解決・上限の受け渡し・空の付与行の読み飛ばしに要る)。
+   * **止めているのは「動詞を自分で決める式」だけである。**
+   */
+  test("(C-7) 付与の出どころを組む述語は judgeRecordAccess を呼ぶだけで、動詞を自分で決めない", async () => {
+    const ownerScope = await Bun.file(join(PRODUCT_ROOT, "src", "server", "owner-scope.ts")).text();
+    const at = ownerScope.indexOf("export function resolveRecordAccessSources(");
+    expect(at).toBeGreaterThan(0);
+    const body = ownerScope.slice(at, ownerScope.indexOf("\n}\n", at));
+    expect(body.includes("judgeRecordAccess(")).toBe(true);
+    // **宣言の権限表を1度も読まない**(動詞は判定の戻り値からしか取らない)。
+    expect(body.includes(".permissions")).toBe(false);
+    // **権限名の突き合わせを自分で呼ばない**(判定の中でだけ走る)。
+    expect(body.includes("resolveGrantedPermissionNames(")).toBe(false);
+  });
+
   test("(C-6) nonAdminTableAccess は実装から消えた(`ADR-0295` 限定3 の4値目は今日も無い)", async () => {
     const source = await Bun.file(join(PRODUCT_ROOT, "src", "server", "owner-scope.ts")).text();
     expect(
@@ -552,6 +620,16 @@ function manifest(): Manifest {
             enabled: true,
             permissions: [...PERMISSIONS],
             creator_permission: "keeper",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+            // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+            // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+            // **`books` への `POST` を撃つ7本が、測りたい答え(400 / 201)の手前で
+            // 403 になっていた。**
+            // **`customer` も挙げている** —— **(G-1) / (G-2) がその立場で撃つからである。**
+            // **`customer` の宣言は下の {@link manifestWithRoles} が足す**(既定3役割には
+            // 入っていないので、足さないと適用時検査 `referential-integrity.ts` の
+            // 項目11 が差分ごと拒否する)。
+            creatable_by_roles: ["editor", "customer"],
             grant: {
               table: "book_grant",
               target: "book",
@@ -688,7 +766,19 @@ function manifest(): Manifest {
  * 201 であることを測っている。**
  */
 function manifestWithRoles(): Manifest {
-  return withDefaultRoleRules(manifest(), { skipTables: ["books"] });
+  const applied = withDefaultRoleRules(manifest(), { skipTables: ["books"] }) as unknown as {
+    app: { roles: { id: string; name: string }[] };
+  };
+  // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】役割 `customer` の宣言を1行足した。**
+  // **(G-1) / (G-2) はこの立場で `books` へ `POST` するので、9キー目
+  // (`creatable_by_roles`)に挙げる必要があり、挙げる先は実在する役割でなければ
+  // ならない(適用時検査 `referential-integrity.ts` の項目11)。**
+  // **規則(`rules`)は1本も書かない** —— **面を1ミリも開けないためである
+  // (上の `skipTables` と同じ理由)。**
+  if (!applied.app.roles.some((role) => role.id === "customer")) {
+    applied.app.roles.push({ id: "customer", name: "利用者" });
+  }
+  return applied as unknown as Manifest;
 }
 
 let dataRoot: string;

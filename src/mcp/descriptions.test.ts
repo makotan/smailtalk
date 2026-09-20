@@ -59,6 +59,8 @@ import {
   SKILL_POINTER,
   UNDO_ROLLBACK_LIMIT,
   VOCABULARY_ENTRY_POINT,
+  VOCABULARY_RESOURCE_POINTER,
+  VOCABULARY_RESOURCE_URIS,
   VOCABULARY_SCOPE,
   WORKFLOW_HISTORY_TABLE_TEMPLATE,
 } from "./vocabulary.ts";
@@ -183,6 +185,42 @@ async function fetchDescriptions(): Promise<Map<string, string>> {
   try {
     const { tools } = await client.listTools();
     return new Map(tools.map((tool) => [tool.name, tool.description ?? ""]));
+  } finally {
+    await close();
+  }
+}
+
+/**
+ * `resources/read` の戻りから本文を取り出す。
+ *
+ * **MCP の `contents` は「文字の資源(`text`)」か「バイト列の資源(`blob`)」のどちらかで、
+ * 型の上では和である。** **今日ここが返すのは必ず `text` の側だが、`blob` が来た日に
+ * 黙って空文字にならないよう、判別してから読む。**
+ */
+function resourceText(contents: readonly unknown[]): string {
+  const [first] = contents;
+  if (typeof first === "object" && first !== null && "text" in first) {
+    return String((first as { text: unknown }).text);
+  }
+  return "";
+}
+
+/**
+ * **`V17-M0-T01e`**: `resources/list` の URI 一覧と、`resources/read` の本文を取る。
+ *
+ * **`tools/list` から外した全文の**行き先**を、同じ形で測るための台である** ——
+ * **測る対象が `tools/list` から `resources/read` へ移っただけで、測るのはやめていない。**
+ */
+async function fetchResources(): Promise<{ uris: string[]; textOf: Map<string, string> }> {
+  const { client, close } = await connectInMemory();
+  try {
+    const { resources } = await client.listResources();
+    const textOf = new Map<string, string>();
+    for (const resource of resources) {
+      const read = await client.readResource({ uri: resource.uri });
+      textOf.set(resource.uri, resourceText(read.contents));
+    }
+    return { uris: resources.map((resource) => resource.uri), textOf };
   } finally {
     await close();
   }
@@ -335,18 +373,48 @@ for (const name of EXPECTED_TOOL_NAMES) {
   }
 }
 
-for (const [label, shared] of [
-  ["v0語彙の全範囲(VOCABULARY_SCOPE)", VOCABULARY_SCOPE],
-  ["できないことの具体例(CANNOT_DO)", CANNOT_DO],
-  ["範囲外要求への振る舞い指示(OUT_OF_SCOPE_BEHAVIOR)", OUT_OF_SCOPE_BEHAVIOR],
+// **【`V17-M0-T01e`(`ADR-0413`)。下の3本のテスト名は1バイトも書き換えていない】**
+// **「載せるツールはちょうど1本(`apply_diff`)である」は 2026-09-07 から字面として偽である。**
+// **語彙境界の3定数は `tools/list` から外れ、MCP の resource へ移った** ——
+// **今日「ちょうど1本」なのは道具ではなく resource の側である。**
+//
+// **【期待値を緩めていない。3点に増やした】**
+// **(i) `tools/list` に載る道具が **0本**であること**(移送が本当に起きたこと。
+//     ここが緩むと、全文が黙って `tools/list` へ戻っても赤くならない)
+// **(ii) `resources/list` に**ちょうど1本**在ること**
+// **(iii) `resources/read` の戻りが定数と**逐語一致**(`===`)すること**
+//
+// **`H-G12` 限定2 が守っていた形(0本でも2本でも赤くなる)は resource 側で保っている** ——
+// **0本 = 全文がどこにも無い / 2本以上 = 複写の再発**、どちらも (ii) が赤くする。
+//
+// **【失うもの。丸めない】** **`resources/read` を1度も呼ばないクライアントには、
+// 語彙境界の全文は今日以降届かない。** **接続しただけで必ず届く、ではなくなった。**
+for (const [label, shared, uri] of [
+  ["v0語彙の全範囲(VOCABULARY_SCOPE)", VOCABULARY_SCOPE, VOCABULARY_RESOURCE_URIS.scope],
+  ["できないことの具体例(CANNOT_DO)", CANNOT_DO, VOCABULARY_RESOURCE_URIS.cannotDo],
+  [
+    "範囲外要求への振る舞い指示(OUT_OF_SCOPE_BEHAVIOR)",
+    OUT_OF_SCOPE_BEHAVIOR,
+    VOCABULARY_RESOURCE_URIS.outOfScope,
+  ],
 ] as const) {
   test(`${label} を載せるツールはちょうど1本(${FULL_VOCABULARY_TOOL})である`, async () => {
     const descriptions = await fetchDescriptions();
+    // (i) **`tools/list` に載る道具は0本である。**
     const carriers = EXPECTED_TOOL_NAMES.filter((name) =>
       descriptionOf(descriptions, name).includes(shared),
     );
-    // 0本 = 全文がどこにも無い(`H-G12` 限定2 の違反)。2本以上 = 複写の再発。
-    expect(carriers).toEqual([FULL_VOCABULARY_TOOL]);
+    expect(carriers).toEqual([]);
+    // **代わりに `apply_diff` が案内を受け取っていること**(全文の代わりに何が在るか)。
+    expect(descriptionOf(descriptions, FULL_VOCABULARY_TOOL)).toContain(
+      VOCABULARY_RESOURCE_POINTER,
+    );
+
+    const { uris, textOf } = await fetchResources();
+    // (ii) **`resources/list` にちょうど1本**(0本でも2本でも赤くなる)。
+    expect(uris.filter((listed) => listed === uri)).toEqual([uri]);
+    // (iii) **`resources/read` の戻りが定数と逐語一致する**(`toContain` ではない)。
+    expect(textOf.get(uri)).toBe(shared);
   });
 }
 
@@ -570,7 +638,25 @@ test("F-33: 破壊的な要求を代替案で置き換えるときは適用前�
   // 「破壊的な代替に黙って倒す」という実際に起きた失敗への歯止めである。**
   // **`DESTRUCTIVE_CHANGE_FLOW` は `instructions` に全文が残っているので、
   // 破壊的な op の手順そのものは接続直後に今も届く**(そちらは1文字も外していない)。
-  expect(descriptionOf(descriptions, "apply_diff")).toContain(DESTRUCTIVE_SUBSTITUTE_CONSENT);
+  // **【`V17-M0-T01e`(`ADR-0413`)。上の逐語もテスト名も1バイトも書き換えていない】**
+  // **「apply_diff に載る」は 2026-09-07 から偽である。** `OUT_OF_SCOPE_BEHAVIOR` は
+  // `tools/list` から外れ、MCP の resource(`vocabulary://out-of-scope`)へ移った。
+  //
+  // **【接続直後には届かなくなった。これは損失である】**
+  // **`DESTRUCTIVE_SUBSTITUTE_CONSENT`(1,451文字)は `OUT_OF_SCOPE_BEHAVIOR` の 45% を占め、
+  // v0 の実地観察(`docs/v0-findings.md` §3)由来の歯止めである** ——
+  // 「元に戻せない変更の前に `dry_run_diff` で影響行数を見せてから同意を取る」
+  // 「`undo` は差分の逆適用ではない」「`undo` の前に `preview_undo` を呼ぶ」。
+  // **今日まで接続しただけで必ず届いていたこの手当ては、今日以降
+  // `resources/read` を呼んだクライアントにしか届かない。**
+  // **`instructions` に残る `DESTRUCTIVE_CHANGE_FLOW` は代替にならない**
+  // (点検者の実測で、両者の重なりは 0.7%)。**「軽微」とは書かない。**
+  //
+  // **【期待値を緩めていない】** 届く先が変わっただけで、**届いていることは今日も
+  // 逐語で測る** —— 下の2本が (i) resource の戻りに載ること (ii) 定数の中に在ること。
+  expect(descriptionOf(descriptions, "apply_diff")).not.toContain(DESTRUCTIVE_SUBSTITUTE_CONSENT);
+  const { textOf } = await fetchResources();
+  expect(textOf.get(VOCABULARY_RESOURCE_URIS.outOfScope)).toContain(DESTRUCTIVE_SUBSTITUTE_CONSENT);
   expect(OUT_OF_SCOPE_BEHAVIOR).toContain(DESTRUCTIVE_SUBSTITUTE_CONSENT);
 });
 

@@ -18,7 +18,7 @@
  *    (ADR-0055 §1 の表。CSS の本文を渡す引数が無い)。
  * 2. **owner の発行** —— `POST /api/apps/:app_id/escape-hatch-assets` に owner の
  *    セッション cookie を付けて、**名前 / CSS 本文 / 作用域(scopeViews)** を渡す。
- *    **これが CSS のバイト列を置ける唯一の経路である**(`src/server/auth-routes.ts:1161`
+ *    **これが CSS のバイト列を置ける唯一の経路である**(`src/server/auth-routes.ts:3406`
  *    の逐語「**この POST /escape-hatch-assets だけ**で、MCP ツール / apply_diff / HTTP の
  *    データ経路からは1本も到達しない」)。
  * 3. **AI が参照を書く** —— MCP の `apply_diff` の `update_view` に `custom_css`

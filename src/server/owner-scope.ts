@@ -976,6 +976,14 @@ export function recordAccessSourceTables(
  * そのグループの値だけを `null` にした写しである。** **行そのものは1件も落とさない**
  * (**1件の付与行に相手とグループの両方が書いてあれば、相手側の解決は今日どおり効く**)。
  *
+ * **【2026-09-07 訂正(`V17-M1-T01b` / `ADR-0410` の `AC-G1`)。直前の丸括弧の1文を1バイトも
+ * 消していません】** —— **直前の丸括弧の1文は今日は偽である。** **グループの値が `null` に
+ * 潰れた行は、この関数を通ったあとは「相手だけが書かれた行」になり、相手側で今日どおり
+ * 効く** —— **そこは変わらない。** **偽になったのは「両方書いてある行は相手側で効く」の
+ * ほうであり、両欄が**ともに埋まったまま**判定へ届いた行は、今日は AND である**
+ * (その人が**かつ**そのグループに居るときだけ効く。{@link resolveGrantedPermissionNames})。
+ * **行そのものを1件も落とさないことは今日も真である。**
+ *
  * **【なぜ {@link judgeRecordAccess} の中に入れないか。判断と理由を書く】** ——
  * **`judgeRecordAccess` の引数キーが `manifest` / `tableId` / `row` / `actorId` /
  * `grantRows` / `memberRows` の**6本ちょうど**であることは、`ADR-0294` 限定5(**付与は
@@ -1122,6 +1130,13 @@ function isRecordWithoutGrants(params: {
  * **相手の解決は2本**(直接の付与 / グループ経由。**固定3段。再帰は1行も無い**)——
  * **どちらか一致で効く(OR)。** **合成の裁定と理由は {@link judgeRecordAccess} の doc に在る。**
  *
+ * **【2026-09-07 訂正(`V17-M1-T01b` / `ADR-0410` の `AC-G1`)。直前の2行を1バイトも
+ * 消していません】** —— **「どちらか一致で効く(OR)」は今日は偽である。**
+ * **1件の付与行の中では、**両欄がともに埋まっているとき**だけ AND である**(その人であり、
+ * かつそのグループに居ること)。 **片欄だけの行は今日どおりである**(相手だけならその人、
+ * グループだけならその全員)。 **相手の解決が2本であること・固定3段であること・再帰が
+ * 1行も無いことは今日も真である。** **付与**行どうし**の合成は今日どおり `OR` である。**
+ *
  * **【なぜ切り出したか】** —— **`V7-M3-T03` が「この actor は `creator_permission` を
  * 持っているか」を問う必要が出たためである**(付与を作れるのは行の作成者と運営ロールだけ =
  * `D-V7-14`)。**`read` / `write` / `delete` を計算する場所は今日も
@@ -1186,11 +1201,55 @@ function resolveGrantedPermissionNames(params: {
   const names = new Set<string>();
   for (const grant of targeting) {
     // **1件の付与行に相手とグループの両方が書いてあれば、どちらか一致で効く(OR)。**
+    //
+    // **【2026-09-07 訂正(`V17-M1-T01b` / `ADR-0410` の `AC-G1`)。直前の1文を1バイトも
+    // 消していません】** —— **直前の1文は今日は偽である。** **両欄が**ともに埋まっている**
+    // 付与行は、**その人がそのグループに居るとき**だけ効く(AND)。** **出どころはユーザ決定
+    // `D-V16-2`(逐語「**両方書いたら「その人がそのチームに居るとき」に限る**」)であり、
+    // 条文は `ADR-0410` §Decision の 2 である。**
+    // **片欄だけの行の意味は1ミリも変えていない**(`ADR-0410` 限定2)—— **下の `else` が
+    // 今日どおりの判定(どちらにも一致しない行だけを飛ばす)を1バイトも変えずに持つ。**
+    // **書く場所は {@link grantsWithExistingGroups} を通した**後**の値である**(同 限定3)
+    // —— **消えたグループを指す付与は group 列が `null` に潰れてから、ここへ届く。**
+    // **付与**行どうし**の合成は今日どおり `OR` のままである**(同 §Decision の 7)。
     const holder = memberField === undefined ? undefined : nonEmptyString(grant?.[memberField]);
     const viaMember = holder !== undefined && memberIds.has(holder);
     const held = groupField === undefined ? undefined : nonEmptyString(grant?.[groupField]);
     const viaGroup = held !== undefined && groupIds.has(held);
-    if (!viaMember && !viaGroup) {
+    // **両欄がともに埋まっているか** —— **グループ側は、そもそもグループを辿れる宣言
+    // (`members.group` が在る)でなければ「埋まっている」と数えない。**
+    //
+    // **【2026-09-07 訂正(`V17-M1` / `ADR-0410` の `AC-G26`・限定22)。直前の注釈も
+    // 下の判定の綴りも1バイトも消していません】** —— **`V17-M1` が入れた版は、ここを
+    // 逐語で `if (holder !== undefined && held !== undefined) {` と書いていた**
+    // (**`memberGroupField` を1度も見ていなかった**)。 **その版は、次の宣言で
+    // 両欄の付与を**永久に殺していた**:
+    // **`grant.member` と `grant.group` と `groups` を宣言し、`members.group` を
+    // 宣言していない表。** **適用時検査(`src/kernel/referential-integrity.ts`)は
+    // `grant.group` に対して `groups` しか要求せず、`members.group` を1度も要求しない
+    // ので、この宣言は今日も適用できる。** **そういう表では上の `groupIds` が
+    // **構造的に空**であり(`memberGroupField` が無いとき1件も足さない)、
+    // グループ側は誰1人届かない。** **そこへ AND を課すと、相手の列で届くはずの人まで
+    // 巻き添えで落ち、その付与行は**誰にも一生効かなくなる**。**
+    // **同じ数え方を {@link judgeGrantParentAccess} は初めから持っており
+    // (`bothHeld`)、生成器側の述語の組み立て(`grantExistsSql`)も持っている**
+    // (**この単位は隣の単位の綴りを1文字も書かない** —— `tools/standalone-scope.test.ts`
+    // の `(standalone4)` が禁じている。場所は `ADR-0410` §Decision の 2 が名指ししている)
+    // **(`plan.memberGroup` が無ければグループの枝を
+    // 1本も出さないので、束ねの第2項も第3項も作らず、文は相手の列だけになる)。
+    // **3箇所のうちここだけが数え方を欠いており、本体と生成物の答えが割れていた**
+    // —— **`ADR-0410` 限定22(「本体と生成物の答えを割らない」)と `AC-G26` が
+    // まさにこれを禁じている。**
+    // **`members.group` が在る宣言でのふるまいは1ミリも動かない**(そのとき
+    // `memberGroupField` は常に真であり、条件は旧の綴りと同値である)。
+    // **片欄だけの行の意味も今日どおりである**(`ADR-0410` 限定2)。
+    const bothHeld = holder !== undefined && held !== undefined && memberGroupField !== undefined;
+    if (bothHeld) {
+      // **両欄がともに埋まっている行だけが AND である。**
+      if (!viaMember || !viaGroup) {
+        continue;
+      }
+    } else if (!viaMember && !viaGroup) {
       continue;
     }
     const name = nonEmptyString(grant?.[permissionField]);
@@ -1230,27 +1289,146 @@ function resolveGrantedPermissionNames(params: {
  * **呼び出し側が全経路で無条件に重ねても、宣言していない表のふるまいが1ミリも動かない
  * ようにするためである**(オプトイン)。
  */
-export function judgeRecordAccess(params: {
+// --- 上限(`permissions[].restrictive`)——「和集合 → 上限との交わり」の2段 ----------------
+//
+// **`V17-M10B-T06`。条文は `ADR-0429` §Decision 2 の (2)(3) と `ADR-0430` §Decision の
+// 2 / 4 / 5 である。** **今日の式を逐語で書く**:
+//
+// > **点の答え = ( ∪ **すべての**付与 ) ∩ ( ∩ 符号を持つ付与 )**
+//
+// **1段目に符号つきの付与も入る**(ユーザ決定 `D-V17-L`。`ADR-0430` (γ))——
+// **`ADR-0429` §Decision 2 の (2) が書いた「∪ 符号を**持たない**付与」から動いた。**
+// **`ADR-0429` の本文は1バイトも書き換えていない**(`ADR-0007:478` の作法)。
+//
+// **【符号を1つも書かないアプリの答えは今日と1ビットも変わらない】** —— **2段目に入る付与が
+// 1件も無ければ、2段目は交わりの単位元(3つとも真)であり、答えは1段目そのものだからである。**
+// **【禁止】これを「符号を書いたアプリでも今日と変わらない」と読まない。**
+//
+// **【引き算(拒否の付与)を1つも作っていない】** —— **上限は「その動詞を奪う」のではなく
+// 「そこまでしか渡さない」である。** **上限だけを持つ人は、その上限が許す動詞をそのまま
+// 受け取る**(`D-V17-L`)。
+
+/**
+ * **点の答えを、混ぜる前の2段のまま持つ束**(`V17-M10B-T06`)。
+ *
+ * **外へ出さない** —— **判定の戻り値は今日も3キーちょうどである**(`ADR-0297` 限定6)。
+ * **この束が要るのは、引き継ぎの段をまたいで重ねるときに、1段目(和集合)と2段目(交わり)を
+ * **別々に**重ねなければならないからである**(`ADR-0430` (δ))。
+ */
+type RecordAccessStages = {
+  /** **1段目**: **∪ すべての付与**(符号を持つ付与も入る)。 */
+  readonly granted: RecordAccessVerdict;
+  /** **2段目**: **∩ 符号を持つ付与**。**1件も無ければ3つとも真**(交わりの単位元)。 */
+  readonly upperBound: RecordAccessVerdict;
+};
+
+/** **符号を持つ付与が1件も無いときの2段目**(交わりの単位元。**恒真**)。 */
+const UNBOUNDED_RECORD_ACCESS: RecordAccessVerdict = { read: true, write: true, delete: true };
+
+/** 宣言していない表の2段(**この判定は何も絞らない**)。 */
+const UNGOVERNED_RECORD_ACCESS_STAGES: RecordAccessStages = {
+  granted: UNGOVERNED_RECORD_ACCESS,
+  upperBound: UNBOUNDED_RECORD_ACCESS,
+};
+
+/** 付与が1件も解けなかったときの2段(fail-closed)。**上限は1件も無い。** */
+const NO_RECORD_ACCESS_STAGES: RecordAccessStages = {
+  granted: NO_RECORD_ACCESS,
+  upperBound: UNBOUNDED_RECORD_ACCESS,
+};
+
+/**
+ * **前提の関門1本** —— **2段を重ねて、効く答えを1つ出す**(`ADR-0429` §Decision 2 の (3))。
+ *
+ * **置き場所は「前提の関門」であって、面と点の合成の**中**ではない**
+ * (`ADR-0412` 限定5 と同じ置き方の2例目)。 **合成の関数の本体は **896バイト** のまま
+ * 1バイトも変えていない**(`ADR-0404` 限定2 / `ADR-0408` 限定2 / `ADR-0412` 限定5 /
+ * `ADR-0422` 限定1 / `ADR-0429` 限定7 / `ADR-0430` 限定17)。
+ *
+ * **【面は1ミリも絞らない】** —— **本関数は点の側だけを絞る。** **面と点は今日どおり `OR`
+ * であり、面が許していれば同じ行に上限が在っても通る。** **`OR` を `AND` に戻していない。**
+ * **【禁止】「`OR` なので安全側に倒れる」と書かない**(`04` §7-2 の 7)。
+ *
+ * **止めた層の名前は今日どおり2値である**(`ADR-0308` 限定8 / `ADR-0429` 限定10)——
+ * **上限で止まったときも `"grant"` を名乗る。** **3値目を作っていない。**
+ */
+function applyRecordAccessUpperBound(stages: RecordAccessStages): RecordAccessVerdict {
+  return {
+    read: stages.granted.read && stages.upperBound.read,
+    write: stages.granted.write && stages.upperBound.write,
+    delete: stages.granted.delete && stages.upperBound.delete,
+  };
+}
+
+/**
+ * **段をまたいで2段を重ねる**(`ADR-0430` (δ))。
+ *
+ * **1段目は `OR`(今日の段どうしの合成と1バイトも同じ向き)、2段目は `AND` である。**
+ * **【「辿り終えてから掛ける」を採った】** —— **`ADR-0430` §誇張しない の 6 が
+ * `V17-M10B-T06` に委ねた選択である。** **段ごとに関門を掛けてから `OR` で重ねると、
+ * 上限を1件も持たない親の段が3つとも真を出し、**段0 に書いた上限が足し戻される**。**
+ * **それは `ADR-0430` (δ) の逐語「段0 に上限を書いた行が、親の段の強い付与で足し戻され
+ * ない」と正面から食い違う。**
+ *
+ * **段ごとに違う上限を書ける口を1本も作っていない**(`ADR-0298` 限定3)——
+ * **どの段でも同じ規則(`permissions[].restrictive`)を読む。**
+ * **段数5・件数1000 の上限を1つも動かしていない**(同 限定22)。
+ */
+function mergeRecordAccessStages(
+  left: RecordAccessStages,
+  right: RecordAccessStages,
+): RecordAccessStages {
+  return {
+    granted: {
+      read: left.granted.read || right.granted.read,
+      write: left.granted.write || right.granted.write,
+      delete: left.granted.delete || right.granted.delete,
+    },
+    upperBound: {
+      read: left.upperBound.read && right.upperBound.read,
+      write: left.upperBound.write && right.upperBound.write,
+      delete: left.upperBound.delete && right.upperBound.delete,
+    },
+  };
+}
+
+/**
+ * **行1件について、点の答えを2段のまま解く**(`V17-M10B-T06`)。
+ *
+ * **本関数は {@link judgeRecordAccess} の本体そのものである** —— **`V17-M10B-T06` が
+ * 「2段のまま返す」ためだけに切り出した。** **相手の解決も、名前の解決も、宣言の引き方も
+ * 1バイトも変えていない。** **足したのは2段目(`∩ 符号を持つ付与`)だけである。**
+ * **2本目の判定を作っていない** —— **{@link judgeRecordAccess} も
+ * {@link resolveRecordAccess} も、今日この1本を通る。**
+ *
+ * **【上限が効く経路は2本ちょうどである】**(`ADR-0430` (α))—— **`grant.member` 経由の
+ * 直接の付与と、`grant.group` 経由で解けた付与の**両方**に効く。**
+ * **経路で分けていない** —— **{@link resolveGrantedPermissionNames} が返す名前の集合には
+ * どちらの経路で解けたかが1ビットも残っておらず、本関数はその集合だけを見る。**
+ * **`ADR-0429` 限定9(逐語「上限が効くのは `grant.member` 経由の直接の付与だけ」)は
+ * `ADR-0430` (α) が**撤回**した。** **相手解決の固定3段は1段も動かしていない。**
+ */
+function recordAccessStages(params: {
   manifest: Manifest;
   tableId: string;
   row: Record<string, unknown>;
   actorId: string | null;
   grantRows: readonly Record<string, unknown>[];
   memberRows: readonly Record<string, unknown>[];
-}): RecordAccessVerdict {
+}): RecordAccessStages {
   const { manifest, tableId, row, actorId, grantRows, memberRows } = params;
   const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
   const declared = table === undefined ? undefined : accessControlOf(table);
   if (declared === undefined) {
-    return UNGOVERNED_RECORD_ACCESS;
+    return UNGOVERNED_RECORD_ACCESS_STAGES;
   }
   const actor = nonEmptyString(actorId);
   if (actor === undefined) {
-    return NO_RECORD_ACCESS;
+    return NO_RECORD_ACCESS_STAGES;
   }
   const recordId = nonEmptyString(row?._id);
   if (recordId === undefined) {
-    return NO_RECORD_ACCESS;
+    return NO_RECORD_ACCESS_STAGES;
   }
 
   // **(1) 相手の解決**: `members.account` が actor と一致するメンバー行から、
@@ -1280,15 +1458,24 @@ export function judgeRecordAccess(params: {
     memberRows,
   });
   if (names === undefined || names.size === 0) {
-    return NO_RECORD_ACCESS;
+    return NO_RECORD_ACCESS_STAGES;
   }
 
   // **(3) 権限名を宣言で解く。** **宣言に無い名前は1ミリも効かない**(付与**行**の値のずれを
   // 適用時に止めていないことの帰結。`ADR-0292` §9 の5 / §限界3)。**複数の付与は or で重なる。**
+  //
+  // **【`V17-M10B-T06` が足したのは下の2段目だけである。上の1文は1バイトも消していない】**
+  // **1段目(`read` / `write` / `remove`)は今日までと1バイトも同じ `or` である** ——
+  // **符号を持つ付与も、今日からこの `or` に入る**(`D-V17-L` / `ADR-0430` (γ))。
+  // **2段目(`boundRead` / `boundWrite` / `boundDelete`)は、符号を持つ付与だけの `and` で
+  // ある。** **符号を持つ付与が1件も無ければ3つとも真のまま残り、答えは1段目そのものになる。**
   const permissions = Array.isArray(declared.permissions) ? declared.permissions : [];
   let read = false;
   let write = false;
   let remove = false;
+  let boundRead = true;
+  let boundWrite = true;
+  let boundDelete = true;
   for (const permission of permissions) {
     const id = nonEmptyString(permission?.id);
     if (id === undefined || !names.has(id)) {
@@ -1297,8 +1484,51 @@ export function judgeRecordAccess(params: {
     read = read || permission?.read === true;
     write = write || permission?.write === true;
     remove = remove || permission?.delete === true;
+    // **「この権限名は上限である」の符号**(`ADR-0429` §Decision 2 の (1)。値域は `boolean`
+    // ちょうどで、`required` に入っていない)。 **書いていない権限名は2段目に1件も入らない。**
+    if (permission?.restrictive === true) {
+      boundRead = boundRead && permission?.read === true;
+      boundWrite = boundWrite && permission?.write === true;
+      boundDelete = boundDelete && permission?.delete === true;
+    }
   }
-  return { read, write, delete: remove };
+  return {
+    granted: { read, write, delete: remove },
+    upperBound: { read: boundRead, write: boundWrite, delete: boundDelete },
+  };
+}
+
+/**
+ * **行1件について、この actor が「読める / 書ける / 消せる」かを判定する**(`Z-G11`)。
+ *
+ * **判定の家は今日もこの1本である**(`ADR-0308` 限定3)。 **引数キーは6本ちょうどで、
+ * 戻り値は3キーちょうどである**(`ADR-0294` 限定5 / `ADR-0297` 限定5 / 同 限定6)——
+ * **`V17-M10B-T06` はどちらも1つも動かしていない。**
+ *
+ * **中身は2段である**(`ADR-0429` §Decision 2 の (2) / `ADR-0430` (γ)):
+ * **{@link recordAccessStages} が「∪ すべての付与」と「∩ 符号を持つ付与」を別々に出し、
+ * {@link applyRecordAccessUpperBound} が重ねる。**
+ * **符号を1つも書かないアプリでは、2段目が恒真であり答えは今日と1ビットも変わらない。**
+ *
+ * **本関数の doc の残り(相手の解決の2本・`OR` の裁定・オプトイン)は
+ * {@link recordAccessStages} の手前に在る旧の doc をそのまま引き継いでいる** ——
+ * **1バイトも消していない。**
+ *
+ * **【`ADR-0297:135` の裁定理由は、今日の正ではない】** —— **`ADR-0430` §Decision の 3 が
+ * それを**捨てた**。** **同じ行に上限が在れば、グループに入ることで書けなくなる場面が
+ * 実際に起きる**(「チームに入れたら権限が減る」)。 **黙っては起きない** —— **その行に
+ * 効く権限名の定義を読めば、それが上限であることは読める。** **【禁止】これを
+ * 「気づける」と読まない** —— **読めることと、その人が読むことは別である。**
+ */
+export function judgeRecordAccess(params: {
+  manifest: Manifest;
+  tableId: string;
+  row: Record<string, unknown>;
+  actorId: string | null;
+  grantRows: readonly Record<string, unknown>[];
+  memberRows: readonly Record<string, unknown>[];
+}): RecordAccessVerdict {
+  return applyRecordAccessUpperBound(recordAccessStages(params));
 }
 
 // --- 付与の引き継ぎ(多段。`Z-G14` / `Z-G15` / `Z-G16`。V7-M4-T02)-------------------------
@@ -1654,9 +1884,22 @@ export function resolveRecordAccess(params: {
     return { kind: "verdict", verdict: UNGOVERNED_RECORD_ACCESS };
   }
 
-  let read = false;
-  let write = false;
-  let remove = false;
+  // **【`V17-M10B-T06`(`ADR-0430` (δ))。旧の3本の局所変数を1バイトも消していない】**
+  // **旧(逐語)**:
+  //
+  //     let read = false;
+  //     let write = false;
+  //     let remove = false;
+  //
+  // **旧は段ごとの答えを3本の `OR` で重ねていた。** **今日は2段(1段目 = ∪ すべての付与 /
+  // 2段目 = ∩ 符号を持つ付与)を**別々に**重ね、辿り終えてから関門を1度だけ掛ける** ——
+  // **段0 に書いた上限が、親の段の強い付与で足し戻されないようにするためである。**
+  // **符号を1つも書かないアプリでは、2段目が全段で恒真であり、答えは旧の3本の `OR` と
+  // 1ビットも変わらない。**
+  let stages: RecordAccessStages = {
+    granted: NO_RECORD_ACCESS,
+    upperBound: UNBOUNDED_RECORD_ACCESS,
+  };
   // **辿り(訪問済み集合・段数・件数の上限)は {@link walkAccessInheritance} が持つ** ——
   // **`V7-M5-T02` が切り出しただけで、辿り方も止まり方も数え方も1バイトも変えていない。**
   // **各段でやることは今日もここに在る**(**判定を呼んで OR で重ねる**)。
@@ -1670,29 +1913,306 @@ export function resolveRecordAccess(params: {
       // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32` / `V7-M3-T05`)
       // —— **段0 と親で違う整え方をしない**(限定3: 各段で適用する規則は同一)。
       const grantRows = step.grantRows;
-      const verdict = judgeRecordAccess({
-        manifest,
-        tableId: step.tableId,
-        row: step.row,
-        actorId,
-        grantRows: grantsWithExistingGroups({
+      // **【`V17-M10B-T06`】各段で呼ぶのは今日も同じ1本である** ——
+      // **{@link judgeRecordAccess} が内側で通るのと**まったく同じ**
+      // {@link recordAccessStages} を呼び、混ぜる前の2段のまま受け取る。**
+      // **第2の判定を書いていない**(`ADR-0308` 限定3)。
+      stages = mergeRecordAccessStages(
+        stages,
+        recordAccessStages({
           manifest,
           tableId: step.tableId,
-          grantRows,
-          groupRows: step.groupRows,
+          row: step.row,
+          actorId,
+          grantRows: grantsWithExistingGroups({
+            manifest,
+            tableId: step.tableId,
+            grantRows,
+            groupRows: step.groupRows,
+          }),
+          memberRows: step.memberRows,
         }),
-        memberRows: step.memberRows,
-      });
-      read = read || verdict.read;
-      write = write || verdict.write;
-      remove = remove || verdict.delete;
+      );
     },
   });
   if (walked.kind === "limit_exceeded") {
     return walked;
   }
 
-  return { kind: "verdict", verdict: { read, write, delete: remove } };
+  // **辿り終えてから、関門を1度だけ掛ける**(`ADR-0430` (δ))。
+  return { kind: "verdict", verdict: applyRecordAccessUpperBound(stages) };
+}
+
+/**
+ * **{@link resolveRecordDeleteCascade} が辿る「親 → 子」の1本**(`V18-M7-T01` / `PM-G5`)。
+ *
+ * **`childTableId` の `fieldId`(`reference` 項目)が親の表を指しており、かつ その表の
+ * `access_control.inherit_from` がその項目を名指ししている、という関係である。**
+ *
+ * **【型を `export` していない】** —— **`ADR-0444` 授権の表 行12 が許したのは `export` を
+ * **1名だけ**(95 → 96)であり、それは述語1本に使う**(`ADR-0437:118` の逃げ道)。
+ */
+type RecordDeleteCascadeEdge = {
+  readonly childTableId: string;
+  readonly fieldId: string;
+};
+
+/**
+ * **「ある親の子はどの表か」を引く逆引きを、マニフェストから1度だけ作る**
+ * (`V18-M7-T01` / `PM-G5` / `ADR-0444` 授権の表 行1)。
+ *
+ * ## **【なぜ自分で作るのか。今日そういう索引が1本も無いからである】**
+ *
+ * **今日のマニフェストが持っている向きは「子 → 親」だけである** ——
+ * **`access_control.inherit_from` は**自分の表**の `reference` 項目を名指しし、その項目が
+ * 親の表を指す。** **「ある親にぶら下がる子はどれか」を引く宣言も索引も1本も無く、
+ * {@link walkAccessInheritance} が辿るのも**登る**向きだけである。**
+ * **したがって本関数が全表を1度走って、向きを逆にした対応を組み立てる。**
+ *
+ * ## **黙って飛ばす枝({@link walkAccessInheritance} と同じ4つの形に揃えてある)**
+ *
+ *  1. **`inherit_from` が空 / 未宣言** —— **その表は誰の子でもない。**
+ *  2. **`inherit_from` が指す項目が実在しない / `reference` でない。**
+ *  3. **`reference_table` が空。**
+ *  4. **`access_control` が無いか `enabled: false`**({@link accessControlOf} が
+ *     `undefined` を返す)。 **【代償】** **`enabled: false` の表にぶら下がる行は1件も
+ *     数えない。** **{@link walkAccessInheritance} の判断に揃えただけであり、
+ *     「数えなくてよい」と決めた根拠は条文にもユーザ決定にも1行も無い。**
+ *
+ * **【逆引きはこのファイルの中で閉じている】** —— **`access_control` の綴りを `src/server/`
+ * で持ってよいのは本ファイルだけである**(`access-control-localization.test.ts:149`)。
+ */
+function recordDeleteCascadeEdges(
+  manifest: Manifest,
+): ReadonlyMap<string, readonly RecordDeleteCascadeEdge[]> {
+  const edges = new Map<string, RecordDeleteCascadeEdge[]>();
+  for (const table of tablesOf(manifest)) {
+    const childTableId = nonEmptyString(table?.id);
+    if (childTableId === undefined) {
+      continue;
+    }
+    const declared = accessControlOf(table);
+    const inheritFrom = Array.isArray(declared?.inherit_from) ? declared.inherit_from : [];
+    for (const fieldId of inheritFrom) {
+      const field = table?.fields?.find((candidate) => candidate?.id === fieldId);
+      if (field === undefined || field.type !== "reference") {
+        continue;
+      }
+      const parentTableId = nonEmptyString(field.reference_table);
+      if (parentTableId === undefined) {
+        continue;
+      }
+      const bucket = edges.get(parentTableId);
+      if (bucket === undefined) {
+        edges.set(parentTableId, [{ childTableId, fieldId }]);
+      } else {
+        bucket.push({ childTableId, fieldId });
+      }
+    }
+  }
+  return edges;
+}
+
+/**
+ * **その行にぶら下がる子を、いちばん下の段まで集め、「この人に消せるか」を子1件ずつ問う**
+ * (`V18-M7-T01` / `PM-G5`。`ADR-0444` 授権の表 行1 / §Decision 3 の ①)。
+ *
+ * **【最重。この述語は何も消さないし、何も塞がない】** —— **返すのは数と並びと真偽だけ
+ * である。** **行を1件も消さず、判定を1つも新しく作らず、誰の権限も1ミリも増やさない。**
+ * **本述語が緑でも、削除の経路(HTTP / AI の口)はこれを1度も呼んでいない。**
+ *
+ * ## **辿る向きが {@link walkAccessInheritance} と逆である**
+ *
+ * **{@link walkAccessInheritance} は**登る**(子の行から親を読む)。** **本述語は**降りる**
+ * (親の行から子を探す)。** **降りる向きの索引は今日1本も無いので、
+ * {@link recordDeleteCascadeEdges} が毎回マニフェストから組み立てる。**
+ * **【走査を共有していないことを隠さない】** —— **`ADR-0411` 限定2(判定の家を2本目に
+ * しない)に触れないのは、本述語が `read` / `write` / `delete` を**1つも計算しない**から
+ * である**(計算は今日も {@link judgeRecordAccess} 1本であり、「消せるか」は
+ * {@link params.judgeChildDelete} に丸ごと預けている)。
+ *
+ * ## **可視性を1ビットも効かせない**(計画 §10-1 の ①)
+ *
+ * **子を集めるときに「この人に見えるか」を1度も見ない。** **見てしまうと、見えない子が
+ * 数から落ち、印を合わせた2回目で**親だけ消えて見えない子が残る** ——
+ * **それは直そうとしている形そのものである。**
+ * **【その代償】** **この返り値をそのまま見せると、**その人に見えない行の件数**を渡す
+ * ことになる。** **渡してよいのは「全部の子を消せる人」だけであり、その順序(③ が ④ より
+ * 先)は呼び出し側が守る** —— **本述語はその順序を1バイトも強制しない。**
+ *
+ * ## **いちばん下の段まで辿る**(`D-V18-32`)
+ *
+ * **子の表がさらに別の表の親であれば、その孫も集める。** **段0 は親の行そのものであり、
+ * 子が段1、孫が段2 …と数える**({@link walkAccessInheritance} の数え方と同じ向きである)。
+ * **親の行そのものは {@link deleteOrder} にも件数にも入らない** ——
+ * **親を消すのは呼び出し側であり、いちばん最後である。**
+ *
+ * ## **止まり方(環)**
+ *
+ * **訪問済み集合(`表ID + 行ID` の対)を持ち、1回の判定の中で同じ (表, 行) を2度訪れない**
+ * (`Z-G16` と同じ最低限)。 **親の行そのものを最初から訪問済みに入れてあるので、
+ * **自分が自分の親**である行は自分の子に入らない。**
+ *
+ * ## **上限(既存の2本に寄せた。新しい断り方を1つも作っていない)**
+ *
+ * **{@link MAX_RECORD_ACCESS_INHERIT_DEPTH}(段数5)と
+ * {@link MAX_RECORD_ACCESS_INHERIT_ROWS}(行1000)を**1も動かしていない**
+ * (`ADR-0444` 授権の表 行1)。 **当たったときは `{ kind: "limit_exceeded", limit }` を返す。**
+ *
+ * **【なぜ既存の形に寄せたか。理由を3つ書く】**
+ *  1. **呼び出し側が新しい分岐を1本も作らずに済む** —— **既存の `recordAccessLimitError`
+ *     (`src/server/errors.ts:60`)がそのまま使え、文面が経路ごとに割れない。**
+ *  2. **置く理由が同じである** —— **黙って打ち切ると「子が0件」と区別できない。**
+ *     **【禁止】これを「性能上の都合」と書かない**(`v7-m0.md` §6-4b の3)。
+ *  3. **断り方を2本目にすると `ADR-0444` 限定13(応答の鍵を増やさない)に触れる。**
+ *
+ * ### **段数の数え方**
+ *
+ * **段5 の行から段6 へ降りようとした時点で `limit: "depth"` を返す。**
+ * **【{@link walkAccessInheritance} と1点だけ違う。隠さない】** —— **あちらは「親を指す値が
+ * 実在する」ことまで見てから止まる。** **こちらは**子の表が在る**時点で止める** ——
+ * **子の行が在るかを知るにはその表を走査する必要があり、それが「段6 へ降りる」ことその
+ * ものだからである。** **段5 の行の下に子の表が宣言されていれば、行が1件も無くても止まる。**
+ *
+ * ### **行数の数え方**
+ *
+ * **数えるのは**子として数に入れた行**である。** **合計が 1000 を超えたら(= 1001 行目で)
+ * `limit: "rows"` を返す。**
+ * **【{@link walkAccessInheritance} と数え方が違う。同じだとは書かない】** —— **あちらは
+ * `readRows` が返した件数をそのまま足す。** **こちらが同じ数え方を採ると、子の表に 1000 行
+ * あるだけで、子が1件もぶら下がっていない親まで消せなくなる**(走査は全件を読む)。
+ * **本述語は「この削除で連鎖する行数」を上限にした。** **【その代償】** **実際に読んだ
+ * 行数(= 走査した表の全件)は、この上限で1件も縛られていない。**
+ *
+ * ## **【誇張しない。本述語が答えないもの】**
+ *
+ *  1. **「消せるか」を1つも計算しない** —— **{@link params.judgeChildDelete} を
+ *     子1件につき1度ずつ呼ぶだけである。** **削除保護も付与表の絞りも権限も、そこに
+ *     何を入れるかは呼び出し側が決める**(`ADR-0444` §Decision 3 の ③ が中身を定めている)。
+ *  2. **判定が偽になっても打ち切らない** —— **件数が欠けると ④ / ⑤ が出す数が変わるので、
+ *     最後まで数える。** **したがって呼び出し回数は常に {@link total} と同じである。**
+ *  3. **行を1件も消さない。** **その並びで実際に消えるかは `V18-M7-T02` が測る。**
+ *  4. **原子性を1ミリも持たない**(`D-V18-14`)。 **途中で落ちれば消えた分は消えたまま。**
+ *  5. **数え終えてから消すまでに行が増減する窓(TOCTOU)を1バイトも塞いでいない。**
+ */
+export function resolveRecordDeleteCascade(params: {
+  manifest: Manifest;
+  /** **親の表ID**(段0)。 */
+  tableId: string;
+  /** **親の行ID**(段0)。 */
+  recordId: string;
+  /**
+   * **表1本ぶんの行をまとめて返す**(**本述語は DB を1バイトも触らない**)。
+   * **同じ表を2度以上走査しないよう、本述語の中で1回の呼び出しごとに畳んである。**
+   */
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  /**
+   * **子1件について「この人がその行を消せるか」を返す**(`D-V18-31`)。
+   * **中身は呼び出し側が決める** —— **本述語は真偽を受け取るだけで、判定を1つも持たない。**
+   */
+  judgeChildDelete: (child: {
+    readonly tableId: string;
+    readonly row: Record<string, unknown>;
+    readonly depth: number;
+  }) => boolean;
+}):
+  | {
+      /** **数え終えた**(上限にも当たっていない)。 */
+      readonly kind: "cascade";
+      /** **子の合計**(**親そのものを含まない**)。 */
+      readonly total: number;
+      /** **表ごとの件数**(**子が1件も居ない表は現れない**。並びは見つけた順)。 */
+      readonly perTable: readonly { readonly tableId: string; readonly count: number }[];
+      /** **子のうち1件でもこの人に消せないものが在るか**(`D-V18-31`)。 */
+      readonly hasUndeletableChild: boolean;
+      /** **消す順序**(**深い段から浅い段へ**。同じ段の中では見つけた順)。 */
+      readonly deleteOrder: readonly {
+        readonly tableId: string;
+        readonly recordId: string;
+        readonly depth: number;
+      }[];
+    }
+  | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" } {
+  const { manifest, tableId, recordId, readRows, judgeChildDelete } = params;
+  const edges = recordDeleteCascadeEdges(manifest);
+
+  // **同じ表を2度走査しない** —— **段が増えるほど同じ子の表を何度も読むことになるため。**
+  // **数え方は1ビットも変わらない**(下で数えるのは走査した件数ではなく、子として数に
+  // 入れた行だけである)。
+  const scanned = new Map<string, readonly Record<string, unknown>[]>();
+  const rowsOf = (id: string): readonly Record<string, unknown>[] => {
+    const cached = scanned.get(id);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const fresh = readRows(id);
+    scanned.set(id, fresh);
+    return fresh;
+  };
+
+  // **鍵は (表ID, 行ID) の対を JSON 1個にしたものである**({@link walkAccessInheritance}
+  // と同じ作法。区切り文字を自分で選ぶと、その文字が値に現れたときに衝突する)。
+  // **親の行そのものを最初から訪問済みに入れる** —— **自分が自分の親である行を、
+  // 自分の子に数えないためである。**
+  const visited = new Set<string>([JSON.stringify([tableId, recordId])]);
+  const pending: { tableId: string; recordId: string; depth: number }[] = [
+    { tableId, recordId, depth: 0 },
+  ];
+  const found: { tableId: string; recordId: string; depth: number }[] = [];
+  const perTableCount = new Map<string, number>();
+  let hasUndeletableChild = false;
+  /** **子として数に入れた行の合計**(上の「行数の数え方」の逐語)。 */
+  let traversedRows = 0;
+
+  while (pending.length > 0) {
+    const current = pending.shift() as { tableId: string; recordId: string; depth: number };
+    const outgoing = edges.get(current.tableId) ?? [];
+    if (outgoing.length === 0) {
+      continue; // **その表を親にしている表が1本も無い** —— **ここで枝が終わる。**
+    }
+    // **段6 へ降りようとした** —— **走査する前に止める。** **黙って打ち切らない。**
+    if (current.depth + 1 > MAX_RECORD_ACCESS_INHERIT_DEPTH) {
+      return { kind: "limit_exceeded", limit: "depth" };
+    }
+    for (const edge of outgoing) {
+      for (const row of rowsOf(edge.childTableId)) {
+        if (nonEmptyString(row?.[edge.fieldId]) !== current.recordId) {
+          continue; // **この親を指していない行は子ではない。**
+        }
+        const childRecordId = nonEmptyString(row?._id);
+        if (childRecordId === undefined) {
+          continue;
+        }
+        const key = JSON.stringify([edge.childTableId, childRecordId]);
+        if (visited.has(key)) {
+          continue; // **環。** **同じ (表, 行) を2度数えない。**
+        }
+        visited.add(key);
+        traversedRows += 1;
+        if (traversedRows > MAX_RECORD_ACCESS_INHERIT_ROWS) {
+          return { kind: "limit_exceeded", limit: "rows" };
+        }
+        const depth = current.depth + 1;
+        found.push({ tableId: edge.childTableId, recordId: childRecordId, depth });
+        perTableCount.set(edge.childTableId, (perTableCount.get(edge.childTableId) ?? 0) + 1);
+        // **判定は呼び出し側のものである。** **偽でも打ち切らない**(件数が欠けないため)。
+        if (!judgeChildDelete({ tableId: edge.childTableId, row, depth })) {
+          hasUndeletableChild = true;
+        }
+        pending.push({ tableId: edge.childTableId, recordId: childRecordId, depth });
+      }
+    }
+  }
+
+  return {
+    kind: "cascade",
+    total: found.length,
+    perTable: [...perTableCount].map(([id, count]) => ({ tableId: id, count })),
+    hasUndeletableChild,
+    // **深い段から浅い段へ。** **`sort` は安定なので、同じ段の中の並びは見つけた順のまま
+    // である**(呼び出し側が同じ入力で同じ順序を得られるようにするため)。
+    deleteOrder: [...found].sort((left, right) => right.depth - left.depth),
+  };
 }
 
 /**
@@ -1779,6 +2299,267 @@ export function resolveRecordWithoutGrants(params: {
     return walked;
   }
   return { kind: "orphan", orphan };
+}
+
+// --- 「どの付与行が効いて読み書きができるのか」を返す1本(`AC-G24`。V17-M6-T04)---------
+//
+// **【何を返し、何を返さないか。先に書く】** —— **返すのは「**通した付与行**」だけである。**
+// **止めた層の名前(`blockedBy`)を1つも返さない**(`ADR-0402` 限定2)。
+// **効かなかった付与行を1件も返さない。** **役割の規則を1本も返さない。**
+// **付与行の中身(相手を指す欄・その表の他の項目)を1つも返さない** ——
+// **返すのは行の `_id` と、その行が在る表のID と、その付与が持つ権限の名前だけである。**
+//
+// **【判定の家を2本にしていない】** —— **本節は新しい判定式を1行も持たない。**
+// **{@link judgeRecordAccess} を**付与行1本ずつに絞って呼び直す**だけであり、
+// **辿りも {@link walkAccessInheritance} 1本を {@link resolveRecordAccess} と共有する**
+// (第2の辿りも、新しい上限も、1つも作っていない)。
+//
+// **【代金を隠さない】** —— **この形は、行1件について「各段の付与行の本数」ぶん
+// {@link judgeRecordAccess} を呼ぶ。** **一覧の口は段ごとに1回しか呼ばない。**
+// **【禁止】これを「無料である」と書かない。** **実測は `docs/plan/v17/records/v17-m6.md` §4。**
+
+/**
+ * **`sources` の1件**(`AC-G24` / `V17-M6-T04`)。**キーは7つちょうどである。**
+ *
+ * **【7つに固定する理由】** —— **`via` が `"self"` の件でだけキーを落とすと、
+ * 「キーが7つちょうど」を機械で守れなくなる**(門外の限定6 の第3列)。
+ * **段0 の件は `depth: 0` / `through: null` を明示して返す。**
+ */
+export type RecordAccessSourceEntry = {
+  /** **付与行が在る表のID**(保護対象の表のIDではない)。 */
+  readonly table: string;
+  /** **付与行の `_id`**。 */
+  readonly record_id: string;
+  /** **その付与が持つ権限の名前**(`permissions[].id`)。 */
+  readonly permission: string;
+  /** **その権限が真にする動詞**(`read` / `write` / `delete` の部分集合)。 */
+  readonly grants: readonly ("read" | "write" | "delete")[];
+  /** **対象の行そのものに付いた付与か、引き継ぎで届いた付与か。** */
+  readonly via: "self" | "inherited";
+  /** **段数**(対象の行が段0)。 */
+  readonly depth: number;
+  /** **引き継ぎで通った親の行**(段0 では `null`)。 */
+  readonly through: { readonly table: string; readonly record_id: string } | null;
+};
+
+/**
+ * **{@link resolveRecordAccessSources} の答え。**
+ *
+ * **上限に当たったことを「見えない」に丸めない**({@link RecordAccessResolution} と同じ作法)。
+ * **`unknown_member` は「`?member=` が名簿に実在しない行を指した」である** ——
+ * **その id が他の表に在るかどうかを、この型は1ビットも持たない。**
+ */
+export type RecordAccessSourcesResolution =
+  | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" }
+  | { readonly kind: "unknown_member" }
+  | {
+      readonly kind: "verdict";
+      /** **要求している人自身の合成判定**(呼び出し側はこれで 404 を決める)。 */
+      readonly requester: RecordAccessVerdict;
+      /** **問われた相手の合成判定**(応答の `access` に載る側)。 */
+      readonly subject: RecordAccessVerdict;
+      /** **問われた相手が、その行に付与を配れるか**(`access.grant_write`)。 */
+      /**
+       * **【2026-09-17 追記(`V18-M9-T10` / `D-V18-37` / `ADR-0446` 授権の表 行3)。
+       *   直前の1行を1バイトも消していない。足しただけである】**
+       *
+       * **直前の1行は、この鍵が**どちらの判定から来たか**を1文字も書いていない。**
+       * **同じ `grant_write` という名前でも、一覧・単票が返す値と、この鍵の値とでは、
+       * **見ている断りの数が違う**。**
+       *
+       *  - **自分について問うたとき(`self`。`?member=` を書かない)** … **一覧・単票と同じ
+       *    {@link rowGrantWriteJudge} が答える** —— **関門 (1)(2) と所属の穴に加えて、
+       *    表示の時点で決まる断り(面)も写す。**
+       *  - **`?member=` で**他人**について問うたとき** … **{@link grantWriteWallJudge} が答える**
+       *    —— **面を1つも掛けない**(`ADR-0445` §Decision 6)。
+       *
+       * **したがって、他人について問うて返った真は、「その人が押しても断られない」ことを
+       * 1ビットも意味しない。**
+       * **画面側の写し(`web/src/api.ts` の `RowAccess`)には `V18-M8-T02b` がこの断りを
+       * 足していたのに、サーバ側のこの型には無かった**(`v18-m8.md` §6-8 の6)。
+       * **【禁止】これを「表示と実際が一致した」と読まない。**
+       */
+      readonly subjectGrantWrite: boolean;
+      /** **`?member=` を書かずに自分について問うたか。** */
+      readonly self: boolean;
+      /** **通した付与行**(1件も無ければ空配列)。 */
+      readonly sources: readonly RecordAccessSourceEntry[];
+    };
+
+/**
+ * **行1件について「どの付与行が効いて `read` / `write` / `delete` が真になったか」を返す**
+ * (`AC-G24` / `V17-M6-T04`。**読取専用の口の中身**)。
+ *
+ * @param params.actorId **要求している人**(`null` は匿名 = fail-closed)。
+ * @param params.roles **要求している人の実効ロール集合**(面の側の評価に要る)。
+ * @param params.member **`?member=` に書かれた名簿の行の `_id`。`null` なら自分について。**
+ *   **相手の解決(名簿の行 → `members.account` → 判定に渡す利用者ID)はこの中で行う** ——
+ *   **呼び出し側(`app.ts`)は受け取った文字列をそのまま渡すだけであり、宣言のキーの
+ *   綴りを1文字も知らない**(`ADR-0294` 限定12)。
+ * @param params.sources **点の「読むべき表」**({@link recordAccessSourceTables} が返すもの。
+ *   `undefined` は点が管轄外)。
+ *
+ * ## **【問われた相手の役割は分からない。隠さない】**
+ *
+ * **`?member=` で他人について問うたとき、その人の**役割**(面の側)は行の層からは引けない。**
+ * **本関数は相手の役割を空として面を評価する** —— **したがって返る `subject` は
+ * **点(行ごとの付与)だけで決まる**。** **相手が面の規則だけでその行を読めている場合、
+ * `subject.read` は偽になる。** **自分について問うたときは面も点も今日どおり重なる。**
+ *
+ * ## **【この関数が返さないもの】**
+ *
+ * **止めた層の名前 / 効かなかった付与行 / 役割の規則 / 相手の氏名やログイン名。**
+ */
+export function resolveRecordAccessSources(params: {
+  manifest: Manifest;
+  tableId: string;
+  row: Record<string, unknown>;
+  actorId: string | null;
+  roles: ActorRoles;
+  member: string | null;
+  sources: RecordAccessSourceTables | undefined;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+}): RecordAccessSourcesResolution {
+  const { manifest, tableId, row, actorId, roles, member, sources, readRows, readRow } = params;
+
+  // **(1) 問われた相手を決める。** **`?member=` を書かなければ自分である。**
+  const self = member === null;
+  let subjectActorId: string | null = actorId;
+  if (!self) {
+    const memberTableId = sources?.memberTable;
+    if (memberTableId === undefined) {
+      return { kind: "unknown_member" };
+    }
+    const memberRow = readRow(memberTableId, member as string);
+    if (memberRow === undefined) {
+      return { kind: "unknown_member" };
+    }
+    const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+    const declared = table === undefined ? undefined : accessControlOf(table);
+    const accountField = nonEmptyString(declared?.members?.account);
+    subjectActorId =
+      accountField === undefined ? null : (nonEmptyString(memberRow[accountField]) ?? null);
+  }
+
+  // **(2) 要求している人自身の答え**(呼び出し側が 404 を決める材料)。
+  // **単票 `GET` が通るのとまったく同じ1本を通す** —— **伏せ方をこの口で作り直さない。**
+  const requester = resolveCombinedRecordAccess({
+    manifest,
+    tableId,
+    row,
+    actorId,
+    roles,
+    sources,
+    readRows,
+    readRow,
+  });
+  if (requester.kind === "limit_exceeded") {
+    return requester;
+  }
+
+  // **(3) 問われた相手の答え。** **自分についてなら (2) をそのまま使う**(2度評価しない)。
+  // **他人についてなら、面は空として評価する**(上の doc の【隠さない】)。
+  const subject = self
+    ? requester
+    : resolveCombinedRecordAccess({
+        manifest,
+        tableId,
+        row,
+        actorId: subjectActorId,
+        roles: null,
+        sources,
+        readRows,
+        readRow,
+      });
+  if (subject.kind === "limit_exceeded") {
+    return subject;
+  }
+
+  // **(4) 通した付与行を集める。** **点が管轄外の表には付与行が1件も無い。**
+  const collected: RecordAccessSourceEntry[] = [];
+  if (sources !== undefined) {
+    const walked = walkAccessInheritance({
+      manifest,
+      tableId,
+      row,
+      readRows,
+      readRow,
+      visit: (step) => {
+        const stepTable = tablesOf(manifest).find((candidate) => candidate?.id === step.tableId);
+        const stepDeclared = stepTable === undefined ? undefined : accessControlOf(stepTable);
+        const grantTableId = nonEmptyString(stepDeclared?.grant?.table);
+        const permissionField = nonEmptyString(stepDeclared?.grant?.permission);
+        if (grantTableId === undefined || permissionField === undefined) {
+          return;
+        }
+        // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32`)——
+        // **{@link resolveRecordAccess} が各段で通すのとまったく同じ整え方である。**
+        const grantRows = grantsWithExistingGroups({
+          manifest,
+          tableId: step.tableId,
+          grantRows: step.grantRows,
+          groupRows: step.groupRows,
+        });
+        for (const grantRow of grantRows) {
+          // **【新しい判定式を1行も書かない】** —— **同じ {@link judgeRecordAccess} に、
+          // 付与行を**1本だけ**渡して呼び直す。** **返った動詞がそのまま `grants` になる。**
+          const verdict = judgeRecordAccess({
+            manifest,
+            tableId: step.tableId,
+            row: step.row,
+            actorId: subjectActorId,
+            grantRows: [grantRow],
+            memberRows: step.memberRows,
+          });
+          const grants = (["read", "write", "delete"] as const).filter((verb) => verdict[verb]);
+          if (grants.length === 0) {
+            continue;
+          }
+          const grantRecordId = nonEmptyString(grantRow?._id);
+          const permission = nonEmptyString(grantRow?.[permissionField]);
+          if (grantRecordId === undefined || permission === undefined) {
+            continue;
+          }
+          const stepRecordId = nonEmptyString(step.row?._id);
+          collected.push({
+            table: grantTableId,
+            record_id: grantRecordId,
+            permission,
+            grants,
+            via: step.depth === 0 ? "self" : "inherited",
+            depth: step.depth,
+            through:
+              step.depth === 0 || stepRecordId === undefined
+                ? null
+                : { table: step.tableId, record_id: stepRecordId },
+          });
+        }
+      },
+    });
+    if (walked.kind === "limit_exceeded") {
+      return walked;
+    }
+  }
+
+  return {
+    kind: "verdict",
+    requester: requester.verdict,
+    subject: subject.verdict,
+    // **【2026-09-14 `V18-M8-T02`(`ADR-0445` §Decision 6)】`?member=`(他人について問う)では、
+    // 面の断りを1つも掛けない** —— **壁の関門 (1)(2) だけで答える {@link grantWriteWallJudge} を呼ぶ。**
+    // **本人について問うとき(`self`)は、一覧・単票と同じ {@link rowGrantWriteJudge}(面を掛ける)を呼ぶ。**
+    // **【誇張しない】他人について問うた真は「その人が押しても断られない」ことを意味しない。**
+    subjectGrantWrite: (self ? rowGrantWriteJudge : grantWriteWallJudge)({
+      manifest,
+      tableId,
+      actorId: subjectActorId,
+      roles: self ? roles : null,
+      readRows,
+    })(row),
+    self,
+    sources: collected,
+  };
 }
 
 /**
@@ -2033,6 +2814,60 @@ export function creatorGrantPlan(params: {
 //     今日も通る**(`ADR-0408` §限界3)。
 //  c. **上の 2(MCP / 受信口 / ワークフロー / 島)は今日も真である**(`D-V15-3`)。
 //  d. **`DELETE` には1バイトも掛けていない**(`ADR-0408` §6 の 2)。
+//
+// **【`V17-M2-T06b` による訂正(2026-09-07)。上の a〜d も、`V15-M8` の訂正も1バイトも
+//    消していない】** —— **b の前半「**古い親の側を1度も見ない**」は今日は偽である。**
+// **`AC-G8`(`ADR-0411` §Decision の 3)が、参照を**別の親へ変える**更新でだけ、
+// 古い親の行にも {@link resolveRecordAccess} を当てて `write` を要求するようにした。**
+// **b の後半(参照を**空にする**更新は今日も通る)は今日も真である** ——
+// **`AC-G9` は `V16-M0` で**却下**であり、`ADR-0411` 限定10 / 越えてはならない線4 が
+// 「塞ぐな」と課している**(`create-parent-write.test.ts` の `(k-3)` が 200 を固定している)。
+// **a / c / d は今日も真である** —— **本段は `(b-3)` を1ミリも塞いでおらず、
+// 4本の入口の**更新**にも `DELETE` にも1バイトも掛けていない。**
+//
+// **【`V17-M2-T04c` による訂正(2026-09-07)。上の a〜d も、`V15-M8` / `V15-M3` /
+//    `V17-M2-T06b` の訂正も1バイトも消していない】** ——
+// **逐語「**a / c / d は今日も真である**」のうち **c** は今日は偽である**
+// (`a` = 参照が空の行 / `d` = `DELETE` は今日も真である)。
+// **同じ理由で、`c` が指している **この節の冒頭の 2**(逐語「**MCP / 受信口 /
+// ワークフロー / 島は素通りする**(`D-V15-3` が射程外にした)—— **壁のできた表でも、
+// 画面にボタンを1つ置けば作れる**」)も、行を**作る**側については今日は偽である。**
+// **`V17-M2`(台帳 `AC-G7a` / `ADR-0411` §Decision の 2)が、行を**作る**側の関門を
+// MCP・受信口・ワークフロー・島の4本の入口にも配線した** ——
+// **呼び出し元は `src/mcp/tools/write.ts` / `src/server/inbound-route.ts` /
+// `src/kernel/workflow-runner.ts` の各1箇所で、述語は今日も {@link judgeCreateParentAccess}
+// 1本のままである**(`ADR-0411` 限定2。判定の式を1行も写していない)。
+// **双方向に書く。片方だけ書くと逆向きの嘘になる** ——
+//  ・ **効くようになったのは「作る」だけである。** **この4本の入口の**更新**
+//    (親の付け替え)は今日も素通りする**(`ADR-0411` 限定4)——
+//    **親を指さずに作ってから、あとで親を書き入れる道は今日も開いている。**
+//  ・ **時刻起動(`schedule`)には1バイトも掛けていない**(同 限定1)。
+//  ・ **受信口には逃げ道が今日1つも無い** —— **書込主体は固定の `system:inbound` であり、
+//    「誰の権限で動かすか」を宣言する場所が今日どこにも無い**(同 §限界1。
+//    `AC-G7b` は**保留**)。
+// **【禁止】これを「塞いだ」「安全になった」と読まない。**
+//
+// **【`V18-M6-T03b` による訂正(2026-09-13)。上のどの行も1バイトも消していない】**
+//
+// **上の逐語「**この4本の入口の**更新**(親の付け替え)は今日も素通りする**」は
+// 今日は**4本のうち1本について偽**である。** **`V18-M6-T02`(`PM-G2` / `ADR-0443`
+// 授権の表 行2)が、**AI の口**の更新にも親の関門を配線した** ——
+// **1件ずつ直す `update_record` と、まとめて書き換える `write_records` の `update` op の、
+// どちらにも掛かる**(`src/mcp/tools/write.ts`)。
+//
+// **双方向に書く。片方だけ書くと逆向きの嘘になる** ——
+//  ・ **親の付け替えの関門が掛かる口は、今日 **3本** である**:
+//    **画面 / HTTP(`src/server/app.ts`)/ AI の口(`src/mcp/tools/write.ts`)。**
+//  ・ **今日も素通りする口は **3本** である**:
+//    **受信口(`src/server/inbound-route.ts`)/ 自動処理(`src/kernel/workflow-runner.ts`)/
+//    コードの島。** **上の4本のうち、残ったのはこの3本である。**
+//  ・ **時刻起動(`schedule`)にも今日1バイトも掛かっていない**(`ADR-0411` 限定1)——
+//    **決まった時刻に動く処理は今日も素通りする。**
+//
+// **【誇張しない】** **参照を**空にする**更新は今日も通る**(`AC-G9` は却下。
+// `ADR-0411` 限定10)。 **`DELETE` にも今日1バイトも掛かっていない。**
+// **行を**作る**側の記述(上の4本の入口に配線済み)は今日も真であり、1ミリも動いていない。**
+// **【禁止】これを「塞いだ」「安全になった」と読まない。**
 
 /**
  * **{@link judgeCreateParentAccess} の答え。** **4状態である。**
@@ -2062,11 +2897,25 @@ export function creatorGrantPlan(params: {
  *    3本目を分けた** —— **次の一手が違うからである**(こちらは「その行への書込」ではなく、
  *    **アプリが名指しした種類の権限**を渡してもらうか、アプリの設定を変えるしかない)。
  *    **【誇張しない】止まる人も応答コードも1つも変えていない** —— **変えたのは文面だけである。**
+ *
+ * **【`V17-M2-T06b` による訂正(2026-09-07)。上の行も `V15-M6B` の訂正も1バイトも
+ *    消していない】** —— **「5状態」は今日は偽である。** **今日は **6状態**であり、
+ * 6つ目が `"denied_previous_parent"` である。**
+ *
+ *  - `"denied_previous_parent"` … **親を**付け替える**更新で、**移す前の親**の行に書けない。**
+ *    **呼び出し側は 403(`"denied"` と同じ応答コードで、文面だけが違う)。**
+ *    **【なぜ分けたか。条文が名指しで課している】** —— **`ADR-0411` 限定13 の逐語
+ *    「**古い親で止まったときの本文は、どちらの親で止まったかを述べること**」である。**
+ *    **同じ `"denied"` に畳むと、新しい親には書ける人に「指定された元の行を書き換える
+ *    権限がありません」と返り、その人は**移した先**の権限をもらおうとする** ——
+ *    **直らない一手である**(`V15-M6B` が3本目を分けたのとまったく同じ理由)。
+ *    **【誇張しない】応答コードは 403 のままで、上限の扱いも1ミリも変えていない。**
  */
 export type CreateParentAccessVerdict =
   | { readonly kind: "allowed" }
   | { readonly kind: "denied" }
   | { readonly kind: "missing_named_permission" }
+  | { readonly kind: "denied_previous_parent" }
   | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" }
   | { readonly kind: "ungoverned_parent" };
 
@@ -2085,6 +2934,15 @@ export type CreateParentAccessVerdict =
  * **親の側**で actor に届いている権限名である。** **両者は別々の表の宣言なので、
  * 一致するかどうかは綴りが同じかどうかで決まる。** **同じ綴りを両方の表で宣言していない
  * アプリでは、`creatable_by` は誰も通さない。**
+ *
+ * **【`V17-M5-T02b` による訂正(2026-09-08)。上の散文を1バイトも消していない】** ——
+ * **上の段落は今日も真である。** **今日は偽になった読み方のほうを名指しする** ——
+ * **「親の側で actor に届いている権限名」は、今日は**親の表が宣言している権限名だけ**で
+ * ある。** **付与の行に**親の宣言に無い綴り**が残っていても、その名前は1件も数えない**
+ * (`AC-G6`)—— **{@link judgeRecordAccess} が読取・書込・削除を解くときと同じ扱いである。**
+ * **【誇張しない。何を変えていないか】** **上限も、辿りも、`resolveGrantedPermissionNames`
+ * の返り値の意味も1ミリも変えていない。** **親も子も同じ綴りを宣言しているアプリでは、
+ * 通る人も止まる人も応答コードも1つも変わらない。**
  */
 function grantedPermissionNamesForCreate(params: {
   manifest: Manifest;
@@ -2130,7 +2988,39 @@ function grantedPermissionNamesForCreate(params: {
         }),
         memberRows: step.memberRows,
       });
+      // **【`V17-M5-T02b` が足した絞り。`AC-G6`。旧の3行を逐語でここに残す。1バイトも
+      // 消していない】**
+      // **旧**:
+      //   `for (const name of resolved ?? []) {`
+      //   `  names.add(name);`
+      //   `}`
+      //
+      // **その段の表が**今日宣言していない**権限名は、1ミリも効かない。**
+      // **これは {@link judgeRecordAccess} の (3)(「**権限名を宣言で解く**」)と
+      // まったく同じ fail-closed である** —— **同じ材料から片方は宣言で絞り、片方は
+      // 絞らない、という非対称が今日まで在った**(`ADR-0292` §9 の5 / §限界3 が
+      // 「付与**行**の値のずれを適用時に止めていない」と自認している、その帰結)。
+      //
+      // **【絞る相手はその段の表の宣言である。混ぜない】** —— **`walkAccessInheritance` が
+      // 渡す `step.tableId` の表の `permissions[]` で絞る。** **子の宣言では絞らない** ——
+      // **`creatable_by` の要素は子が宣言した権限名だが、突き合わせる付与行は親に付く。**
+      // **この非対称は今日からあるものであり(適用時検査は子の `permissions[]` で
+      // `creatable_by` を見る)、本段はそれを1ミリも変えていない。**
+      //
+      // **【解決そのものは1バイトも変えていない】** —— {@link resolveGrantedPermissionNames}
+      // の返り値の意味は今日のままである(絞るのは呼び出し側であり、判定を2本目に
+      // していない)。
+      const declaredNames = new Set<string>();
+      for (const permission of Array.isArray(declared.permissions) ? declared.permissions : []) {
+        const declaredId = nonEmptyString(permission?.id);
+        if (declaredId !== undefined) {
+          declaredNames.add(declaredId);
+        }
+      }
       for (const name of resolved ?? []) {
+        if (!declaredNames.has(name)) {
+          continue;
+        }
         names.add(name);
       }
     },
@@ -2139,6 +3029,279 @@ function grantedPermissionNamesForCreate(params: {
     return walked;
   }
   return { kind: "names", names };
+}
+
+/**
+ * **{@link judgeRootCreatableRoles} の3つの答え**(`V18-M5-T01` / `PM-G2` / `ADR-0442`)。
+ *
+ * **【`export` しない】** —— **凍結 `OWNER_SCOPE_BASELINE.exports`(95名)を1名も
+ * 動かさないためである**(`ADR-0437:118` / `ADR-0439` 行9 / `ADR-0440` 行21 /
+ * `ADR-0441` 行27 / `ADR-0442` 行7)。 **呼び出し側は文字列で受ける。**
+ */
+type RootCreatableVerdict = "allow" | "not_listed" | "undeclared";
+
+/**
+ * **親を持たない表の「行を作れる立場」の関門**(`V17-M5-T03d` / 台帳 `AC-G10` /
+ * `ADR-0412` §Decision の 2)。 **`true` を返したら、その人はその表に行を作れない。**
+ *
+ * ## 何を見るか(**4つだけ。順に**)
+ *
+ *  1. **その表が権限管理を宣言しており、かつ有効か**({@link accessControlOf})——
+ *     **宣言していない表・`enabled: false` の表は今日と1バイトも変わらない。**
+ *  2. **9キー目(`creatable_by_roles`)が1件以上書かれているか** ——
+ *     **書かれていない表は今日と1バイトも変わらない**(`ADR-0412` 限定2。
+ *     `D-V16-9` の逐語「**何も書かなければ今どおりです。**」)。
+ *  3. **`inherit_from` を1本も宣言していないか**(**根の表専用のキーである**)——
+ *     **宣言した表では素通りする。** **そちらは親の関門と `creatable_by` が担う**
+ *     (`ADR-0412` §Decision の 2 の 7)。 **この形は適用時に拒否されるので
+ *     ディスクの上には現れないが、2つの壁を重ねないために述語の側でも素通りさせる。**
+ *  4. **宣言集合と実効ロール集合の積が空でないか** —— **積の計算は既に在る
+ *     {@link declaredMatchesRoles} 1本に委ねている**(**和集合の規則の唯一の実装**)。
+ *
+ * ## **置き場所は「前提の関門」である**(`ADR-0412` 限定5)
+ *
+ * **合成({@link combineRoleAndGrantAccess})の中に1文字も入れていない** ——
+ * **入れると面と点の `OR` の項になり、その表を名指しした役割の規則が1本あるだけで
+ * 素通りする。** **`roleGateBlocksWithoutGrants` の本体も1バイトも触っていない。**
+ * **{@link judgeCreateParentAccess} の中にも足していない** ——
+ * **あちらの呼び出しは `access-control-limit-honesty.test.ts` の `(E-5)` が
+ * **7箇所ちょうど**に固定しており、そこへ足すと別の関門の数え方が壊れる。**
+ *
+ * ## **{@link judgeRecordAccess} の入力を1つも増やしていない**(`ADR-0412` 限定6 /
+ * `ADR-0294` 限定5 / `ADR-0308` 限定1)
+ *
+ * **本関数は {@link judgeRecordAccess} を1度も呼ばない。** **引数キーは今日も6本ちょうど
+ * であり、`access-control-role-precedence.test.ts` / `access-control-stale-grant.test.ts` の
+ * `toEqual` は期待値を1バイトも書き換えずに緑である。**
+ *
+ * **【正直に。限定6 の逐語のうち履行していない部分を名指しする】** ——
+ * **限定6 は「判定は既存の {@link judgeRoleAccess}(`row` 省略)1本で出す。2本目の判定の
+ * 家を作らない」とも書いている。** **本関数はそれを履行していない** ——
+ * **{@link judgeRoleAccess} が読むのは役割の**規則**(`app.roles[].rules`)であって、
+ * 9キー目の**一覧**ではないので、あの1本では9キー目を1バイトも見られないからである。**
+ * **代わりに、実際の突き合わせだけは既存の {@link declaredMatchesRoles} に委ねてある。**
+ * **【禁止】これを「限定6 を守った」と書かない。**
+ *
+ * ## **この関門が見ていないもの(誇張しない)**
+ *
+ *  - **行の値を1つも見ない** —— **誰が作るかだけで決まる。**
+ *  - **`enabled: false` の表では1ミリも効かない**(上の 1)—— **9キー目を書いても
+ *    黙って効かない形が1つ残っている。** **それを止める適用時検査は今日1本も無い。**
+ *  - **運営ロール(`owner`)を1文字も特別扱いしない** —— **挙がっていなければ持ち主も
+ *    作れない**(前提の関門である)。 **その形の宣言を止める適用時検査も今日1本も無い。**
+ *  - **効くのは HTTP の作成2経路(単件 `POST` / まとめ書きの `create` op)だけである** ——
+ *    **MCP・受信口・自動処理・島・時刻起動は今日も素通りする**(`ADR-0412` 限定7)。
+ *    **【禁止】「全部の経路で作成の壁が立つ」と書かない。**
+ *
+ * ---
+ *
+ * # 【2026-09-12 追記。`V18-M5-T01` / `PM-G2` / `ADR-0432` / `ADR-0442`】
+ * # **上の本文を1バイトも消していない。** **偽になった文を名指ししてから訂正を足す。**
+ *
+ * ## 何が変わったか(**1文で**)
+ *
+ * **「行を作れる立場」が**一行も書かれていない根の表**の既定を、
+ * 「誰でも作れる」から **「誰も作れない」** へ反転した**(`ADR-0432` §Decision。
+ * `D-V18-3` / `D-V18-27` / `D-V18-28`)。 **書いてある表の答えは1ビットも変わっていない。**
+ *
+ * ## 返り値が真偽値ではなくなった(**上の見出しの第2文が偽になる**)
+ *
+ * **偽になった逐語**: 「**`true` を返したら、その人はその表に行を作れない。**」
+ * **今日の正**: **返るのは3つの言葉のいずれかである。**
+ *
+ *  - **`"allow"`** —— **この関門は何も止めない**(掛からない表 / 挙がっている人)。
+ *  - **`"not_listed"`** —— **立場が決められており、その一覧に挙がっていないので作れない**
+ *    (`V17-M5-T03d` からの既存の答え。**文面も応答も1ビットも変わっていない**)。
+ *  - **`"undeclared"`** —— **立場が一行も書かれていないので、今は誰も作れない**
+ *    (**本段が新しく足した答え**)。
+ *
+ * **【なぜ真偽値のままにしなかったか】** —— **止める理由が2つに割れ、
+ * 呼び出し側が返す断り文も2本に割れるからである**(`app.ts` の
+ * `forbiddenRootCreatableRoleError` と `forbiddenUndeclaredRootCreateError`)。
+ * **真偽値のままだと、呼び出し側が「どちらの理由で止まったか」を自分で判定し直すことになり、
+ * 判定の家が2本目になる**(`ADR-0432` 限定1 がそれを禁じている)。
+ * **【`export` を1名も増やしていない】** —— **返り値の型は**非 export**の
+ * {@link RootCreatableVerdict} である**(`ADR-0437:118` の逐語「**非 export の関数を
+ * 足すぶんには赤くならない**」と同じ逃げ道)。 **凍結 `OWNER_SCOPE_BASELINE.exports`(95名)は
+ * 1名も動いていない**(`ADR-0442` 授権の表 行7 が打ち直しを**授権していない**)。
+ *
+ * ## 「何を見るか」の **2番** が偽になった
+ *
+ * **偽になった逐語**: 「**書かれていない表は今日と1バイトも変わらない**
+ * (`ADR-0412` 限定2。`D-V16-9` の逐語「**何も書かなければ今どおりです。**」)」。
+ * **今日の正**: **書かれていない根の表では、`"undeclared"` を返して**止める**。**
+ * **`ADR-0412` 限定2 の**第2文**はこれで引き直された**(`ADR-0432` が引き直し、
+ * `ADR-0412` の front matter に `amended_by` が入っている)。 **第1文(設計図の
+ * `required` にこのキーを足さない)は1ミリも動いていない。**
+ *
+ * ## **順番が変わった**(**上の 2 と 3 が入れ替わっている**)
+ *
+ * **今日の順は 1 → **3(`inherit_from`)** → **2(9キー目)** → 4 である。**
+ * **【なぜ入れ替えたか。入れ替えないと実地の表が止まる】** —— **既定を反転すると、
+ * 9キー目の枝が「書かれていない → 止める」に変わる。** **その枝が `inherit_from` の枝より
+ * **前**にあると、引き継ぎを宣言した表(9キー目は書かないのが普通である)まで
+ * まとめて止まる。** **実地の `team-tasks` の `milestones` / `issues` がその形である。**
+ * **`inherit_from` を宣言した表はこの関門の対象ではない**(根の表専用のキーである。
+ * 上の 3 の逐語)—— **だから先に落とす。**
+ * **担保は `root-create-closed-by-default.test.ts` の `(C-3)` である**
+ * (**`root-creatable-roles.test.ts` の `(c-1)` はこの場合を撃っていない** ——
+ * あちらの題材は9キー目を**宣言している**ので、順番を入れ替えても入れ替えなくても緑である)。
+ *
+ * ## **掛かる範囲は1ミリも広がっていない**(**上の 1 は今日も真である**)
+ *
+ * **`accessControlOf` を1文字も触っていない** —— **権限管理を一行も宣言していない表
+ * (実地に30本)と `enabled: false` の表は、今日も `"allow"` である**(`D-V18-27`)。
+ * **運営ロール(`owner`)の例外も1つも置いていない** —— **一行も書かれていない表では
+ * 持ち主も作れない**(`D-V18-28`)。 **上の「この関門が見ていないもの」の3つ目は
+ * 今日も真であり、`"undeclared"` の側にもそのまま当てはまる。**
+ *
+ * ## **効く入口の一覧は、本追記の時点では**まだ**偽になっていない**
+ *
+ * **上の逐語「**効くのは HTTP の作成2経路(単件 `POST` / まとめ書きの `create` op)だけである**
+ * —— **MCP・受信口・自動処理・島・時刻起動は今日も素通りする**」は、
+ * **`V18-M5-T01`(本追記)の時点では1文字も偽になっていない。** **本葉は HTTP の
+ * 2経路の配管しか触っておらず、`src/mcp/` を1バイトも変えていないからである。**
+ * **【どちらが直すかを決めて明記する】** —— **AI の口(MCP)に同じ関門を新しく掛けるのは
+ * **`V18-M5-T02`** であり、この逐語の訂正も **`T02` が書く**。** **本葉では先に書かない**
+ * —— **実装より先に「掛かっている」と書くと、その時点で嘘になるからである**
+ * (`ADR-0442` §Status 2 の「実装は0バイトである」と同じ作法)。
+ * **受信口 / 自動処理 / 島 / 時刻起動 の4本は、本段を通して**素通りのままである**
+ * (`D-V18-6`。`ADR-0442` 限定8 が式で縛っている)—— **`T02` の訂正の後も、
+ * この4本についての記述は真であり続ける。**
+ * **【禁止】「全部の経路で作成の壁が立つ」と書かない**(上の逐語を引き継ぐ)。
+ *
+ * ## **画面のボタンは1ミリも変わっていない**(**穴として記録する**)
+ *
+ * **一覧画面が「作成のボタンを出すか」を決める判定は、この関門を1つも見ていない** ——
+ * **したがって止まる表でもボタンは出続け、押すと 403 になる。** **本葉は画面を
+ * 1バイトも変えない**(塞ぐかどうかは本葉の射程外。`V18-M5-T05` が穴として書く)。
+ */
+export function judgeRootCreatableRoles(input: {
+  readonly manifest: Manifest;
+  readonly tableId: string;
+  readonly roles: ActorRoles;
+}): RootCreatableVerdict {
+  const table = tablesOf(input.manifest).find((candidate) => candidate?.id === input.tableId);
+  if (table === undefined) {
+    return "allow";
+  }
+  const declared = accessControlOf(table);
+  if (declared === undefined) {
+    return "allow";
+  }
+  // **【`V18-M5-T01`】`inherit_from` の枝を9キー目の枝より**前**へ出した。**
+  // **既定を反転すると9キー目の枝が「書かれていない → 止める」に変わるので、
+  // この順でないと、引き継ぎを宣言した表(実地の `team-tasks` の
+  // `milestones` / `issues`)まで止まる。** **担保は
+  // `root-create-closed-by-default.test.ts` の `(C-3)`。**
+  const inheritFrom = Array.isArray(declared.inherit_from) ? declared.inherit_from : [];
+  if (inheritFrom.length > 0) {
+    return "allow";
+  }
+  const creatableByRoles = declared.creatable_by_roles;
+  if (!Array.isArray(creatableByRoles) || creatableByRoles.length === 0) {
+    // **【`ADR-0432` §Decision / `D-V18-3` / `D-V18-28`】既定を反転した枝である。**
+    // **一行も書かれていない根の表では、運営ロールも含めて誰も作れない。**
+    return "undeclared";
+  }
+  return declaredMatchesRoles(creatableByRoles, input.roles) ? "allow" : "not_listed";
+}
+
+/**
+ * **親の行1件について「この人がその行に書けるか」を解く**(`V17-M2-T06b` / `AC-G8` /
+ * `ADR-0411` §Decision の 3)。
+ *
+ * **【なぜ関数へ寄せたか。判定を2本目にしないためである】** —— **`AC-G8` は
+ * {@link judgeCreateParentAccess} に**古い親**の読取を1件足す。** **その場に式を書き写すと、
+ * まったく同じ判定(「行を読む → {@link resolveRecordAccess} を当てる → `write` を要求する」)が
+ * 1つの関数の中に2度現れる** —— **`ADR-0411` 限定2(判定の家を2本目にしない /
+ * 判定の式を1行も写さない)に正面から触れる。**
+ * **したがって古い親と新しい親は、この1本を**同じ引数の形で**通る。**
+ *
+ * **【判定を1つも新しく作っていない】** —— **`read` / `write` / `delete` を計算するのは
+ * 今日も {@link judgeRecordAccess} 1本であり、本関数はその答えを
+ * {@link resolveRecordAccess} 経由で受け取って `write` を見るだけである。**
+ * **上限の定数({@link MAX_RECORD_ACCESS_INHERIT_DEPTH} /
+ * {@link MAX_RECORD_ACCESS_INHERIT_ROWS})を1も動かしていない**(`ADR-0411` 限定8)。
+ *
+ * **【本関数が答えないもの。丸めない】**
+ *  1. **`creatable_by` が名指しした権限名を1度も見ない** —— **それは**これから作る側**
+ *     (新しい親)にだけ掛かるので、呼び出し側に残してある。**
+ *  2. **「親の表が行ごとのアクセス権を宣言しているか」を見ない** —— **その判定は古い親と
+ *     新しい親で同じ表に対する同じ問いなので、呼び出し側で1度だけ行う。**
+ *  3. **行が読めないことと、読めたが書けないことを分けていない** —— **どちらも
+ *     `"unwritable"` である**(実在しない親の id を書いて越えさせないため。`V15-M2` の逐語)。
+ *
+ * ## **【`V18-M6-T01`(`PM-G1` / `ADR-0443` 授権の表 行1)による訂正(2026-09-13)。
+ *    上のすべての節を1バイトも消していない】**
+ *
+ * **上の散文は「`write` を要求する」と6箇所で書いている。** **それは今日、
+ * **新しい親**についてだけ真である。** **`PM-G1` により、**移す前の親**(古い親)に要求する
+ * 動詞は `delete` へ上がった** —— **行を別の親へ移すのは、古い親から見れば「その行が
+ * 手元から消える」ことだからである。**
+ *
+ * **【判定を2本目にしていない。関数も割っていない】** —— **`ADR-0443` 授権の表 行1 の逐語
+ * 「**`resolveParentRowWriteAccess` を**割らない** —— **引数で動詞を渡す**」に従い、
+ * 本関数は {@link params.verb} 1つを受け取るだけである。** **`read` / `write` / `delete` を
+ * 計算するのは今日も {@link judgeRecordAccess} 1本であり、本関数はその答えの
+ * **どの1ビットを見るか**を切り替えているにすぎない。**
+ *
+ * **【既定は今日のままである】** —— **{@link params.verb} を渡さなければ `"write"` である。**
+ * **新しい親の呼び出しは1ビットも変えていない**(`ADR-0433` §Decision 2 の 1)。
+ *
+ * **【`"unwritable"` という名前は今日は狭い。改名していない】** —— **`verb: "delete"` で
+ * 返る `"unwritable"` は「消せない」である。** **改名しないのは、`export` を1名も
+ * 増減・改名しない(`ADR-0443` 限定11)ためと、呼び出し側の分岐を1本も増やさない
+ * ためである。** **【禁止】これを「名前が正しい」と読まない。**
+ */
+function resolveParentRowWriteAccess(params: {
+  manifest: Manifest;
+  parentTableId: string;
+  parentRecordId: string;
+  actorId: string | null;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **親の行に要求する動詞**(`V18-M6-T01` / `PM-G1` / `ADR-0443` 授権の表 行1)。
+   *
+   * **省くと `"write"`** —— **着手前と1ビットも変わらない。**
+   * **`"delete"` を渡すのは**移す前の親**(古い親)の1箇所だけである。**
+   *
+   * **【型を `export` していない】** —— **`ADR-0443` 授権の表 行7 の逐語
+   * 「**新しい型は**非 `export`** にする**」に従い、ここに書き下している
+   * (名前付きの型を1本も作っていない)。**
+   */
+  verb?: "write" | "delete";
+}):
+  | { readonly kind: "writable"; readonly row: Record<string, unknown> }
+  | { readonly kind: "unwritable" }
+  | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" } {
+  const { manifest, parentTableId, parentRecordId, actorId, readRows, readRow } = params;
+  // **【`V18-M6-T01` が足した1行。既定は今日のままである】**
+  const verb = params.verb ?? "write";
+  const parentRow = readRow(parentTableId, parentRecordId);
+  if (parentRow === undefined) {
+    return { kind: "unwritable" }; // **実在しない親を書いて越えさせない。**
+  }
+  const resolution = resolveRecordAccess({
+    manifest,
+    tableId: parentTableId,
+    row: parentRow,
+    actorId,
+    readRows,
+    readRow,
+  });
+  if (resolution.kind === "limit_exceeded") {
+    return resolution;
+  }
+  // **【`V18-M6-T01` が書き換えた1行。旧を逐語でここに残す。1バイトも消していない】**
+  // **旧**: `if (!resolution.verdict.write) {`
+  // **`verb` を省いた呼び出し(= 新しい親)では `resolution.verdict.write` と
+  // **同じ式**である** —— **新しい親に要求する動詞を1ビットも変えていない。**
+  if (!resolution.verdict[verb]) {
+    return { kind: "unwritable" };
+  }
+  return { kind: "writable", row: parentRow };
 }
 
 /**
@@ -2174,6 +3337,43 @@ function grantedPermissionNamesForCreate(params: {
  *
  * **`inherit_from` は 0..2件である。** **値の書かれている要素は**すべて**通らなければ
  * ならない**(`AND`)—— **1つでも書けない親が在れば作れない。**
+ *
+ * ## **【`V17-M2-T06b` による訂正(2026-09-07)。上の3節を1バイトも消していない】**
+ *
+ * **「各要素について見るもの(順に3つ)」は今日は狭い。** **`AC-G8`(`ADR-0411`
+ * §Decision の 3)が **4つ目**を足した** —— **要求が参照の値を**別の親へ変える**とき
+ * (`previous` が渡っており、要求にその項目が書かれており、値が今日の値と違うとき)は、
+ * **移す前の親**の行にも {@link resolveParentRowWriteAccess} を当てて `write` を要求する。**
+ * **書けなければ `"denied_previous_parent"` である**(限定13。新しい親で止まる
+ * `"denied"` とは応答本文が異なる)。
+ *
+ * **【何を広げていないか。丸めない】**
+ *  - **読む親は「古い親」と「新しい親」の**2件ちょうど**である**(限定8)——
+ *    **3件目を読まず、辿る段数も上限の定数も1ミリも動かしていない。**
+ *  - **参照を**空にする**更新には1バイトも掛からない**(限定10。`AC-G9` = **却下**)——
+ *    **その要求は下の「参照の値が空なら飛ばす」で今日どおり通る。**
+ *  - **作成(`previous` を渡さない経路)は古い親を1度も読まない** —— **着手前と
+ *    1バイトも変わらない。**
+ *  - **`creatable_by` の権限名は今日も**新しい親**にだけ要求する。**
+ *
+ * ## **【`V18-M6-T01`(`PM-G1` / `ADR-0443` 授権の表 行1)による訂正(2026-09-13)。
+ *    直前の節を1バイトも消していない】**
+ *
+ * **直前の節の逐語「**移す前の親**の行にも {@link resolveParentRowWriteAccess} を当てて
+ * `write` を要求する」は今日は偽である。** **要求するのは `delete` である** ——
+ * **古い親に `write` **だけ**を持つ人は、今日はもうその行を別の親へ移せない。**
+ *
+ * **【偽になっていないもの。丸めない】**
+ *  - **新しい親に要求する動詞は今日も `write` である**(`ADR-0433` §Decision 2 の 1)。
+ *  - **読む親は「古い親」と「新しい親」の**2件ちょうど**のままである**(限定8)。
+ *  - **参照を**空にする**更新には今日も1バイトも掛からない**(限定10。`AC-G9` = **却下**)。
+ *  - **参照を1文字も変えない更新**(項目を送らない / 同じ値を送り直す)には
+ *    **今日も1バイトも掛からない** —— **上の `continue` で先に抜けるので、
+ *    古い親の行を1度も読まない。**
+ *  - **断り文の**種類**を1本も増やしていない** —— **止まったときは今日も
+ *    `"denied_previous_parent"` である**(限定13)。
+ *  - **作成(`previous` を渡さない経路)は今日も古い親を1度も読まない。**
+ *  - **`DELETE`(行そのものの削除)には1ビットも掛けていない**(限定3 / 限定11)。
  *
  * ## **親の行が読めないときは断る(判断と理由を書く)**
  *
@@ -2241,6 +3441,12 @@ export function judgeCreateParentAccess(params: {
     }
     const parentTableId = nonEmptyString(field.reference_table);
     const parentRecordId = nonEmptyString(values?.[fieldId]);
+    /**
+     * **付け替えの「移す前の親」**(`V17-M2-T06b` / `AC-G8`)。
+     * **`undefined` は「付け替えではない」である**(作成 / 参照を1文字も変えない更新 /
+     * 空から親を付ける更新)。 **判定そのものは下の `continue` の**後**で行う。**
+     */
+    let previousParentRecordId: string | undefined;
     if (previous !== undefined) {
       // **【`V15-M8` / `CR-G9` / `ADR-0408`】更新の経路では、値を**変える**要素だけを見る。**
       // **要求にこの項目が書かれていない**(`PATCH` は部分更新である)——**今日どおり通す。**
@@ -2248,9 +3454,28 @@ export function judgeCreateParentAccess(params: {
       // **【見るのは新しい値だけである。古い親の側を1度も読まない】** ——
       // **参照を**空にする**更新(壁の内側から抜き出す)は、下の `continue` で今日も通る。**
       // **`ADR-0408` §限界3 / 限定4 が、これを塞がない限界として名指ししている。**
+      //
+      // **【`V17-M2-T06b`(`AC-G8` / `ADR-0411`)による訂正(2026-09-07)。上の6行を
+      //    1バイトも消していない】** —— **直前の【 】の逐語
+      //    「**見るのは新しい値だけである。古い親の側を1度も読まない**」は今日は偽である。**
+      // **参照を**別の親へ変える**更新では、下で古い親の行にも
+      // {@link resolveParentRowWriteAccess} を当てて `write` を要求する。**
+      // **偽になっていないのはその次の1文である** —— **参照を**空にする**更新は今日も
+      // 下の `continue` で通る**(`AC-G9` は `V16-M0` で**却下**。`ADR-0411` 限定10 /
+      // 越えてはならない線4)。
+      //
+      // **【禁止】古い親の判定をこの `if` の内側に置かない。実測が理由である】** ——
+      // **`{"project": null}`(参照を空にする更新)は `Object.hasOwn(values, fieldId)` が
+      // **真**で、`nonEmptyString(previous[fieldId])`(古い親の id)と `parentRecordId`
+      // (`undefined`)が**等しくない**ので、この `continue` を通り抜ける。**
+      // **通り抜けた先の `parentRecordId === undefined` の `continue` で今日も通っている。**
+      // **ここに古い親の判定を置くと、空にする更新もここで止まる** —— **却下された
+      // `AC-G9` を実装したことになり、限定10 と越えてはならない線4 を同時に破る。**
       if (!Object.hasOwn(values, fieldId) || nonEmptyString(previous[fieldId]) === parentRecordId) {
         continue;
       }
+      // **【印だけを立てる。読みには行かない】**(判定は下の `continue` の後である)。
+      previousParentRecordId = nonEmptyString(previous[fieldId]);
     }
     if (parentTableId === undefined || parentRecordId === undefined) {
       continue; // **親を指していない行では、この要素を飛ばす**(上の節の3。**穴である**)。
@@ -2258,24 +3483,85 @@ export function judgeCreateParentAccess(params: {
     if (recordAccessSourceTables(manifest, parentTableId) === undefined) {
       return { kind: "ungoverned_parent" };
     }
-    const parentRow = readRow(parentTableId, parentRecordId);
-    if (parentRow === undefined) {
-      return { kind: "denied" }; // **実在しない親を書いて越えさせない。**
+    // **【`V17-M2-T06b` / `AC-G8` / `ADR-0411` §Decision の 3】移す前の親にも書けるか。**
+    //
+    // **【ここに置く理由。1行上でも1行下でもない】** —— **上の
+    // `parentRecordId === undefined` の `continue` を通り抜けた後なので、
+    // 「参照を**空にする**更新」はこの行に届かない**(`ADR-0411` 限定10)。
+    // **宣言の有無の判定(直前の行)より後に置いてあるのは、古い親と新しい親が
+    // **同じ表**であり、同じ問いを2度行わないためである** —— **答えも今日と1バイトも
+    // 変わらない(宣言していない親を持つ表は今日どおり `ungoverned_parent` である)。**
+    //
+    // **【読む親は2件ちょうどである】**(`ADR-0411` 限定8)—— **3件目を読まない。**
+    // **多段を辿る段数も、上限の定数も1ミリも動かしていない。**
+    // **【正直に。無料ではない】** **付け替えの更新1回あたり、親の行の読取と
+    // {@link resolveRecordAccess} が1件から2件になる。** **その代金は1件も測っていない**
+    // (`ADR-0411` §限界6 が「無料と書くな」と課している)。
+    if (previousParentRecordId !== undefined) {
+      const before = resolveParentRowWriteAccess({
+        manifest,
+        parentTableId,
+        parentRecordId: previousParentRecordId,
+        actorId,
+        readRows,
+        readRow,
+        // **【`V18-M6-T01` が足した1行。`PM-G1` / `ADR-0443` 授権の表 行1】**
+        // **古い親に要求する動詞を `write` から `delete` へ上げた** ——
+        // **行を別の親へ移すのは、古い親から見れば「その行が手元から消える」ことである。**
+        // **この1行が効くのは**この呼び出しだけ**であり、下の新しい親の呼び出しには
+        // 1ビットも渡していない**(`ADR-0433` §Decision 2 の 1)。
+        // **断り文の**種類**は1本も増えていない** —— **止まったときの答えは今日と同じ
+        // `"denied_previous_parent"` である**(`ADR-0411` 限定13)。
+        verb: "delete",
+      });
+      if (before.kind === "limit_exceeded") {
+        // **上限は上限のまま返す** —— **「書けない」に丸めない**(`CR-G6`)。
+        return before;
+      }
+      if (before.kind !== "writable") {
+        // **新しい親で止まる場合と応答本文を分ける**(`ADR-0411` 限定13)——
+        // **同じ `"denied"` に畳むと、応答が「どちらの元の行で止まったか」を述べられない。**
+        return { kind: "denied_previous_parent" };
+      }
     }
-    const resolution = resolveRecordAccess({
+    // **【`V17-M2-T06b` が書き換えた枝。旧を逐語でここに残す。1バイトも消していない】**
+    // **旧**:
+    //   `const parentRow = readRow(parentTableId, parentRecordId);`
+    //   `if (parentRow === undefined) {`
+    //   `  return { kind: "denied" }; // **実在しない親を書いて越えさせない。**`
+    //   `}`
+    //   `const resolution = resolveRecordAccess({`
+    //   `  manifest,`
+    //   `  tableId: parentTableId,`
+    //   `  row: parentRow,`
+    //   `  actorId,`
+    //   `  readRows,`
+    //   `  readRow,`
+    //   `});`
+    //   `if (resolution.kind === "limit_exceeded") {`
+    //   `  return resolution;`
+    //   `}`
+    //   `if (!resolution.verdict.write) {`
+    //   `  return { kind: "denied" };`
+    //   `}`
+    // **判定の中身を1ミリも変えていない** —— **同じ式を古い親と共有するために、
+    // {@link resolveParentRowWriteAccess} 1本へ寄せただけである**(`ADR-0411` 限定2)。
+    // **止まる人も、応答コードも、上限の扱いも1つも変わっていない。**
+    const parentAccess = resolveParentRowWriteAccess({
       manifest,
-      tableId: parentTableId,
-      row: parentRow,
+      parentTableId,
+      parentRecordId,
       actorId,
       readRows,
       readRow,
     });
-    if (resolution.kind === "limit_exceeded") {
-      return resolution;
+    if (parentAccess.kind === "limit_exceeded") {
+      return parentAccess;
     }
-    if (!resolution.verdict.write) {
+    if (parentAccess.kind !== "writable") {
       return { kind: "denied" };
     }
+    const parentRow = parentAccess.row;
     if (creatableBy === undefined || creatableBy.length === 0) {
       continue;
     }
@@ -2619,6 +3905,33 @@ export function judgeGrantWrite(params: {
     if (group === undefined) {
       return { kind: "unknown_holder" };
     }
+    // **【`V17-M1-T03a` / `ADR-0410` の `AC-G3`】自分の属しているグループにも権限を
+    // 付けられない。** **運営ロールも例外にしない**(**上の相手指定の枝と同じ扱い**)。
+    // **出どころはユーザ決定 `D-V16-3`(逐語「**止める(推奨)**」)である。**
+    // **断るのは「相手のグループに、要求している本人が属している」場合ちょうどであり、
+    // 強さを1つも見ない**(`ADR-0410` 限定14)。
+    // **既存の判定値 `{ kind: "self" }` を使い回す** —— **新しい判定値を1つも作らない**
+    // (同 §Decision 3 の 3。作れば `web/test/shell-navigation-boundary.test.ts` の
+    // export 集合が赤くなる)。
+    // **関門の順序(`unknown_holder` → `self` → 親の判定)を1ミリも動かしていない**
+    // (同 限定16)—— **この検査は実在の確認の直後、親の判定の手前に居る。**
+    //
+    // **【誇張しない。これは回り込みを全部は断たない】** —— **`owner` は「自分の入って
+    // いないグループ宛に付与を作る → そのグループに自分のメンバー行を足す」の**2段**で
+    // なお回り込める**(`ADR-0410` §限界6)。 **メンバー表・グループ表への書込は
+    // 1ミリも絞っていない**(同 限定18。`ADR-0297` §限界5 は今日も残る)。
+    const memberGroupField = nonEmptyString(declared.members?.group);
+    const memberAccountField = nonEmptyString(declared.members?.account);
+    if (actor !== undefined && memberGroupField !== undefined && memberAccountField !== undefined) {
+      const belongs = memberRows.some(
+        (row) =>
+          row?.[memberAccountField] === actor &&
+          nonEmptyString(row?.[memberGroupField]) === holderGroupId,
+      );
+      if (belongs) {
+        return { kind: "self" };
+      }
+    }
   }
 
   // **(5) 相手が、引き継ぎ元の親の行を読めるか**(`Z-G33` / `V7-M3-T04` / 依頼文 `L6`)。
@@ -2633,6 +3946,11 @@ export function judgeGrantWrite(params: {
     memberRows,
     readRows,
     readRow,
+    // **【2026-09-08 追記(`V17-M6-T01` / `AC-G22` / `ADR-0424`)】** ——
+    // **要求している人の役割を、関門 (5) にも渡す。** **親の行が**消えている**ときに
+    // 限って、運営ロールだけが (5) を越えられるようにするためである**(回復の口)。
+    // **関門 (1)〜(4) は1バイトも動かしていない。**
+    role,
   });
 }
 
@@ -2667,6 +3985,67 @@ export function judgeGrantWrite(params: {
  * **宣言していない表・`grant.table` を書いていない表では、常に `false` を返す** ——
  * **付与を記録する先が無いのだから、配れる相手も居ない。**
  *
+ * =====================================================================================
+ * **【2026-09-08 追記(`V17-M6-T05` / 台帳 `AC-G30b`)。上の doc を1バイトも消していない】**
+ * =====================================================================================
+ *
+ * **上の逐語「**(2) 要求している人が対象行の `creator_permission` を直接持つか、または
+ * 運営ロールか**」の「**直接**」は、今日の正ではない。** **今日の (2) は、引き継ぎ
+ * (`inherit_from`)を辿った**どの段**で持っていても真になる。**
+ *
+ * **辿るのは {@link walkAccessInheritance} 1本である** —— **{@link resolveRecordAccess}
+ * (動詞の側)が通るのと同じ走査で、訪問済み集合も段数の上限も件数の上限も共有している。**
+ * **第2の辿りも、第2の上限も作っていない。** **上限に当たったときは `false` に倒す**
+ * (fail-closed。**動詞の側の答えは1ミリも動かしていない**)。
+ *
+ * **突き合わせる綴りは**段0 の表**の `creator_permission` である** —— **親の表のそれではない。**
+ *
+ * **関門の**本数**は今日も (1)(2) の2本ちょうどである** —— **(3)(4)(5) は1つも見ていない**
+ * (`ADR-0402` 限定17)。 **変えたのは (2) の**辿り方**だけである。**
+ *
+ * ## **【誇張しない。この追記が作った食い違いを名指しで書く】**
+ *
+ * **上の「【誇張しない】」の段は今日も正しく、しかも**当てはまる人が増えた**。**
+ * **{@link judgeGrantWrite} の関門 (2) は今日も1段も辿らない**(`ADR-0402` 限定19。
+ * **本関数はその本体を1バイトも変えていない**)—— **したがって「引き継ぎだけで届いている人」は、
+ * `grant_write: true` と出るのに、実際に付与を `POST` すると通らない。**
+ * **返るのは 403 ではなく **404**(「そのレコードは存在しません」)である** ——
+ * **その人がその瞬間に読めている行について、である**(実地データの複製で実測した。
+ * 検査は `src/server/record-row-access-response.test.ts` の `(F-5)`)。
+ * **【禁止】これを「表示と実際が一致した」と書かない。**
+ *
+ *
+ * =====================================================================================
+ * **【2026-09-14 追記(`V18-M8-T02` / `ADR-0445`)。上の doc を1バイトも消していない】**
+ * =====================================================================================
+ *
+ * **上の「答えるのは関門 (1)(2) だけである」、(2) の「直接持つか」、直前の追記の「今日の (2) は、
+ * 引き継ぎを辿ったどの段で持っていても真になる」と「押すと通らない(404)」は、今日の正ではない。**
+ * **関門 (1)(2) と所属の穴は {@link grantWriteWallJudge}(壁の述語 {@link judgeGrantWrite} を呼ぶ)
+ * から取る** —— **引き継ぎを1段も辿らない。** **そのうえで、表示の時点で決まる断り(付与表への面の
+ * 書込 / 直接作成の遮断 / ボタンの規則 / 必ず送る欄の項目規則 / 付与表そのものの宣言が掛ける関門)を
+ * {@link grantWriteFacesBlock} と行ごとの {@link judgeCreateParentAccess} で写す。**
+ * **(3)(4)(5) は今日も1つも見ていない**(`ADR-0402` 限定17 の後半)。 **偽になった文の1つずつの訂正は
+ * `V18-M8-T02b` が足す。**
+ *
+ * =====================================================================================
+ * **【2026-09-16 追記(`V18-M8-T02b` / `D-V18-33` / `ADR-0445` §Decision 4・§Decision 5)。
+ * 上の doc を1バイトも消していない】**
+ * =====================================================================================
+ *
+ * **直前の追記が名指ししなかった逐語が1つ残っていた** —— **上の「【誇張しない】」の段の
+ * 「**真が意味するのは「関門 (1)(2) で止まらない」ことだけである。**」である。**
+ * **これも今日の正ではない。** **今日の真が意味するのは「関門 (1)(2) と所属の穴で止まらず、**かつ**
+ * {@link grantWriteFacesBlock}(行に依らない断り)と、行ごとの {@link judgeCreateParentAccess} が
+ * 写す断りにも掛からない」ことである。**
+ *
+ * **同じ段の残りの3文は、今日も真である** —— **「相手の選び方によっては (3)(4)(5) で 403 になる」/
+ * 「画面がボタンを出すかどうかの材料であって、書込の壁ではない」/「壁は今日も {@link judgeGrantWrite}
+ * 1本であり、本関数はその本体を1バイトも変えていない」。**
+ *
+ * **【禁止】これを「表示と実際が一致した」と書かない** —— **写していない断りは今日も5種ある**
+ * (**(3) 相手が自分 / (4) 相手が解決できない / (5) 相手が親を読めない / 持ち主の偽装 /
+ * 条件つきの規則**。`ADR-0445` §Decision 4 の表)。 **真と出た行を押しても断られる人は、今日も居る。**
  * @param params.readRows 表IDを渡すと、その表の**全行**を返す関数(**呼び出し側が読む**。
  *   本ファイルは I/O を1つも持たない)。
  */
@@ -2685,47 +4064,307 @@ export function rowGrantWriteJudge(params: {
   if (declared === undefined || grantTableId === undefined) {
     return () => false;
   }
+  // =====================================================================================
+  // **【2026-09-14 追記(`V18-M8-T02` / `ADR-0445` §Decision 4 / §Decision 5)。下の旧コメントを1バイトも消していない】**
+  // =====================================================================================
+  //
+  // **この入口の式は置き換えた。** **関門 (1)(2) と所属の穴は {@link grantWriteWallJudge}
+  // (壁の述語 {@link judgeGrantWrite} を呼ぶ)から取り、表示の時点で決まる断りは
+  // {@link grantWriteFacesBlock}(行に依らないもの)と、行ごとの {@link judgeCreateParentAccess}
+  // で写す。** **引き継ぎを辿る2本目の判定は持たない。** **下に残した旧コメントのうち、
+  // 取り除いた式を説明していたものには、直後に今日の正を足した。**
+  const targetField = nonEmptyString(declared.grant?.target);
+  if (targetField === undefined) {
+    return () => false;
+  }
   // **(2) の片側: 運営ロール。** **{@link judgeGrantWrite} と同じ定数を見る**
   // (広さを2箇所に持たない)。
-  const admin = declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, roles);
-  const actor = nonEmptyString(actorId);
-  const creatorName = nonEmptyString(declared.creator_permission);
-  const needsGrants = !admin && actor !== undefined && creatorName !== undefined;
+  // **【`V18-M8-T02`。直前の2行を1バイトも消していない】** **この入口は運営ロールを別に照合しない**
+  // —— **照合は壁の述語の関門 (2) の中で1回だけ行う**(広さを2箇所に持たないことは今日も真である)。
+  const wall = grantWriteWallJudge(params);
   // **読むのは、点の判定が既に読んでいる表と同じ3本である**(読み手はメモ化されている)。
-  const groupTableId = nonEmptyString(declared.groups?.table);
-  const grantRows = needsGrants
-    ? grantsWithExistingGroups({
-        manifest,
-        tableId,
-        grantRows: readRows(grantTableId),
-        groupRows: groupTableId === undefined ? [] : readRows(groupTableId),
-      })
-    : [];
-  const memberTableId = nonEmptyString(declared.members?.table);
-  const memberRows = needsGrants && memberTableId !== undefined ? readRows(memberTableId) : [];
+  // **【`V18-M8-T02`。直前の1行を1バイトも消していない】** **「同じ3本」は今日の正ではない** ——
+  // **読むのは壁の述語が読む表(付与表・名簿・グループ・対象の表)と、面の断りが読む名簿である。**
+  // **読み手はメモ化されたまま、1本も増やしていない。**
+  if (
+    grantWriteFacesBlock({
+      manifest,
+      declared,
+      grantTableId,
+      targetField,
+      actorId,
+      roles,
+      readRows,
+    })
+  ) {
+    return () => false;
+  }
   return (row) => {
     // **(1) 対象行が決まるか。** **決まらない行は通さない**(fail-closed)。
     const recordId = nonEmptyString(row?._id);
     if (recordId === undefined) {
       return false;
     }
-    if (admin) {
-      return true;
-    }
-    if (!needsGrants || actor === undefined || creatorName === undefined) {
-      return false;
-    }
     // **(2) 対象行の `creator_permission` を直接持つか。** **引き継ぎを1段も辿らない**
     // (`judgeGrantWrite` の `A-11` と同じ読み方である)。
-    const names = resolveGrantedPermissionNames({
-      declared,
-      recordId,
-      actor,
-      grantRows,
-      memberRows,
+    // **【2026-09-08 追記(`V17-M6-T05` / `AC-G30b`)。直前の2行を1バイトも消していない】**
+    // **直前の逐語「**引き継ぎを1段も辿らない**」は、この式**だけ**についての記述として
+    // 読むこと** —— **段0 で決まらなかったときは、この直後で親の段を辿る。**
+    // **`judgeGrantWrite` の側は今日も辿らない**(だから食い違いが残る)。
+    // **【`V18-M8-T02`。直前の6行を1バイトも消していない】** **今日は (2) を壁の述語の答えで見る**
+    // —— **壁の関門 (2) は1段も辿らないので、表示も辿らない。** **「直接持つか、または運営ロールか」の
+    // 照合も、壁の述語の中の1回だけである。**
+    if (!wall(row)) {
+      return false;
+    }
+    // **`names?.has(...)` は `names !== undefined && names.has(...)` と同じ判定である**
+    // (整形器の `useOptionalChain` に合わせただけで、通す条件を1ミリも変えていない)。
+    // **【`V18-M8-T02`】直前の2行が説明していた式(`names?.has(...)`)は取り除いた。**
+    // =====================================================================================
+    // **【2026-09-08 追記(`V17-M6-T05` / `AC-G30b`)。直前のコメントと式を1バイトも消していない】**
+    // =====================================================================================
+    //
+    // **直前のコメントの逐語「**引き継ぎを1段も辿らない**」は、本入口については今日の正ではない。**
+    // **段0 で決まらなかったときは、{@link walkAccessInheritance} で親の段を辿り、
+    // 各段で**同じ** {@link resolveGrantedPermissionNames} を呼び直す。**
+    //
+    // **【辿りを1本も増やしていない】** —— **使うのは {@link resolveRecordAccess} と
+    // {@link resolveRecordWithoutGrants} が通るのとまったく同じ走査1本である。**
+    // **訪問済み集合・段数の上限・件数の上限も、その走査が持っているものをそのまま使う**
+    // —— **第2の辿りも、第2の上限も作っていない。**
+    //
+    // **【関門は今日も (1)(2) の2本ちょうどである】** —— **(3) 相手が自分 / (4) 相手が
+    // 解決できない / (5) 相手が親を読めるか は1つも見ていない**(`ADR-0402` 限定17)。
+    // **変えたのは (2) の**辿り方**であって、関門の**本数**ではない。**
+    //
+    // **【誇張しない。食い違いを作った側である】** —— **{@link judgeGrantWrite} の関門 (2) は
+    // 今日も1段も辿らない**(同 限定19。**本入口はその本体を1バイトも触っていない**)。
+    // **したがって「引き継ぎだけで届いている人」には、**配れると出るのに押すと通らない**行が
+    // 生まれる。** **返るのは 403 ではなく **404**(「そのレコードは存在しません」)である**
+    // —— **その人がその瞬間に読めている行について、である**(実測。
+    // `record-row-access-response.test.ts` の `(F-5)` がこの対を撃っている)。
+    // **【禁止】これを「表示と実際が一致した」と書かない。**
+    // **【`V18-M8-T02`(`ADR-0445` §Decision 7)。直前の追記を1バイトも消していない】**
+    // **直前の追記は今日の正ではない。** **{@link walkAccessInheritance} による辿りは取り除いた** ——
+    // **`AC-G30b` の (ii) の実装を覆した。** **「引き継ぎだけで届いている人」には今日
+    // `grant_write: false` が出て、押すと 404 で断られる**(表示と実際が同じ答えを返す。
+    // `record-row-access-response.test.ts` の `(F-5)` / `(G-1)`)。
+    // **(3)(4)(5) を1つも見ていないことは今日も真である**(`ADR-0402` 限定17 の後半)。
+    //
+    // **(h8) 付与表そのものの親の関門**(付与表の `inherit_from` が対象の欄を指す形。親 = この行)。
+    // **付与の `POST` と同じ {@link judgeCreateParentAccess} を、同じ引数の作り方で呼ぶ。**
+    const parent = judgeCreateParentAccess({
+      manifest,
+      tableId: grantTableId,
+      values: { [targetField]: recordId },
+      actorId,
+      readRows,
+      // **読み手を1本も増やしていない** —— **`readRows` が返す同じ行から `_id` で引くだけである。**
+      // **サーバ層の読み手(`memoizedRowReaders`)がしているのも、この索引を先に作ることだけで
+      // あり、読む先も読む量も1行も変わらない。**
+      // **【`V18-M8-T02`。直前の3行を1バイトも消していない】** **この読み手も `readRows` が返す
+      // 同じ行から `_id` で引くだけである**(壁の述語に渡す読み手と同じ作法)。
+      readRow: (id, wantedId) => {
+        // **【`V18-M8-T02`。下の3群の旧コメントを1バイトも消していない】** **下の3群は、取り除いた
+        // 辿りの訪問関数(`visit`)の中にあったものであり、この読み手の説明ではない。**
+        // **段0 は直前で見ているので、ここでは数えない。** **既に見つかっていれば何もしない。**
+        // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32`)——
+        // **段0 と親で違う整え方をしない**({@link resolveRecordAccess} と同じ手前の整えである)。
+        // **突き合わせる綴りは**段0 の表**の `creator_permission` である** ——
+        // **親の表の `creator_permission` ではない。** **問うているのは「その子の行の作成者と
+        // 同じ強さを、親の側で持っているか」だからである。**
+        return readRows(id).find((candidate) => nonEmptyString(candidate?._id) === wantedId);
+      },
     });
-    return names !== undefined && names.has(creatorName);
+    // **上限に当たったら `false` に倒す**(fail-closed)。 **一覧の口は上限に当たると 400 を
+    // 返すが、`grant_write` は**ボタンを出すかどうかの材料**であって壁ではない** ——
+    // **400 に倒すと一覧そのものが返らなくなる。** **動詞(`read`/`write`/`delete`)の側の
+    // 答えは1ミリも動かしていない**(`ADR-0402` 限定18)。
+    // **【`V18-M8-T02`。直前の4行を1バイトも消していない】** **直前の4行は取り除いた辿りの上限の説明である。**
+    // **付与表そのものの親の関門が上限に当たったときも、`allowed` ではないので偽に倒す**
+    // (付与の `POST` はそのとき 400 を返す)。
+    return parent.kind === "allowed";
   };
+}
+
+/**
+ * **【2026-09-14 `V18-M8-T02`(`ADR-0445` §Decision 5)】関門 (1)(2) と所属の穴を、壁の述語を呼んで取る。**
+ *
+ * **非 export である** —— **凍結面 `OWNER_SCOPE_BASELINE.exports`(96名)を1名も動かさない**(限定 ④)。
+ * **呼ぶのは {@link rowGrantWriteJudge}(面を掛ける入口)と、`?member=` で他人について問う
+ * {@link resolveRecordAccessSources} の2箇所だけである**(後者は面を1つも掛けない。§Decision 6)。
+ *
+ * **呼び方は1つに固定する** —— **{@link judgeGrantWrite} を `op: "create"`、
+ * `values: { [grant.target]: 行の _id }`(相手の欄を1つも載せない)で呼ぶ。**
+ * **読み手 `readRow` は `readRows` が返す同じ行から `_id` で引くだけである**(読み手を増やさない)。
+ *
+ * **読み替えは1本だけである** ——
+ *  - **`unknown_holder`** … **関門 (1)(2) と所属の穴を越えた**(相手を載せていないので、
+ *    越えた要求はここで止まる)。
+ *  - **`undefined` / `no_target` / `invisible_target` / `not_creator` / `membership_locked`** … **偽。**
+ *  - **`allowed` / `self` / `parent_denied`** … **相手を載せていないので返らない。** **返っても偽に倒す**
+ *    (fail-closed。`record-row-access-response.test.ts` の `(G-0)` が「返らない」を固定する)。
+ *
+ * **引き継ぎを辿る2本目の判定を持たない** —— **表示と壁が同じ関数で決まる。**
+ *
+ * **【代償】一覧では返した行の数だけ壁の述語を呼び、そのたびに付与行の整えと照合が走る**
+ * (読み手はメモ化されているので DB は読み直さない)。
+ */
+function grantWriteWallJudge(params: {
+  manifest: Manifest;
+  tableId: string;
+  actorId: string | null;
+  roles: ActorRoles;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): (row: Record<string, unknown>) => boolean {
+  const { manifest, tableId, actorId, roles, readRows } = params;
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const grantTableId = nonEmptyString(declared?.grant?.table);
+  const targetField = nonEmptyString(declared?.grant?.target);
+  if (grantTableId === undefined || targetField === undefined) {
+    return () => false;
+  }
+  const readRow = (id: string, wantedId: string): Record<string, unknown> | undefined =>
+    readRows(id).find((candidate) => nonEmptyString(candidate?._id) === wantedId);
+  return (row) => {
+    // **(1) 対象行が決まるか。** **決まらない行は通さない**(fail-closed)。
+    const recordId = nonEmptyString(row?._id);
+    if (recordId === undefined) {
+      return false;
+    }
+    const verdict = judgeGrantWrite({
+      manifest,
+      tableId: grantTableId,
+      op: "create",
+      values: { [targetField]: recordId },
+      actorId,
+      role: roles,
+      readRows,
+      readRow,
+    });
+    return verdict?.kind === "unknown_holder";
+  };
+}
+
+/**
+ * **【2026-09-14 `V18-M8-T02`(`ADR-0445` §Decision 4)】表示の時点で決まる断りのうち、
+ * 行に依らないものを当てる。** **`true` を返したら、どの行にも「配れる」を出さない。**
+ *
+ * **非 export である**(凍結面の `exports` 96名を動かさない)。
+ *
+ * **物差しは「名乗り・役割・設計図・表示している対象の行の4つだけで答えが決まるか」の1本である。**
+ * **付与の `POST`(`app.ts` の中継層とハンドラ)が当てている述語を、同じ引数の作り方で呼ぶ** ——
+ * **判定の式を1行も写していない。**
+ *  - **(m1)** 中継層の面の書込 —— {@link roleGateBlocksWithoutGrants}(
+ *    {@link judgeRoleAccess}(付与表, `write`)、付与表が点の管轄内か)
+ *  - **(h1)** {@link isDirectCreateSuppressed}(付与表)
+ *  - **(h2)** {@link isRoleActionWriteAllowed}(付与表, `"create"`)
+ *  - **(h3)** {@link judgeRoleFieldWrite} のうち、**必ず送る欄** —— **`grant.target` の欄と、付与表で
+ *    `required: true` の欄**のどれかが断られるとき / **宣言された相手の欄(`grant.member` /
+ *    `grant.group`)が全部**断られるとき
+ *  - **(h7)** {@link judgeRootCreatableRoles}(付与表)
+ *  - **(h9)** {@link creatorGrantPlan}(付与表そのものが宣言を持つとき)と、その下見
+ *    ({@link isCreatorGrantReachable} / {@link combineRoleAndGrantAccess})
+ * **(h8) 付与表そのものの親の関門は行に依るので、{@link rowGrantWriteJudge} の行ごとの側で当てる。**
+ *
+ * **【写さない。誇張しない】** **(3) 相手が自分 / (4) 相手が解決できない / (5) 相手が親を読めない /
+ * (h4) 持ち主の偽装 / (h5) 条件つきの規則(条件は評価しない。条件つきの規則は「通しうる」のまま)/
+ * (m2) 画面名の名指し / 必須でない欄(`permission` を含む)の項目規則** —— **これらについては
+ * 「配れる」と出て押すと断られる形が残る**(`record-row-access-response.test.ts` の
+ * `(G-11)` / `(G-13)` / `(G-14)`)。
+ */
+function grantWriteFacesBlock(params: {
+  manifest: Manifest;
+  declared: AccessControlDeclaration;
+  grantTableId: string;
+  targetField: string;
+  actorId: string | null;
+  roles: ActorRoles;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): boolean {
+  const { manifest, declared, grantTableId, targetField, actorId, roles, readRows } = params;
+  const grantTable = tablesOf(manifest).find((candidate) => candidate?.id === grantTableId);
+  if (grantTable === undefined) {
+    return true;
+  }
+  const tableWrite = judgeRoleAccess({
+    manifest,
+    roles,
+    target: { target: "table", table: grantTableId },
+    verb: "write",
+  });
+  const grantSources = recordAccessSourceTables(manifest, grantTableId);
+  // **(m1)**
+  if (
+    roleGateBlocksWithoutGrants({ role: tableWrite, grantGoverned: grantSources !== undefined })
+  ) {
+    return true;
+  }
+  // **(h1)**
+  if (isDirectCreateSuppressed(grantTable)) {
+    return true;
+  }
+  // **(h2)**
+  if (!isRoleActionWriteAllowed(manifest, grantTableId, "create", roles)) {
+    return true;
+  }
+  // **(h3)** **1欄ずつ、その欄だけを送った入力として当てる**(断られた欄の名前は使わない)。
+  const fieldDenied = (fieldId: string): boolean =>
+    judgeRoleFieldWrite({ manifest, table: grantTable, values: { [fieldId]: null }, roles })
+      .kind === "denied";
+  const mustSend = [
+    targetField,
+    ...grantTable.fields.filter((field) => field?.required === true).map((field) => field.id),
+  ];
+  if (mustSend.some(fieldDenied)) {
+    return true;
+  }
+  const holderFields = [
+    nonEmptyString(declared.grant?.member),
+    nonEmptyString(declared.grant?.group),
+  ].filter(
+    (fieldId): fieldId is string =>
+      fieldId !== undefined && grantTable.fields.some((field) => field?.id === fieldId),
+  );
+  if (holderFields.length > 0 && holderFields.every(fieldDenied)) {
+    return true;
+  }
+  // **(h7)**
+  if (judgeRootCreatableRoles({ manifest, tableId: grantTableId, roles }) !== "allow") {
+    return true;
+  }
+  // **(h9)**
+  if (grantSources !== undefined) {
+    const memberRows =
+      grantSources.memberTable === undefined ? [] : readRows(grantSources.memberTable);
+    const plan = creatorGrantPlan({ manifest, tableId: grantTableId, actorId, memberRows });
+    if (plan?.kind === "no_member" || plan?.kind === "unusable") {
+      return true;
+    }
+    if (plan?.kind === "grant") {
+      const reachable = isCreatorGrantReachable(
+        judgeRecordAccess({
+          manifest,
+          tableId: grantTableId,
+          row: plan.previewRow,
+          actorId,
+          grantRows: [plan.previewGrant],
+          memberRows,
+        }),
+      );
+      if (!reachable) {
+        return true;
+      }
+      // **付与の `POST` はこの直後に {@link combineRoleAndGrantAccess} の合成を当てるが、ここでは
+      // 呼ばない。** **理由(読んで確かめた)**: **そこへ渡る点の答えは `reachable`(= 真)であり、
+      // 点が管轄内(`grant` が在る)で `write` が真なら、合成は面の答えに依らず必ず通す**
+      // (両方が管轄内なら `OR`、点だけが管轄内なら点の答え)。 **偽に倒れる場面が1つも無いので、
+      // 写しても答えは1ビットも変わらない。** **呼べば `access-control-upper-bound.test.ts` の
+      // `(F-1)` が固定している呼び出しの数(4)を動かすので、呼ばない側を採った。**
+    }
+  }
+  return false;
 }
 
 /**
@@ -2816,6 +4455,24 @@ export function judgeRoleAssignment(params: {
 }
 
 /**
+ * **親の行が読めなくなった行を、付与を作り直して回復できる役割**
+ * (`V17-M6-T01` / `AC-G22` / `ADR-0424`)。**`owner` 1語ちょうどである。**
+ *
+ * **出どころは利用者決定である** —— **「親を消したあとの行を助けられるのは**管理者だけ**」。**
+ * **行の作成者には広げていない**(広げると、自分では単票を読めない行に付与を作れる相手が
+ * 増える。**別の門A が要る**)。
+ *
+ * **【付与表への書込を無条件に通す運営ロールの定数と同じ値だが、別の定数にしてある】** ——
+ * **{@link judgeRoleAssignment} の側と同じ作法である**(片方を広げたときに、もう片方が
+ * 黙って動かないようにするため)。 **本定数を広げるのは「消えた親の回復を誰に許すか」の
+ * 決定であり、「付与を誰が作れるか」の決定とは別に審査される。**
+ *
+ * **【値が2箇所に在ることを隠さない】** —— **同じ値を持つ定数が本ファイルに2本ある。**
+ * **1本に束ねられなかった理由と、その代償は `ADR-0424` §限界に書いた。**
+ */
+const ORPHAN_PARENT_RECOVERY_ROLES: readonly string[] = ["owner"];
+
+/**
  * **付与の相手が、引き継ぎ元(`inherit_from`)の親の行を読めるかを検査する**(`Z-G33`)。
  *
  * **依頼文 `L6` の逐語**: **「issue はプロジェクトへのアクセス権限がある人しかアサイン
@@ -2837,6 +4494,20 @@ export function judgeRoleAssignment(params: {
  *     **あとからそのグループに人を足す経路を1ミリも見ていない。**
  *  5. **書込の時点しか見ない。** **書いたあとに親の権限が消えることを止めない**
  *     (`v7-m0.md` §6-2 の `Z-G33` `S3` の1 の逐語)。
+ *
+ * **【2026-09-08 追記(`V17-M6-T01` / `AC-G22` / `ADR-0424`)。上の5点を1バイトも
+ * 消していません】** —— **「止めないもの」が今日から**1つ増えて6点**になった。**
+ *
+ *  6. **親の行が**読めない**とき、要求している人が運営ロール
+ *     ({@link ORPHAN_PARENT_RECOVERY_ROLES})なら、その親については1件も止めない。**
+ *     **親を消したあとに残った行へ、運営が付与を作り直せるようにするためである**
+ *     (利用者決定 = **「助けられるのは管理者だけ」**)。
+ *     **【これが意味しないこと。誇張しない】**
+ *      - **親が**生きている**ときの拒否は1ミリも緩んでいない**(相手が親を読めなければ
+ *        今日どおり止まる。**運営ロールでも止まる**)。
+ *      - **行の作成者には広げていない** —— **作成者は今日どおり止まる。**
+ *      - **`readRow` は「消えている」と「読めない」を1つの `undefined` でしか返さない** ——
+ *        **本実装はこの2つを**区別していない**。**
  */
 function judgeGrantParentAccess(params: {
   manifest: Manifest;
@@ -2848,6 +4519,12 @@ function judgeGrantParentAccess(params: {
   memberRows: readonly Record<string, unknown>[];
   readRows: (tableId: string) => readonly Record<string, unknown>[];
   readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **要求している人の実効ロール集合**(`V17-M6-T01` / `AC-G22`)。
+   * **見るのは「親の行が読めない」枝1本だけである** —— **他のどの枝も、今日と同じく
+   * 役割を1ミリも見ていない。**
+   */
+  role: ActorRoles;
 }): GrantWriteVerdict {
   const {
     manifest,
@@ -2859,6 +4536,7 @@ function judgeGrantParentAccess(params: {
     memberRows,
     readRows,
     readRow,
+    role,
   } = params;
   const inheritFrom = Array.isArray(declared.inherit_from) ? declared.inherit_from : [];
   if (inheritFrom.length === 0) {
@@ -2868,9 +4546,27 @@ function judgeGrantParentAccess(params: {
   // **相手(利用者 or グループ)を、ログインアカウントの集合に落とす。**
   // **グループは「そのグループに属するメンバー行の全員」である** —— **`L6` の主語は
   // 「人」だからである。** **1人でも親を読めなければ止める。**
+  //
+  // **【2026-09-07 訂正(`V17-M1-T01c` / `ADR-0410` の `AC-G1`)。直前の3行を1バイトも
+  // 消していません】** —— **「グループは**そのグループに属するメンバー行の全員**である」は、
+  // **相手欄とグループ欄が**ともに埋まっている**付与行では今日は偽である。** **その行が
+  // 届くのは**交わり**(その人であり、**かつ**そのグループに居る人)だけであり、
+  // ここが数えるのもその交わりだけである。** **片欄だけの行では今日どおりである**
+  // (相手だけならその人、グループだけならその全員)。 **「1人でも親を読めなければ止める」
+  // ことと、`L6` の主語が「人」であることは今日も真である。**
+  // **出どころはユーザ決定 `D-V16-2` であり、条文は `ADR-0410` §Decision の 2 である**
+  // —— **同 §Context の 3 が「片方だけ直すと、AND では1人にしか効かない付与に対して
+  // この関門が今日どおりグループの全員を数え、1人でも親を読めなければ止め続ける」と
+  // 名指しした箇所がここである。**
+  // **{@link resolveGrantedPermissionNames} と**同じ形**で書いている**(`ADR-0410` 限定1)。
   const accountField = nonEmptyString(declared.members?.account);
   const memberGroupField = nonEmptyString(declared.members?.group);
   const accounts = new Set<string>();
+  // **両欄がともに埋まっているか** —— **グループ側は、そもそもグループを辿れる宣言
+  // (`members.group` が在る)でなければ「埋まっている」と数えない**(辿れないなら
+  // グループ経由では1人も届かず、AND にすると相手側まで消えてしまうためである)。
+  const bothHeld =
+    holderMemberId !== undefined && holderGroupId !== undefined && memberGroupField !== undefined;
   if (accountField !== undefined) {
     for (const member of memberRows) {
       const memberId = nonEmptyString(member?._id);
@@ -2879,7 +4575,12 @@ function judgeGrantParentAccess(params: {
         holderGroupId !== undefined &&
         memberGroupField !== undefined &&
         nonEmptyString(member?.[memberGroupField]) === holderGroupId;
-      if (!viaMember && !viaGroup) {
+      if (bothHeld) {
+        // **両欄がともに埋まっている行だけが AND である。**
+        if (!viaMember || !viaGroup) {
+          continue;
+        }
+      } else if (!viaMember && !viaGroup) {
         continue;
       }
       const account = nonEmptyString(member?.[accountField]);
@@ -2906,6 +4607,18 @@ function judgeGrantParentAccess(params: {
     const parentRow = readRow(parentTableId, parentRecordId);
     if (parentRow === undefined) {
       // **親の行が読めない**(消されている等)—— **fail-closed に倒す。**
+      //
+      // **【2026-09-08 訂正(`V17-M6-T01` / `AC-G22` / `ADR-0424`)。直前の1行を1バイトも
+      // 消していません】** —— **倒さない相手が今日から1つある。**
+      // **要求している人が運営ロール({@link ORPHAN_PARENT_RECOVERY_ROLES})なら、
+      // この親については1件も止めない** —— **親を消したあとに残った行へ、運営が付与を
+      // 作り直せるようにするためである。**
+      // **`return` ではなく `continue` である** —— **`inherit_from` が複数本あるとき、
+      // 残りの親は今日どおり全部検査するためである**(1本だけを飛ばす)。
+      // **運営ロールでない人**(**行の作成者を含む**)**は今日どおり倒れる。**
+      if (declaredMatchesRoles(ORPHAN_PARENT_RECOVERY_ROLES, role)) {
+        continue;
+      }
       return { kind: "parent_denied", tableId: parentTableId, recordId: parentRecordId };
     }
     const parentGrantRows =
@@ -3612,6 +5325,25 @@ export type RoleAccessDecision = {
   readonly governed: boolean;
   readonly blockedBy: AccessLayerName | null;
   readonly conditional: boolean;
+  /**
+   * **【2026-09-11 追記(`V18-M2-T10`。ユーザ決定 `D-V18-19` / `ADR-0438` 行11)】**
+   * **`conditional` が「その動詞に合致した規則を**全部合算**して立つ」ことの穴を塞ぐ旗。**
+   *
+   * **真 = 「条件(`when`)を1つも持たない規則によって、実際に許可が出た」。**
+   *
+   * **`conditional` との違いを名指しする** —— **`conditional` は「条件つきの規則が
+   * 1本でも関与したか」であり、**許可を1件も出さない規則**でも立つ。**
+   * **`V18-M2-T09` が複製の上で撃った実測では、役割の規則を `[条件なしの read]` から
+   * `[条件なしの read, 誰にも当たらない条件つきの read]` にしただけで、`user3` の
+   * 持ち場が `1件` から `3件` に戻った。**
+   *
+   * **【任意の鍵である理由】** **必須にすると、この型のリテラルを組んでいる既存の
+   * 検査が型で落ちる。** **省略は「条件なしの許可は出ていない」と同じであり、
+   * 合成の狭めが効かない側(= 今日までと同じ `OR`)に倒れる。**
+   *
+   * **読むのは {@link combineRoleAndGrantAccess} の `faceCarries` ちょうど1箇所である。**
+   */
+  readonly unconditionalAllow?: boolean;
 };
 
 /** **面の管轄外**(規則が1本も書かれていない対象)。**全許可の1値を使い回す。** */
@@ -4073,6 +5805,10 @@ export function judgeRoleAccess(params: {
   let governed = false;
   let allowed = false;
   let conditional = false;
+  // **【`V18-M2-T10`。`D-V18-19` / `ADR-0438` 行11】**
+  // **「条件を1つも持たない規則によって許可が出たか」。** **`conditional` と違い、
+  // 許可を1件も出さない規則では立たない。**
+  let unconditionalAllow = false;
   for (const declaration of declarations) {
     const id = typeof declaration.id === "string" ? declaration.id : undefined;
     for (const rule of roleRulesOf(declaration)) {
@@ -4094,6 +5830,10 @@ export function judgeRoleAccess(params: {
       }
       if (outcome.holds) {
         allowed = true;
+        // **【`V18-M2-T10`】条件を1つも持たない規則が通した許可だけを数える。**
+        if (!outcome.conditional) {
+          unconditionalAllow = true;
+        }
       }
     }
   }
@@ -4103,8 +5843,20 @@ export function judgeRoleAccess(params: {
     // 全許可**)。**今日: 表・画面・ボタンは閉じる。** **項目だけは今日どおり通す。**
     return unruledRoleAccess(params.target);
   }
+  // **【`V18-M2-T10`。旧の2行を逐語で残す】**
+  // **旧: `? { allowed: true, governed: true, blockedBy: null, conditional }`**
+  // **旧: `: { allowed: false, governed: true, blockedBy: "role", conditional };`**
+  // **`unconditionalAllow` は**真のときだけ**鍵を置く** —— **偽のときに `false` を
+  // 置くと、この戻り値を `toEqual` で逐語に固定している既存の検査が、答えを1ビットも
+  // 変えていないのに赤くなる**(`toEqual` は値の在る鍵を無視しない)。
   return allowed
-    ? { allowed: true, governed: true, blockedBy: null, conditional }
+    ? {
+        allowed: true,
+        governed: true,
+        blockedBy: null,
+        conditional,
+        ...(unconditionalAllow ? { unconditionalAllow: true } : {}),
+      }
     : { allowed: false, governed: true, blockedBy: "role", conditional };
 }
 
@@ -4172,6 +5924,23 @@ export type CombinedAccessDecision = {
 };
 
 /**
+ * **面の「条件を1つも持たない読取」だけで、行ごとの付与(点)を素通りしてよい役割**
+ * (`V18-M2-T04`。**ユーザ決定 `D-V18-18`** / `ADR-0437` §Decision 4)。
+ *
+ * **形は `GRANT_WRITE_ADMIN_ROLES`(`:3206`)/ `ROLE_ASSIGNMENT_ELEVATED_ROLES`(`:3694`)/
+ * `ORPHAN_PARENT_RECOVERY_ROLES`(`:3782`)と同じである** —— **モジュール局所の定数を
+ * `declaredMatchesRoles` に渡す。** **`export` を1名も増やしていない**(`ADR-0437` 限定2)。
+ *
+ * **【これは配慮ではない。すり抜けが1本残るということである】** —— **運営者は、行ごとに
+ * 1件も配られていなくても今日どおり全部読める**(`docs/plan/v18/unfixed-holes.md` の
+ * `H-V18-2`)。 **先例は `ADR-0422`(ユーザ決定 `D3`)—— 「配りをすり抜けています」という
+ * 知らせを運営者の規則には1件も出さない、と同じ向きである。**
+ *
+ * **広げ直す(= 運営者にも効かせる)にはユーザに問い直すしかない**(`ADR-0437` §Decision 6 の 6)。
+ */
+const UNCONDITIONAL_READ_BYPASS_ROLES: readonly string[] = ["owner"];
+
+/**
  * **面(役割に束ねた権限)と点(行ごとの付与)を `OR` で重ねる**(`V8-M19` / `D-V8-23`)。
  *
  * ## **【`V8-M19` が `AND` を `OR` に変えた】**
@@ -4205,11 +5974,45 @@ export type CombinedAccessDecision = {
  *
  * @param grant **点の判定結果。`undefined` は「点が管轄外」**
  *   (`judgeRecordAccess` が宣言の無い表へ返す `UNGOVERNED_RECORD_ACCESS` と同じ意味)。
+ *
+ * =====================================================================================
+ * **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437`)。上の「両方が管轄内 → `OR`」は
+ * **読取についてだけ** 今日から偽である。旧文を1バイトも消していない】**
+ *
+ * **読取(`verb === "read"`)については、面が通した根拠が**条件(`when`)を1つも持たない
+ * 規則だけ**であるとき(= `role.conditional` が偽)、**点が管轄内の表ではその面を
+ * `OR` に入れない。**
+ *
+ * **なぜか** —— **「一般の役割に条件なしの全件読取を1行書くと、行ごとに配った設定が
+ * 丸ごと無効になる」形を止めるためである**(`docs/plan/v18/04-v18-m2-plan.md` §5-2 の
+ * 契約1'。**`ADR-0422` が「配りをすり抜けています」と知らせていた形そのものである**)。
+ *
+ * **【`D-V18-18`(ユーザ決定)。増分を狭める限定】** **役割が運営者(`owner`)の人には
+ * この狭めを1ビットも効かせない** —— **運営者は今日どおり全部読める。**
+ * **判定は {@link UNCONDITIONAL_READ_BYPASS_ROLES} と `declaredMatchesRoles` で行う**
+ * (`GRANT_WRITE_ADMIN_ROLES` ほか3本と同じ形)。**要求している人の役割は、新しい
+ * **任意**の鍵 `roles` で受け取る** —— **必須にすると既存の呼び出しと検査が型で落ちる。**
+ * **渡されなかった呼び出しは「運営者ではない」として扱う**(既定は狭い側)。
+ *
+ * **【1ビットも変えていない側。名指しする】**
+ *  - **書込・削除の答え**(`D-V18-17`。`access-control-upper-bound.test.ts` の `(A-4)`)。
+ *  - **点が管轄外(`grant === undefined`)の表の答え。**
+ *  - **条件つきの規則(`conditional: true`)が関与した読取の答え。**
+ *  - **`blockedBy`** —— **面**だけ**を見れば通していたのだから、面は今日も入らない。**
+ *
+ * **【禁止】これを「配りのすり抜けを塞いだ」と一般化して書かない** —— **運営者は
+ * 今日も素通りする**(`docs/plan/v18/unfixed-holes.md` の `H-V18-2`)。
+ * **【禁止】「安全になった」と書かない。**
  */
 export function combineRoleAndGrantAccess(params: {
   role: RoleAccessDecision;
   grant: RecordAccessVerdict | undefined;
   verb: RoleRuleVerb;
+  /**
+   * **要求している人の実効ロール集合**(`V18-M2-T04`)。**`D-V18-18` の例外にだけ使う。**
+   * **省略できる** —— **省略は「運営者ではない」と同じである。**
+   */
+  roles?: ActorRoles;
 }): CombinedAccessDecision {
   const roleGoverned = params.role.governed;
   const grantGoverned = params.grant !== undefined;
@@ -4222,10 +6025,30 @@ export function combineRoleAndGrantAccess(params: {
   if (grantGoverned && !grantAllows) {
     blocked.push("grant");
   }
+  // **【`V18-M2-T04`】面が `OR` に持ち込めるか。** **読取で、点が管轄内で、面を通したのが
+  // 条件を1つも持たない規則だけで、しかも運営者でないなら、面は `OR` に入らない。**
+  // **【2026-09-11 追記(`V18-M2-T10`。ユーザ決定 `D-V18-19` / `ADR-0438` 行11)。
+  //   直前の1行の旧の逐語を1バイトも消していない】**
+  // **旧: `      !params.role.conditional &&`**
+  // **今日: `      params.role.unconditionalAllow === true &&`**
+  // **理由**: **`conditional` は「その動詞に合致した規則」を全部合算して立つので、
+  // **許可を1件も出さない**条件つきの規則を1本足すだけで狭めが外れた**
+  // (`V18-M2-T09` の実測。`1件` → `3件`)。 **見るべきは「条件を1つも持たない規則に
+  // よって許可が出たか」である。**
+  // **これは狭めを**広げる**向きである** —— **前より多くの形で点が効く。**
+  // **条件つきの規則**だけ**で許可が出ている形は1ビットも動かない**(旗が立たない)。
+  const faceCarries =
+    roleAllows &&
+    !(
+      params.verb === "read" &&
+      grantGoverned &&
+      params.role.unconditionalAllow === true &&
+      !declaredMatchesRoles(UNCONDITIONAL_READ_BYPASS_ROLES, params.roles)
+    );
   // **両方が管轄内なら `OR`。片方だけならその層。どちらも管轄外なら通す。**
   const allowed =
     roleGoverned && grantGoverned
-      ? roleAllows || grantAllows
+      ? faceCarries || grantAllows
       : roleGoverned
         ? roleAllows
         : grantGoverned
@@ -4357,9 +6180,21 @@ export function resolveCombinedRecordAccess(params: {
   }
   const verdict = grant?.kind === "verdict" ? grant.verdict : undefined;
   // **(3) 動詞ごとに重ねる**(合成の単位は(行, 要求している人, 動詞)ちょうど)。
-  const read = combineRoleAndGrantAccess({ role: role.read, grant: verdict, verb: "read" });
-  const write = combineRoleAndGrantAccess({ role: role.write, grant: verdict, verb: "write" });
-  const remove = combineRoleAndGrantAccess({ role: role.delete, grant: verdict, verb: "delete" });
+  // **【`V18-M2-T04`】`roles` を3本とも渡す** —— **使うのは読取の側だけだが
+  // (`D-V18-18` の例外)、動詞で渡し分けると「どの動詞に効くか」が2箇所に書かれる。**
+  const read = combineRoleAndGrantAccess({ role: role.read, grant: verdict, verb: "read", roles });
+  const write = combineRoleAndGrantAccess({
+    role: role.write,
+    grant: verdict,
+    verb: "write",
+    roles,
+  });
+  const remove = combineRoleAndGrantAccess({
+    role: role.delete,
+    grant: verdict,
+    verb: "delete",
+    roles,
+  });
   return {
     kind: "verdict",
     verdict: { read: read.allowed, write: write.allowed, delete: remove.allowed },
@@ -4393,6 +6228,35 @@ export type RecordPopulationScope =
   | "anonymous_public"
   | "owner_scoped"
   | "record_access"
+  /**
+   * **名簿表 / グループ表 / 付与表**(`V18-M3-T02`。`PM-G6` / `ADR-0435` / `ADR-0439`)。
+   *
+   * **有効な宣言が名指しした3役の表は、今日まで `"unfiltered"` に落ちていた** ——
+   * **面(役割の規則)が通すので、権限を1件も持たない人にも全件返っていた。**
+   * **この枝は「親の可視性に連れられる」絞りを掛ける**(`D-V18-21` / 計画 §11-1 の裁定5)。
+   *
+   * **`enabled: false` の宣言が名指しした表と、どの宣言からも名指しされていない表は
+   * この枝に1つも入らない**(射程の外。`records/v18-m0.md` §4-1)。
+   */
+  | "access_registry"
+  /**
+   * **画面名を名乗らない読取に立てた壁**(`V18-M4-T02`。`PM-G10` / `ADR-0435` §Decision 2 の 2 /
+   * `ADR-0441` 授権の表 行22)。
+   *
+   * **`?view=` を名乗らずに表の口を直接叩いた読取のうち、「その表を指す、要求の形に合う画面」を
+   * 1本も読めない相手の要求がこの枝に入る**(計画 `06-v18-m4-plan.md` §3-3 決め1)。
+   * **一覧の口は一覧系(`list_view` / `report_view`)、単票の口は単票系(`detail_view` / `form`)
+   * だけを見る** —— **口の形と画面の形を合わせないと、元番号27 が素通りする。**
+   *
+   * **その形の画面が1本も無い表は、この枝に1つも入らない**(決め2。**今日どおり通す**)——
+   * **隠された画面がそもそも存在しないからである。**
+   * **`unnamedViewRead` を渡さない呼び出しは1度もこの枝に入らない** —— **発火するのは
+   * 一覧の口と単票の口の**2経路ちょうど**である**(決め9)。
+   *
+   * **【禁止】この枝を「画面を隠した」と読まない** —— **隠れるのは行であって、画面の定義では
+   * ない**(`ADR-0435` §Status 4)。 **【禁止】「安全になった」と書かない。**
+   */
+  | "unnamed_view_wall"
   | "role_conditional";
 
 /** {@link RecordPopulationScope} + **絞りが要らない**(分岐5 = 非スコープ)。 */
@@ -4479,12 +6343,298 @@ export function recordRowAccessMap(params: {
   return map;
 }
 
+// --- 名簿表・グループ表・付与表の読取(`V18-M3-T02` / `PM-G6`)------------------------
+//
+// **`ADR-0435`(限定採用。門A)+ `ADR-0439`(授権)。ユーザ決定 `D-V18-21`。**
+// **裁定5点は `docs/plan/v18/05-v18-m3-plan.md` §11-1 が今日の正である。**
+//
+// **【述語を1本も新設していない】**(`ADR-0435` 限定1)—— **役の判定は既存の
+// {@link isGrantTable} / {@link isMemberTable} / {@link isGroupTable} を呼ぶだけである。**
+// **本節が足した関数はどれも `export` していない**(`ADR-0439` §Status 6 —— 凍結の
+// `exports`(95名)の打ち直しは1ミリも授権されていない。逃げ道は `ADR-0437:118`)。
+//
+// **【点の判定を1件も増やしていない】**(`ADR-0435` 限定8)—— **`judgeRecordAccess` を
+// 直接呼ばない。** **呼ぶのは {@link resolveCombinedRecordAccess}(= 今日の合成の答え)
+// だけであり、付与表そのものに点の判定を掛けていない**(`ADR-0308` の循環の裁定を破らない)。
+
+/**
+ * **名簿・グループ・付与の表の読取を、親の可視性に連れる絞りから**外す**役割**
+ * (`V18-M3-T02`。**運営は今までどおり全部見える** —— 計画 §11-1 / `D-V18-18` と同じ向き)。
+ *
+ * **形は {@link UNCONDITIONAL_READ_BYPASS_ROLES}(`:5250`)/ `GRANT_WRITE_ADMIN_ROLES`
+ * (`:3206`)/ `ORPHAN_PARENT_RECOVERY_ROLES`(`:3782`)と同じである** ——
+ * **モジュール局所の定数を {@link declaredMatchesRoles} に渡す。`export` を1名も増やさない。**
+ *
+ * **【これは配慮ではない。すり抜けが1本残るということである】** —— **運営者は、
+ * 「誰に何を配ったか」も「誰が利用者か」も今日どおり全件読める。**
+ */
+const REGISTRY_READ_BYPASS_ROLES: readonly string[] = ["owner"];
+
+/**
+ * **その表が、**有効な**宣言から名簿 / グループ / 付与のいずれかとして名指しされているか。**
+ *
+ * **`enabled: false` の宣言が名指しした表では偽である** —— **述語3本が
+ * {@link accessControlTableRoles} 経由で `enabled: true` の宣言しか数えないからであり、
+ * ここに `enabled` を読む条件式を1つも書いていない**(射程を2箇所で決めない)。
+ */
+function isAccessRegistryTable(manifest: Manifest, tableId: string): boolean {
+  return (
+    isGrantTable(manifest, tableId) ||
+    isMemberTable(manifest, tableId) ||
+    isGroupTable(manifest, tableId)
+  );
+}
+
+/**
+ * **その人に見える「名簿 / グループ / 付与」の行IDの集合を組む**(`D-V18-21`)。
+ *
+ * ## 絞り方(**計画 §3-2 の表そのもの**)
+ *
+ * | 表の役 | **返す行** |
+ * |---|---|
+ * | **付与表** | **その付与行が指す親の行を、その人が読めるものだけ** |
+ * | **名簿表** | **上で見える付与行が指している人の行 + 自分自身の行** |
+ * | **グループ表** | **上で見える付与行が指しているグループの行 + 自分が所属するグループの行** |
+ *
+ * ## 裁定(**計画 §11-1。1点ずつ、どこで効いているかを書く**)
+ *
+ * - **裁定1**: **「親の行を読める」= 今日の合成の答えそのものである** ——
+ *   **{@link resolveCombinedRecordAccess} の `read`。** **引き継ぎ(`inherit_from`)を含み、
+ *   上限(`restrictive`)を掛けた後の値である。** **新しい答えを1つも作っていない。**
+ * - **裁定2**: **親の表が複数の宣言から名指しされているときは**和**を取る** ——
+ *   **宣言ごとに走査し、1つの集合へ足し込む**(どれか1つの宣言経由で見えれば見える)。
+ * - **裁定3**: **グループ経由の付与(`grant.group`)も「見える付与行」に数える。**
+ * - **裁定4**: **親の行が引けない付与行(孤児)は落とす。** **運営には返る**
+ *   (運営の除外は呼び出し側 = {@link judgeRecordPopulation} の枝が行う)。
+ *
+ * ## **この関数が見ていないもの(誇張しない)**
+ *
+ * - **上限に当たった親(`limit_exceeded`)は「見えない」側に倒す** ——
+ *   **一覧の要求全体を 4xx にはしない。** **付与表の行が1行減るだけである。**
+ * - **`grant.target` が空の付与行は落とす** —— **親を判定できない。**
+ * - **`members.account` が自分を指す行が1件も無い人には、名簿表もグループ表も、
+ *   見える付与が指す行しか返らない**(「自分自身」が引けない)。
+ *
+ * @param readRows / @param readRow **行を読む手**(`app.ts` の `memoizedRowReaders`)。
+ *   **本ファイルは `src/kernel/` から値を1つも import しないので、読む手は呼び出し側が渡す。**
+ */
+function accessRegistryVisibleIds(params: {
+  manifest: Manifest;
+  tableId: string;
+  actorId: string | null;
+  roles: ActorRoles;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+}): ReadonlySet<string> {
+  const { manifest, tableId, actorId, roles, readRows, readRow } = params;
+  const visible = new Set<string>();
+  const asGrant = isGrantTable(manifest, tableId);
+  const asMember = isMemberTable(manifest, tableId);
+  const asGroup = isGroupTable(manifest, tableId);
+  // **親1行あたりの合成判定は1度だけ走らせる** —— **付与行の数だけ辿ると、
+  // 引き継ぎの段を何度も登り直すことになる**(`ADR-0042` §限界2 の代償はそのまま)。
+  const parentRead = new Map<string, boolean>();
+  for (const parent of tablesOf(manifest)) {
+    const declared = accessControlOf(parent);
+    const parentId = nonEmptyString(parent?.id);
+    if (declared === undefined || parentId === undefined) {
+      continue;
+    }
+    const grantTableId = nonEmptyString(declared.grant?.table);
+    const memberTableId = nonEmptyString(declared.members?.table);
+    const groupTableId = nonEmptyString(declared.groups?.table);
+    const namesGrant = asGrant && grantTableId === tableId;
+    const namesMember = asMember && memberTableId === tableId;
+    const namesGroup = asGroup && groupTableId === tableId;
+    if (!namesGrant && !namesMember && !namesGroup) {
+      continue;
+    }
+    // **(1) 自分自身の行と、自分が所属するグループ** —— **付与を1件も持たない人でも、
+    // 自分の名簿行と自分の班は見える**(`D-V18-21` の逐語)。
+    const accountField = nonEmptyString(declared.members?.account);
+    const memberGroupField = nonEmptyString(declared.members?.group);
+    if (
+      (namesMember || namesGroup) &&
+      memberTableId !== undefined &&
+      accountField !== undefined &&
+      actorId !== null
+    ) {
+      for (const member of readRows(memberTableId)) {
+        if (member?.[accountField] !== actorId) {
+          continue;
+        }
+        const memberId = nonEmptyString(member?._id);
+        if (namesMember && memberId !== undefined) {
+          visible.add(memberId);
+        }
+        const ownGroupId =
+          memberGroupField === undefined ? undefined : nonEmptyString(member?.[memberGroupField]);
+        if (namesGroup && ownGroupId !== undefined) {
+          visible.add(ownGroupId);
+        }
+      }
+    }
+    // **(2) 見える付与行** —— **親の行を読める付与だけを数える。**
+    const targetField = nonEmptyString(declared.grant?.target);
+    if (grantTableId === undefined || targetField === undefined) {
+      continue;
+    }
+    const memberField = nonEmptyString(declared.grant?.member);
+    const groupField = nonEmptyString(declared.grant?.group);
+    const sources = recordAccessSourceTables(manifest, parentId);
+    for (const grant of readRows(grantTableId)) {
+      const targetId = nonEmptyString(grant?.[targetField]);
+      if (targetId === undefined) {
+        continue;
+      }
+      // **旧(`V18-M3-T02`)を逐語で残す(NUL そのものは書かず `<NUL>` と説明で示す)**:
+      //     const cacheKey = `${parentId}<NUL>${targetId}`;
+      // **区切りが生の NUL バイト(U+0000)そのものだったため、
+      // `tools/no-nul-bytes.test.ts`(「git が把握しているテキストファイルは
+      // 生の NUL バイトを含まない」)が赤くなり、実 CI も赤くなっていた**
+      // (`V18-M3-T02d`)。**副作用として `git diff` を `grep` に流すと
+      // 「Binary file matches」になり、数え方を誤らせていた。**
+      //
+      // **区切りを `:` に替えた。答えは1ビットも変わらない** ——
+      // **`parentId` は表 ID であり、`schemas/manifest.schema.json` の
+      // `^(_apps|_changelog|[a-z][a-z0-9_-]*)$` が `:` を**1文字も通さない**。
+      // したがって**鍵の最初の `:` が組を一意に切り分ける**ので、
+      // **衝突は起こり得ない。** **`targetId` は行の `_id`
+      // (`crypto.randomUUID()` = `[0-9a-f-]` のみ。`src/kernel/records.ts:912`)であり、
+      // こちらにも `:` は現れない。**
+      // **同じ組(表 ID + 行の `_id`)の鍵は `src/kernel/workflow-runner.ts:408` が
+      // 先に ``${tableId}:${record._id}`` と書いており、綴りをそちらに揃えた。**
+      const cacheKey = `${parentId}:${targetId}`;
+      let readable = parentRead.get(cacheKey);
+      if (readable === undefined) {
+        const parentRow = readRow(parentId, targetId);
+        if (parentRow === undefined) {
+          // **裁定4: 親が引けない付与行(孤児)は落とす。**
+          readable = false;
+        } else {
+          const resolution = resolveCombinedRecordAccess({
+            manifest,
+            tableId: parentId,
+            row: parentRow,
+            actorId,
+            roles,
+            sources,
+            readRows,
+            readRow,
+          });
+          readable = resolution.kind === "verdict" && resolution.verdict.read;
+        }
+        parentRead.set(cacheKey, readable);
+      }
+      if (!readable) {
+        continue;
+      }
+      const grantId = nonEmptyString(grant?._id);
+      if (namesGrant && grantId !== undefined) {
+        visible.add(grantId);
+      }
+      const holder = memberField === undefined ? undefined : nonEmptyString(grant?.[memberField]);
+      if (namesMember && holder !== undefined) {
+        visible.add(holder);
+      }
+      // **裁定3: グループ経由の付与も数える**(相手欄が空でグループ欄だけの行を落とさない)。
+      const held = groupField === undefined ? undefined : nonEmptyString(grant?.[groupField]);
+      if (namesGroup && held !== undefined) {
+        visible.add(held);
+      }
+    }
+  }
+  return visible;
+}
+
+/**
+ * **画面名を名乗らない読取の「口の形」**(`V18-M4-T02`。`PM-G10`)。
+ *
+ * **`"list"` = `GET .../tables/:table_id/records`(一覧)、`"single"` =
+ * `GET .../tables/:table_id/records/:record_id`(単票)。** **この2つしかない**(決め9)。
+ *
+ * **【`export` にしていない理由を書く】** **`ADR-0441` 授権の表 行27 が
+ * `OWNER_SCOPE_BASELINE.exports`(95名)の打ち直しを授権していない。**
+ * **逃げ道は `ADR-0437:118` の「非 export の関数(と型)を足すぶんには赤くならない」1本だけで
+ * ある。** **呼び出し側は文字列リテラルを渡すので、型の名前を import する必要が無い。**
+ */
+type UnnamedViewReadShape = "list" | "single";
+
+/** **一覧の口が見る画面の種類**(集計画面を含む。計画 §11-7 の 1)。 */
+const UNNAMED_VIEW_LIST_TYPES: readonly string[] = ["list_view", "report_view"];
+
+/** **単票の口が見る画面の種類**(入力フォームを含む)。 */
+const UNNAMED_VIEW_SINGLE_TYPES: readonly string[] = ["detail_view", "form"];
+
+/**
+ * **画面名を名乗らない読取の壁が閉じているか**(`V18-M4-T02`。`PM-G10` / `ADR-0435`
+ * §Decision 2 の 2 / 計画 §3-3 の決め1・決め2)。
+ *
+ * **真 = その要求からは行を1件も返さない。** **偽 = 今日どおり通す。**
+ *
+ * ## この述語が見るもの(**3つだけ**)
+ *
+ *  1. **その表を指す画面のうち、要求の形に合うもの**(一覧の口 → 一覧系 / 単票の口 → 単票系)。
+ *  2. **そのうち1本でも、要求している人の実効ロール集合が**読める**か**
+ *     ({@link judgeRoleAccess} 1本。**ここに規則を読む条件式を1つも書かない**)。
+ *  3. **1本も無ければ偽**(決め2)。**隠された画面がそもそも存在しない。**
+ *
+ * ## この述語が**見ないもの**(誇張しない)
+ *
+ * - **行を1件も見ない**(母集団の分類と同じ性質)。**条件(`when`)つきの画面の規則は
+ *   `judgeRoleAccess` が `row` 無しで「通しうる」に倒すので、**壁は閉じない**。
+ * - **運営(`owner`)の素通しを1本も持たない**(決め5)。 **役割の規則がそのまま効く。**
+ * - **未ログインを1ミリも区別しない**(決め6)。 **`roles: null` は `anonymous` として判定される。**
+ * - **画面の定義そのものには1バイトも触らない**(`ADR-0435` 限定5)。
+ *
+ * @param manifest **設計図。** 形が壊れていれば画面0本として扱う(= 壁は閉じない)。
+ */
+function unnamedViewReadWallCloses(params: {
+  manifest: unknown;
+  tableId: string;
+  shape: UnnamedViewReadShape;
+  roles: ActorRoles;
+}): boolean {
+  const kinds = params.shape === "list" ? UNNAMED_VIEW_LIST_TYPES : UNNAMED_VIEW_SINGLE_TYPES;
+  const matching = manifestViews(params.manifest).filter((view) => {
+    const type = nonEmptyString(view?.type);
+    return (
+      type !== undefined && kinds.includes(type) && nonEmptyString(view?.table) === params.tableId
+    );
+  });
+  // **決め2: その形の画面が1本も無い表は今日どおり通す。**
+  if (matching.length === 0) {
+    return false;
+  }
+  // **決め1: 1本でも読めれば通す。1本も読めなければ止める。**
+  return !matching.some((view) => {
+    const viewId = nonEmptyString(view?.id);
+    return (
+      viewId !== undefined &&
+      judgeRoleAccess({
+        manifest: params.manifest,
+        roles: params.roles,
+        target: { target: "view", view: viewId },
+        verb: "read",
+      }).allowed
+    );
+  });
+}
+
 /**
  * **どの絞り方をする表かを決める**(行を1件も見ない)。
  *
  * **順序は着手前の `app.ts` の5分岐の順そのものである** —— **入れ替えると答えが変わる。**
  * **`app.ts` の `postFiltered`(= DB のページングを外すか)は、この答えが `"unfiltered"`
  * でないことと1バイトも同じである。**
+ *
+ * **【`V18-M3-T02` が枝を1本足した。上の「5分岐」を1バイトも消していない】** ——
+ * **名簿 / グループ / 付与の表を `"access_registry"` に分類する枝を、
+ * `record_access` の**後**・`role_conditional` の**前**に置いた。**
+ * **後ろに置く理由**: **その表自身が守られる側(`record_access`)であるなら、
+ * 今日どおり点の判定が先に立つ**(着手前の答えを1ビットも動かさない)。
+ * **前に置く理由**: **条件つきの面しか持たない名簿表でも絞りを掛けるためである**
+ * (`role_conditional` の絞りは新しい枝の中でも同じ形で当てている)。
  */
 export function recordPopulationScope(params: {
   manifest: Manifest;
@@ -4492,7 +6642,40 @@ export function recordPopulationScope(params: {
   anonymousPublic: boolean;
   accessSources: RecordAccessSourceTables | undefined;
   tableRead: RoleAccessDecision;
+  /**
+   * **画面名を名乗らない読取の口の形**(`V18-M4-T02`。`PM-G10`)。
+   *
+   * **`undefined` = この要求に壁を立てない** —— **着手前と1バイトも同じ答えになる。**
+   * **渡しているのは HTTP の一覧の口と単票の口の**2経路ちょうど**である**(決め9)——
+   * **集計表の口 / 「誰に配られているか」の口 / 到達不能の行の口 / バッチ / AI の口は
+   * 1度も渡していない。**
+   */
+  unnamedViewRead?: UnnamedViewReadShape | undefined;
+  /**
+   * **要求している人の実効ロール集合**(`unnamedViewRead` を渡すときだけ要る)。
+   * **省略は未ログイン(`anonymous`)と同じである。**
+   */
+  roles?: ActorRoles | undefined;
 }): RecordPopulationClass {
+  // **【`V18-M4-T02` / `PM-G10` / `ADR-0435` §Decision 2 の 2】画面名を名乗らない読取の壁。**
+  //
+  // **既存の5分岐の**手前**に置く** —— **壁が閉じたときの答えは「行を1件も返さない」であり、
+  // どの絞りとの重ね順も `AND` になる**(積が空なので、先に見ても後に見ても同じである)。
+  // **【この位置が、下の「順序は着手前の5分岐の順そのものである」を破っていないこと】** ——
+  // **5分岐どうしの順序は1バイトも入れ替えていない。** **足したのは手前の1本だけである。**
+  // **`unnamedViewRead` を渡さない呼び出し(集計表の口 / AI の口 / 既存の検査)では、
+  // この `if` は1度も真にならない。**
+  if (
+    params.unnamedViewRead !== undefined &&
+    unnamedViewReadWallCloses({
+      manifest: params.manifest,
+      tableId: params.table?.id ?? "",
+      shape: params.unnamedViewRead,
+      roles: params.roles ?? null,
+    })
+  ) {
+    return "unnamed_view_wall";
+  }
   // **匿名公開は最初に見る** —— **匿名には actor が無いので、以降の分岐が成り立たない。**
   if (params.anonymousPublic) {
     return "anonymous_public";
@@ -4502,6 +6685,12 @@ export function recordPopulationScope(params: {
   }
   if (params.accessSources !== undefined) {
     return "record_access";
+  }
+  // **【`V18-M3-T02` / `PM-G6`】名簿表・グループ表・付与表**(`D-V18-21`)。
+  // **`enabled: false` の宣言が名指しした表と、どの宣言からも名指しされていない表は
+  // ここに入らない**(射程の外。述語3本がそう作られている)。
+  if (isAccessRegistryTable(params.manifest, params.table?.id ?? "")) {
+    return "access_registry";
   }
   if (params.tableRead.conditional) {
     return "role_conditional";
@@ -4535,6 +6724,27 @@ export function judgeRecordPopulation(params: {
    * **ここで DB を読まない**(読み手は呼び出し側が持つ)。
    */
   grantWrite?: ((row: Record<string, unknown>) => boolean) | undefined;
+  /**
+   * **行を読む手**(`V18-M3-T02`。`app.ts` の `memoizedRowReaders` が組んだもの)。
+   *
+   * **`"access_registry"` の枝でだけ使う** —— **名簿 / グループ / 付与の行が
+   * 見えるかは、**親の行**を読まないと決まらないからである。**
+   * **`undefined` を渡すと、その枝では面の規則だけが当たる**(= 着手前と同じ答え)。
+   * **今日、渡していない呼び出しは製品コードに1つも無い**(一覧の口と集計表の口の2本とも
+   * 渡している)。**ここで DB を読まない** —— **本ファイルは `src/kernel/` から値を
+   * 1つも import しないという性質を保つ。**
+   */
+  readRows?: ((tableId: string) => readonly Record<string, unknown>[]) | undefined;
+  readRow?:
+    | ((tableId: string, recordId: string) => Record<string, unknown> | undefined)
+    | undefined;
+  /**
+   * **画面名を名乗らない読取の口の形**(`V18-M4-T02`。`PM-G10`)。
+   * **そのまま {@link recordPopulationScope} へ渡る** —— **判定の式はあちらの1箇所だけで
+   * あり、ここには壁の条件式を1行も書いていない。**
+   * **`undefined`(既定)では着手前と1バイトも同じ答えになる。**
+   */
+  unnamedViewRead?: UnnamedViewReadShape | undefined;
 }): RecordPopulation {
   const { manifest, tableId, rows, actorId, roles, tableRead, judge, grantWrite } = params;
   const scope = recordPopulationScope(params);
@@ -4652,6 +6862,47 @@ export function judgeRecordPopulation(params: {
               }),
             }),
       };
+    }
+    case "access_registry": {
+      // **【`V18-M3-T02` / `PM-G6` / `D-V18-21`】名簿表・グループ表・付与表。**
+      //
+      // **運営(`owner`)は今までどおり全部見える**(計画 §11-1。`D-V18-18` と同じ向き)。
+      // **面の条件つきの規則は、この枝でも今日どおり当てる** —— **新しい枝に移したことで
+      // 条件つきの絞りが消えないようにするためである**(`AND` で重ねる)。
+      const registryRows = rows.filter((row) => roleRowReadable(row));
+      const { readRows, readRow } = params;
+      if (
+        declaredMatchesRoles(REGISTRY_READ_BYPASS_ROLES, roles) ||
+        readRows === undefined ||
+        readRow === undefined
+      ) {
+        return { kind: "visible", scope, rows: registryRows };
+      }
+      const visibleIds = accessRegistryVisibleIds({
+        manifest,
+        tableId,
+        actorId,
+        roles,
+        readRows,
+        readRow,
+      });
+      return {
+        kind: "visible",
+        scope,
+        rows: registryRows.filter((row) => {
+          const recordId = nonEmptyString(row?._id);
+          return recordId !== undefined && visibleIds.has(recordId);
+        }),
+      };
+    }
+    case "unnamed_view_wall": {
+      // **【`V18-M4-T02` / `PM-G10`】画面名を名乗らない読取の壁が閉じている。**
+      //
+      // **行を1件も返さない。** **答えの形を決めるのは呼び出し側である**(`ADR-0435`
+      // §Decision 2 の 3 / 計画 §3-3 決め4)—— **一覧は応答から落とし(0件・`total` も 0)、
+      // 単票は 404 にする。** **「403 で全部返す」形にしない。**
+      // **`judge`(点の判定)を1度も呼ばない** —— **壁は行を1件も見ない。**
+      return { kind: "visible", scope, rows: [] };
     }
     case "role_conditional":
       return { kind: "visible", scope, rows: rows.filter((row) => roleRowReadable(row)) };

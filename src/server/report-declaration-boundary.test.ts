@@ -133,6 +133,31 @@ function manifestOf(views: Any[], options?: { skipTables?: string[] }): Manifest
 }
 
 /**
+ * **【`V17-M4-T01` / 台帳 `AC-G19`】画面の規則**だけ**を持つ `customer` を足した題材。**
+ *
+ * **本段が集計表の口に「その画面を閲覧してよいか」の判定を1本置いた。**
+ * **この題材の `customer` は役割の宣言に1行も無いので、画面の関門で 403 になり、
+ * 「読める行が0件の人に 200 が返る」を測れなくなる** —— **`(16)` の2人目がそれである。**
+ * **`src/server/report-visibility.test.ts` のフィクスチャが `viewer` / `customer` に
+ * `rules: viewRules` を持たせているのと同じ理由である**(同ファイルの逐語
+ * 「**画面の規則だけは持たせる** —— **持たせないと画面の関門で 403 になり…**」)。
+ *
+ * **表の規則は1本も足していない** —— **足すと可視件数が0でなくなり、`(16)` が
+ * 測っているもの(群ごとの件数の和 = その人の可視件数 = 0)が消える。**
+ */
+function manifestWithViewOnlyCustomer(): Manifest {
+  const base = manifestOf(allViews()) as unknown as {
+    app: { views: { id: string }[]; roles: Any[] };
+  };
+  base.app.roles.push({
+    id: "customer",
+    name: "客",
+    rules: base.app.views.map((view) => ({ target: "view", view: view.id, can: ["read"] })),
+  });
+  return base as unknown as Manifest;
+}
+
+/**
  * **試す画面を先頭に置いた題材。**
  *
  * **`beforeEach` が適用した画面をすべて残している** —— **`applyManifest` は
@@ -761,6 +786,16 @@ test("(16) 1つの集計表に件数と合計が2本出る(Q-G4)、そして群�
     role: "customer",
     username: "c16-stranger",
   }).cookie;
+  /*
+   * **【`V17-M4-T01` / 台帳 `AC-G19` による追記。上の期待値も下の3行も1バイトも変えていない】**
+   *
+   * **本段が集計表の口に画面の閲覧判定を1本置いた** —— **画面の規則を1本も持たない
+   * `customer` は、着手後この口で 403 になる。**
+   * **`(16)` が測りたいのは「表を1行も読めない人の集計が 0 件で 200 になる」ことであって、
+   * 「画面を開けない人が 403 になる」ことではない** —— **そこで、この2人目に
+   * **画面の規則だけ**を配る**(表の規則は1本も配らない。可視件数は 0 のままである)。**
+   */
+  accepted(manifestWithViewOnlyCustomer());
   const strangerReport = await readReport(stranger, "by-category");
   expect(strangerReport.status).toBe(200);
   expect(await visibleCount(stranger)).toBe(0);

@@ -19,7 +19,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerReadTools } from "./tools/read.ts";
 import { registerWriteTools } from "./tools/write.ts";
-import { CANNOT_DO_INDEX, DESTRUCTIVE_CHANGE_FLOW, VOCABULARY_ENTRY_POINT } from "./vocabulary.ts";
+import {
+  CANNOT_DO_INDEX,
+  DESTRUCTIVE_CHANGE_FLOW,
+  VOCABULARY_ENTRY_POINT,
+  VOCABULARY_RESOURCE_CONTENTS,
+  VOCABULARY_RESOURCE_URIS,
+} from "./vocabulary.ts";
 
 /**
  * MCP クライアント(Claude Code / MCP Inspector)に名乗るサーバ名。
@@ -79,7 +85,18 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     {
-      capabilities: { tools: {} },
+      // **`V17-M0-T01b`(`ADR-0413`)で `resources` を足した。** `tools` の行は1バイトも
+      // 変えていない。**`prompts` は今日も1つも公開しない**(`ADR-0271` 限定4 /
+      // `ADR-0346` の該当節は、prompts の側については今日も真である)——
+      // **`prompts/list` は `-32601 Method not found` で断られ続ける**(`server.test.ts` が撃つ)。
+      //
+      // **【明示的に宣言する理由】** SDK の `registerResource()` は
+      // `resources: { listChanged: true }` を**自動で**足す(`server/mcp.js` の
+      // `setResourceRequestHandlers()`)。自動任せにすると、**この行を読んだだけでは
+      // 「このサーバが何を公開しているか」が分からない。** `ADR-0005` §7 が
+      // 「tools だけを持つ」と書いていた場所そのものなので、引き直したことを
+      // ここに字面で残す。**自動側とは `registerCapabilities` が併合するので衝突しない。**
+      capabilities: { tools: {}, resources: {} },
       // v0 の語彙の外に出ないこと、範囲外の要求は正直に断ることを、
       // ツール説明文とは別にサーバ全体の指示としても置く。
       //
@@ -137,5 +154,54 @@ export function createMcpServer(options: CreateMcpServerOptions): McpServer {
   // 「まず現状を読む道具、次に変える道具」にするためで、機能上の依存は無い。
   registerWriteTools(server, options);
 
+  registerVocabularyResources(server);
+
   return server;
+}
+
+/**
+ * **`V17-M0-T01b`(`ADR-0413`)**: 語彙境界の全文3定数を **resource** として公開する。
+ *
+ * ## なぜ道具ではなく resource なのか
+ *
+ * **道具は26本のまま1本も足していない**(`ADR-0378` 限定1)。**27本目の道具にすると、
+ * その `description` がまた `tools/list` に載る** —— 減らしたかったものが戻ってくる。
+ * **resource は `resources/list` に URI と短い案内だけが載り、本文は
+ * `resources/read` を呼んだときにだけ渡る。**
+ *
+ * ## 一覧に何を載せ、何を載せないか
+ *
+ * **`description` は1本 80字以内、`resources/list` の JSON 全体で 600字以内に保つ**
+ * (`src/mcp/server.test.ts` の `V17-M0-T01b` が撃つ)。
+ * **接続直後に `resources/list` まで取りに行くクライアントが在るため**で、
+ * ここに本文を混ぜると `tools/list` から外した意味がその場で消える。
+ * **`title` を持たせていない**(一覧の JSON をこれ以上増やさない)。
+ *
+ * ## 失うもの(**丸めない**)
+ *
+ * **今日まで「接続しただけで必ず届いていた」ものが、「`resources/read` を呼べば届く」に
+ * 降格する。** **`resources/read` を1度も呼ばないクライアントには、語彙境界の全文は
+ * 今日以降届かない。** **実在の MCP クライアントがこれを自発的に呼ぶかは、本段では
+ * 1度も測っていない**(`docs/plan/v17/01-v17-m0-plan.md` §10-8)。
+ * **`instructions` に残る `CANNOT_DO_INDEX`(見出しだけ)と `DESTRUCTIVE_CHANGE_FLOW`
+ * (全文)は1文字も外していない** —— 接続直後に届くものはそちらである。
+ */
+function registerVocabularyResources(server: McpServer): void {
+  // **一覧に載る案内。数値リテラル(本数・文字数)を1つも書かない**
+  // (`ADR-0250` §Decision 3 の 3)—— 書けば、定数が伸び縮みした日にここだけが古い数を主張する。
+  const descriptions: Record<string, string> = {
+    [VOCABULARY_RESOURCE_URIS.scope]: "扱える語彙の全範囲(全文)。",
+    [VOCABULARY_RESOURCE_URIS.cannotDo]: "できないことの具体例(全文)。",
+    [VOCABULARY_RESOURCE_URIS.outOfScope]: "範囲外の要求への対応(全文)。",
+  };
+  for (const [uri, text] of VOCABULARY_RESOURCE_CONTENTS) {
+    server.registerResource(
+      // **名前は URI から機械的に作る** —— 2つ目の字面を手で持たない。
+      uri.replace("vocabulary://", "vocabulary-"),
+      uri,
+      { description: descriptions[uri] ?? "", mimeType: "text/markdown" },
+      // **定数をそのまま返す。加工も要約も1文字もしない**(`===` で照合される)。
+      () => ({ contents: [{ uri, mimeType: "text/markdown", text }] }),
+    );
+  }
 }

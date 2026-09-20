@@ -121,6 +121,19 @@ function manifest(): Manifest {
               when: { field: OWNER_FIELD, equals_current_user: true },
             },
             { target: "table", table: "carts", can: ["read", "write"] },
+            // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を1本足した。**
+            //
+            // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+            // 一覧系の画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件に
+            // なる(単票は 404)。** **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を
+            // 役割の規則に1行も書いていない場合も止まる。**
+            //
+            // **この題材は `order-list`(`list_view`。表 `orders`)を宣言しながら、
+            // その画面の規則を1本も書いていなかった。** **限定8(本人は自分の行を
+            // 今日どおり読める)が測っているのは `st_no_direct_create` と `st_owner` の
+            // 層であって画面の規則ではないので、主張(`expect`)は1バイトも
+            // 書き換えていない。**
+            { target: "view", view: "order-list", can: ["read"] },
           ],
         },
         {

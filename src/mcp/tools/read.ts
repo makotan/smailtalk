@@ -79,7 +79,15 @@ import {
 // **`src/kernel/report.ts` の `computeReport()` をここから直接呼ぶと、可視性を1ミリも
 // 通らない。** **呼ぶのは HTTP の集計表の口とまったく同じ1本である。**
 // **`REPORT_DEFAULT_GROUP_LIMIT` も同じ定数を使う**(2つ目の既定を作らない)。
-import { REPORT_DEFAULT_GROUP_LIMIT, readVisibleReport } from "../../server/app.ts";
+// **【`V17-M4-T06`】旧の1行(逐語。1バイトも消していない)**:
+//   `import { REPORT_DEFAULT_GROUP_LIMIT, readVisibleReport } from "../../server/app.ts";`
+// **`forbiddenRoleAccessError` を1本足したので、整形の都合で複数行になった。**
+// **`change-routes.ts` が同じ状況で採っているのと同じ形である**(独立点検の指摘)。
+import {
+  forbiddenRoleAccessError,
+  REPORT_DEFAULT_GROUP_LIMIT,
+  readVisibleReport,
+} from "../../server/app.ts";
 // **【`V10-M12-T01` / `ADR-0368` 限定3(可視性の判定を必ず通す)の配線】**
 // **`list_comments` のハンドラは可否の条件式を1行も持たない。** **呼ぶのは
 // `CM-G5` が決めた合成1本ちょうどである** —— **`judgeRoleAccess` を直接呼ばない。**
@@ -87,11 +95,13 @@ import { visibleComments } from "../../server/comment-visibility.ts";
 import { recordAccessLimitError } from "../../server/errors.ts";
 import {
   isOwnerVisible,
+  judgeRecordPopulation,
   judgeRoleAccess,
   OWNER_FIELD,
   personalOwnerField,
   projectForRoleFields,
   recordAccessSourceTables,
+  recordPopulationScope,
   resolveCombinedRecordAccess,
   roleGateBlocksWithoutGrants,
   roleReadCrossesOwnerScope,
@@ -960,6 +970,19 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
       // `st_owner` を持つ表を `add_table` したときにカーネルが3役割へ自動で足す
       // **条件つきの規則**の副作用であって、個人スコープの配線ではなかった。**
       //
+      // **【2026-09-08 追記(`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`)。
+      // 上の段落を1バイトも消していない】** **引用先の (E-7b) は中身が変わった。**
+      // **カーネルの補完が差分の畳み込みの出口へ移り、`add_field` で後から `st_owner` を
+      // 足した表にも条件つきの規則が入るようになったので、(E-7b) はもう
+      // 「条件なしの規則のまま他人の行が出る」形を差分から作れない**(**期待値を
+      // 反転させた。旧の本文は `src/mcp/actor-authz.test.ts` の (E-7b) の直上に
+      // 逐語で残してある**)。
+      // **上の結論(「この1本は今日どの形でも答えを1件も変えない」)は今日も真である** ——
+      // **補われる条件は「自分の行 または 持ち主が空の行」であり、`isOwnerVisible` と
+      // 同じ集合を指すので、`or` の左右がどちらも同じ答えを出す。**
+      // **【禁止】これを「個人スコープの配線が効くようになった」と読まない** ——
+      // **絞っているのは今日も条件つきの規則の側である。**
+      //
       // **【代償を隠さない】** **`st_owner` を持つ表は、これ以降つねに全行を読んでから
       // JS で絞る**(`postFiltered`)—— **カーネルの `LIMIT` / `OFFSET` は使われない。**
       // **HTTP の一覧とまったく同じ代償である。**
@@ -973,8 +996,75 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
       // **【`V8-M31` 第6波で1項足した。旧を逐語で残す】**
       // **旧: `const postFiltered = accessSources !== undefined || roleTableRead.conditional;`**
       // **`st_owner` を持つ表も JS で絞る側に入れた**(上の `ownerVisible` を当てるため)。
+      // **【`V18-M3-T03` / `PM-G6` / `D-V18-21` / `ADR-0435` §Status 3・§Decision 2 の 1】**
+      // **名簿表 / グループ表 / 付与表を、母集団の分類に通す。**
+      //
+      // **`list_records` は今日まで母集団の分類(`recordPopulationScope`)を1度も通らず、
+      // 絞りを上の3項(点 / 面の条件つき規則 / 個人スコープ)として手で並べていた** ——
+      // **だから `V18-M3-T02` / `T02b` が画面と HTTP に配線した絞りが、AI の口には
+      // 1ミリも届いていなかった**(`ADR-0435` §Status 3 は `PM-G6` の射程に
+      // **AI の口**を含めている。逐語:「**画面と HTTP と AI の口からの読取**」)。
+      //
+      // **ここに判定の式を1行も写していない**(`ADR-0435` 限定2 / 限定4)——
+      // **「その表が名簿 / グループ / 付与のどれか」も「どの行が見えるか」も、
+      // `owner-scope.ts` の関数(`recordPopulationScope` / `judgeRecordPopulation`)が
+      // 答える。** **`read.ts` が持つのは「その答えを呼ぶこと」と「DB のページングを
+      // 外すかどうか」だけである。**
+      //
+      // **分類を読取の**前**に採るのは `postFiltered` を決めるのに要るからである** ——
+      // **`recordPopulationScope` は行を1件も見ない。** **HTTP の一覧
+      // (`src/server/app.ts`)とまったく同じ引数・同じ順序で呼んでいる。**
+      //
+      // **【匿名に `false` を渡す理由】** **この口は `requireActorAndApp` を通っており、
+      // 名乗りの無い要求はここまで来ない**(`anonymousPublic` の枝に入る道が無い)。
+      //
+      // **【`V18-M4-T03` / `PM-G10` / `D-V18-25` / `ADR-0435` §Decision 2 の 2。
+      // 上の段落を1バイトも消していない】** **画面名を名乗らない読取の壁を、AI の口にも
+      // 掛ける。**
+      //
+      // **`list_records` には画面名を渡す引数がそもそも無い** —— **だから AI の口からの
+      // 一覧は、つねに「画面名を名乗らない一覧」である。** **形は `"list"` ちょうどで
+      // あり、`"single"` を渡す道は1本も無い**(**AI の口に単票を読む道具が存在しない**)。
+      // **`roles` は上で引いた実効ロール集合をそのまま渡す。**
+      //
+      // **ここに壁の条件式を1行も書かない**(`ADR-0435` 限定2 / 限定4)——
+      // **「その表を指す画面をこの人が読めるか」を答えるのは `owner-scope.ts` の
+      // 述語だけであり、`read.ts` はその答えを受け取るだけである。**
+      // **画面の定義そのものには1バイトも触らない**(`ADR-0435` 限定5)——
+      // **`get_manifest` は今日どおり画面の全量を返す。**
+      // **【禁止】これを「画面を隠した」と読まない** —— **隠れるのは行である。**
+      const populationScope =
+        table === undefined
+          ? undefined
+          : recordPopulationScope({
+              manifest,
+              table,
+              anonymousPublic: false,
+              accessSources,
+              tableRead: roleTableRead,
+              unnamedViewRead: "list",
+              roles,
+            });
+      // **壁が閉じているときは、行を1件も返さない。**
+      //
+      // **応答から落とす** —— **`records` は 0件、`total` も 0 である。** **`toolError` に
+      // しない** —— **「その表が在る」ことを役割の外へ漏らさない側に倒す**(すぐ上の面の
+      // 関門(`roleGateBlocksWithoutGrants`)の 0件 と1バイトも同じ向きであり、
+      // **HTTP の一覧が `unnamed_view_wall` の枝で返す答えとも同じ**である)。
+      if (populationScope === "unnamed_view_wall") {
+        return toolOk({ records: [], total: 0 });
+      }
+      const registryScoped = populationScope === "access_registry";
+      // **【`V18-M3-T03` で1項足した。直前の `V8-M31` 第6波の注記も旧文も1バイトも
+      // 消していない】** **旧: `… || ownerField !== undefined;`**
+      // **名簿 / グループ / 付与の表も JS で絞る側に入れた** —— **入れないと DB の
+      // `LIMIT` / `OFFSET` が先に効き、絞ったあとの `total` とページが割れる**
+      // (`05-v18-m3-plan.md` §11-1 の裁定5 / §11-4 の追加条件A)。
       const postFiltered =
-        accessSources !== undefined || roleTableRead.conditional || ownerField !== undefined;
+        accessSources !== undefined ||
+        roleTableRead.conditional ||
+        ownerField !== undefined ||
+        registryScoped;
 
       // `exactOptionalPropertyTypes` があるため、undefined を代入するのではなく
       // キー自体を足さない形で組み立てる。limit / offset は**読取層(カーネル)の LIMIT/OFFSET**
@@ -1056,11 +1146,39 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
                   : entry.access.kind === "verdict" && entry.access.verdict.read),
             )
             .map((entry) => entry.row);
+          // **【`V18-M3-T03`】名簿 / グループ / 付与の表は、ここで母集団の判定に通す。**
+          // **判定を新しく1つも作っていない** —— **画面と HTTP の一覧
+          // (`src/server/app.ts`)が呼ぶのと**同じ1本**である。**
+          // **上で絞った `visible` をそのまま母集団として渡す** —— **面の条件つきの
+          // 規則は二重に掛かるが、同じ答えの積なので行は1件も動かない。**
+          // **`judge` を渡さないのは、点(行ごとの付与)を上の
+          // `resolveCombinedRecordAccess` で既に当ててあるからである**(渡すと
+          // 同じ判定をもう一度走らせることになる)。
+          // **分類が `"access_registry"` でない表では1度も呼ばない** ——
+          // **他の4分岐の答えを1ビットも動かさないためである。**
+          const population =
+            !registryScoped || table === undefined
+              ? undefined
+              : judgeRecordPopulation({
+                  manifest,
+                  table,
+                  tableId: table_id,
+                  rows: visible,
+                  anonymousPublic: false,
+                  actorId,
+                  roles,
+                  accessSources,
+                  tableRead: roleTableRead,
+                  judge: undefined,
+                  readRows,
+                  readRow,
+                });
+          const shown = population?.kind === "visible" ? population.rows : visible;
           return toolOk({
             // **合計は絞ったあとの可視集合から採る**(HTTP と同じ。母集団を割らない)——
             // **`total` はもう「テーブル全体の件数」ではない。**
-            records: slicePage(visible, limit, offset).map((row) => dropHidden(row)),
-            total: visible.length,
+            records: slicePage(shown, limit, offset).map((row) => dropHidden(row)),
+            total: shown.length,
           });
         }
         // total はテーブル全体の件数(limit / offset に左右されない)。list_records は filter を
@@ -1444,6 +1562,29 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
             hint: "集計表の画面IDを指定するか、その画面に report を宣言した report_view を add_view で追加してください。",
           },
         ]);
+      }
+      // --- 【`V17-M4-T01` / 台帳 `AC-G19`】画面の閲覧判定 -----------------------------
+      //
+      // **HTTP の口(`src/server/app.ts` の `GET …/views/:view_id/report`)に置いたものと
+      // 同じ判定を、同じ順序で1本置く** —— **置き場所は `readVisibleReport()` を呼ぶ直前、
+      // 「集計表ではありません」の断りの直後である。**
+      // **文面も HTTP と同じ1本(`forbiddenRoleAccessError`)を呼んでいる** ——
+      // **写しを作っていない。**
+      //
+      // **【`MCP` に HTTP の応答コードは無い】** —— **`V17-M3-T06` が確立した読み替え
+      // 「HTTP の 403 と1対1に対応する `isError`」に沿う**(`src/mcp/tools/write.ts:354` の逐語)。
+      // **着手前は、その集計表を「見せる」と1度も書いていない名乗りでも
+      // `isError` にならず、群と合計がそのまま返っていた**(実測は
+      // `src/server/report-view-access.test.ts` の (A-2))。
+      if (
+        !judgeRoleAccess({
+          manifest,
+          roles: guard.value.roles,
+          target: { target: "view", view: view_id },
+          verb: "read",
+        }).allowed
+      ) {
+        return toolError([forbiddenRoleAccessError(`画面 "${view_id}"`, "閲覧")]);
       }
       // **可視性の注入と上限の判定は、HTTP とまったく同じ1本が持つ**(限定5)。
       const result = readVisibleReport({

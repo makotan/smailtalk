@@ -33,10 +33,15 @@
  */
 
 import { isExpired } from "./challenge.ts";
-import type { AuthStore } from "./store.ts";
+import { type AuthStore, INVITATION_REVOKED_PREFIX } from "./store.ts";
 import type { Invitation } from "./types.ts";
 
-export { INVITATION_CODE_ALPHABET, INVITATION_TTL_SEC, randomInvitationCode } from "./store.ts";
+export {
+  INVITATION_CODE_ALPHABET,
+  INVITATION_REVOKED_PREFIX,
+  INVITATION_TTL_SEC,
+  randomInvitationCode,
+} from "./store.ts";
 
 /**
  * **その招待が今使えるか**(**未使用** かつ **期限内**)。
@@ -44,7 +49,7 @@ export { INVITATION_CODE_ALPHABET, INVITATION_TTL_SEC, randomInvitationCode } fr
  * **コードは見ていない** —— **コードの照合は {@link findUsableInvitation} が行う。**
  */
 export function invitationIsUsable(invitation: Invitation): boolean {
-  return invitation.usedAt === null && !isExpired(invitation.expiresAt);
+  return invitationState(invitation) === "unused" && !isExpired(invitation.expiresAt);
 }
 
 /**
@@ -70,4 +75,38 @@ export function findUsableInvitation(
     return undefined;
   }
   return invitationIsUsable(invitation) ? invitation : undefined;
+}
+
+/**
+ * **招待の状態**(`V19-M2-T00`。単位 `SV-G5`。`ADR-0452` 限定⑨)。
+ *
+ * - **`unused`** —— まだ使われておらず、取り消されてもいない(列が空)。
+ * - **`used`** —— 登録に使われた(列に素の ISO8601 が入っている)。
+ * - **`revoked`** —— 運営者が取り消した(列に**素の時刻ではない値**が入っている)。
+ *
+ * **期限は見ていない** —— **期限切れかどうかは {@link invitationIsUsable} が
+ * `isExpired` で判定する。** **この関数は列の値だけを読む。**
+ */
+export type InvitationState = "unused" | "used" | "revoked";
+
+/**
+ * **その招待が3値のどれか**(**この1関数だけが列の値を解釈する**)。
+ *
+ * **`ADR-0452` 限定⑨ の履行である** —— **綴りを2箇所に割らない。**
+ * **`src/auth/` でこの解釈を行うのはこの関数ただ1つであり、応答を組む側
+ * (`src/server/auth-routes.ts`)はこの戻り値だけを読む。**
+ *
+ * **【この版より前に作られた行の読み方を、ここで1つに決めている】**
+ * **印を持たない非 NULL は「使用済み」と読む**(門A の決定。`T02-1-4` の 6)——
+ * **後から「取り消しだった」を復元しない。** **復元する材料が `_auth_activity` にも
+ * changelog にも1行も無い**(`ADR-0452` §塞がないもの 1)。
+ * **【禁止の履行】これを「移行した」と書かない** —— **既存の行の値を1バイトも
+ * 書き換えていない。** **移行の SQL は1行も無い。**
+ */
+export function invitationState(invitation: Invitation): InvitationState {
+  const at = invitation.usedAt;
+  if (at === null) {
+    return "unused";
+  }
+  return at.startsWith(INVITATION_REVOKED_PREFIX) ? "revoked" : "used";
 }

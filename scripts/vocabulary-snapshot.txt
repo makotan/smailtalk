@@ -442,6 +442,11 @@ manifest.$defs.table.properties.access_control.properties.permissions.items.prop
 manifest.$defs.table.properties.access_control.properties.permissions.items.properties:read
 manifest.$defs.table.properties.access_control.properties.permissions.items.properties:write
 manifest.$defs.table.properties.access_control.properties.permissions.items.properties:delete
+# 【2026-09-10。V17-M10-T04。AC-G4a / ADR-0429(門A・限定採用)】直下の1行を足した。
+# 足す前のこの位置は delete が最後で、permissions.items.properties の行は5本だった。
+# 6キー目 restrictive は「この権限名は上限である」の符号で、真偽値1本である。
+# required の5行は1バイトも動いていない(同 限定2)—— restrictive は必須ではない。
+manifest.$defs.table.properties.access_control.properties.permissions.items.properties:restrictive
 manifest.$defs.table.properties.access_control.properties.permissions.items.required:id
 manifest.$defs.table.properties.access_control.properties.permissions.items.required:name
 manifest.$defs.table.properties.access_control.properties.permissions.items.required:read
@@ -468,6 +473,11 @@ manifest.$defs.table.properties.access_control.properties.groups.properties:tabl
 manifest.$defs.table.properties.access_control.properties.groups.required:table
 manifest.$defs.table.properties.access_control.properties:inherit_from
 manifest.$defs.table.properties.access_control.properties:creatable_by
+# 【2026-09-08。V17-M5-T03e。AC-G10 / ADR-0412(門A・限定採用)】直下の1行を足した。
+# 足す前のこの位置は creatable_by が最後で、access_control.properties の行は8本だった。
+# 9キー目 creatable_by_roles は「親を持たない表に行を作れる役割」を並べる欄である。
+# required の4行は1バイトも動いていない(同 限定2)。
+manifest.$defs.table.properties.access_control.properties:creatable_by_roles
 manifest.$defs.table.properties.access_control.required:enabled
 manifest.$defs.table.properties.access_control.required:permissions
 manifest.$defs.table.properties.access_control.required:grant

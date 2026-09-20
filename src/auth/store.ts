@@ -1559,6 +1559,11 @@ export class AuthStore {
    * **出し直しは使用時刻を空に戻す** —— **前の招待が使われていても、新しいコードは
    * 使える。** **【正直に書く】これは「1人が2度登録できる」ことを意味しない**(登録名は
    * `_auth_users.username` が UNIQUE である)が、**その判定はこの表の外に在る。**
+   *
+   * **【2026-09-18 追記(`V19-M2-T00`)。上の行を1バイトも消していない】**
+   * **出し直しは取り消しの印も消す** —— **使用時刻を空に戻すので、取り消し済みの相手に
+   * 出し直すと「取り消した」という事実がこの表から消える。** **扱いを1つに決めるのは
+   * `V19-M2-T04` である**(`ADR-0452` §塞がないもの 2)。
    */
   issueInvitation(input: { username: string; role: Role; issuedBy: string }): Invitation {
     const now = new Date();
@@ -1629,6 +1634,12 @@ export class AuthStore {
    * 入れる必要がある**(`ADR-0336` 限定17)。**入っていないと、ユーザ作成が失敗したときに
    * 印だけが残って枠を1つ失うか、印を立てる前に2回目が通って枠が2回使える。**
    * **`V8-M2` はその境界を1度も測っていない。**
+   *
+   * **【2026-09-18 追記(`V19-M2-T00`)。上の行を1バイトも消していない】**
+   * **この更新は取り消しにも使われる** —— **{@link revokeInvitation} が、素の時刻ではない
+   * 値を `at` に渡して同じ列に書く。** **SQL は1バイトも変えていない**(`WHERE "used_at"
+   * IS NULL` を保つので、既に印の在る行に2度目を書かない)。 **どちらの印であるかは値の
+   * 形で分かれ、判定は `src/auth/invitations.ts` の1関数だけが行う。**
    */
   markInvitationUsed(username: string, at: string = nowIso()): boolean {
     const result = this.db
@@ -1703,13 +1714,24 @@ export class AuthStore {
    *
    * **【禁止の履行】「取り消せるようになった」と単独で書かない** —— **取り消した招待は
    * `undo` で復活して再び使える**(24時間以内なら。実測は `undo-invitations.test.ts`)。
+   *
+   * **【2026-09-18 訂正(`V19-M2-T00`。単位 `SV-G5`)。上の行を1バイトも消していない】**
+   * **上の「この表からは『使われた』と『取り消された』を区別できない」は今日は偽である。**
+   * **取り消しは同じ列に**素の時刻ではない値**を書くので、値の形で2つが分かれる**
+   * (`ADR-0452`)。 **導出は `src/auth/invitations.ts` の1関数だけが行う。**
+   * **【正直に書く】列は今日も7列ちょうどであり、8列目を1本も足していない。**
+   * **【正直に書く】この版より前に作られた行は区別できない** —— **素の時刻しか入って
+   * おらず、「使用済み」と読む**(復元する材料がどこにも無い)。
    */
   revokeInvitation(username: string): Invitation | undefined {
     const existing = this.findInvitation(username);
     if (existing === undefined) {
       return undefined;
     }
-    this.markInvitationUsed(username);
+    // **【`V19-M2-T00`】取り消しは素の時刻ではない値を書く**(`ADR-0452` 限定⑬)。
+    // **{@link markInvitationUsed} の SQL は1バイトも変えていない**
+    // (`WHERE "used_at" IS NULL` を保つ)。
+    this.markInvitationUsed(username, `${INVITATION_REVOKED_PREFIX}${nowIso()}`);
     return this.findInvitation(username);
   }
 
@@ -1755,6 +1777,27 @@ export class AuthStore {
 // **実際に1度上部へ置いて赤を見てから、ここへ移した。**
 //
 // **【正直に書く】これは「読みやすいから」ではなく「限定を破らないため」の配置である。**
+
+/**
+ * **取り消しの印**(`V19-M2-T00`。`ADR-0452` 限定⑬ / `records/v19-m0.md` の `T02-1-4` の 2)。
+ *
+ * **取り消しは `used_at` に「この印 + ISO8601 UTC」を書く。** **形は1つに固定する** ——
+ * **2つ目の形を作ると、読む側が3通りを判定することになる。**
+ * **使用は今日どおり素の ISO8601 を書く**(同 3。`markInvitationUsed` の SQL は不変)。
+ *
+ * **【なぜ `invitations.ts` ではなくここに在るのか】** **`ADR-0452` 限定⑬ は置き場を
+ * 「`:845` より下」か「`src/auth/invitations.ts`」の2つに限っており、計画 §9-C の B6 が
+ * 前者に決めた。** **依存の向きは `invitations.ts` → `store.ts` の一方通行で(今日すでに
+ * 在る向き)、逆向きは 0件 である** —— **ここに置けば新しい循環が生まれない。**
+ *
+ * **【状態の導出はここでは行わない】** —— **導出は `src/auth/invitations.ts` の
+ * `invitationState` 1本だけが行う**(限定⑨。**綴りを2箇所に割らない**)。
+ *
+ * **【この綴りを doc・コメント・テスト名に書き足さない】** —— **`ADR-0452` 限定⑩ の式が
+ * この語を数えるので、説明文に書くと実装と無関係に値が動く**(計画 §9-C の B7)。
+ * **訂正文では「素の時刻ではない値」と呼ぶ。**
+ */
+export const INVITATION_REVOKED_PREFIX = "revoked:";
 
 /**
  * **その招待がもう使えないときに投げるエラー**(`V8-M3-T05`。台帳 `I-G20`。

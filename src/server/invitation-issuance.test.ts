@@ -27,6 +27,14 @@
  * 作る。** **すなわち今日在るのは「使えない招待を出せる状態」である。**
  * **【禁止】この中間状態を「一時的だから問題ない」と書かない。**
  *
+ * ## **【2026-09-18 訂正(`V19-M2-T02`。`D-V19-6` / 単位 `SV-G7a`)。上の (6) を1バイトも消していない】**
+ *
+ * **上の (6)「見せる先は2箇所だけ」は今日は偽である** —— **コードの提供先は
+ * **発行の応答本文の1箇所ちょうど**に狭まった**(`ADR-0452` 限定⑮ が `ADR-0336` 限定12 を
+ * 置き直した)。 **`GET /api/apps/:app_id/auth/users` の応答には、招待は今日どおり載るが
+ * コードは1バイトも載らない**(`(h)` / `(h3)`)。
+ * **`_auth_activity` に1バイトも書かないこと(限定11 の**内容欄**)は1バイトも破っていない。**
+ *
  * ## **【2026-08-14 訂正(`V8-M4-T03`。裁定 `M4-3`)。上の節を1バイトも消していない】**
  *
  * **上の節は今日は偽である。** **`V8-M3` が引き換えの経路を作った**(検査は
@@ -42,7 +50,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadAuthConfig } from "../auth/config.ts";
-import { AuthStore, INVITATION_CODE_ALPHABET } from "../auth/store.ts";
+import { AuthStore, INVITATION_CODE_ALPHABET, INVITATION_REVOKED_PREFIX } from "../auth/store.ts";
 import type { Manifest } from "../kernel/index.ts";
 import { appDbPath, applyManifest, createApp, KernelMetaStore } from "../kernel/index.ts";
 import { createServerApp } from "./app.ts";
@@ -111,15 +119,24 @@ function req(
   return Promise.resolve(target.request(new Request(`http://localhost${path}`, init)));
 }
 
-type InvitationView = {
+/**
+ * **一覧の応答に載る招待の形**(`V19-M2-T02`。`ADR-0452` 限定⑮)。
+ *
+ * **`code` を持たない** —— **コードの提供先は「発行の応答本文」の1箇所ちょうどである。**
+ * **`state` は `V19-M2-T00` が足した別のキーである**(`usedAt` は ISO8601 のまま)。
+ */
+type ListedInvitationView = {
   username: string;
   role: string;
-  code: string;
   expiresAt: string;
   issuedBy: string;
   issuedAt: string;
   usedAt: string | null;
+  state: string;
 };
+
+/** **発行の応答に載る招待の形**(**ここだけがコードを持つ**)。 */
+type InvitationView = ListedInvitationView & { code: string };
 
 type IssuedBody = { invitation: InvitationView; signupUrl?: string };
 
@@ -239,7 +256,12 @@ test("(e) `requireRoleDistribution` の呼び出しは着手前と同じ2箇所�
 
 // --- (c) 取り消し ------------------------------------------------------------------
 
-test("(c) 取り消せる —— 行は消えず、使用時刻が入る(`ADR-0336` 限定16)", async () => {
+// **【2026-09-18 テスト名の打ち直し(`V19-M2-T02`。計画 `§3` の `T02` 詳細4)】**
+// **旧のテスト名(逐語)**: 「(c) 取り消せる —— 行は消えず、使用時刻が入る(`ADR-0336` 限定16)」。
+// **偽になったのは「使用時刻が入る」である** —— **`V19-M2-T00` 以降、取り消しが**表**に書くのは
+// **素の時刻ではない値**であり、素の使用時刻ではない**(応答の側は今日も素の ISO8601 で返る)。
+// **検査の中身は1つも変えていない**(名前だけの打ち直しである)。
+test("(c) 取り消せる —— 行は消えず、使用時刻の列に印が入る(`ADR-0336` 限定16)", async () => {
   const owner = seedSession(dataRoot, APP_ID, { role: "owner" });
   const issued = await req(owner.cookie, "POST", ISSUE_PATH, { username: "bob", role: "editor" });
   expect(issued.status).toBe(200);
@@ -336,8 +358,11 @@ test("(g) 同じパスに `GET` / `DELETE` / `PATCH` は1本も無い(`ADR-0336`
 });
 
 // --- 見せる先は2箇所だけ ------------------------------------------------------------
+// **【2026-09-18 訂正(`V19-M2-T02`)。上の1行を1バイトも消していない】**
+// **上の見出しは今日は偽である** —— **コードの提供先は「発行の応答本文」の**1箇所ちょうど**
+// である**(`ADR-0452` 限定⑮)。 **一覧の応答には招待は載るが、コードは載らない。**
 
-test("(h) 既存の `GET /auth/users` の応答に招待が出る(使用済みも消えない。`ADR-0336` 限定12 / 限定16)", async () => {
+test("(h) 既存の `GET /auth/users` の応答に招待が出る —— ただしコードは載らない(使用済みも消えない。`ADR-0336` 限定16 / `ADR-0452` 限定⑮)", async () => {
   const owner = seedSession(dataRoot, APP_ID, { role: "owner" });
   await req(owner.cookie, "POST", ISSUE_PATH, { username: "bob", role: "editor" });
   await req(owner.cookie, "POST", ISSUE_PATH, { username: "carol", role: "viewer" });
@@ -356,9 +381,22 @@ test("(h) 既存の `GET /auth/users` の応答に招待が出る(使用済み�
     body.invitations.find((invitation) => invitation.username === "carol")?.usedAt,
   ).not.toBeNull();
   // **コードは平文で返る**(`ADR-0336` §3-8。**ハッシュにしていない**)。
-  expect(body.invitations.find((invitation) => invitation.username === "bob")?.code).toHaveLength(
-    8,
-  );
+  // **【2026-09-18 訂正(`V19-M2-T02`。`D-V19-6` / 単位 `SV-G7a`)。上の1行を1バイトも
+  //   消していない】**
+  // **上の1行は**この応答については**今日は偽である** —— **一覧の応答はコードを
+  // 1バイトも載せない**(`ADR-0452` 限定⑮)。 **平文で返るのは**発行の応答**だけであり、
+  // そちらは今日どおりである**(`(a)` / `(h3)` が固定している)。
+  // **保管の形は1バイトも変えていない**(ハッシュにしていない。表の中は平文のまま)。
+  const bob = body.invitations.find((invitation) => invitation.username === "bob");
+  expect(bob === undefined).toBe(false);
+  expect(bob !== undefined && "code" in bob).toBe(false);
+  // **陽性対照**: **同じ1件に他のキーは載っている** ——
+  // **「コードが無い」が「招待そのものが載っていない」ことによる 0件 ではない。**
+  expect(bob?.role).toBe("editor");
+  expect(bob?.state).toBe("unused");
+  expect(typeof bob?.expiresAt).toBe("string");
+  // **表の中のコードは今日どおり在る**(落としたのは応答だけである)。
+  expect(invitationRows().find((row) => row.username === "bob")?.code).toHaveLength(8);
 });
 
 test("(h2) 役割を配れるだけで持ち主でない人には、同じ応答に招待が1件も載らない(メインの裁定 `M2-1`)", async () => {
@@ -397,10 +435,76 @@ test("(h2) 役割を配れるだけで持ち主でない人には、同じ応答
   expect(text.includes(code)).toBe(false);
 
   // **陽性対照**: 同じ口を持ち主で叩けば載る(載らないのが人違いではないことを示す)。
+  // **【2026-09-18 差し替え(`V19-M2-T02`。`D-V19-6` / 単位 `SV-G7a`)。上の1行を1バイトも
+  //   消していない】**
+  // **旧の陽性対照は「持ち主で叩けば**コードが**載る」だった** —— **本葉が一覧の応答から
+  // コードを落としたので、持ち主で叩いてもコードは1バイトも載らず、旧の形はもう
+  // 陽性対照にならない**(常に偽になる)。
+  // **新しい陽性対照(1文)**: **持ち主なら招待そのもの(`invitations` のキーと、その1件の
+  // 中身)は今日どおり載る —— 落ちているのは**コードだけ**である。**
+  // **これで「役割を配れるだけの人に載らないのは、人違いや叩き損ねではない」ことが示せる。**
   const ownerBody = (await (await req(owner.cookie, "GET", USERS_PATH)).json()) as {
-    invitations?: { code: string }[];
+    invitations?: ListedInvitationView[];
   };
-  expect(ownerBody.invitations?.some((invitation) => invitation.code === code)).toBe(true);
+  expect(ownerBody.invitations?.map((invitation) => invitation.username)).toEqual(["bob"]);
+  expect(ownerBody.invitations?.[0]?.role).toBe("editor");
+  expect(ownerBody.invitations?.[0]?.state).toBe("unused");
+  // **落ちているのはコードだけである。**
+  const ownerFirst = ownerBody.invitations?.[0];
+  expect(ownerFirst !== undefined && "code" in ownerFirst).toBe(false);
+  // **その招待の本物のコードは、持ち主の応答本文にも1バイトも現れない。**
+  expect(JSON.stringify(ownerBody).includes(code)).toBe(false);
+});
+
+test("(h3) コードの提供先は発行の応答の1箇所ちょうど —— 一覧の応答にも監査記録にも1バイトも出ない(`ADR-0452` 限定⑮ / `ADR-0336` 限定11 の検査欄の置き直し)", async () => {
+  // **【この検査が `ADR-0336` 限定11 の検査欄の後半を置き直したものである】**
+  // **旧: 「発行の応答**と `GET /auth/users` の応答**以外にコードが出ないことの検査」(= 2箇所)。**
+  // **新: 「**発行の応答**以外にコードが出ないことの検査」(= 1箇所)。**
+  // **内容欄(平文で保管する / 監査に2つ目の写しを作らない)は1バイトも破っていない。**
+  const owner = seedSession(dataRoot, APP_ID, { role: "owner" });
+  const issuedText = await (
+    await req(owner.cookie, "POST", ISSUE_PATH, { username: "bob", role: "editor" })
+  ).text();
+  const issued = JSON.parse(issuedText) as IssuedBody;
+
+  // **1箇所目(唯一の提供先)= 発行の応答本文。** **今日どおり載る。**
+  expect(issued.invitation.code).toHaveLength(8);
+  expect(issuedText.includes(issued.invitation.code)).toBe(true);
+
+  // **2箇所目だった一覧の応答には、キーとしても文字列としても出ない。**
+  const listText = await (await req(owner.cookie, "GET", USERS_PATH)).text();
+  const listBody = JSON.parse(listText) as {
+    users: unknown[];
+    invitations: ListedInvitationView[];
+  };
+  expect(listBody.invitations.filter((invitation) => "code" in invitation)).toHaveLength(0);
+  expect(listText.includes(issued.invitation.code)).toBe(false);
+  // **陽性対照**: **同じ応答に招待そのものは載っている** ——
+  // **「0件」が「一覧を叩けていない」ことによる 0件 ではないことを、同じ応答の他のキーで示す。**
+  expect(listBody.invitations.map((invitation) => invitation.username)).toEqual(["bob"]);
+  expect(listBody.invitations[0]?.role).toBe("editor");
+  expect(listBody.invitations[0]?.state).toBe("unused");
+  expect(listBody.users.length).toBeGreaterThan(0);
+
+  // **表の中のコードは1バイトも落としていない**(保管の形を変えていない)。
+  expect(invitationRows()[0]?.code).toBe(issued.invitation.code);
+
+  // **監査記録にも出ない**(`(j)` と同じ内容欄。ここでは1箇所の形として同じ点で確かめる)。
+  const db = new Database(appDbPath(dataRoot, APP_ID), { readonly: true });
+  try {
+    const rows = db.query<Record<string, unknown>, []>(`SELECT * FROM "_auth_activity"`).all();
+    expect(JSON.stringify(rows).includes(issued.invitation.code)).toBe(false);
+    // **【本葉(`V19-M2-T02`)が陽性対照を置こうとして見つけた。隠さない】**
+    // **この時点の `_auth_activity` は **0行** である** —— **発行も取り消しも監査記録に
+    // 1行も書かないからである**(`unfixed-holes.md` `§3` の 3)。
+    // **したがって上の1行と `(j)` の「コードが現れない」は、**陽性対照の無い 0件** である**
+    // ——**「書いていない」と「そもそも表が空」を、この検査は区別できない。**
+    // **本葉はこれを直さない**(監査の粒度は本段の射程外)。 **0行であることを固定して、
+    // 次に誰かが監査を書き始めたらここが赤くなるようにしておく。**
+    expect(rows).toHaveLength(0);
+  } finally {
+    db.close();
+  }
 });
 
 test("(i) 招待を1件も見られない人には、一覧そのものが 403 である", async () => {
@@ -470,4 +574,68 @@ test("(k) 発行のときに、期限切れの招待と既存の期限切れ(ses
   } finally {
     read.close();
   }
+});
+
+// --- (c-3) 印の在る招待への取り消し(`V19-M2-T07`。独立点検の指摘2)----------------------
+//
+// **独立点検は実装を読んで示しただけで、HTTP を1度も撃っていない。** **本葉が撃った。**
+// **【これは「決めた形」ではなく、今日の**壊れ方**を写した検査である】**
+// **塞いでいない穴として `docs/plan/v19/unfixed-holes.md` `§1` に `H-V19-5` が在る。**
+// **【禁止の履行】これを「直した」と書かない** —— **製品コードを1バイトも変えていない。**
+
+test("(c-3) 印の在る招待に取り消しを掛けると、行は1バイトも書き換わらないまま 200 が返る(`V19-M2-T07` / `H-V19-5`)", async () => {
+  const owner = seedSession(dataRoot, APP_ID, { role: "owner" });
+  await req(owner.cookie, "POST", ISSUE_PATH, { username: "bob", role: "editor" });
+  // **登録に使われた状態を作る。** **登録の口は本ファイルの射程外なので、表に直接印を立てる**
+  // (`invitation-redemption.test.ts` が登録の側を持つ)。
+  {
+    const store = AuthStore.openForApp(dataRoot, APP_ID);
+    try {
+      expect(store.markInvitationUsed("bob")).toBe(true);
+    } finally {
+      store.close();
+    }
+  }
+  const before = invitationRows();
+  expect(before[0]?.used_at ?? "").not.toContain(INVITATION_REVOKED_PREFIX);
+
+  const res = await req(owner.cookie, "POST", ISSUE_PATH, { username: "bob", revoke: true });
+
+  // **今日の帰結(1)**: **成功の形で返る** —— **書けなかったことは status からは読めない。**
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as IssuedBody;
+
+  // **今日の帰結(2)**: **行は1バイトも書き換わっていない。**
+  expect(invitationRows()).toEqual(before);
+
+  // **今日の帰結(3)**: **応答の状態の欄は、実際の状態をそのまま返す**
+  // (`V19-M2-T00` が足した欄)。 **この欄が無かった着手前は、運営者が応答から
+  // 食い違いを読む手段が1つも無かった** —— **すなわち本段がこの経路を見えるようにした。**
+  expect(body.invitation.state).toBe("used");
+  expect(body.invitation.usedAt).toBe(before[0]?.used_at ?? null);
+
+  // **今日の帰結(4)**: **コードは今日も載る**(`H-V19-2`)—— **ただしここで載るのは
+  // 「今取り消したばかりの招待」のコードではなく、**既に登録に使われた**招待のコードである。**
+  expect(body.invitation.code).toHaveLength(8);
+  const beforeFirst = before[0];
+  if (beforeFirst === undefined) throw new Error("fixture broken");
+  expect(body.invitation.code).toBe(beforeFirst.code);
+
+  // **陽性対照**: **印の無い招待に同じ操作を掛けると、行は実際に書き換わる** ——
+  // **すなわち上の4点は「取り消しの口そのものが壊れている」のではない。**
+  await req(owner.cookie, "POST", ISSUE_PATH, { username: "carol", role: "editor" });
+  expect(invitationRows().find((r) => r.username === "carol")?.used_at).toBeNull();
+  const ok = await req(owner.cookie, "POST", ISSUE_PATH, { username: "carol", revoke: true });
+  expect(ok.status).toBe(200);
+  const okBody = (await ok.json()) as IssuedBody;
+  expect(okBody.invitation.state).not.toBe("used");
+  const afterFirst = invitationRows().find((r) => r.username === "carol")?.used_at ?? "";
+  expect(afterFirst).toContain(INVITATION_REVOKED_PREFIX);
+
+  // **2度目の取り消しも 200 で、印の時刻は1度目のままである**(今の時刻に進まない)。
+  // **間を空けないと、書き換わった場合でもミリ秒が衝突して偽の緑になる。**
+  Bun.sleepSync(5);
+  const again = await req(owner.cookie, "POST", ISSUE_PATH, { username: "carol", revoke: true });
+  expect(again.status).toBe(200);
+  expect(invitationRows().find((r) => r.username === "carol")?.used_at ?? "").toBe(afterFirst);
 });

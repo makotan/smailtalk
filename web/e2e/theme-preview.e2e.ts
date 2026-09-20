@@ -215,7 +215,10 @@ test.describe("V3-M4-T01 実物プレビュー選択(chromium 実測)", () => {
     expect(applied).toBe(target.background);
 
     // `_changelog` に、web が自動生成した intent がそのまま載っている(完了条件12)。
-    const changelog = await request.get(`/api/apps/${app.appId}/changelog`);
+    // **【`V17-M4-T02`】`GET /changelog` にログインが要るようになったので cookie を渡す。**
+    const changelog = await request.get(`/api/apps/${app.appId}/changelog`, {
+      headers: app.authHeaders,
+    });
     expect(changelog.status(), await changelog.text()).toBe(200);
     const entries = (await changelog.json()) as {
       changelog: { diff_id: string; intent: string }[];

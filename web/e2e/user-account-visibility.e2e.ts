@@ -79,6 +79,12 @@ const ACCESS_CONTROL = {
   },
   members: { table: MEMBERS_TABLE, account: ACCOUNT_FIELD, group: "group" },
   groups: { table: "visit_groups" },
+  // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+  // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの既定が
+  // 「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、**この通しが測っている
+  // 「名簿に載る前は作れない(400)/ 載せれば作れる(201)」の**手前**で 403 が返り、
+  // 名簿の効きが1ミリも測れなくなっていた。**
+  creatable_by_roles: ["owner", "editor"],
 };
 
 /** 表5本。**参照される側を先に置く**(1つの差分に畳んで送るため)。 */

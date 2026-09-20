@@ -59,9 +59,12 @@
  *   `related` の子一覧にも同じ値が渡る(器ではなく `FieldValue` / `FieldCell` へ渡す)。
  *   **`ViewRendererProps` には props を1つも足していない**(値は `view` の中に入っている)。
  */
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { DetailView, Field, Manifest, ResourceId, Table } from "../../../src/kernel/types.ts";
 import {
+  // **【`V18-M7-T05` / `PM-G5`】ぶら下がっている行の断り2本**(`ADR-0444` §Decision 3 の ③ / ④ / ⑤)。
+  type CascadeDeleteDenial,
   deleteRecord,
   fetchRecord,
   fetchRecords,
@@ -71,6 +74,7 @@ import {
   type RecordRow,
   // **【`V14-M2-T01` / `RB-G1`】行1件ぶんの判定の型**(`ADR-0402` §Decision 4)。
   type RowAccess,
+  readCascadeDeleteDenial,
   // **【`V5-M25-T08` / `L-G8`】手動起動の入口を叩く1本**(`ADR-0176` 限定1)。
   runViewAction,
   updateRecord,
@@ -166,6 +170,17 @@ type DetailData = {
   referenceLabels: ReferenceLabelIndex;
 };
 
+/**
+ * **まとめて消すことが取り消しでは戻らないことの断り**(`V18-M7-T05` が画面側に置いた一文)。
+ *
+ * **【`V18-M7-T07b` の直し。実測台が見つけた】** **サーバの ④(件数の印が無い)の `hint` は、
+ * この一文で**終わっている** —— **画面が無条件に足していたので、利用者は同じ文を2度読んでいた。**
+ * **⑤(件数が合わない)の `hint` にはこの一文が1文字も無いので、画面が足す側は今日も要る。**
+ * **サーバの文面を1バイトも変えずに、画面側で出し分ける**(`ADR-0444` 追記10-3 の 行7)。
+ * **綴りをここ1箇所に持つのは、突き合わせに使う文字列と表示する文字列がずれないためである。**
+ */
+const CASCADE_UNDO_WARNING = "まとめて消した行は取り消しでは戻りません。";
+
 export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailViewRendererProps) {
   // 対象テーブルの解決はシステムテーブルも見る(ADR-0006 §7 の #10)。
   const table = resolveViewTable(manifest, view.table);
@@ -255,6 +270,14 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
   const [writeConflict, setWriteConflict] = useState(false);
   /** 削除が 409(適用中)。いま差分適用中なので少し待って再試行する(M9-T02)。 */
   const [applyInProgress, setApplyInProgress] = useState(false);
+  /**
+   * **確認パネルの2つ目の状態**(`V18-M7-T05` / `PM-G5` / `ADR-0444` §Decision 5 の 行7)。
+   *
+   * **`null` のあいだは着手前と1バイトも同じ1状態だけである。** **サーバがぶら下がっている行を
+   * 理由に断ると(③ = `403` / ④ ⑤ = `409`)ここに入り、**同じパネル**の中身が入れ替わる**
+   * ——(新しいパネルを作らない)。 **④ / ⑤ では `total` が「次に送るべき件数の印」になる。**
+   */
+  const [cascadeDenial, setCascadeDenial] = useState<CascadeDeleteDenial | null>(null);
   /**
    * viewer は書込できない。編集/削除の導線を先回りで閉じる(最終防衛線はサーバの 403)。
    *
@@ -499,7 +522,15 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
         (candidate) => candidate.type === "form" && candidate.table === view.table,
       );
 
-  const handleDelete = async (): Promise<void> => {
+  /**
+   * **削除を1往復撃つ**(`childrenSeal` を渡すと件数の印を載せて撃ち直す。`V18-M7-T05`)。
+   *
+   * **【`setConfirmingDelete(false)` を分岐させた】** **着手前は `catch` の最後で必ず呼ばれて
+   * いたので、ぶら下がっている行の断りを受け取ってもパネルごと閉じ、2つ目の状態は1度も出な
+   * かった。** **今日は、その断りのときだけパネルを開いたままにする**(計画 §10-6 の20)。
+   * **ほかの断り(閲覧のみ / 適用中 / 版不一致 / それ以外)の閉じ方は1ビットも変えていない。**
+   */
+  const handleDelete = async (childrenSeal?: number): Promise<void> => {
     if (recordId === undefined) {
       return;
     }
@@ -514,13 +545,19 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
     setWriteForbidden(false);
     setWriteConflict(false);
     setApplyInProgress(false);
+    setCascadeDenial(null);
     try {
-      await deleteRecord(appId, view.table, recordId, version);
+      await deleteRecord(appId, view.table, recordId, version, childrenSeal);
       navigate(afterDeleteRoute(appId, manifest, view.table, view.after_delete));
     } catch (reason: unknown) {
       // 消えていないのに画面だけ進めない。理由を出してその場に留まる。403(権限)・
       // 409(適用中)・409(版不一致)は専用表示、それ以外は統一形式のエラー(M9-T02)。
-      if (isForbidden(reason)) {
+      // **ぶら下がっている行の断り(`V18-M7-T05`)はいちばん先に読む** —— **`403` は
+      // `isForbidden` が、`409` は「それ以外」が先に飲んでしまうからである。**
+      const cascade = readCascadeDeleteDenial(reason);
+      if (cascade !== null) {
+        setCascadeDenial(cascade);
+      } else if (isForbidden(reason)) {
         setWriteForbidden(true);
       } else if (isApplyInProgress(reason)) {
         setApplyInProgress(true);
@@ -529,7 +566,10 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
       } else {
         setDeleteErrors(toValidationErrors(reason));
       }
-      setConfirmingDelete(false);
+      // **2つ目の状態を出すときだけパネルを閉じない**(上の doc)。
+      if (cascade === null) {
+        setConfirmingDelete(false);
+      }
     } finally {
       setDeleting(false);
     }
@@ -1413,11 +1453,53 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
         */}
         {readOnly ||
         !canWriteRecord ||
-        !rowAccessAllows(access, "delete") ? null : confirmingDelete ? (
-          <div
-            className={cn("flex flex-wrap items-center gap-s2")}
-            data-testid="detail-delete-confirm"
-          >
+        !rowAccessAllows(access, "delete") ? null : confirmingDelete && cascadeDenial !== null ? (
+          <DeleteConfirmPanel>
+            {cascadeDenial.kind === "children_forbidden" ? (
+              <div
+                className={cn("flex flex-col gap-s1")}
+                data-testid="detail-delete-children-forbidden"
+              >
+                <p className={cn("m-0", "text-destructive")}>{cascadeDenial.message}</p>
+                <p className={cn("m-0")}>{cascadeDenial.hint}</p>
+              </div>
+            ) : (
+              <>
+                <div className={cn("flex flex-col gap-s1")} data-testid="detail-delete-children">
+                  <p className={cn("m-0", "text-destructive")}>{cascadeDenial.message}</p>
+                  <p className={cn("m-0")}>{cascadeDenial.hint}</p>
+                  {cascadeDenial.hint.includes(CASCADE_UNDO_WARNING) ? null : (
+                    <p className={cn("m-0", "text-destructive")}>{CASCADE_UNDO_WARNING}</p>
+                  )}
+                </div>
+                <Button
+                  variant="destructive"
+                  type="button"
+                  data-testid="detail-delete-children-execute"
+                  disabled={deleting}
+                  onClick={() => {
+                    void handleDelete(cascadeDenial.total);
+                  }}
+                >
+                  中身ごとまとめて消す
+                </Button>
+              </>
+            )}
+            <Button
+              variant="secondary"
+              type="button"
+              data-testid="detail-delete-cancel"
+              disabled={deleting}
+              onClick={() => {
+                setCascadeDenial(null);
+                setConfirmingDelete(false);
+              }}
+            >
+              やめる
+            </Button>
+          </DeleteConfirmPanel>
+        ) : confirmingDelete ? (
+          <DeleteConfirmPanel>
             <p className={cn("m-0", "text-destructive")}>
               このレコードを削除します。元に戻せません。
             </p>
@@ -1443,7 +1525,7 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
             >
               やめる
             </Button>
-          </div>
+          </DeleteConfirmPanel>
         ) : (
           <Button
             variant="destructive"
@@ -1451,6 +1533,7 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
             data-testid="detail-delete"
             onClick={() => {
               setDeleteErrors([]);
+              setCascadeDenial(null);
               setConfirmingDelete(true);
             }}
           >
@@ -1468,6 +1551,44 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * **削除の確認パネルの器**(`V18-M7-T05` / `PM-G5` / `ADR-0444` §Decision 5 の 行7)。
+ *
+ * **【新しいパネルを1つも作っていない】** **下の `div` が持つ目印の綴りも、並べ方
+ * (`flex flex-wrap items-center gap-s2`)も、置かれる場所も、着手前と1バイトも同じである。**
+ * **この1本に切り出したのは、**同じパネルの中身を状態で入れ替える**ためであり、**その目印の綴りは
+ * ファイル全体で1箇所しか無い**(2箇所目を書くと「2つ目のパネル」になる。だからこの doc にも
+ * 逐語を書いていない)。
+ *
+ * **状態は3つで、どれも同時には出ない**(`ADR-0444` §Decision 3):
+ *
+ * | 状態 | いつ | 中身 |
+ * |---|---|---|
+ * | 1つ目 | 「削除」を押した直後 | 着手前と1バイトも同じ(「…元に戻せません。」+「削除する」/「やめる」) |
+ * | 2つ目(件数) | ④ / ⑤ = `409` | 件数と子が居る表のID +「中身ごとまとめて消す」/「やめる」 |
+ * | 2つ目(消せない) | ③ = `403` | **件数を1文字も出さず**「…あなたには消せないものがあります」+「やめる」だけ |
+ *
+ * **文面はサーバの断り文をそのまま出す**(画面側で書き直さない)—— **件数と子が居る表のIDは
+ * `ValidationError` の `message` / `hint` の**文の中**にしか無く**(同 §Decision 5 の 行30。応答の
+ * 鍵は4本のまま)、**画面で書き直すと同じ文が2箇所に増えて必ずずれる。** **画面が自分で足すのは
+ * 「取り消しでは戻らない」の1行だけである** —— **⑤(印が合わない)の `hint` にはその断りが1文字も
+ * 無いので、④ でだけ出すと利用者が見落とす。**
+ *
+ * **③ には「まとめて消す」を1つも出さない**(`D-V18-31`)—— **押しても必ず断られるボタンになる
+ * からであり、件数も表のIDもサーバが1文字も返していないので画面にも1文字も出ない。**
+ *
+ * **【禁止】これを「安全になった」と読まない** —— **止めているのはサーバであり、画面は断りを読んで
+ * 出しているだけである。** **URL を直接叩く経路・AI の口・受信口・自動処理・島・時刻起動には、この
+ * パネルは1バイトも掛かっていない**(同 限定8)。
+ */
+function DeleteConfirmPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className={cn("flex flex-wrap items-center gap-s2")} data-testid="detail-delete-confirm">
+      {children}
+    </div>
   );
 }
 

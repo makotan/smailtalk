@@ -177,7 +177,18 @@ function declaration(
     },
     members: { table: "desk_members", account: "account", group: "group" },
     groups: { table: "desk_groups" },
-    ...(inheritFrom === undefined ? {} : { inherit_from: [...inheritFrom] }),
+    // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+    // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+    // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+    // **`projects`(引き継ぎを持たない唯一の保護対象)への `POST` が 403 になり、
+    // この通し8本が丸ごと巻き込まれていた。**
+    // **引き継ぎを宣言する側(`issues` / `comments`)には足さない** ——
+    // **適用時検査(`referential-integrity.ts` の項目11)が拒否するからであり、
+    // 根の表でもないので関門も素通りする。**
+    // **旧(逐語)**: `...(inheritFrom === undefined ? {} : { inherit_from: [...inheritFrom] }),`
+    ...(inheritFrom === undefined
+      ? { creatable_by_roles: ["owner", "editor"] }
+      : { inherit_from: [...inheritFrom] }),
   };
 }
 
@@ -1406,7 +1417,22 @@ test("V7-M7-T09 (vii) 権限を持たない人は、一覧0件 / 単件404 / PAT
         headers: mallory.headers,
       }),
     );
-    expect(grantLeak.total, tr.text()).toBeGreaterThan(0);
+    // **【`V18-M3-T02`(`PM-G6`)が反転した。削っていない・`.skip` にしていない・緩めていない】**
+    //
+    // **根拠の条文**: **`ADR-0435`**(名簿・付与・グループ表の読取に判定を掛ける。限定採用)
+    // **+ `ADR-0439`**(授権の表 行11 = **既存の検査を削らずに**反転**することだけを許す**)。
+    // **絞り方の正はユーザ決定 `D-V18-21`** / **計画 `05-v18-m3-plan.md` §11-1 の裁定5点。**
+    //
+    // **旧の期待値を逐語で残す(1バイトも消していない)**:
+    //   `expect(grantLeak.total, tr.text()).toBeGreaterThan(0);`
+    //   `expect(memberLeak.total, tr.text()).toBeGreaterThan(0);`
+    //
+    // **マロリーは付与を1件も持たないので、どの親の行も読めない** —— **したがって
+    // 付与表は1行も返らない。** **名簿表に残るのは「自分自身の行」だけである**
+    // (`D-V18-21` の逐語。**見える付与が指す人 + 自分自身**)。
+    // **【禁止】これを「利用者IDとメールアドレスが見えなくなった」と読まない** ——
+    // **この葉は項目を1つも隠していない。自分の行の `account` は今日も返る。**
+    expect(grantLeak.total, tr.text()).toBe(0);
     const memberLeak = listed(
       await api(
         request,
@@ -1417,7 +1443,7 @@ test("V7-M7-T09 (vii) 権限を持たない人は、一覧0件 / 単件404 / PAT
         { headers: mallory.headers },
       ),
     );
-    expect(memberLeak.total, tr.text()).toBeGreaterThan(0);
+    expect(memberLeak.total, tr.text()).toBe(1);
 
     // **ただし、そこから自分に権限を付け直すことはできない** —— **見えない行への付与は
     // 存在を伏せて断られる。**

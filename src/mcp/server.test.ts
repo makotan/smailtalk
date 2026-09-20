@@ -17,6 +17,7 @@ import { expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "./server.ts";
+import { CANNOT_DO, OUT_OF_SCOPE_BEHAVIOR, VOCABULARY_SCOPE } from "./vocabulary.ts";
 
 /**
  * クライアントとサーバを直結して、接続済みのクライアントを返す。
@@ -83,4 +84,115 @@ test("createMcpServer は呼び出しごとに独立したサーバを返す(グ
   expect(a).not.toBe(b);
   await a.close();
   await b.close();
+});
+
+// =====================================================================================
+// **`V17-M0-T01b`**: 語彙境界の全文3定数を、MCP の **resource** として公開する
+// (`docs/plan/v17/01-v17-m0-plan.md` §4-1 の 1 / §6 の `V17-M0-T01b`)
+// =====================================================================================
+//
+// **2026-09-07 まで、3定数の全文(61,244文字)は `apply_diff` 1本の `description` に
+// 貼られており、接続直後(`instructions` + `tools/list`)の余白は **1文字**だった。**
+// **`tools/list` から外して `resources/read` に置く。**
+//
+// **【これは移動であって二重化ではない】** —— **`tools/list` の側からは無くなる。**
+// **`ADR-0005` §7 が resources を公開しない理由に挙げた「入口の二重化」には当たらない。**
+//
+// **【失うもの。丸めない】** **今日まで「接続しただけで必ず届いた」ものが、
+// 明日からは「`resources/read` を呼べば届く」に降格する。**
+// **`resources/read` を1度も呼ばない MCP クライアントには、語彙境界の全文は届かない。**
+
+/** 公開する resource の URI と、それが返す定数の対応(**この表が検査の分母である**)。 */
+const VOCABULARY_RESOURCES = [
+  ["vocabulary://scope", VOCABULARY_SCOPE],
+  ["vocabulary://cannot-do", CANNOT_DO],
+  ["vocabulary://out-of-scope", OUT_OF_SCOPE_BEHAVIOR],
+] as const;
+
+/**
+ * **`resources/list` の JSON 全体の上限。**
+ *
+ * **接続直後にこれも取りに行くクライアントが在る**(`instructions` + `tools/list` +
+ * `resources/list`)。**`tools/list` から外した量が、こちらで戻ってきては意味が無い。**
+ * **中身は URI と短い説明だけに保つ** —— 全文はここではなく `resources/read` が返す。
+ */
+const RESOURCES_LIST_JSON_MAX = 600;
+
+/** resource 1本ぶんの `description` の上限(**一覧に載るのは案内であって本文ではない**)。 */
+const RESOURCE_DESCRIPTION_MAX = 80;
+
+test("V17-M0-T01b: resources/list が語彙境界の3本ちょうどを返す", async () => {
+  const { client, close } = await connectInMemory();
+  try {
+    const { resources } = await client.listResources();
+    expect(resources.map((resource) => resource.uri).sort()).toEqual(
+      VOCABULARY_RESOURCES.map(([uri]) => uri)
+        .slice()
+        .sort(),
+    );
+    // **0本 = 全文がどこにも無い。4本以上 = 語彙の外の何かを露出させた。**
+    expect(resources).toHaveLength(VOCABULARY_RESOURCES.length);
+  } finally {
+    await close();
+  }
+});
+
+test("V17-M0-T01b: resources/read が3定数の全文を逐語で返す(=== で照合する)", async () => {
+  const { client, close } = await connectInMemory();
+  try {
+    for (const [uri, constant] of VOCABULARY_RESOURCES) {
+      const read = await client.readResource({ uri });
+      expect(read.contents, uri).toHaveLength(1);
+      const [first] = read.contents;
+      expect(first?.uri, uri).toBe(uri);
+      // **`contents` は「文字の資源(`text`)」か「バイト列の資源(`blob`)」かの和である。**
+      // **文字の側で返っていることも同時に見る**(`blob` で返した日に黙って通さない)。
+      expect(first !== undefined && "text" in first, uri).toBe(true);
+      // **`toContain` ではなく `===` である** —— 1文字でも欠けたら赤くなる。
+      expect(first !== undefined && "text" in first ? String(first.text) : "", uri).toBe(constant);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test("V17-M0-T01b: resources/list は案内だけで、全文を1文字も含まない", async () => {
+  const { client, close } = await connectInMemory();
+  try {
+    const { resources } = await client.listResources();
+    const json = JSON.stringify({ resources });
+    expect(
+      json.length,
+      `resources/list の JSON ${json.length}文字が上限 ${RESOURCES_LIST_JSON_MAX} を超えた: ${json}`,
+    ).toBeLessThanOrEqual(RESOURCES_LIST_JSON_MAX);
+    for (const resource of resources) {
+      const description = resource.description ?? "";
+      expect(description.length, resource.uri).toBeLessThanOrEqual(RESOURCE_DESCRIPTION_MAX);
+      // **一覧に本文を混ぜない**(混ぜたら `tools/list` から外した意味が消える)。
+      expect(description.length, resource.uri).toBeGreaterThan(0);
+    }
+    for (const [, constant] of VOCABULARY_RESOURCES) {
+      expect(json).not.toContain(constant);
+    }
+  } finally {
+    await close();
+  }
+});
+
+test("V17-M0-T01b: prompts は1つも公開していない(prompts/list は -32601 で断られる)", async () => {
+  // **`ADR-0271` 限定4 / `ADR-0346` の「prompts を1つも公開しない」は今日も真である。**
+  // **本段が引き直したのは resources の側だけである。**
+  const { client, close } = await connectInMemory();
+  try {
+    let message = "";
+    try {
+      await client.listPrompts();
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain("-32601");
+    expect(message).toContain("Method not found");
+  } finally {
+    await close();
+  }
 });

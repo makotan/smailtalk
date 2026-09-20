@@ -684,7 +684,25 @@ describe("`ADR-0163`(`G-G19`)の限定7点", () => {
     // **【禁止】これを「アプリの語彙が増えた」と読まない** —— **`schemas/` は1バイトも
     // 動いておらず、`RESOURCE_KINDS`=8 / `FIELD_TYPES`=9 / `DIFF_OPS`=17 は1つも動いていない。**
     // **器は `apps` 表の列2本ちょうどであり、`kernel.sqlite` の表は1本も増えていない。**
-    expect(sha(await source("scripts/kernel-export-snapshot.txt"))).toBe("2a0fae816ce5f6c5");
+    // **【`V17-M3-T03b`(`AC-G13` / 門A / `Δ8` を確定させた)。2026-09-07】**
+    // **今度も `Δ8` が発火している。** **公開エクスポートが2件増えた**
+    // (`workflow-runner.ts:accessJudgmentApplies` = この発火に判定を掛けるかを問う述語 /
+    //  `workflow-runner.ts:judgeAutomationWrite` = 自動処理の書込1件に面と点を当てる述語)。
+    // **どちらも既に在った関数であり、`export` を1語ずつ足しただけである** ——
+    // **新しい述語も新しい判定の式も1つも作っていない。**
+    // **`src/kernel/ai-dispatcher.ts` の `writeBack`(AI の書き戻し)が、この2本を
+    // import して1度だけ呼ぶ** —— **本命の口とフォールバックの口の**両方**が同じ1本の
+    // 判定を通る**(`withAiChainDepth` の中の先頭に置いた)。
+    // **台帳 `docs/adr/0007-vocabulary-governance.md:1839`(`AC-G13` の行)は逐語で
+    // 「**A**(catch-all。**`Δ8` 未確定**)」と書いており、確定させたのは本段である。**
+    // **【正直に書く】この時点で `AC-G13` の個別 ADR はまだ書かれていない** ——
+    // **`V17-M3-T08a` がこれから書く。****「門A を通した」と過去形で読まない。**
+    // **旧の基準値(逐語。1バイトも消していない)**:
+    // `expect(sha(await source("scripts/kernel-export-snapshot.txt"))).toBe("2a0fae816ce5f6c5");`
+    // **当時 `2a0fae816ce5f6c5` → 今日 `68c62429d88b17c4`。****旧値を消さずに残す。**
+    // **【禁止】これを「アプリの語彙が増えた」と読まない** —— **`schemas/` は1バイトも
+    // 動いておらず、差分操作の種類も1つも増えていない。**
+    expect(sha(await source("scripts/kernel-export-snapshot.txt"))).toBe("68c62429d88b17c4");
   });
 
   // **【`V5-M16`(`G-G12` / `G-G13` / `ADR-0161` + `D-V5-84`)による基準値の更新】**
@@ -1779,7 +1797,186 @@ describe("`ADR-0163`(`G-G19`)の限定7点", () => {
     // `sortErrorPath` / `validateSortKeys` ではない)。
     // **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(`Δ8` は発火していない)。
     // **当時 `10e788de32d696f1` → 今日 `ff800c5520c0c79e`。****旧値を消さずに残す。**
-    expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("ff800c5520c0c79e");
+    // **【`V17-M4-T03`(台帳 `AC-G21`)による更新。旧の基準値を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("ff800c5520c0c79e");`**
+    // **3件増え、0件減った** —— **3件とも新規テスト
+    // `src/server/file-delivery-uploader.test.ts` のセットアップ
+    // (`KernelMetaStore` / `applyManifest` / `createApp`)であり、
+    // `src/server/files-delivery.test.ts` / `src/server/file-attachment.test.ts` /
+    // `src/server/nonadmin-layer-removal.test.ts` とまったく同じ3シンボルである。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`src/server/app.ts` が足したのは同じ `src/server/` 層の `roleRowBlocked` の
+    //  呼び出しと `src/shared/files-table.ts` の定数だけで、`src/kernel/` からの
+    //  `import` を1件も増やしていない)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(3件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`src/kernel/` にも `schemas/` にも1バイトも触っていない**(`Δ8` は発火していない。
+    //  `CP-V17` 条件7)。
+    // **【はみ出しを正直に書く】本ファイルは `V17-M4-T03` の発注書が名指しした
+    // 変更対象ではない。** **`V7-M2-T02` 以降の同型のはみ出しと同じ扱いで、
+    // 旧値を消さずに注を足して更新した。** 記録: `docs/plan/v17/records/v17-m4.md` §3。
+    // **当時 `ff800c5520c0c79e` → 今日 `533a5e180634f184`。****旧値を消さずに残す。**
+    // **【`V17-M5-T03d`(台帳 `AC-G10` / `ADR-0412`)による更新。旧の基準値を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("533a5e180634f184");`**
+    // **5件増え、0件減った** —— **5件とも新規テスト
+    // `src/server/root-creatable-roles.test.ts` のセットアップ
+    // (`KernelMetaStore` / `createApp` / `applyManifest` / `createRecord` / `appDbPath`)で
+    // あり、`src/server/create-parent-write.test.ts` /
+    // `src/server/batch-create-parent-write.test.ts` とまったく同じ5シンボルである。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`src/server/app.ts` / `src/server/owner-scope.ts` が足したのは同じ `src/server/` 層の
+    //  `judgeRootCreatableRoles` の定義と呼び出しだけで、`src/kernel/` からの `import` を
+    //  1件も増やしていない)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(5件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` には1バイトも触っていない。** **`src/kernel/` は空ではない** ——
+    // **`creatable-by.test.ts` と `table-access-control.test.ts` の2本が動いている
+    //  (どちらも `*.test.ts` の凍結面の打ち直しであり、非テストの製品コードは1バイトも
+    //  動いていない)。** **【禁止】これを「`src/kernel/` に触っていない」と丸めない。**
+    // **【はみ出しを正直に書く】本ファイルは `V17-M5-T03` の起票が名指しした変更対象では
+    // ない。** **`V17-M4-T03` と同型のはみ出しであり、旧値を消さずに注を足して更新した。**
+    // **当時 `533a5e180634f184` → 今日 `908eef820bffa7a8`。****旧値を消さずに残す。**
+    // **【`V17-M5-T04`(台帳 `AC-G17` / `AC-G18`)による更新。旧の基準値を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("908eef820bffa7a8");`**
+    // **3件増え、0件減った** —— **3件とも新規テスト
+    // `src/server/role-condition-grants-bypassed.test.ts` のセットアップ
+    // (`KernelMetaStore` / `createApp` / `applyManifest`)であり、
+    // `src/server/role-conditions-enforcement.test.ts` /
+    // `src/server/role-grant-union.test.ts` とまったく同じ3シンボルである。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`T04` が触った非テストは `src/kernel/apply-diff.ts` と `src/kernel/types.ts` の
+    //  2本だけで、`src/server/` の非テストは1バイトも動いていない)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(3件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` には1バイトも触っていない。** **`src/kernel/` は空ではない** ——
+    // **`apply-diff.ts` と `types.ts` の2本が動いている(どちらも非テストの製品コードである)。**
+    // **【禁止】これを「`src/kernel/` に触っていない」と丸めない**(`CP-V17` 条件7)。
+    // **【はみ出しを正直に書く】本ファイルは `V17-M5-T04` の起票が名指しした変更対象では
+    // ない。** **`V17-M5-T03d` と同型のはみ出しであり、旧値を消さずに注を足して更新した。**
+    // **当時 `908eef820bffa7a8` → 今日 `144a5edd42884587`。****旧値を消さずに残す。**
+    // **【`V17-M5-T05`(台帳 `AC-G33`)による更新。旧の基準値を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("144a5edd42884587");`**
+    // **3件増え、0件減った** —— **3件とも新規テスト
+    // `src/server/owner-scope-supplied-notice.test.ts` のセットアップ
+    // (`KernelMetaStore` / `createApp` / `applyManifest`)であり、
+    // `src/server/role-condition-grants-bypassed.test.ts` /
+    // `src/server/role-conditions-enforcement.test.ts` とまったく同じ3シンボルである。**
+    // **新しい層またぎの種類は0本であり、製品コードの層またぎは0件である**
+    // (`T05` が触った非テストは `src/kernel/apply-diff.ts` / `src/kernel/types.ts` /
+    //  `src/mcp/tools/read.ts` の3本で、`read.ts` の差分は doc の訂正だけである。
+    //  `src/server/` の非テストは1バイトも動いていない)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(3件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` には1バイトも触っていない。** **`src/kernel/` は空ではない** ——
+    // **`apply-diff.ts` と `types.ts` の2本が動いている(どちらも非テストの製品コードである)。**
+    // **【禁止】これを「`src/kernel/` に触っていない」と丸めない**(`CP-V17` 条件7)。
+    // **【はみ出しを正直に書く】本ファイルは `V17-M5-T05` の起票が名指しした変更対象では
+    // ない。** **`V17-M5-T03d` / `V17-M5-T04` と同型のはみ出しであり(本段で3度目)、
+    // 旧値を消さずに注を足して更新した。**
+    // **当時 `144a5edd42884587` → 今日 `ca81651747db1b44`。****旧値を消さずに残す。**
+    // **【`V17-M6-T06b`(台帳 `AC-G22` / `AC-G24` / `AC-G30b`)による更新。
+    //   旧の基準値を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("ca81651747db1b44");`**
+    // **12件増え、0件減った** —— **出どころは新規テスト**3本**である**:
+    // `scripts/skill-grant-table-view.test.ts`(2件)/
+    // `src/server/access-control-orphan-recovery.test.ts`(5件)/
+    // `src/server/record-access-sources.test.ts`(5件)。
+    // **本段が足した新規 `.test.ts` は4本だが、`src/server/app-change-vs-undo.test.ts` は
+    // カーネルからの値 import を1件も持たないので表に載らない。**
+    // **12件はすべて既に他の検査が採っている組**(`KernelMetaStore` / `appDbPath` /
+    // `applyManifest` / `createApp` / `createRecord`)であり、
+    // **新しい層またぎの種類は0本・製品コードの層またぎは0件である**
+    // (本段が触った非テストは `src/server/app.ts` と `src/server/owner-scope.ts` の
+    //  2本だけで、どちらもカーネルからの値 import を1件も増やしていない)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(12件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` にも `src/kernel/` にも1バイトの差分を出していない**
+    // (`git diff --numstat 3f37c002 HEAD -- apps/smailtalk/src/kernel apps/smailtalk/schemas`
+    //  は **0行**。`CP-V17` 条件7)。
+    // **【前段との違いを書く】** **`V17-M5` の3回はどれも `src/kernel/` が空ではなかったが、
+    // 本段は空である。** **【禁止】前段の書き方をそのまま写さない。**
+    // **【はみ出しを正直に書く】本ファイルは `V17-M6-T06b` の起票が名指しした変更対象では
+    // ない。** **`V17-M5-T03d` / `V17-M5-T04` / `V17-M5-T05` と同型のはみ出しであり、
+    // 段の計画 §5 の理由4 / §7 の罠5 が**予定に入れていた**2段目の赤である** ——
+    // **本段は打ち直しを `T06b` に**1回だけ**束ねた(前段は3度に分けて踏んだ)。**
+    // **当時 `ca81651747db1b44` → 今日 `763f8e7f456d933a`。****旧値を消さずに残す。**
+    //
+    // **【`V18-M3-T01`(`PM-G6` / `ADR-0435` / `ADR-0439`)による更新。2026-09-12。
+    //   上の文を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("763f8e7f456d933a");`**
+    // **5件増え、0件減った** —— **出どころは新しい検査ファイル1本
+    // (`src/server/access-control-registry-read.test.ts`)だけである。**
+    // **5件はすべて既に他の検査が採っている組**(`KernelMetaStore` / `appDbPath` /
+    // `applyManifest` / `createApp` / `createRecord`)であり、
+    // **新しい層またぎの種類は0本・製品コードの層またぎは0件である**
+    // (`V18-M3-T01` は `src/` の製品コードを1バイトも触っていない。**TDD の赤を書く葉**)。
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(5件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` にも `src/kernel/` にも1バイトの差分を出していない。**
+    // **【はみ出しを正直に書く】** **本ファイルは `V18-M3-T01` の起票
+    // (`records/v18-m0.md:1684`)が名指しした変更対象ではない。**
+    // **`ADR-0435` の授権の表にも `ADR-0439` の授権2点にも、この検査の行は1行も無い。**
+    // **`V17-M6-T06b` / `V17-M5` の3回と同型のはみ出しであり、
+    // **新しい検査ファイルを1本でも足せば必ず出る形である。**
+    // **先に赤の出力を見てから打ち直した**(`ADR-0402` 限定9 / `ADR-0053` 限定4)。
+    // **当時 `763f8e7f456d933a` → 今日 `3d94b9d89b56ef69`。****旧値を消さずに残す。**
+    //
+    // **【`V18-M4-T01`(`PM-G10` / `ADR-0435` / `ADR-0441`)による更新。2026-09-12。
+    //   上の文を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("3d94b9d89b56ef69");`**
+    // **3件増え、0件減った** —— **出どころは新しい検査ファイル1本
+    // (`src/server/unnamed-view-read-wall.test.ts`)だけである。**
+    // **3件はすべて既に他の検査が採っている組**(`KernelMetaStore` / `applyManifest` /
+    // `createApp`)であり、**新しい層またぎの種類は0本・製品コードの層またぎは0件である**
+    // (`V18-M4-T01` は `src/` の製品コードを1バイトも触っていない。**TDD の赤を書く葉**)。
+    // **前段(`V18-M3-T01`)より1件少ないのは `createRecord` を使っていないからである** ——
+    // **行は運営の HTTP の口(`POST .../records`)から作っている。**
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(3件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` にも `src/kernel/` にも1バイトの差分を出していない。**
+    // **【前段と違い、はみ出しではない】** **`ADR-0441` §Decision 3 授権の表 **行29** が、
+    // このファイルの `sha` の打ち直しを**第4列 `V18-M4-T01`** で名指しで授権している**
+    // (`ADR-0440` 行15 は第4列が `V18-M3-T01` だったので本段を覆っていない。
+    // `ADR-0441` §Decision 2 の物差し)。
+    // **先に赤の出力を見てから打ち直した**(`ADR-0402` 限定9 / `ADR-0053` 限定4。
+    // 逐語 `Expected: "3d94b9d89b56ef69" / Received: "a498575f04078eae"`。**1 fail**)。
+    // **当時 `3d94b9d89b56ef69` → 今日 `a498575f04078eae`。****旧値を消さずに残す。**
+    //
+    // **【2026-09-12 追記(`V18-M5-T02b`。`PM-G2` / `PM-G3` / `ADR-0442`)。
+    //   上の文を1バイトも消していない】**
+    // **旧: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("a498575f04078eae");`**
+    // **10件増え、0件減った** —— **出どころは新しい検査ファイル2本
+    // (`src/server/root-create-closed-by-default.test.ts`(`V18-M5-T01`)と
+    // `src/mcp/root-create-closed-by-default-mcp.test.ts`(`V18-M5-T02`))だけである。**
+    // **10件はすべて既に他の検査が採っている組**(`KernelMetaStore` / `appDbPath` /
+    // `applyManifest` / `createApp` / `createRecord`)であり、
+    // **新しい層またぎの種類は0本・製品コードの層またぎは0件である。**
+    // **`ADR-0009` 限定2 を1バイトも引き直していない**(10件のいずれも `normalizeSort` /
+    // `sortErrorPath` / `validateSortKeys` ではない)。
+    // **`schemas/` にも `src/kernel/` にも1バイトの差分を出していない。**
+    // **【`ADR-0441` 行29 を根拠にできない】** **`ADR-0007:1882` が射程を `V18-M4` に
+    // 限っているので、本段は `ADR-0442` §Decision 3 の授権の表(層越えの基準値の行)を
+    // 根拠にする。**
+    // **先に赤の出力を見てから打ち直した**(`ADR-0402` 限定9 / `ADR-0053` 限定4。
+    // 逐語 `Expected: "a498575f04078eae" / Received: "8d7b41b9ca2c9127"`。**1 fail**)。
+    // **値は失敗出力から写していない** —— **`shasum -a 256 scripts/kernel-import-snapshot.txt`
+    // の先頭16文字を自分で打って確かめた。**
+    // **当時 `a498575f04078eae` → 今日 `8d7b41b9ca2c9127`。****旧値を消さずに残す。**
+    // **【`V18-M7-T02`(台帳 `PM-G5` / `ADR-0444` 授権の表 行8)による更新。旧値も旧文も
+    //   1バイトも消していない】** **`V18-M7-T02` が新しい検査ファイル1本を足したので、
+    //   `kernel-import-snapshot.txt` に5件の行と、その審査コメントが増えた。**
+    // **先に赤の出力を見てから打ち直した**(`ADR-0402` 限定9)——
+    //   逐語 `Expected: "8d7b41b9ca2c9127" / Received: "7c24aaab51faf46f"`。**1 fail**。
+    // **値は失敗出力から写していない** —— **`shasum -a 256 scripts/kernel-import-snapshot.txt`
+    //   の先頭16文字を自分で打って確かめた(`7c24aaab51faf46f`)。**
+    // **`8d7b41b9ca2c9127` → 今日 `7c24aaab51faf46f`。**
+    //
+    // **【`V18-M7-T03`(2026-09-14)。上の3行を1バイトも消していない】** —— **AI の口の検査
+    // ファイル1本ぶん(5件)を同じ台帳に足したので、この指紋がもう一度動いた。**
+    // **値は失敗出力から写していない** —— **`shasum -a 256 scripts/kernel-import-snapshot.txt`
+    //   の先頭16文字を自分で打って確かめた(`26dca2035da477b1`)。**
+    // **`7c24aaab51faf46f` → 今日 `26dca2035da477b1`。**
+    expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("26dca2035da477b1");
   });
 
   test("限定4: ADR 番号・限定番号への参照を1つも消していない", async () => {

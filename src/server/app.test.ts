@@ -1529,6 +1529,19 @@ describe("ワークフローの発火(V1-M2-T02 完了条件4 / HTTP 経路)", (
 // **cookie を付けずに叩けることを、この describe の全テストが同時に固定している**
 // (`request()` は `/api/apps/<app_id>/` から cookie を選ぶが、要件定義書の経路は
 //  認証 middleware を1本も通らないので、あってもなくても結果は変わらない)。
+//
+// =====================================================================================
+// **【`V17-M4-T02` による改訂。上の8行は1バイトも書き換えていない】** **台帳 `AC-G20`**
+// =====================================================================================
+//
+// **上の「ローカル専用(認証なし)」も「cookie を付けずに叩けることを全テストが固定している」も、
+// 今日の正ではない。** **`GET /requirements` には `GET /manifest` と同じ関門が掛かった** ——
+// **未認証は 401 である。**
+//
+// **したがって中身を撃つ4本は `request()`(cookie を選ぶ)へ移した。**
+// **`anonymous()` は消していない** —— **「存在しないアプリは 404」(関門はアプリの実在を
+// セッション解決より先に見る)と、新しく足した「未認証は 401」の2本が今日も使っている。**
+// **期待値は1つも書き換えていない**(200 は 200 のまま。読む人が変わっただけである)。
 
 describe("GET /api/apps/:app_id/requirements(ADR-0025 §10)", () => {
   const REQUIREMENTS = "/api/apps/inventory/requirements";
@@ -1539,7 +1552,7 @@ describe("GET /api/apps/:app_id/requirements(ADR-0025 §10)", () => {
   }
 
   test("既定は markdown で、記述ごとの出典表が付く", async () => {
-    const response = await anonymous(REQUIREMENTS);
+    const response = await request(REQUIREMENTS);
     expect(response.status).toBe(200);
     const body = await json(response);
     const doc = body.requirements as Record<string, unknown>;
@@ -1558,7 +1571,7 @@ describe("GET /api/apps/:app_id/requirements(ADR-0025 §10)", () => {
   });
 
   test("format=json は statements と実在集合を返す", async () => {
-    const response = await anonymous(`${REQUIREMENTS}?format=json`);
+    const response = await request(`${REQUIREMENTS}?format=json`);
     expect(response.status).toBe(200);
     const doc = (await json(response)).requirements as Record<string, unknown>;
 
@@ -1574,11 +1587,11 @@ describe("GET /api/apps/:app_id/requirements(ADR-0025 §10)", () => {
 
   test("section はその節の記述だけに絞る", async () => {
     const all = (
-      (await json(await anonymous(`${REQUIREMENTS}?format=json`))).requirements as {
+      (await json(await request(`${REQUIREMENTS}?format=json`))).requirements as {
         statements: { section: string }[];
       }
     ).statements;
-    const response = await anonymous(`${REQUIREMENTS}?format=json&section=data`);
+    const response = await request(`${REQUIREMENTS}?format=json&section=data`);
     expect(response.status).toBe(200);
     const doc = (await json(response)).requirements as Record<string, unknown>;
 
@@ -1591,13 +1604,13 @@ describe("GET /api/apps/:app_id/requirements(ADR-0025 §10)", () => {
   });
 
   test("語彙外の section / format は 400 で受理集合を添えて断る", async () => {
-    const badSection = await anonymous(`${REQUIREMENTS}?section=nonexistent`);
+    const badSection = await request(`${REQUIREMENTS}?section=nonexistent`);
     expect(badSection.status).toBe(400);
     const sectionErrors = await errorsOf(badSection);
     expect(sectionErrors[0]?.path).toBe("/section");
     expect(sectionErrors[0]?.allowed_values).toContain("history");
 
-    const badFormat = await anonymous(`${REQUIREMENTS}?format=pdf`);
+    const badFormat = await request(`${REQUIREMENTS}?format=pdf`);
     expect(badFormat.status).toBe(400);
     const formatErrors = await errorsOf(badFormat);
     expect(formatErrors[0]?.path).toBe("/format");
@@ -1610,6 +1623,17 @@ describe("GET /api/apps/:app_id/requirements(ADR-0025 §10)", () => {
     const errors = await errorsOf(response);
     expect(errors[0]?.path).toBe("");
     expect(errors[0]?.allowed_values).toContain("inventory");
+  });
+
+  // **【`V17-M4-T02`。台帳 `AC-G20`】** **上の4本が着手前まで cookie 無しで 200 を
+  // 受け取っていたことを、ここで否定形として固定する。**
+  test("AC-G20: 認証を付けないと 401 になる(着手前は 200 だった)", async () => {
+    for (const path of [REQUIREMENTS, `${REQUIREMENTS}?format=json`]) {
+      const response = await anonymous(path);
+      expect(response.status, path).toBe(401);
+      const errors = await errorsOf(response);
+      expect(errors[0]?.message).toBe("認証が必要です。ログインしてください。");
+    }
   });
 });
 

@@ -57,6 +57,14 @@ const APP_ID = "workshop";
 const NOTES = "notes";
 const MEMBERS = "note_member";
 const GRANTS = "note_grant";
+/**
+ * **`V17-M2-T01a`(`AC-G7a` / `ADR-0411`)で足した子の表。**
+ *
+ * **`inherit_from: ["note"]` を宣言している** —— **この表に行を作るには、`note` が指す
+ * 親の行(`notes` の1行)に書き込めなければならない。**
+ * **着手前、この表は AI(MCP)からは素通りで作れた**(`docs/plan/v17/03-v17-m2-plan.md` §2-1c)。
+ */
+const ITEMS = "note_items";
 const PREVIEW_BASE_URL = "http://127.0.0.1:3000";
 
 /** 名乗りがあれば通る側(`create_app` は解決しない)。 */
@@ -190,6 +198,15 @@ const setupTables = {
           enabled: true,
           permissions: PERMISSIONS,
           creator_permission: "writer",
+          // **【`V18-M5-T02b` / `PM-G3` / `ADR-0442`】題材に1行足した(主張は1バイトも
+          // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+          // 既定が「誰も作れない」へ反転し、AI の口にも同じ関門が掛かったので**
+          // (`ADR-0432` §Decision)、**前準備の `insert_sample_data`(`alice` = 持ち主)が
+          // 断られて本ファイルの40本が丸ごと巻き込まれていた。**
+          // **`editor` も挙げている** —— **`bob`(編集者)が作れることを測る
+          // `(AC-G7a-0)` と、`carol`(編集者。名簿に居ない)が**名簿の側で**断られる
+          // ことを測る `(D)` が、どちらもこの関門より先へ進む必要があるからである。**
+          creatable_by_roles: ["owner", "editor"],
           grant: { table: GRANTS, target: "note", member: "member", permission: "permission" },
           members: { table: MEMBERS, account: "account" },
         },
@@ -202,6 +219,9 @@ const setupTables = {
         name: "付与",
         fields: [
           { id: "note", name: "メモ", type: "reference", reference_table: NOTES },
+          // **【`V17-M2-T01a` が足した1項目】** **子の表({@link ITEMS})の付与の宛先。**
+          // **既存の3項目は1バイトも変えていない。**
+          { id: "item", name: "項目", type: "reference", reference_table: ITEMS },
           { id: "member", name: "相手", type: "reference", reference_table: MEMBERS },
           {
             id: "permission",
@@ -210,6 +230,32 @@ const setupTables = {
             options: ["reader", "writer", "manager"],
           },
         ],
+      },
+    },
+    /**
+     * **【`V17-M2-T01a`(`AC-G7a` / `ADR-0411`)が足した表】**
+     *
+     * **親(`notes`)の行に書ける人だけが作れる、と宣言した子の表である。**
+     * **面(役割の規則)からは1本も名指ししない** —— **名指しすると面と点が `OR` で
+     * 重なって親の関門ごと無効になる**(この検査の題材の形の理由と同じである)。
+     */
+    {
+      op: "add_table",
+      table: {
+        id: ITEMS,
+        name: "メモの項目",
+        fields: [
+          { id: "label", name: "見出し", type: "text", required: true },
+          { id: "note", name: "メモ", type: "reference", reference_table: NOTES },
+        ],
+        access_control: {
+          enabled: true,
+          permissions: PERMISSIONS,
+          creator_permission: "writer",
+          grant: { table: GRANTS, target: "item", member: "member", permission: "permission" },
+          members: { table: MEMBERS, account: "account" },
+          inherit_from: ["note"],
+        },
       },
     },
   ],
@@ -317,8 +363,12 @@ afterEach(async () => {
 test("(A) get_manifest は今日どおり全定義を返す(D-V8-55。編集者でも絞られない)", async () => {
   const data = okData(await callTool("get_manifest", { app_id: APP_ID }, bob.username));
   const manifest = data.manifest as { app: { tables: { id: string }[]; roles: { id: string }[] } };
+  // **【`V17-M2-T01a` による更新(2026-09-07)。旧の期待値を逐語で残す】** ——
+  // **旧: `[GRANTS, MEMBERS, NOTES].sort()`。** **`T01a` が題材に子の表({@link ITEMS})を
+  // 1つ足したので、全定義の中の表が4本になった。** **この検査が測っているもの
+  // (編集者を名乗っても定義が1つも絞られない)は1ミリも変わっていない。**
   expect(manifest.app.tables.map((table) => table.id).sort()).toEqual(
-    [GRANTS, MEMBERS, NOTES].sort(),
+    [GRANTS, MEMBERS, NOTES, ITEMS].sort(),
   );
   // **点を宣言した表の定義も、面の規則の全量も、編集者にそのまま見える。**
   expect(manifest.app.roles.map((role) => role.id).sort()).toEqual(
@@ -552,7 +602,12 @@ test("(D) write_records は実在しない表を「存在しません」で断�
   const errors = errorsOf(denied);
   expect(messagesOf(denied)).toContain("存在しません");
   // **自己訂正の材料が付いている**(`ADR-0005`)—— **権限の断りには付かない。**
-  expect(errors[0]?.allowed_values).toEqual([MEMBERS, NOTES, GRANTS]);
+  // **【`V17-M2-T01a` による更新(2026-09-07)。旧の期待値を逐語で残す】** ——
+  // **旧: `expect(errors[0]?.allowed_values).toEqual([MEMBERS, NOTES, GRANTS]);`。**
+  // **`T01a` が題材に子の表({@link ITEMS})を1つ足したので、実在する表の一覧が4本になった。**
+  // **この検査が測っているもの(実在しない表を「存在しません」で断り、自己訂正の材料を付ける)は
+  // 1ミリも変わっていない。**
+  expect(errors[0]?.allowed_values).toEqual([MEMBERS, NOTES, GRANTS, ITEMS]);
   // **権限の断りに落ちていない**(並びが逆なら、こちらの文面が返る)。
   expect(messagesOf(denied)).not.toContain("あなたの役割に許されていません");
   // **断りは1件だけである**(実在検査で抜けているので、権限の断りが後ろに積まれない)。
@@ -713,6 +768,261 @@ test("(D-#2) 書けない項目は write_records でも断られる(バッチ全
 });
 
 // ===========================================================================
+// (AC-G7a) **親の行に書ける人だけが作れる、を AI(MCP)の作成2本にも掛けた**
+// (`V17-M2-T01a` / `T01b`。`ADR-0411` §Decision の 2 / ユーザ決定 `D-V16-4`
+//  の逐語「**全部の入口に立てる**」)
+//
+// ## **着手前(`T01a`)の実測 —— この4本は赤だった**
+//
+// **同じ人(`bob`)が、同じ子の表に、同じ親(`alice` のメモ)を指して**:
+//
+//  - **HTTP の単件 `POST`** … **403**(`src/server/create-parent-write.test.ts` の `(a-3)`)
+//  - **AI(MCP)の `write_records` の `create` op** … **通っていた**(行が1件できた)
+//  - **AI(MCP)の `insert_sample_data`** … **通っていた**(行が1件できた)
+//
+// **`T01b` の後、下2つは 上と同じ断りになる。**
+//
+// ## **この節が測っていないもの(誇張しない)**
+//
+//  - **更新には1バイトも掛かっていない**(`ADR-0411` 限定4)—— **`update_record` /
+//    `write_records` の `update` op は、親の参照を書き入れても付け替えても今日も問われない。**
+//  - **`insert_sample_data` は今日も部分成功を返す道具である** —— **親の関門で止まったときは
+//    部分成功にせず、`isError` で「1行も書いていない」を返す**(契約1。下の `(AC-G7a-3)`)。
+// ===========================================================================
+
+/** 子の表({@link ITEMS})の行を、名乗った人として `write_records` の `create` op で作る。 */
+function createItemViaWriteRecords(
+  label: string,
+  parentNoteId: string,
+  actor: string,
+): Promise<CallToolResult> {
+  return callTool(
+    "write_records",
+    {
+      app_id: APP_ID,
+      ops: [{ op: "create", table: ITEMS, values: { label, note: parentNoteId } }],
+    },
+    actor,
+  );
+}
+
+/** 子の表の行数を、その親に権限を持つ名乗りで数える(見えない行を0と数えないため)。 */
+async function itemCountFor(actor: string): Promise<number> {
+  const listed = okData(await callTool("list_records", { app_id: APP_ID, table_id: ITEMS }, actor));
+  return listed.total as number;
+}
+
+test("(AC-G7a-0)【`T00` のベースライン】`inherit_from` を宣言していない表への MCP の作成は1ミリも変わらない", async () => {
+  // **`notes` は `inherit_from` を1本も宣言していない**(親を持たない表である)。
+  // **`ADR-0411` 限定7 の相手になる着手前の応答は、この2つである。**
+  const inserted = await insert(NOTES, [{ title: "bob が入れたメモ" }], bob.username);
+  expect(inserted).toHaveLength(1);
+
+  const written = okData(
+    await callTool(
+      "write_records",
+      {
+        app_id: APP_ID,
+        ops: [{ op: "create", table: NOTES, values: { title: "bob がまとめ書きしたメモ" } }],
+      },
+      bob.username,
+    ),
+  );
+  expect((written.records as unknown[]).length).toBe(1);
+});
+
+test("(AC-G7a-1) 親の行に書けない人は、write_records の create op で子の行を作れない", async () => {
+  // **`bob` は参加者の表に居る**(= 作成の下見は通る)。
+  // **`alice` のメモへの付与は1件も持たない** —— **止めるのは親の関門だけである。**
+  const denied = await createItemViaWriteRecords("横から", aliceNote.id, bob.username);
+  expect(denied.isError).toBe(true);
+  expect(messagesOf(denied)).toContain("元になる行");
+
+  // **1バイトも書かれていない。** **数えるのは、その親に権限を持つ `alice` である。**
+  expect(await itemCountFor(alice.username)).toBe(0);
+});
+
+test("(AC-G7a-2) 親の行に書ける人なら、同じ create op が通る(絞りすぎていない)", async () => {
+  // **`bob` は自分のメモ(`bobNote`)に `writer` を持つ。**
+  okData(await createItemViaWriteRecords("自分の親へ", bobNote.id, bob.username));
+  expect(await itemCountFor(bob.username)).toBe(1);
+});
+
+test("(AC-G7a-3) 親の行に書けない人は insert_sample_data でも作れない(1行も入らない)", async () => {
+  const denied = await callTool(
+    "insert_sample_data",
+    { app_id: APP_ID, table_id: ITEMS, rows: [{ label: "横から", note: aliceNote.id }] },
+    bob.username,
+  );
+  expect(denied.isError).toBe(true);
+  expect(messagesOf(denied)).toContain("元になる行");
+  expect(await itemCountFor(alice.username)).toBe(0);
+});
+
+test("(AC-G7a-4) insert_sample_data は1行でも断られたら1行も書かない(契約1。部分成功に混ぜない)", async () => {
+  // **1件目は通る親、2件目は通らない親である** —— **行ループの外で1度だけ問う形のままでは
+  // 測れない**(親の関門は行の中身を見る)。
+  const denied = await callTool(
+    "insert_sample_data",
+    {
+      app_id: APP_ID,
+      table_id: ITEMS,
+      rows: [
+        { label: "自分の親へ", note: bobNote.id },
+        { label: "横から", note: aliceNote.id },
+      ],
+    },
+    bob.username,
+  );
+  expect(denied.isError).toBe(true);
+  // **通るはずだった1件目も書かれていない。**
+  expect(await itemCountFor(bob.username)).toBe(0);
+  expect(await itemCountFor(alice.username)).toBe(0);
+});
+
+// **【`V17-M2-T08a`。`ADR-0411` 限定4 の【実装時に置く】検査の、AI(MCP)の側】**
+//
+// **限定4 の逐語**: **「更新側の射程を1ミリも広げない。本単位が触るのは『作る』だけである」。**
+// **条文は【実装時に置く】の欄に「**源を走査する検査**」と書いているが、`write.ts` の側は
+// 源を読んでも測れない** —— **関門は `denyRecordCreate`(作成専用のヘルパ)の中に在り、
+// その中身を読んで「更新では呼ばれない」と言うには、呼び出し元(2箇所)まで辿った上で
+// 「この2箇所は作成の op だけを通る」を源で示す必要がある。** **同じ理由で
+// `src/server/automation-access-control.test.ts` の `(AC-G7a-11)` / `(AC-G7a-12)` も
+// 走査ではなく**実行**で撃っている。** **本検査もそれに揃える。**
+//
+// **【この検査は「塞いだ」ではなく「塞いでいない」の記録である】** —— **緑であることを
+// 「安全になった」と読まないこと。** **AI から親を付け替える道は今日も開いている。**
+//
+// =====================================================================================
+// **【`V18-M6-T02b`(2026-09-13)の訂正。上の段落を1バイトも消していない】**
+//
+// **直前の2行(「AI から親を付け替える道は今日も開いている」)は今日は偽である。**
+// **`V18-M6-T02` が `write_records` の `update` op にも親の関門を配線し、
+// `V18-M6-T01` が**移す前の親**に要求する動詞を `write` から `delete` へ上げたので、
+// この経路は今日は断られる。** **根拠は `ADR-0443`(`ADR-0433` 限定4 を引き直した)と
+// ユーザ決定 `D-V18-29`。**
+//
+// **したがって、テスト名の断り「【塞いでいない。限定4 のとおり】」も今日は偽である** ——
+// **本単位が改名した。** **旧のテスト名を逐語でここに残す(1バイトも消していない)**:
+//   `test("(AC-G7a-4b)【塞いでいない。限定4 のとおり】write_records の update op は親を別の親へ付け替えられる", async () => {`
+// **旧の式も逐語で残す**:
+//   `expect(moved.isError).toBeFalsy();`
+//   `// **`alice` の壁の内側に、`alice` の同意なしで行が1件入った。**`
+//   `expect(await itemCountFor(alice.username)).toBe(1);`
+//
+// **【実物を撃って確かめた。推測で書いていない】** —— **断られたときの応答本文は
+// 逐語で下の式に置いてある**(`structuredContent.errors[0]`):
+//   message: 「この行を別の元の行へ移すには、移す前の元の行にも書き込める必要があります。
+//             あなたには、移す前の元の行を書き換える権限がありません。」
+//   hint:    「移す前の元の行の権限を持っている人に、あなたへその行の書き込みの権限を
+//             渡してもらってください(移した先の元の行に書き込めるだけでは移せません。
+//             役割を変えても移せるようにはなりません)。」
+// **【`V18-M6-T03b`(2026-09-13)の訂正。上の6行を1バイトも消していない】** ——
+// **上に逐語で写した `message` / `hint` は今日は出ない** —— **`V18-M6-T03b` が、
+// 「書き込める必要があります」と述べる旧文を、今日の実装(消せる権限)に合わせて
+// 差し替えたためである。** **今日の文面の源は `src/server/app.ts` の
+// `forbiddenPreviousParentAccessError` で、下の式が撃つ逐語がその一部である。**
+// **断り文の**種類**は1本も増えていない** —— **既存の1本が差し替わっただけである。**
+//
+// **【止めたのがどちらの腕かを、隠さずに書く】** —— **止めたのは**移す前の親**の腕である。**
+// **`bob` は `bobNote` に `writer` を持つが、`V18-M6-T01` が古い親に要求する動詞を
+// `delete` へ上げたので、`writer` では足りない。** **新しい親(`aliceNote`)の腕まで
+// 到達していない** —— **仮に古い親の腕が通っても、そこで断られる**(`(AC-G7a-1)` と同じ
+// `元になる行` の文面)が、**この検査はそこを撃っていない。**
+//
+// **【誇張しない】** **塞がったのは AI の口の更新2本だけである** ——
+// **受信口 / 自動処理 / 島 / 時刻起動 は今日も素通りする**(`D-V18-6`)。
+// **参照を**空にする**更新も今日どおり通る**(`AC-G9` は却下。`ADR-0411` 限定10)。
+// **`delete_record` にも1バイトも掛かっていない。** **【禁止】「安全になった」と書かない。**
+//
+// **【この葉が授権の表の外に出ていることを、隠さずここに書く】**
+// **`ADR-0443` 授権の表 行9 は「`(AC-G7a-4b)`(実行で撃つ側)を**1バイトも触らない**」と
+// 書いている。** **その行は「`(AC-G7a-4b)` は赤くならない」という見込みの上に書かれており、
+// その見込みが外れた**(実測: `expect(received).toBeFalsy()` / `Received: true`)。
+// **本単位はメインの裁定で反転を実施した** —— **すなわち、授権の表の1行が**実装より後に**
+// 直されたということである。** **`ADR-0443` の本文は1バイトも書き換えていない**
+// (訂正は `V18-M6-T04` が末尾に足す)。
+// **`test(` を1本も削っていない。`.skip` にしていない。条件を1ミリも緩めていない。**
+// =====================================================================================
+test("(AC-G7a-4b)【`V18-M6-T02` が塞いだ】write_records の update op は、移す前の親に delete を持たない人の付け替えを断る", async () => {
+  // **`bob` は自分のメモ(`bobNote`)には書ける** —— **ここは関門を通る。**
+  const [created] = await insert(ITEMS, [{ label: "あとで移す", note: bobNote.id }], bob.username);
+  const item = rowOf(created as Record<string, unknown>);
+  expect(await itemCountFor(bob.username)).toBe(1);
+
+  // **`bob` は `alice` のメモに1件の付与も持たない** —— **同じ親を指して**作る**ことは
+  // `(AC-G7a-1)` / `(AC-G7a-3)` のとおり今日は断られる。**
+  // **それでも、既に在る行の参照を**そこへ付け替える**ことは今日も通る。**
+  // **【`V18-M6-T02b` の訂正。直前の1行を1バイトも消していない】** ——
+  // **直前の「今日も通る」は今日は偽である**(`ADR-0443` / `D-V18-29`)。
+  const moved = await callTool(
+    "write_records",
+    {
+      app_id: APP_ID,
+      ops: [
+        {
+          op: "update",
+          table: ITEMS,
+          target: item.id,
+          if_match: item.version,
+          values: { note: aliceNote.id },
+        },
+      ],
+    },
+    bob.username,
+  );
+  // **【`V18-M6-T02b` が反転した。旧の式を逐語で残す。1バイトも消していない】**
+  // **旧**: `expect(moved.isError).toBeFalsy();`
+  expect(moved.isError).toBe(true);
+  // **断られたときの文面を逐語で撃つ**(写しではなく、実際に撃って得た本文である)。
+  // **【`V18-M6-T03b` が打ち直した。旧の式を逐語で残す。1バイトも消していない】**
+  // **旧**: `expect(messagesOf(moved)).toContain("移す前の元の行を書き換える権限がありません");`
+  expect(messagesOf(moved)).toContain("移す前の元の行を消す権限がありません");
+
+  // **`alice` の壁の内側に、`alice` の同意なしで行が1件入った。**
+  // **【`V18-M6-T02b` が反転した。直前の1行と旧の式を逐語で残す。1バイトも消していない】**
+  // **旧**: `expect(await itemCountFor(alice.username)).toBe(1);`
+  // **直前の「行が1件入った」は今日は偽である** —— **`alice` の壁の内側は今日 0 件のままである。**
+  expect(await itemCountFor(alice.username)).toBe(0);
+  // **元の親の側も1ミリも動いていない** —— **付け替えは丸ごと起きていない。**
+  expect(await itemCountFor(bob.username)).toBe(1);
+});
+
+// **【`V18-M6-T02`(2026-09-13)/ `PM-G2` / `ADR-0443` 授権の表 行9 が改名した。
+//    旧のテスト名を逐語でここに残す。1バイトも消していない】**
+// **旧**: `test("(AC-G7a-4c) 関門は作成専用のヘルパの中にしか無い(`AC-G8` の古い親の判定も1件も無い)", ...)`
+// **旧の名前は今日は偽である** —— **`V18-M6-T02` が、この道具の**更新**2本
+// (`update_record` と `write_records` の `update` op)にも同じ関門を配線したので、
+// 綴りは 1 件から **3** 件になり、`previous:` も渡されるようになった。**
+// **測っている中身は1ミリも緩めていない** —— **「作成の1件が作成専用のヘルパの本体の
+// 中に在る」ことは今日も同じ式で撃っており、そこは1バイトも書き換えていない。**
+test("(AC-G7a-4c) 関門の綴りは3件で、作成の1件は作成専用のヘルパの中に在る(更新2本にも渡っている)", async () => {
+  // **限定4 の「源を走査する」側を、測れる範囲だけで撃つ。**
+  // **測れるのは「関門を呼ぶヘルパが作成専用である」ことまでであり、
+  // 「更新の枝で呼ばれない」ことそのものではない**(上の `(AC-G7a-4b)` が実行で撃つ)。
+  const source = await Bun.file(join(import.meta.dir, "tools", "write.ts")).text();
+  const gateCall = `${["judge", "Create", "Parent", "Access"].join("")}(`;
+  // **綴りは1件ちょうど**(`ADR-0411` 限定12 の内訳。`write.ts` は 1)。
+  // **【`V18-M6-T02` が 1 から 3 へ上げた。旧の式を逐語で残す】**
+  // **旧**: `expect(source.split(gateCall).length - 1).toBe(1);`
+  // **内訳は 作成1 + 更新2**(`ADR-0443` 授権の表 行2。**3本目の関門を足していない**)。
+  expect(source.split(gateCall).length - 1).toBe(3);
+  // **その1件は、作成専用のヘルパ(`denyRecordCreate`)の本体の中に在る。**
+  const helperAt = source.indexOf("const denyRecordCreate = (");
+  const nextHelperAt = source.indexOf("\n  const denyFieldWrite", helperAt);
+  expect(helperAt).toBeGreaterThan(0);
+  expect(nextHelperAt).toBeGreaterThan(helperAt);
+  expect(source.slice(helperAt, nextHelperAt).includes(gateCall)).toBe(true);
+  // **`AC-G8`(古い親にも問う)は HTTP の更新2経路だけである** ——
+  // **この道具は `previous` を1度も渡していない**(渡していれば更新の射程に入る)。
+  // **【`V18-M6-T02` による訂正。上の2行を1バイトも消していない】** ——
+  // **上の2行は今日は偽である。** **`AC-G8` の古い親の判定は、`ADR-0443` により
+  // AI の口の更新2本にも掛かっており、この道具は `previous` を渡している。**
+  // **旧の式**: `expect(source.includes("previous:")).toBe(false);`
+  expect(source.includes("previous:")).toBe(true);
+});
+
+// ===========================================================================
 // (C) `list_records` —— **行の判定と項目の面**
 // ===========================================================================
 
@@ -781,6 +1091,17 @@ test("(C) 点も面も宣言していない表は、今日どおり全件返る(
 // **自動付与は `add_table` の時点の姿しか見ないので、条件は付かない**
 // (`defaultTableGrantPlan` の doc「**`add_field` で後から `st_owner` を足した表**には
 // 条件が付かない」の逐語)。
+//
+// **【2026-09-08 追記(`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`)。
+// 直前の4行は1バイトも消していない】** **「条件は付かない」は今日は偽である。**
+// **補完の呼び出しが `foldOperations` の出口へ移り、すべての op を畳み終えた後に
+// 1度だけ走るようになったので、この2手の題材にも条件が付く。**
+// **したがって上の (1) の逃げ道は今日は成立しない** —— **差分の経路から
+// 「`st_owner` を持つ表を条件なしで読める規則」を作る手だては1つも無い。**
+// **この段落が支えていた検査は (E-7b) 1本であり、その期待値は反転させた**
+// (**旧の本文は同ファイルの (E-7b) の直上に逐語で残してある**)。
+// **(2) の書込・削除の測り方は今日も成り立つ** —— **書込は面の条件を1度も越えないので、
+// 条件が付いても答えは同じである**(実測: (E-8) は緑のままである)。
 //
 // **(2) 書込・削除はこれで測れる**(**書込は面の条件を1度も越えない** —— `D-V8-35` が
 // 開いたのは読取だけである)。**しかし読取は、これだけでは測れない** ——
@@ -1049,21 +1370,68 @@ test("(E-7) list_records に他人の行が返らない(total も絞ったあと
   expect(forBob.total).toBe(2);
 });
 
-test("(E-7b) 【塞いでいない。HTTP も同じ】条件なしで「読める」と書かれた表では、他人の行が一覧に出る", async () => {
+// --- 【`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`。期待値を反転させた。旧を逐語で残す】 ---
+//
+// **旧のテスト名(逐語)**:
+//   `(E-7b) 【塞いでいない。HTTP も同じ】条件なしで「読める」と書かれた表では、他人の行が一覧に出る`
+// **旧の本体(逐語)**:
+//   ```
+//   await seedDiary();
+//   // **`add_field` で後から `st_owner` を足した表には、条件なしの規則が3役割に入っている。**
+//   // **`D-V8-35` により、面の読取は個人スコープを越える**(`roleReadCrossesOwnerScope`)。
+//   // **HTTP の `GET /records` もまったく同じ3行を返す** —— **MCP だけの穴ではないので、
+//   // 第6波はここを塞いでいない。**
+//   const forBob = okData(
+//     await callTool("list_records", { app_id: APP_ID, table_id: DIARY }, bob.username),
+//   );
+//   expect((forBob.records as Record<string, unknown>[]).map((row) => row.title)).toEqual([
+//     "alice の日記",
+//     "bob の日記",
+//     "みんなの日記",
+//   ]);
+//   expect(forBob.total).toBe(3);
+//   ```
+//
+// **根拠**: **この題材の前提そのものが、差分の経路では今日成り立たない。**
+// **`setupDiary`(`add_table`〔`st_owner` なし〕→ `add_field`〔`st_owner`〕)は、
+// 台帳 `AC-G33` が穴として名指ししていた形そのものであり、`V17-M5-T05` は
+// **差分の経路に限って**これを作れなくした** ——
+//
+// **【`V17-M5` 独立点検の指摘 中3 による訂正(2026-09-08)。射程を限った】**
+// **旧のコメント(本段が新しく書いたもの。逐語)**:
+//   `台帳 \`AC-G33\` が穴として名指ししていた形そのものであり、\`V17-M5-T05\` が塞いだ** ——`
+// **旧のテスト名(本段が新しく書いたもの。逐語)**:
+//   `(E-7b) 【\`AC-G33\` が塞いだ】条件なしの規則は差分から作れず、他人の行は一覧に出ない(旧: 出る)`
+// **無条件の「塞いだ」は言い過ぎである** —— **`applyManifest` の経路(差分を通さない適用)では、
+//   補完も知らせも1度も走らない**(記録 §9 の 21)。 **その形は今日も作れる。**
+// **検査名とコメントの両方から無条件の「塞いだ」を外し、射程(差分の経路)を書いた。**
+//
+// **補完は畳み込みの出口で1度走るので、この差分を通した時点で3役割の規則に
+// `{ or: [ st_owner が自分, st_owner が空 ] }` が入る。**
+// **したがって「条件なしで読めると書かれた表」を差分の経路から作る手だては今日1つも無い。**
+//
+// **【この反転が意味しないこと。誇張しない】**
+// - **旧のテスト名が述べている命題(**条件なし**で「読める」と書かれた表では他人の行が
+//   一覧に出る)は、今日も真である** —— **`D-V8-35` も `roleReadCrossesOwnerScope` も
+//   1バイトも変わっていない。** **変わったのは、その形を差分から作れなくなったことだけである。**
+//   (`applyManifest` を直に呼ぶ経路では今日も作れる。**補完は差分の畳み込みにしか無い。**)
+// - **`src/mcp/tools/read.ts` の個人スコープの絞り込み1本は、今日もこの経路で答えを
+//   1件も変えていない** —— **絞っているのは補われた**条件つきの規則**の側である。**
+//   **その内訳は下の実測が持つ。**
+test("(E-7b) 【`AC-G33`。差分の経路では作れない】条件なしの規則は差分から作れず、他人の行は一覧に出ない(旧: 出る)", async () => {
   await seedDiary();
-  // **`add_field` で後から `st_owner` を足した表には、条件なしの規則が3役割に入っている。**
-  // **`D-V8-35` により、面の読取は個人スコープを越える**(`roleReadCrossesOwnerScope`)。
-  // **HTTP の `GET /records` もまったく同じ3行を返す** —— **MCP だけの穴ではないので、
-  // 第6波はここを塞いでいない。**
+  // **`add_field` で後から `st_owner` を足した表にも、今日は条件が補われる**
+  // (`V17-M5-T05`)。 **補ったことは `apply_diff` の応答の `role_condition_notices`
+  // (4種目 `owner_scope_supplied`)で書いた人に返っている。**
   const forBob = okData(
     await callTool("list_records", { app_id: APP_ID, table_id: DIARY }, bob.username),
   );
+  // **`みんなの日記`(`st_owner` が空 = 共有行)は補った条件の2本目に当たるので今日も出る。**
   expect((forBob.records as Record<string, unknown>[]).map((row) => row.title)).toEqual([
-    "alice の日記",
     "bob の日記",
     "みんなの日記",
   ]);
-  expect(forBob.total).toBe(3);
+  expect(forBob.total).toBe(2);
 });
 
 test("(E-7c) 【`V8-M26` の既定が先に立つ】面が1本も名指ししていない表は、個人スコープに届く前に空になる", async () => {

@@ -97,9 +97,11 @@ export function useUserAccountChoices(
     }
     let cancelled = false;
     listAppUsers(appId).then(
-      (users) => {
+      // **`V19-M3-T01` で一覧の口が招待も返すようになった** —— **相手の一覧だけを取る。**
+      // **招待は1件も見ない**(候補に出すのは実在する利用者だけである)。
+      (list) => {
         if (!cancelled) {
-          setChoices(users.map((user) => ({ id: user.id, label: userAccountLabel(user) })));
+          setChoices(list.users.map((user) => ({ id: user.id, label: userAccountLabel(user) })));
         }
       },
       () => {

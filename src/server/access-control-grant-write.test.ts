@@ -85,6 +85,11 @@ function manifest(): Manifest {
             enabled: true,
             permissions: [...PERMISSIONS],
             creator_permission: "keeper",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも書き換えていない)。**
+            // **根の表に「行を作れる立場」を一行も書かないときの既定が「誰も作れない」へ
+            // 反転したので**(`ADR-0432` §Decision)、**前準備の `POST /tables/books/records`
+            // (`editor` の利用者)が 403 になり、本ファイルの検査が丸ごと巻き込まれていた。**
+            creatable_by_roles: ["editor"],
             grant: {
               table: "book_grant",
               target: "book",
@@ -353,6 +358,43 @@ describe("V7-M3-T03 (A): 誰が付与を作れるか", () => {
     ]);
   });
 
+  // **【`V17-M1-T03c` / `ADR-0410`(`AC-G3`)で新設した1本】** —— **`ADR-0410` 限定17 の
+  // 逐語「**`(A-8)` 群にグループ形の検査を足す**(今日は人指定の2件だけ)」の履行である。**
+  // **上の `(A-8)` は「相手欄に自分のメンバー行を書いた」人指定の形だけを撃っており、
+  // **グループ欄に自分の属するグループを書いた**形を1件も撃っていなかった。**
+  // **共有のフィクスチャ `fixture()` は1バイトも触らない** —— **`(A-13)` と同じく、
+  // 行はこの検査の中で組む。**
+  test("(A-8b) 自分の属するグループに権限を付ける要求も、作成者でも運営ロールでも拒否される", () => {
+    // **作成者**: `member-creator`(= `ACTOR`)を `team-1` に入れる。
+    const asCreator = fixture();
+    asCreator.rows.book_member[0] = { _id: "member-creator", account: ACTOR, team: "team-1" };
+    // **運営(owner)**: `member-other`(= `OTHER`)は素の題材で既に `team-1` に居る。
+    // **`owner` を例外にしない** —— **人指定の `(A-8)` と同じ扱いである。**
+    const asOwner = fixture();
+    const measured = [
+      {
+        who: "作成者",
+        verdict: judge({
+          rows: asCreator.rows,
+          values: { book: "book-1", team: "team-1", permission: "writer" },
+        }),
+      },
+      {
+        who: "運営(owner)",
+        verdict: judge({
+          rows: asOwner.rows,
+          actorId: OTHER,
+          role: "owner",
+          values: { book: "book-1", team: "team-1", permission: "keeper" },
+        }),
+      },
+    ];
+    expect(measured).toEqual([
+      { who: "作成者", verdict: { kind: "self" } },
+      { who: "運営(owner)", verdict: { kind: "self" } },
+    ]);
+  });
+
   test("(A-9) 【限界】creator_permission を渡された人は、作成者と区別が付かない(止めていない)", () => {
     const base = fixture();
     base.rows.book_grant.push({
@@ -393,12 +435,25 @@ describe("V7-M3-T03 (A): 誰が付与を作れるか", () => {
     });
   });
 
-  test("(A-13) 【限界】自分の属するグループへの付与は止めていない(自分に効く付与が作れる)", () => {
+  // **【`V17-M1-T03` / `ADR-0410`(`AC-G3`)がテスト名と期待値を反転した。旧名を1バイトも
+  //   消していない】**
+  //   旧題名(逐語): `test("(A-13) 【限界】自分の属するグループへの付与は止めていない(自分に効く付与が作れる)", …)`
+  //   旧期待値(逐語): `{ kind: "allowed" }`。
+  //   **今日の正**: **相手のグループに要求している本人が属していれば断る。**
+  //     **出どころはユーザ決定 `D-V16-3`(逐語「**止める(推奨)**」)であり、条文は
+  //     `ADR-0410` §Decision の 3 である。** **既存の判定値 `{ kind: "self" }` を使い回して
+  //     いる**(新しい判定値を1つも作らない。同 §Decision 3 の 3)。
+  //   **【これは「限界が消えた」であって「回り込みを全部断った」ではない】** ——
+  //     **`ADR-0410` §Status の 7 が禁じた言い回しを、本コメントは1度も書いていない。**
+  //     **`ADR-0410` §限界6 のとおり、`owner` は「自分の入っていないグループ宛に付与を作る
+  //     → そのグループに自分のメンバー行を足す」の2段でなお回り込める。**
+  //     **メンバー表・グループ表への書込は1ミリも絞っていない**(同 限定18)。
+  test("(A-13) 自分の属するグループへの付与は断られる(自分に効く付与を作れない)", () => {
     const base = fixture();
     base.rows.book_member[0] = { _id: "member-creator", account: ACTOR, team: "team-1" };
     expect(
       judge({ rows: base.rows, values: { book: "book-1", team: "team-1", permission: "writer" } }),
-    ).toEqual({ kind: "allowed" });
+    ).toEqual({ kind: "self" });
   });
 
   test("(A-14) 対象の行を指していない付与は拒否される(どの行への権限か決まらない)", () => {
@@ -858,6 +913,11 @@ function parentManifest(): Manifest {
             enabled: true,
             permissions: [...PERMISSIONS],
             creator_permission: "keeper",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】上の `books` と同じ理由で1行足した。**
+            // **(D) 群の前準備 `POST /tables/projects/records`(`editor` の `boss`)が
+            // 403 になっていた。** **`issues` は `inherit_from` を宣言しているので
+            // 根の表ではなく、1行も足していない。**
+            creatable_by_roles: ["editor"],
             grant: {
               table: "project_grant",
               target: "project",
@@ -1108,6 +1168,72 @@ describe("V7-M3-T04 (C): 付与の相手が親の行に権限を持つことを�
         rows: parentFixture(),
         op: "delete",
         values: { _id: "ig-1", issue: "issue-1", member: "m-creator", permission: "keeper" },
+      }),
+    ).toEqual({ kind: "allowed" });
+  });
+
+  // -------------------------------------------------------------------------
+  // **【`V17-M1-T01c` / `ADR-0410`(`AC-G1`)で新設した2本】**
+  //
+  // **`ADR-0410` §限界10 の逐語**: **「`judgeGrantParentAccess` の OR は、今日どの検査も
+  // 撃っていない。…… 実装の版で検査を足さない限り、直したことも直し忘れたことも測れない。」**
+  // **本2本がその履行である。**
+  //
+  // **この関数は「その付与が届く人の集合」を数え、その全員が親の行を読めるかを見る。**
+  // **両欄がともに埋まった付与行は、AND では**交わり**(その人であり、かつそのグループに
+  // 居る人)だけに届く** —— **したがって集合が変わり、答えも変わる。**
+  // **【この2本は AND を戻すと赤くなる】** —— **戻したときの実出力は
+  // `docs/plan/v17/records/` の実施記録に貼った。**
+  // -------------------------------------------------------------------------
+
+  test("(C-10) 両欄が埋まった付与は、交わりの人だけを親の検査に掛ける(同じグループの別の人は数えない)", () => {
+    const rows = parentFixture();
+    // **`team-1` には `m-outsider`(親に権限なし)と `m-insider` が居る。**
+    // **親の権限を持たせるのは `m-insider` だけである。**
+    rows.project_grant?.push({
+      _id: "pg-2",
+      project: "project-1",
+      member: "m-insider",
+      team: null,
+      permission: "reader",
+    });
+    // **相手欄 = `m-insider` / グループ欄 = `team-1` の両方が埋まった付与。**
+    // **AND では届くのは `m-insider` 1人だけであり、その人は親を読める** —— **通る。**
+    // **旧(OR)では `team-1` の全員(= `m-outsider` を含む)を数えたので
+    // `{ kind: "parent_denied", tableId: "projects", recordId: "project-1" }` であった。**
+    expect(
+      judgeParent({
+        rows,
+        values: {
+          issue: "issue-1",
+          member: "m-insider",
+          team: "team-1",
+          permission: "writer",
+        },
+      }),
+    ).toEqual({ kind: "allowed" });
+  });
+
+  test("(C-11) 両欄が埋まっていて交わりが空なら、届く人が0人なので親の検査は何も止めない", () => {
+    const rows = parentFixture();
+    rows.app_team?.push({ _id: "team-2", title: "第2班" });
+    // **`m-insider` は `team-1` に居て `team-2` には居ない** —— **交わりは空である。**
+    // **`m-insider` は親に権限を1件も持たないが、AND ではこの付与は誰にも届かないので、
+    // 親の検査は1件も止めない**(**空のグループへの付与が素通りするのと同じ形**。
+    // {@link judgeGrantParentAccess} の doc の「止めないもの」の 4)。
+    // **旧(OR)では `m-insider` が相手側で数えられ、その人が親を読めないため
+    // `{ kind: "parent_denied", tableId: "projects", recordId: "project-1" }` であった。**
+    expect(
+      judgeParent({
+        rows,
+        actorId: "user-admin",
+        role: "owner",
+        values: {
+          issue: "issue-1",
+          member: "m-insider",
+          team: "team-2",
+          permission: "writer",
+        },
       }),
     ).toEqual({ kind: "allowed" });
   });

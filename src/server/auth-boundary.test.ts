@@ -387,25 +387,40 @@ const NON_PROTECTED_ENDPOINTS: {
   // 見せていいです。アクセスしたらログイン必須です。書き換えの口をふさぐは必須です**」。
   // undo/preview は「戻せる変更が無い」ので 400 になる(create_app 第0行は undo 不可)。
   // ここで見たいのは「認証境界の 401 に塞がれない」ことなので expectOk は付けない。
-  { label: "#12 GET undo/preview", method: "GET", path: `/api/apps/${APP_ID}/undo/preview` },
-  {
-    label: "#13 GET changelog",
-    method: "GET",
-    path: `/api/apps/${APP_ID}/changelog`,
-    expectOk: true,
-  },
-  // **#25 GET requirements**(要件定義書)。**`ADR-0014` §2 の免除リストに名前が無く、
-  // 本ファイルの台帳にも1行も無かった** —— **`V4-FIX1` 項目(5) の洗い出しで見つけて足した。**
-  // **読取なので今日も塞いでいない**(ユーザ決定は書き換えの口だけを必須としている)。
-  {
-    label: "#25 GET requirements",
-    method: "GET",
-    path: `/api/apps/${APP_ID}/requirements`,
-    expectOk: true,
-  },
+  //
+  // =====================================================================================
+  // **【`V17-M4-T02` による改訂。上の記述も、下に引いた3行も1バイトも書き換えていない】**
+  // =====================================================================================
+  //
+  // **台帳 `AC-G20`(門外 / 限定採用)により、この3本は今日から保護側である。**
+  // **外した3行の逐語(消していない。ここに残す)**:
+  //
+  //   `{ label: "#12 GET undo/preview", method: "GET", path: \`/api/apps/${APP_ID}/undo/preview\` },`
+  //   `{`
+  //   `  label: "#13 GET changelog",`
+  //   `  method: "GET",`
+  //   `  path: \`/api/apps/${APP_ID}/changelog\`,`
+  //   `  expectOk: true,`
+  //   `},`
+  //   `{`
+  //   `  label: "#25 GET requirements",`
+  //   `  method: "GET",`
+  //   `  path: \`/api/apps/${APP_ID}/requirements\`,`
+  //   `  expectOk: true,`
+  //   `},`
+  //
+  // **`#25` に付いていた説明の逐語も残す**: 「**`ADR-0014` §2 の免除リストに名前が無く、
+  // 本ファイルの台帳にも1行も無かった —— `V4-FIX1` 項目(5) の洗い出しで見つけて足した。
+  // 読取なので今日も塞いでいない(ユーザ決定は書き換えの口だけを必須としている)。**」
+  // **後半は今日の正でなくなった** —— **ユーザ決定 `D-V17-…`(読み物3本を閉じる)による。**
+  //
+  // **【3本は消していない。保護側の検査へ移した】** —— 下の
+  // 「**`AC-G20`: 読み物3本は未認証で 401 になる**」が同じ3本を撃つ。
+  // **【本数の変化を言い換えない】** **非保護の台帳は 5本 → 2本になった。**
+  // **残る2本(`GET /api/apps` / `GET /public`)は今日どおり未ログインで 200 である。**
 ];
 
-test("非保護5本は未認証でも認証境界に塞がれない(v2 の保護を外して従来どおり)", async () => {
+test("非保護2本は未認証でも認証境界に塞がれない(v2 の保護を外して従来どおり)", async () => {
   for (const ep of NON_PROTECTED_ENDPOINTS) {
     const response = await unauth(ep.method, ep.path, ep.body);
     // 認証境界の 401 ではないこと(handler まで届いていること)。
@@ -416,8 +431,65 @@ test("非保護5本は未認証でも認証境界に塞がれない(v2 の保護
   }
 });
 
-test("非保護の台帳は5本である(歯止め)", () => {
-  expect(NON_PROTECTED_ENDPOINTS).toHaveLength(5);
+test("非保護の台帳は2本である(歯止め)", () => {
+  // **【`V17-M4-T02`】旧の逐語**: `expect(NON_PROTECTED_ENDPOINTS).toHaveLength(5);`
+  // **3本(`undo/preview` / `changelog` / `requirements`)を保護側へ移したぶんだけ減った。**
+  expect(NON_PROTECTED_ENDPOINTS).toHaveLength(2);
+});
+
+// --- **`AC-G20`(`V17-M4-T02`。2026-09-09)読み物3本を保護側へ移した** --------------------
+//
+// **上の非保護の台帳から外した3本を、ここで 401 として固定する** —— **消していない。**
+// **掛かっているのは `GET /manifest` と同じ1本の関門である**(`app.ts` の
+// `manifestAuthMiddleware` を `registerChangeRoutes` に渡している)。
+const READ_ROUTES_NOW_PROTECTED: { label: string; method: string; path: string }[] = [
+  { label: "#12 GET undo/preview", method: "GET", path: `/api/apps/${APP_ID}/undo/preview` },
+  { label: "#13 GET changelog", method: "GET", path: `/api/apps/${APP_ID}/changelog` },
+  { label: "#25 GET requirements", method: "GET", path: `/api/apps/${APP_ID}/requirements` },
+];
+
+test("AC-G20: 読み物3本は未認証で 401(統一形式・boundary メッセージ)を返す", async () => {
+  for (const ep of READ_ROUTES_NOW_PROTECTED) {
+    const response = await unauth(ep.method, ep.path);
+    expect(response.status, ep.label).toBe(401);
+    const body = (await response.json()) as { errors?: { message?: string }[] };
+    expect(body.errors?.[0]?.message, ep.label).toBe(AUTH_REQUIRED_MESSAGE);
+  }
+});
+
+test("AC-G20: 保護側へ移したのは3本ちょうどである(歯止め)", () => {
+  expect(READ_ROUTES_NOW_PROTECTED).toHaveLength(3);
+});
+
+// --- **`AC-G24`(`V17-M6-T04`。2026-09-08)付与の出どころを返す口を1本足した** -------------
+//
+// **`ADR-0014` §2 の逐語**: 「**保護経路を足したときは境界表に追記する**歯止めを置く。」
+// **本段はレコードの読取経路を1本足したので、その1行をここに足す** ——
+// **掛かっているのは `records` 5系統とまったく同じ1本の関門である**
+// (`app.ts` の `recordsAuthMiddleware`。**2本目の判定を作っていない**)。
+//
+// **【誇張しない】** **この行が固定するのは「未認証で 401 になる」ことだけである。**
+// **誰に何が見えるかは `src/server/record-access-sources.test.ts` が別に固定する。**
+const ACCESS_SOURCES_ENDPOINTS: { label: string; method: string; path: string }[] = [
+  {
+    label: "#27 GET access-sources",
+    method: "GET",
+    path: `${R}/x/access-sources`,
+  },
+];
+
+test("AC-G24: 付与の出どころを返す口は未認証で 401(統一形式・boundary メッセージ)を返す", async () => {
+  for (const ep of ACCESS_SOURCES_ENDPOINTS) {
+    const response = await unauth(ep.method, ep.path);
+    expect(response.status, ep.label).toBe(401);
+    const body = (await response.json()) as { errors?: { message?: string }[] };
+    // handler の偶発的な 401 ではなく、middleware(認証境界)が塞いだことを確かめる。
+    expect(body.errors?.[0]?.message, ep.label).toBe(AUTH_REQUIRED_MESSAGE);
+  }
+});
+
+test("AC-G24: 足した保護経路は1本ちょうどである(歯止め)", () => {
+  expect(ACCESS_SOURCES_ENDPOINTS).toHaveLength(1);
 });
 
 // --- #24 アプリの作りを書き換える口(V4-FIX1 項目(5)。**2026-08-03 に塞いだ**)-----------

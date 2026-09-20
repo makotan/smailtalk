@@ -92,7 +92,15 @@ function manifest(roles: unknown[], inherit = false): Manifest {
       },
       members: { table: "book_member", account: "account", group: "team" },
       groups: { table: "book_team" },
-      ...(inherit ? { inherit_from: ["parent"] } : {}),
+      // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+      // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの既定が
+      // 「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、**前準備の
+      // `create(owner.cookie, "orders", …)` が 403 になり、12本が巻き込まれていた。**
+      // **`inherit` の側には足していない** —— **`inherit_from` を宣言した表に
+      // 9キー目を書くと適用時検査(`referential-integrity.ts` の項目11)が差分ごと
+      // 拒否するからであり、そちらは根の表ではないので関門も素通りする。**
+      // **旧(逐語)**: `...(inherit ? { inherit_from: ["parent"] } : {}),`
+      ...(inherit ? { inherit_from: ["parent"] } : { creatable_by_roles: ["owner"] }),
     },
   };
   return {
@@ -285,7 +293,9 @@ async function scenario() {
     team: teamE._id,
     permission: "reader",
   });
-  return { owner, editor, viewer, plain, granted, both };
+  // **【`V18-M2-T04` が足した鍵。`teamE`】** **(K) が「行が消えていない」ことを
+  // **点**で確かめるために要る**(面ではもう見えない)。 **他の鍵は1つも動かしていない。**
+  return { owner, editor, viewer, plain, granted, both, teamE };
 }
 
 // --- (A)〜(D) 4通りのシナリオ(`04` §8 の 7)------------------------------------------
@@ -293,9 +303,29 @@ async function scenario() {
 test("(A) (i) 面だけで見える —— 行ごとの付与が1件も無い行が、役割の側の規則だけで見える", async () => {
   const s = await scenario();
   // **一般のアカウント(`editor`)** —— **面が通す。点は「付与0件」なので止めている。**
-  expect(await listTitles(s.editor.cookie)).toContain("付与ゼロ");
+  //
+  // =====================================================================================
+  // **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437` / ユーザ決定 `D-V18-18`)。
+  // 直上の1行と、直下の2つの期待値は今日から偽である。旧文を1バイトも消していない】**
+  //
+  //     旧: expect(await listTitles(s.editor.cookie)).toContain("付与ゼロ");
+  //     新: expect(await listTitles(s.editor.cookie)).not.toContain("付与ゼロ");
+  //     旧: expect(one.status).toBe(200);
+  //     新: expect(one.status).toBe(404);
+  //
+  // **なぜ期待値の側が今日の正でなくなったか** —— **本検査の (i) は、`editor` の
+  // 「条件(`when`)を1つも持たない読取」だけで、行ごとに1件も配られていない行が見える、
+  // という形そのものである。** **`V18-M2` がその形を止める段であり、見えることを守るのは
+  // 今日の正ではない**(`04-v18-m2-plan.md` §5-2 の契約1')。
+  // **単票が 404 になるのは `ADR-0305` 限定11 の作法である**(403 で在ることを教えない)。
+  //
+  // **【1ビットも変えていない側】** **`owner` の2行は打ち直していない** ——
+  // **この題材の `owner` は `orders` の規則を1本も持たないので面が止めており、
+  // `D-V18-18`(運営者の例外)は「面が通している」ときにしか効かない。**
+  // **したがって `D-V18-18` はこの検査では1度も発火していない。**
+  expect(await listTitles(s.editor.cookie)).not.toContain("付与ゼロ");
   const one = await req(s.editor.cookie, "GET", `${records("orders")}/${s.plain._id as string}`);
-  expect(one.status).toBe(200);
+  expect(one.status).toBe(404);
   // **運営のアカウント(`owner`)** —— **面も点も止めるので見えない**(下の (D) と同じ形)。
   expect(await listTitles(s.owner.cookie)).not.toContain("付与ゼロ");
   const asOwner = await req(s.owner.cookie, "GET", `${records("orders")}/${s.plain._id as string}`);
@@ -347,7 +377,19 @@ test("(D) (iv) どちらも無い —— 面も点も止めるので見えない
   // **`editor` は面が表の読取を通しているので、3行とも見える**(`OR` は見える側に倒れる)。
   // **`viewer` は面が止めているので、付与のある1行だけが見える。**
   // **`owner` は面も止め、どの付与も自分の班に来ていないので1行も見えない。**
-  expect(await listTitles(s.editor.cookie)).toEqual(["付与ゼロ", "両方", "点だけ"].sort());
+  //
+  // =====================================================================================
+  // **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437`)。直上の「`editor` は…3行とも
+  // 見える」は今日から偽である。旧文を1バイトも消していない】**
+  //
+  //     旧: expect(await listTitles(s.editor.cookie)).toEqual(["付与ゼロ", "両方", "点だけ"].sort());
+  //     新: expect(await listTitles(s.editor.cookie)).toEqual(["両方"]);
+  //
+  // **なぜ期待値の側が今日の正でなくなったか** —— **`editor` の面は「条件を1つも持たない
+  // 読取」であり、読取についてはもう点を素通りしない。** **残るのは `編集班` に配られた
+  // 「両方」の1行だけである**(**「点だけ」は `閲覧班` に配られている**)。
+  // **`viewer` と `owner` の2行は1バイトも打ち直していない。**
+  expect(await listTitles(s.editor.cookie)).toEqual(["両方"]);
   expect(await listTitles(s.viewer.cookie)).toEqual(["点だけ"]);
   expect(await listTitles(s.owner.cookie)).toEqual([]);
 });
@@ -372,13 +414,43 @@ test("(E) 合成は (行, 要求している人, 動詞) ちょうどの `OR` �
     blockedBy: ["role"],
   });
   // **(i) 面だけ** —— **点が止めても通る。** **止めた層は名指しできる。**
+  //
+  // =====================================================================================
+  // **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437` / ユーザ決定 `D-V18-18`)。
+  // 直上の1行と直下の期待値は**読取についてだけ**今日から偽である。旧文を1バイトも
+  // 消していない】**
+  //
+  //     旧: ).toEqual({ allowed: true, blockedBy: ["grant"] });
+  //     新: ).toEqual({ allowed: false, blockedBy: ["grant"] });
+  //
+  // **なぜ期待値の側が今日の正でなくなったか** —— **`passed` は `editor` の
+  // 「条件を1つも持たない読取」であり、点が管轄内の読取では `OR` に入らなくなった。**
+  // **`blockedBy` は `["grant"]` のままである**(面**だけ**を見れば通していた、の意味)。
+  // **直後に `roles: ["owner"]` を添えた1本を足してある** —— **運営者は今日どおり通る。**
   expect(
     combineRoleAndGrantAccess({
       role: passed,
       grant: { read: false, write: false, delete: false },
       verb: "read",
     }),
+  ).toEqual({ allowed: false, blockedBy: ["grant"] });
+  // **【`V18-M2-T04` が足した1本】** **`D-V18-18`(運営者の例外)。**
+  expect(
+    combineRoleAndGrantAccess({
+      role: passed,
+      grant: { read: false, write: false, delete: false },
+      verb: "read",
+      roles: ["owner"],
+    }),
   ).toEqual({ allowed: true, blockedBy: ["grant"] });
+  // **【`V18-M2-T04` が足した1本】** **書込は1ビットも変わらない**(`D-V18-17`)。
+  expect(
+    combineRoleAndGrantAccess({
+      role: passed,
+      grant: { read: false, write: false, delete: false },
+      verb: "write",
+    }).allowed,
+  ).toBe(passed.allowed);
   // **(ii) 点だけ** —— **面が止めても通る。**
   expect(
     combineRoleAndGrantAccess({
@@ -540,7 +612,18 @@ test("(H-2) 自分のメンバー行のアカウント欄も付け替えられ�
   const body = (await mine.json()) as { records: Record<string, unknown>[] };
   const other = body.records.find((row) => row.account === s.editor.userId);
   const myRow = body.records.find((row) => row.account === s.viewer.userId);
-  expect(other).toBeDefined();
+  // **【`V18-M3-T02`(`PM-G6`)が反転した。削っていない・`.skip` にしていない・緩めていない】**
+  //
+  // **根拠の条文**: **`ADR-0435`**(名簿・付与・グループ表の読取に判定を掛ける。限定採用)
+  // **+ `ADR-0439`**(授権の表 行11 = **既存の検査を削らずに**反転**することだけを許す**)。
+  // **絞り方の正はユーザ決定 `D-V18-21`**(名簿表は「見える付与行が指す人 + 自分自身」だけ)。
+  //
+  // **旧の期待値を逐語で残す(1バイトも消していない)**: `expect(other).toBeDefined();`
+  //
+  // **`viewer` に見える付与は「点だけ」の1本であり、それが指す相手は `viewer` 自身である。**
+  // **`editor` の名簿行を指す見える付与が1件も無いので、この一覧に `editor` は返らない。**
+  // **本検査の主題(自分の行の `account` を付け替えられない = 403)は1ミリも変わっていない。**
+  expect(other).toBeUndefined();
   const patched = await req(
     s.viewer.cookie,
     "PATCH",
@@ -651,6 +734,20 @@ test("(I-2) ただし面の規則を書けば閉じられる(`J-G19` が用意�
 // **`V15-M3` がまとめ書き(`POST /batch`)の `create` op にも同じ関門を配線した** ——
 // **塞がったのは HTTP の2経路である**(`ADR-0404` 限定7)。
 // **MCP / 受信口 / ワークフロー / 島が今日も素通りする、は真のままである。**
+//
+// **【`V17-M2` の独立点検による訂正(2026-09-07)。上の行を1バイトも消していない】** ——
+// **逐語「**MCP / 受信口 / ワークフロー / 島が今日も素通りする、は真のままである**」は、
+// 行を**作る**側については今日は偽である**(`:648` の「島は `D-V15-3` により今日も
+// 素通りする」も同じく偽である)—— **ユーザ決定 `D-V16-4`(逐語「**全部の入口に立てる**」)を
+// 受けた `AC-G7a` / `ADR-0411` が、作成の関門を MCP / 受信口 / 自動処理 / 島の4本の入口にも
+// 配線した。**
+// **双方向に書く** —— **素通りするのは、決まった時刻に動く処理(`schedule`)1本だけである**
+// (`ADR-0411` 限定1)。 **親の付け替え(更新)が効くのは今日も画面と HTTP の2経路だけで、
+// この4本の入口の**更新**は今日も素通りする**(同 限定4)。
+// **本ファイルはその4本を今日も1度も叩いていない** —— **測っているのは
+// `src/mcp/actor-authz.test.ts` / `src/server/inbound-access-control.test.ts` /
+// `src/server/automation-access-control.test.ts` の `(AC-G7a-*)` である。**
+// **【禁止】これを「塞いだ」「安全になった」と読まない。**
 test("(J) 【`V15-M2` が塞いだ】見えない行に紐づく行は作れない", async () => {
   // **面の規則を1本も書いていないアプリ**(= v7 と同じ形。点だけが効いている)で測る。
   // **【`V8-M26` による訂正。上の1行は1バイトも消していない】** **`orders` については
@@ -696,6 +793,26 @@ test("(K) バッチの `delete` op では面が最終の答えである(点を�
   });
   expect(res.status).toBe(403);
   // **行は消えていない**(面が読取を通しているので、`editor` からは今日も見える)。
+  //
+  // =====================================================================================
+  // **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437`)。直上の括弧内の理由は今日から
+  // 偽である。旧文を1バイトも消していない】**
+  //
+  //     旧: expect(await listTitles(s.editor.cookie)).toContain("付与ゼロ");
+  //     新: (下の3行。**行ごとの付与を1件配ってから見る**)
+  //
+  // **なぜ期待値の側が今日の正でなくなったか** —— **`editor` の「条件を1つも持たない
+  // 読取」は、点が管轄内の表ではもう `OR` に入らない。** **したがって「面が読取を
+  // 通しているから見える」という**見る手段**そのものが無くなった。**
+  // **この検査の主題(`delete` op を面が 403 で止める)は1ミリも動いていない** ——
+  // **上の `expect(res.status).toBe(403);` は1バイトも打ち直していない。**
+  // **「行が消えていない」ことは、その行に読取の付与を1件配ってから見る**
+  // (**点で見る。面では見えないので、面では確かめようがない**)。
+  await create(s.owner.cookie, "order_grant", {
+    order: s.plain._id,
+    team: s.teamE._id,
+    permission: "reader",
+  });
   expect(await listTitles(s.editor.cookie)).toContain("付与ゼロ");
 });
 

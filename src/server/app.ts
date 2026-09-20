@@ -183,6 +183,7 @@ import {
   judgeRecordPopulation,
   judgeRoleAccess,
   judgeRoleFieldWrite,
+  judgeRootCreatableRoles,
   // **【`V8-M27-T04` / `T-G5`】`nonAdminTableAccess` の import は撤去した**(関数ごと消えた)。
   OWNER_FIELD,
   ownerDisplayName,
@@ -200,6 +201,11 @@ import {
   recordPopulationScope,
   recordRowAccessMap,
   resolveCombinedRecordAccess,
+  // **【`V17-M6-T04` / `AC-G24`】「どの付与行が効いたか」を返す読取専用の口の中身。**
+  resolveRecordAccessSources,
+  // **【`V18-M7-T02` / `ADR-0444` 授権の表 行1】ぶら下がる行を下の段まで数え、子1件ずつ
+  // 「この人に消せるか」を問う1本**(判定を1つも持たない純関数)。
+  resolveRecordDeleteCascade,
   resolveRecordUnreachableByRoles,
   resolveRecordWithoutGrants,
   roleGateBlocksWithoutGrants,
@@ -235,6 +241,10 @@ import {
  *   同じ実行ファイルが5本を登録する。** **`Dockerfile` を書き換えれば配布物にも入る。**
  * - **未認証で通る口を1つも塞いでいない。** **`GET /undo/preview` / `GET /changelog` /
  *   `GET /requirements` は `full` では今日も未認証で通る。** **`runner` は登録しないだけである。**
+ * - **【`V17-M4-T02` による訂正。上の2行は1バイトも消していない】** **台帳 `AC-G20`** ——
+ *   **その3本は `full` でも今日はログインが要る**(未ログインは 401)。 **`runner` は今日どおり
+ *   登録しないだけであり、404 のままである。** **【誇張しない】** **`GET /api/apps` は
+ *   `full` でも `runner` でも今日どおり未ログインで通る。**
  * - **`runner` は「1アプリだけ」を意味しない。** **`GET /api/apps` は `runner` にも残る**
  *   (実行系として扱った)。**1アプリに絞るのはイメージのデータ配置の話であり、
  *   `V5-M7` の担当である。**
@@ -672,6 +682,101 @@ function creatorGrantUnreachableError(): ValidationError {
 }
 
 /**
+ * **この表に行を作れる立場が決められており、その一覧に挙がっていないので作れない(403)。**
+ * `V17-M5-T03d` / 台帳 `AC-G10` / `ADR-0412`。
+ *
+ * **判定そのものは `owner-scope.ts` の `judgeRootCreatableRoles` 1本が持つ**
+ * (`ADR-0061` 限定4 / `ADR-0296` 限定12)—— **ここにあるのは、返ってきた真偽値を
+ * HTTP の応答文へ翻訳することだけである。** **本ファイルには判定の式を1行も書いていない。**
+ *
+ * **【文面の作法。`ADR-0404` 限定9 と同じ形で書く】** —— **内部の記号を1文字も出さない**
+ * (宣言のキー名 / 表ID / 役割名 / 述語名 / 審査単位の記号)。
+ * **`ValidationError` に5キー目を足していない。**
+ *
+ * **【したがって診断にならない。丸めない】** —— **「どの立場なら作れるのか」を本文に
+ * 1文字も書けない**(役割名も表IDも内部記号だからである)。 **書けるようにするには
+ * 改めて門A が要る。**
+ *
+ * **【文面で誇張しない】**
+ *  - **止まったのはこの1件の作成だけである。** **行は1件も消えていないし、権限も1つも
+ *    変わっていない。**
+ *  - **運営ロールも同じ壁で止まる**(前提の関門である)—— **「管理者に頼めば作れる」とは
+ *    書かない。** **要るのはアプリの設定の書き換えであって、行の権限ではない。**
+ *  - **既存の {@link forbiddenCreateParentAccessError}(元の行に書けない)とは別の断りである**
+ *    —— **あちらは「権限をもらえば直る」、こちらは「誰に何をもらっても直らない」。**
+ *    **次の一手が違うので、文面を分けている。**
+ *
+ * ---
+ *
+ * **【2026-09-12 追記。`V18-M5-T01` / `PM-G2` / `ADR-0432` / `ADR-0442`】**
+ * **上の本文を1バイトも消していない。偽になった文を名指ししてから訂正を足す。**
+ *
+ * **偽になった逐語**: 見出しの「**この表に行を作れる立場が決められており、その一覧に
+ * 挙がっていないので作れない(403)**」と、「**判定そのものは …
+ * `judgeRootCreatableRoles` 1本が持つ** …**返ってきた真偽値を** HTTP の応答文へ
+ * 翻訳することだけである」。
+ *
+ * **今日の正**: **述語は真偽値ではなく **3つの言葉** を返す。** **この断り文が受け持つのは
+ * そのうち **1つ**(立場が決められていて、そこに挙がっていない側)だけである。**
+ * **立場が**一行も書かれていない**側は、本段が足した
+ * {@link forbiddenUndeclaredRootCreateError} が受け持つ** —— **この文面をそちらに
+ * 流用すると「決められており」が嘘になるからである**(計画 §3-1 決め4)。
+ *
+ * **【変わっていないこと】** **この断りが返る場合・文面・`hint`・ステータス(403)は
+ * 1ビットも変わっていない。** **判定の式は今日も本ファイルに1行も無い。**
+ */
+function forbiddenRootCreatableRoleError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表に行を作れる立場が決められており、あなたの立場はそこに挙がっていないため、行を作れません。",
+    hint: "アプリを作った人に、行を作れる立場の一覧へあなたの立場を足してもらってください(この表の行の権限をもらっても、この断りは変わりません)。",
+  };
+}
+
+/**
+ * **この表に行を作れる立場が**一行も決められていない**ので、今は誰も作れない(403)。**
+ * `V18-M5-T01` / 審査の単位 `PM-G2` / `ADR-0432`(決定の本体)/ `ADR-0442`(授権)。
+ *
+ * **【なぜ2本目が要るのか】** —— **`V18-M5` より前は、立場が一行も書かれていない根の表は
+ * 「ログインできる人なら誰でも作れる」だった。** **本段でその既定が「誰も作れない」へ
+ * 反転した。** **止まる理由が {@link forbiddenRootCreatableRoleError} とは**違う**
+ * ——あちらは「決められているが、あなたが挙がっていない」、こちらは「そもそも1人も
+ * 決められていない」である。** **あちらの文面をそのまま使うと「決められており」が
+ * **嘘になる**(計画 §3-1 決め4)。 **次の一手も違う** —— **あちらは一覧へ足してもらう、
+ * こちらは一覧そのものを作ってもらう。**
+ *
+ * **判定そのものは `owner-scope.ts` の `judgeRootCreatableRoles` 1本が持つ**
+ * (`ADR-0061` 限定4 / `ADR-0296` 限定12 / `ADR-0432` 限定1)—— **ここにあるのは、
+ * 返ってきた3つの言葉のうち1つを HTTP の応答文へ翻訳することだけである。**
+ * **本ファイルには判定の式を1行も書いていない。** **述語を2本目にしていない。**
+ *
+ * **【文面の作法。`ADR-0404` 限定9 / `ADR-0442` 授権の表 行2 と同じ形で書く】** ——
+ * **内部の記号を1文字も出さない**(宣言のキー名 / 表ID / 役割名 / 述語名 /
+ * 審査単位の記号)。 **`ValidationError` に5キー目を足していない。**
+ *
+ * **【したがって診断にならない。丸めない】** —— **「どの表か」「どの立場を書けばよいか」を
+ * 本文に1文字も書けない**(どちらも内部記号だからである)。 **書けるようにするには
+ * 改めて門A が要る。**
+ *
+ * **【文面で誇張しない】**
+ *  - **止まったのはこの1件の作成だけである。** **行は1件も消えていないし、権限も1つも
+ *    変わっていない。** **読むことも、既に在る行を書き換えることも、消すことも、
+ *    1ミリも止まっていない**(この壁は作成の枝にしか立っていない)。
+ *  - **運営ロールも同じ壁で止まる**(`D-V18-28`。例外を1つも置いていない)——
+ *    **「管理者に頼めば作れる」とは書かない。** **要るのはアプリの設定の書き換えであって、
+ *    行の権限ではない。**
+ *  - **権限管理を一行も宣言していない表では、この断りは1度も出ない**(`D-V18-27`)。
+ */
+function forbiddenUndeclaredRootCreateError(): ValidationError {
+  return {
+    path: "",
+    message: "この表に行を作れる立場が一行も決められていないため、今はどなたも行を作れません。",
+    hint: "アプリを作った人に、この表に行を作れる立場を決めてもらってください(あなたに行の権限をもらっても、この断りは変わりません)。",
+  };
+}
+
+/**
  * **元になる行に書けないので、その行を作れない(403)。** `V15-M2-T05` / `CR-G1` /
  * `ADR-0404`。
  *
@@ -740,6 +845,84 @@ function forbiddenNamedPermissionMissingError(): ValidationError {
 }
 
 /**
+ * **移す前の元になる行に書けないので、この行をそこから移せない(403)。** `V17-M2-T06b` /
+ * `AC-G8` / `ADR-0411` 限定13。
+ *
+ * **判定そのものは `owner-scope.ts` の {@link judgeCreateParentAccess} 1本が持つ**
+ * (`ADR-0061` 限定4)—— **ここにあるのは、判定結果を HTTP の応答文へ翻訳することだけである。**
+ *
+ * **【なぜ4本目の文面を作ったか。条文が名指しで課している】** —— **`ADR-0411` 限定13 の
+ * 逐語は「**古い親で止まったときの本文は、どちらの親で止まったかを述べること**」である。**
+ * **上の {@link forbiddenCreateParentAccessError} をそのまま返すと、本文は
+ * 「あなたには、指定された元の行を書き換える権限がありません。」になる** ——
+ * **この人は**移した先**の元の行には書けるので、その文を読むと「移した先の権限をもらう」
+ * という**直らない一手**を取る。** **`V15-M6B` が3本目を分けたのとまったく同じ理由である。**
+ *
+ * **【文面の作法。`ADR-0404` 限定9 が固定している】** —— **内部の記号を1文字も出さない**
+ * (宣言のキー名 / 表ID / 述語名 / 審査単位の記号)。**`ValidationError` に5キー目を
+ * 足していない。** **したがって「どの行から移そうとしたのか」を本文に1文字も書けない。**
+ *
+ * **【文面で誇張しない】**
+ *  - **止まったのはこの1件の更新だけである。** **行は1件も消えていないし、権限も1つも
+ *    変わっていない。** **元の行の参照はディスクの上で1バイトも動いていない。**
+ *  - **応答コードは 403 のままで、上限に当たった場合の 400 を1ミリも変えていない。**
+ *  - **運営ロールも同じ壁で止まる** —— **「管理者に頼めば移せる」とは書かない。**
+ *  - **参照を**空にする**更新はこの壁に1度も当たらない** —— **今日も通る**(`AC-G9` は
+ *    却下。`ADR-0411` 限定10)。 **この文面を「持ち出しを塞いだ」と読まない。**
+ *
+ * ## **【`V18-M6-T03` による訂正(2026-09-13)。上のどの行も1バイトも消していない】**
+ *
+ * **上の見出しの逐語「移す前の元になる行に**書けない**ので」は今日は狭い** ——
+ * **`V18-M6-T01`(`PM-G1` / `ADR-0443` 授権の表 行1)が、移す前の親に要求する動詞を
+ * `write` から `delete` へ上げた**(`src/server/owner-scope.ts`)—— **今日ここで止まるのは
+ * 「移す前の元になる行を**消せない**」人である**(書けるだけでは、今日はもう移せない)。
+ * **移した先の親に要求するのは今日どおり `write` である。**
+ *
+ * **【直せていないものを名指しする】** —— **下の `message` / `hint` は今日も
+ * 「書き込める必要があります」「書き込みの権限を渡してもらってください」と述べており、
+ * 今日の実装(消せる権限)とずれている。** **本段(`T03`)は `app.ts` のコードを
+ * 1行も変えない授権しか持っていないので、文面はここでは直していない** ——
+ * **`src/mcp/tools/write.ts` の写し(`forbiddenPreviousParentUpdateError`)も同じ文面なので、
+ * 直すなら2箇所を同じコミットで直すこと**(片方だけ直すと黙ってずれる)。
+ * **【禁止】これを「文面は今日も正しい」と読まない。**
+ *
+ * ## **【`V18-M6-T03b` による差し替え(2026-09-13)。上のどの行も1バイトも消していない】**
+ *
+ * **下の `message` / `hint` を差し替えた** —— **`T03` が直上で「直せていない」と
+ * 名指ししたずれを、メインの裁定で本単位が直した。**
+ *
+ * **旧の逐語(2026-09-13 まで利用者に出ていた文面。1バイトも変えずに写す)**:
+ *   `message`: 「この行を別の元の行へ移すには、移す前の元の行にも書き込める必要があります。あなたには、移す前の元の行を書き換える権限がありません。」
+ *   `hint`: 「移す前の元の行の権限を持っている人に、あなたへその行の書き込みの権限を渡してもらってください(移した先の元の行に書き込めるだけでは移せません。役割を変えても移せるようにはなりません)。」
+ *
+ * **【なぜ「足す」ではなく「差し替える」のか。判断と理由を書く】** ——
+ * **`V18-M5` は同じ場面で「新しい断り文を足して古いほうは残す」形を採ったが、
+ * 今回は採らない** —— **旧の文面は**どの場合にも真でなくなった**からである。**
+ * **旧文を読んだ人は、書き込みの権限を渡してもらっても移せない。** **残せば利用者を
+ * 誤った先へ案内し続けるので、コードの側では差し替え、旧の逐語はこのコメントに残す。**
+ *
+ * **【断り文の**種類**を1本も増やしていない】**(`ADR-0411` §Decision 2 の 5)——
+ * **既存の1本の文面を差し替えただけである。** **`src/mcp/tools/write.ts` の写しも
+ * 同じ文字列に差し替えた**(片方だけを直すと黙ってずれる)。
+ *
+ * **【この直しが授権の表の外に出ていることを、隠さずここに書く】** ——
+ * **`ADR-0443` 授権の表 行2 は `app.ts` について「配管のみ」「偽になるコメント3箇所を
+ * 訂正してよい」としか書いておらず、**断り文の文字列**を直す授権を持たない。**
+ * **`T03` はそのため直さずにメインへ送り、メインの裁定で本単位が直した** ——
+ * **すなわち、授権の表の1行が**実装より後に**直されたということである。**
+ * **`ADR-0443` の本文は1バイトも書き換えていない**(訂正は `V18-M6-T04` が末尾に足す)。
+ * **【禁止】これを「塞いだ」「安全になった」と読まない。**
+ */
+function forbiddenPreviousParentAccessError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この行を別の元の行へ移すには、移す前の元の行を消せる必要があります。あなたには、移す前の元の行を消す権限がありません(移す前の元の行に書き込めるだけでは移せません)。",
+    hint: "移す前の元の行の権限を持っている人に、あなたへその行を消せる権限を渡してもらってください(移す前の元の行に書き込めるだけでは移せません。移した先の元の行に書き込めるだけでも移せません。役割を変えても移せるようにはなりません)。",
+  };
+}
+
+/**
  * **元になる行の側で、誰が何をできるかが決まっていないので作れない(403)。** `V15-M2-T05` /
  * `CR-G3` / `D-V15-6`(fail-closed)。
  *
@@ -779,6 +962,14 @@ function forbiddenUngovernedParentError(): ValidationError {
  * **判定は今日も1つも行っていない** —— **`owner-scope.ts` の述語が返した `kind` を、
  * 応答へ写しているだけである**(`ADR-0404` 限定1・限定13)。
  *
+ * **【`V17-M2-T06b` による訂正(2026-09-07)。上の行も `V15-M6B` の訂正も1バイトも
+ *    消していない】** —— **「写すのは 5つ」は今日は偽である。** **写すのは **6つ**であり、
+ * 6つ目が {@link forbiddenPreviousParentAccessError}(親を**付け替える**更新で、
+ * 移す前の親に書けない)である**(`AC-G8` / `ADR-0411` 限定13)。
+ * **判定は今日も1つも行っていない** —— **`owner-scope.ts` の述語1本が返した `kind` を、
+ * 応答へ写しているだけである。** **呼び出し元は今日も4箇所のままで、1本も増えていない。**
+ * **上限に当たった場合の翻訳も1件も増やしていない**(400 の形は着手前と同じ1本である)。
+ *
  * **応答コードの決め方**(`v15-m0.md` §5-1 の表 / `ADR-0404` §Decision の 3 の答え2):
  *  - **段数・行数の上限に当たった → 400 + 既存の `recordAccessLimitError`**
  *    (**新しいエラーの形を1つも作らない**)。
@@ -802,6 +993,9 @@ function createParentDenial(
   }
   if (verdict.kind === "missing_named_permission") {
     return { errors: [forbiddenNamedPermissionMissingError()], status: 403 };
+  }
+  if (verdict.kind === "denied_previous_parent") {
+    return { errors: [forbiddenPreviousParentAccessError()], status: 403 };
   }
   return { errors: [forbiddenCreateParentAccessError()], status: 403 };
 }
@@ -1004,7 +1198,13 @@ const ROLE_ACCESS_LAYER: AccessLayerName = "role";
  * 今日も層の名前が1文字も出ていない。** **`ADR-0308` 限界6 が塞がったのは「面が止めた
  * 403」だけである。**
  */
-function forbiddenRoleAccessError(what: string, verb: string): ValidationError {
+// **【`V17-M4-T01` / 台帳 `AC-G19`】`export` にした。**宣言の前に在った1行(逐語)**:
+//     `function forbiddenRoleAccessError(what: string, verb: string): ValidationError {`
+// **中身は1バイトも変えていない。** **MCP の `read_report`(`src/mcp/tools/read.ts`)が
+// 同じ文面を使うためである** —— **HTTP の 403 と MCP の `isError` で、利用者が読む文が
+// 1文字も違わないようにする**(`ADR-0003` §7 の「入口が違ってもメッセージは同じ」)。
+// **写しを1本も増やしていない**(`src/mcp/tools/write.ts:361` の既存の写しは1バイトも触っていない)。
+export function forbiddenRoleAccessError(what: string, verb: string): ValidationError {
   return {
     path: "",
     message: `${what} に対する${verb}は、あなたの役割に許されていません(止めた層: ${ROLE_ACCESS_LAYER})。`,
@@ -1496,6 +1696,60 @@ function deleteProtectedRecordError(tableId: string, recordId: string): Validati
     path: "",
     message: `テーブル "${tableId}" のレコード "${recordId}" は削除できません(削除不可の状態です)。`,
     hint: "この行は消さずに残ります。状態を変えるには、この行を更新(PATCH)できる権限を持つ運営に取り消しを申し込んでください。",
+  };
+}
+
+/**
+ * **ぶら下がっている行のうち1件でも、その人が**単体で**消せないものが在るときの断り**
+ * (`V18-M7-T02` / `PM-G5` / `D-V18-31`。`ADR-0444` §Decision 3 の ③)。 **403 を返す** —— **止めて
+ * いるのは**その人の権限**である**(削除保護の 409 と混ぜない。兄弟の
+ * {@link forbiddenRecordDeleteError} と同じ層)。 **【最重】件数も表のIDも1文字も書かない** ——
+ * **`ADR-0434` §Decision 6 の 5 が「見えない行の件数を漏らす」ことを線として禁じており、③ に当たった
+ * 人はまさにその行を持つ人だからである。** **【代償を隠さない】** **受け取った人は**どの行が原因かを
+ * 自分では突き止められず**、代わりの導線を今日1つも用意していない**(同 §誇張しない 7)。 **さらに、
+ * 消せない行が1件でも在るかぎり、その人はこの行を**消せない**。**
+ */
+function forbiddenCascadeDeleteError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この行にぶら下がっている行の中に、あなたには消せないものがあります。この行は消せません。",
+    hint: "ぶら下がっている行は、あなたが1件ずつ消せるものだけがまとめて消えます。どの行が消せないかは、この応答では示しません。ぶら下がっている行を消せる人に、先に消してもらうか、この行の削除を依頼してください。",
+  };
+}
+
+/**
+ * **ぶら下がっている行が在るのに、件数の印が無い / 印の件数が今の件数と違うときの断り**
+ * (`V18-M7-T02` / `PM-G5` / `D-V18-9`。`ADR-0444` §Decision 3 の ④ / ⑤)。 **409 を返す** —— **止めて
+ * いるのは**今の状態**であって権限ではない**(権限で止まる人は手前の ③ で 403 を受け取っている)。
+ * **同じハンドラの 409 は既に「版不一致」「適用中」「削除不可」に使われており、同じ意味の4本目。**
+ * **件数と表のIDは、鍵ではなく `message` / `hint` の**文の中**に書く**(同 §Decision 5 の 行30)——
+ * **`ValidationError` の鍵は4本のままで、その型は `src/kernel/` に在って本段は1バイトも触れない**
+ * (同 限定13)。 **【最重】版の印(`If-Match`)の文面を1文字も使い回さない** —— **画面は、版がずれた
+ * ときの断りに出てくる語(`web/src/api.ts` の `VERSION_CONFLICT_MARKER` の値)を本文に含む 409 だけを
+ * 「版が合いません」の表示に吸うので、その語を書くと利用者は版を直しに行ってしまう**(同 限定10 /
+ * 計画 §10-6 の16 / 17)。 **この doc もその語を1文字も書いていない** —— **限定10 の式は綴りで走査
+ * するので、引用するだけで赤くなる。** **3つの断りはそれぞれ違う文面を持つ** —— **(a) 版の印が無い
+ * (400)/(b) 版がずれた(409)/(c) 件数の印(409。この関数)。**
+ * @param total 合計(下の段まで)/ @param tableIds 子が居る表のID / @param seal 印(無ければ ④)。
+ */
+function cascadeChildrenConfirmationError(
+  total: number,
+  tableIds: readonly string[],
+  seal: number | undefined,
+): ValidationError {
+  const where = tableIds.length > 0 ? `(${tableIds.join(" / ")})` : "";
+  if (seal === undefined) {
+    return {
+      path: "",
+      message: `この行には、ぶら下がっている行が ${total} 件あります${where}。まとめて消してよければ、件数の印を付けて同じ操作をもう一度実行してください。1行も消していません。`,
+      hint: `件数の印は If-Match-Children ヘッダで、値は10進の整数 ${total} です。版の印(If-Match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。`,
+    };
+  }
+  return {
+    path: "",
+    message: `ぶら下がっている行の件数が、指定された件数の印(${seal})と合いません。今は ${total} 件です${where}。1行も消していません。`,
+    hint: `件数の印(If-Match-Children)に ${total} を指定して、同じ操作をもう一度実行してください。版の印(If-Match)ではありません。ぶら下がっている行は、数えた後にも増えたり減ったりします。`,
   };
 }
 
@@ -2372,6 +2626,126 @@ function recordAccessJudge(
 }
 
 /**
+ * **面(役割に束ねた権限)の**行ごと**の規則を、書込の側でも当てる**(`V17-M3` / `AC-G15`)。
+ *
+ * **【`V17-M3` / `AC-G16` による更新。上の1行を1バイトも消していない】** ——
+ * **今日は `verb: "read"` でも呼ばれる** —— **書込の**応答**を組むときに
+ * 「この行を、この相手に見せてよいか」を問うのが {@link hideRowForRoleCondition} である。**
+ * **判定そのものは1ミリも変えていない**(同じ `judgeRoleAccess` に同じ形で行を渡すだけ)。
+ *
+ * ## 塞ぐ穴(記録 `docs/plan/v17/records/v17-m3.md` §6 の実測)
+ *
+ * **条件つきの規則を1本だけ持つ相手は、一覧でも単件でもその行を1バイトも読めないのに、
+ * `POST` は 201・`PATCH` は 200・`DELETE` は 204 を返していた。**
+ * **原因は「行ごとの判定の配管が、点(行ごとの付与)を宣言した表でしか走らない」ことで
+ * あり、読取側は一覧と単件の2箇所で個別に補っていたが、書込側にその補いが無かった。**
+ *
+ * ## 形は単件 `GET` の枝と**まったく同じ**である
+ *
+ * **`sources === undefined`(= 点を宣言していない表)のときだけ当て、`owner-scope.ts` の
+ * `judgeRoleAccess` に行と要求している人を渡す。** **ここに条件式を1行も書かない**
+ * (`ADR-0061` 限定4)—— **条件の評価は `evaluateRoleCondition` 1本が持つ。**
+ * **点を宣言した表では `false` を返す** —— **あちらは今日どおり配管が判定し、面と点を
+ * `OR` で重ねる。** **ここで当てると `OR` が `AND` に戻る。**
+ *
+ * ## **行を複数受ける理由**(**更新で「逃がす」と「奪う」の両方を塞ぐ**)
+ *
+ * **更新は「更新前」と「更新後」の両方を渡す** —— **片方だけだと、条件に合う行を
+ * 条件の外へ**逃がす**更新か、条件の外の行を条件に合う形へ**奪う**更新のどちらかが
+ * 素通りする。** **先例は同ファイルの付与表の書込判定(`{...existing, ...body}` を渡す形)。**
+ *
+ * ## **この関門が見ていないもの(誇張しない)**
+ *
+ * - **`_id` / `_created_at` / `_updated_at` は作成の時点でまだ存在しない** ——
+ *   **それらを条件に書いた規則は、作成のときだけ偽になる。**
+ * - **判定は行の値だけで決まる** —— **項目単位の規則も、ボタンの規則も1ミリも見ない**
+ *   (どちらも別の関門が既に当たっている)。
+ */
+function roleRowBlocked(input: {
+  readonly manifest: Manifest;
+  readonly tableId: string;
+  readonly rows: readonly (Record<string, unknown> | undefined)[];
+  readonly roles: ActorRoles;
+  readonly subject: string | null;
+  readonly verb: "read" | "write" | "delete";
+}): boolean {
+  if (recordAccessSourceTables(input.manifest, input.tableId) !== undefined) {
+    return false;
+  }
+  return input.rows.some(
+    (row) =>
+      row !== undefined &&
+      !judgeRoleAccess({
+        manifest: input.manifest,
+        roles: input.roles,
+        target: { target: "table", table: input.tableId },
+        verb: input.verb,
+        row,
+        subject: input.subject,
+      }).allowed,
+  );
+}
+
+/**
+ * **書込の**成功**応答から、その相手に見せない行の業務の列を落とす**(`V17-M3` / `AC-G16`)。
+ *
+ * ## 塞ぐ穴(記録 `docs/plan/v17/records/v17-m3.md` §6-3 / §6-4 の実測)
+ *
+ * **「書けるが読めない」相手**(面の `write` が条件なし・`read` が条件つき)**の `PATCH` は
+ * 200 を返し、その本文に、一覧でも単件でも1バイトも読めない列がそのまま載っていた。**
+ *
+ * ## 形(**3案のうち (丙)。計画 §3-6**)
+ *
+ * **行ごとの読取が偽なら「全項目が hidden」として、既存の射影と同じ形に合流させる。**
+ * **落とすのは `table.fields` の id 集合ちょうどである** —— **`_id` / `_created_at` /
+ * `_updated_at` は `table.fields` に無いので自動的に残る。**
+ * **`ADR-0134` 限定4「`_updated_at` を落とさない」を守る側である** ——
+ * **次の `If-Match` を組む手は消えない。**
+ * **`ADR-0134` 限定7「書込の可否を1ミリも変えない」も守る側である** ——
+ * **落とすのは応答だけで、帳簿には今日どおり書けている。**
+ *
+ * ## **【正直に。`ADR-0134` 限定2 との緊張を隠さない】**
+ *
+ * **限定2 は「新しい述語も新しい射影も1つも作らない」と書いている。**
+ * **本関数を置くことは、その逐語を**破る**。** **`ADR-0418` がユーザ決定に基づいて
+ * 限定1 とともに引き直す。** **【禁止】「限定2 を守った」と書かない。**
+ * **`owner-scope.ts` の中に置かなかったのは、凍結基準(`OWNER_SCOPE_BASELINE`)を
+ * 動かさないためである。**
+ *
+ * ## **この射影が見ていないもの(誇張しない)**
+ *
+ * - **点(行ごとの付与)を宣言した表には1ミリも掛からない**({@link roleRowBlocked} が
+ *   その表で偽を返す)—— **あちらは書込の関門が先に `read` を要求して 404 にする。**
+ * - **落とすのは応答だけである** —— **帳簿の行も、書込の可否も1バイトも変わらない。**
+ * - **エラー応答(400 / 403 / 409)には1バイトも掛からない**(`ADR-0134` 限定8)。
+ */
+function hideRowForRoleCondition<T extends Record<string, unknown>>(input: {
+  readonly manifest: Manifest;
+  readonly table: Table;
+  readonly row: T;
+  readonly roles: ActorRoles;
+  readonly subject: string | null;
+}): T {
+  if (
+    !roleRowBlocked({
+      manifest: input.manifest,
+      tableId: input.table.id,
+      rows: [input.row],
+      roles: input.roles,
+      subject: input.subject,
+      verb: "read",
+    })
+  ) {
+    return input.row;
+  }
+  const hidden: Record<string, unknown> = { ...input.row };
+  for (const field of input.table.fields) {
+    delete hidden[field.id];
+  }
+  return hidden as T;
+}
+
+/**
  * **「その行に付与を配れるか」を答える配管**(`V14-M1-T01` / `V14-M1-T03`。台帳 `RB-G3`)。
  *
  * **{@link recordAccessJudge} と同じ形である** —— **DB を読む手を持っているのは
@@ -2536,6 +2910,91 @@ function grantWriteDenial(
   return { errors: [unknownGrantHolderError()], status: 400 };
 }
 
+/**
+ * **「その子を、この人が**単体で** `DELETE` したときに通る関門」を1件ずつ当てる判定を組む**
+ * (`V18-M7-T02` / `PM-G5` / `D-V18-31`。`ADR-0444` §Decision 3 の ③)。
+ *
+ * **【最重】当てるのは、今日の `DELETE` が行に掛けている関門**そのもの**の5本ちょうどである** ——
+ * **(1) 所有者スコープ(単体なら 404)/(2) 行ごとのアクセス権の `read` と `delete`(404 / 403)/
+ * (3) 面の行ごとの規則(403)/(4) 削除保護(409)/(5) 付与表を対象にした削除かどうかの判定(400 /
+ * 403 / 404)。** **1つでも通らなければ `false`。順序も親に掛けている順と同じ。** **`D-V18-31` の決定
+ * 文が「誰の権限も1ミリも増えない」だからであり、権限だけを見て済ませると削除保護の立った行が連鎖で
+ * だけ消える**(`ADR-0444` §Decision 3)。 **【置き場所が2つに割れている理由】** **(a) 配管を組む
+ * 呼び出しだけはハンドラの中に残して引数で受け取る** —— **`entry-point-inventory.test.ts` の (B-3) が
+ * 「`app.ts` の中の配管の呼び出しは、すべて宣言した経路の中にある」を固定しているからである。**
+ * **(b) 残りはこの関数に置く** —— **`ADR-0444` 限定15 が、`DELETE` ハンドラの本文が持ってよい付与
+ * まわりの綴りを**関門(5)の判定2本ちょうど**に凍結しており**(付与表の掃除を1バイトも足さないことの
+ * 見張り)、**同じ判定を子に当てる配線を本文に直接書くと、掃除を1バイトも足していないのに赤くなる。**
+ * **【隠さない】** **ハンドラの本文の当たりは 2 のままだが、`app.ts` 全体の当たりは本関数のぶんだけ
+ * 増えている** —— **`V18-M7-T08` は、限定15 の式が**ハンドラの本文だけ**を見ていることを確かめる
+ * こと。** **【代償を隠さない】** **配管は表ごとに1度だけ組むが、判定は子1件ごとに走り、その中で付与
+ * 表・利用者の表・グループの表を読む**(読取経路と同じ post-filter の作法で、DB 側では1ミリも解いて
+ * いない)。 **速さは1件も測っていない。** **【誇張しない】** **(i) 上限に当たった子は「消せない」に
+ * 倒し、あわせて {@link onLimit} で呼び出し側に渡す**(fail-closed かつ**丸めない**)。 **(ii) 判定が
+ * 変わる窓(TOCTOU)を1バイトも塞いでいない。** **(iii) 行を1件も消さない。**
+ */
+type CascadeRow = Record<string, unknown>;
+type CascadeRowJudge = ((row: CascadeRow) => CombinedRecordAccessResolution) | undefined;
+
+function cascadeChildDeleteJudge(input: {
+  readonly dataRoot: string;
+  readonly db: Database;
+  readonly manifest: Manifest;
+  readonly actor: AuthUser | undefined;
+  /** **行ごとのアクセス権の配管**(呼び出し側が組む。理由は下の【置き場所が2つに割れている理由】)。 */
+  readonly judgeOf: (tableId: string) => CascadeRowJudge;
+  /** **子の判定が打ち切りに当たった**(呼び出し側が 4xx に翻訳する。丸めない)。 */
+  readonly onLimit: (limit: "depth" | "rows") => void;
+}): (child: { readonly tableId: string; readonly row: Record<string, unknown> }) => boolean {
+  const { dataRoot: root, db, manifest, actor, onLimit } = input;
+  const source: ReadSource = { dataRoot: root, appDb: () => db };
+  const actorId = actor?.id ?? null;
+  // **配管は表ごとに1度だけ組む**(子ごとに組み直すと同じ付与を何度も読む)。 **中身は同じ。**
+  const judges = new Map<string, CascadeRowJudge>();
+  const judgeOf = (tableId: string): CascadeRowJudge => {
+    if (!judges.has(tableId)) {
+      judges.set(tableId, input.judgeOf(tableId));
+    }
+    return judges.get(tableId);
+  };
+
+  return (child) => {
+    const resolved = resolveTableForRoute(manifest, child.tableId);
+    // **解けない表 / 書けない表の行は「消せない」に倒す**(fail-closed)。
+    if (!resolved.ok || resolved.system) return false;
+    // **(1) 所有者スコープ** —— **他人の行・見えない行は、単体の `DELETE` なら 404 である。**
+    const owned = personalOwnerField(resolved.table) !== undefined;
+    if (owned && !isOwnerVisible(child.row[OWNER_FIELD], actorId ?? "")) return false;
+    // **(2) 行ごとのアクセス権** —— **`read` が偽なら 404、`delete` が偽なら 403 になる行。**
+    const judge = judgeOf(child.tableId);
+    if (judge !== undefined) {
+      const access = judge(child.row);
+      // **打ち切りを「消せない」に丸めない** —— **丸めると、辿りきれなかっただけの行が 403 の
+      // 理由に化け、`access-control-limit-honesty.test.ts` の (E-4) が緑のまま嘘になる。**
+      if (access.kind === "limit_exceeded") {
+        onLimit(access.limit);
+        return false;
+      }
+      if (!access.verdict.read || !access.verdict.delete) {
+        return false;
+      }
+    }
+    // **(3) 面の行ごとの規則** —— **点を宣言した表では今日どおり掛からない。**
+    const rows = [child.row];
+    const roles = actor?.roles ?? null;
+    const face = { manifest, tableId: child.tableId, rows, roles, subject: actorId };
+    if (roleRowBlocked({ ...face, verb: "delete" })) return false;
+    // **(4) 削除保護** —— **行の状態が `DELETE` を止める**(誰が叩いても止まる)。
+    if (isDeleteProtectedRow(resolved.table, child.row)) return false;
+    // **(5) 付与表を対象にした削除かどうかの判定。**
+    return (
+      grantWriteDenial(
+        grantWriteVerdict(source, db, manifest, child.tableId, "delete", child.row, actor),
+      ) === null
+    );
+  };
+}
+
 // --- 画像配信の可視範囲(V2-M2-T03 / ADR-0035 §1c・限定6)---------------------------
 
 /** cookie から per-app セッションのユーザを解決する。未認証/無効は undefined(配信の匿名判定に使う)。 */
@@ -2669,6 +3128,30 @@ function isFileReferencedByVisibleRow(
    * 404 になる**)。**同じ問いに2つの答えを持たせないために渡している。**
    */
   crossesOwnerScope: (tableId: string) => boolean,
+  /**
+   * **【`V17-M4-T03c` / `AC-G21`】面(役割に束ねた権限)の**行ごと**の規則を、
+   * 行ごとの権限を宣言していない表にも当てる**(ユーザ決定 `D5`)。
+   *
+   * **`crossesOwnerScope` と同じ形で、呼び出し側が組んだ述語を受け取る** ——
+   * **ここに判定式を1行も書かない**(`ADR-0061` 限定4 / `ADR-0296` 限定12)。
+   * **中身は既存の `roleRowBlocked` の否定であり、判定そのものは
+   * `owner-scope.ts` の `judgeRoleAccess` 1本が持つ。**
+   *
+   * **これを渡さないと、条件つきの `read` を持つ相手が「一覧でも単件でも1バイトも
+   * 読めない行」に載ったファイルを受け取れる**(§2b の (い))。
+   *
+   * **未ログイン(匿名)には必ず `true` が返る** —— **呼び出し側がそう組んでいる。**
+   * **匿名の枝を1バイトも変えないためである**(`ADR-0161` 限定5 / `ADR-0034`)。
+   */
+  roleRowVisibleFor: (tableId: string, row: Record<string, unknown>) => boolean,
+  /**
+   * **【`V17-M4-T03c` / `AC-G21`】そのファイルを上げた人**(`_files.uploaded_by`)。
+   *
+   * **`null` は「上げた人が分からない」**(列を足す前に上げた行)。
+   * **まだどのレコードにも載っていないファイルは、この人にだけ配る**(`D4`)——
+   * **`null` なら誰にも配らない**(`D2`。**運営者も例外にしない**)。
+   */
+  uploadedBy: string | null,
 ): FileVisibility {
   // **匿名には `image` の列しか見せない**(`ADR-0161` 限定5)。
   // **この1行が「`file` は未認証配信しない」の本体である** —— 走査対象から外れた列が
@@ -2692,6 +3175,12 @@ function isFileReferencedByVisibleRow(
     // **宣言した表の行から参照されているか / そのうち1行でも読めるか**(`Z-G36`)。
     let governedReference = false;
     let governedVisible = false;
+    // **【`V17-M4-T03c` / `AC-G21`】そのファイルがどれか1つのレコードに載っているか。**
+    // **表が行ごとの権限を宣言しているかも、その行が読めるかも問わない** ——
+    // **「載っている」という事実そのものである。**
+    // **既存の `governedReference` は1バイトも消していない**(あちらは「宣言した表の行から
+    // 参照されている」という別の事実を持っており、宣言した表の枝を1ミリも変えないため)。
+    let referenced = false;
     for (const table of manifest.app.tables) {
       const imageFields = table.fields.filter((field) => deliverableTypes.includes(field.type));
       if (imageFields.length === 0) {
@@ -2765,8 +3254,23 @@ function isFileReferencedByVisibleRow(
         if (!imageFields.some((field) => row[field.id] === fileId)) {
           continue;
         }
+        // **【`V17-M4-T03c` / `AC-G21`】載っていることを、読めるかどうかより先に数える。**
+        referenced = true;
         if (judge === undefined) {
-          if (rowVisible(row)) {
+          // --- 【`V17-M4-T03c` / `AC-G21`】**面の行ごとの規則を1本掛けた** -----------------
+          //
+          // **旧(逐語。1バイトも消していない)**:
+          //
+          //     if (rowVisible(row)) {
+          //       return { kind: "deliver" };
+          //     }
+          //
+          // **旧は `rowVisible` しか見ていなかった** —— **`rowVisible` は予約規約フィールド
+          // (`st_owner` / `st_public`)しか見ず、役割の規則を1文字も見ない。**
+          // **その結果、条件つきの `read` を持つ相手が、条件から外れる行に載ったファイルを
+          // 受け取れていた**(ユーザ決定 `D5` が揃えると決めた相手である)。
+          // **判定式はここに1行も無い** —— **呼び出し側が組んだ述語を当てるだけである。**
+          if (rowVisible(row) && roleRowVisibleFor(table.id, row)) {
             return { kind: "deliver" };
           }
           continue;
@@ -2812,7 +3316,36 @@ function isFileReferencedByVisibleRow(
     // (**ただし「どの行からも参照されていない」ものに限る**)。
     // **file_id は乱数の識別子であり、当てることを前提にした守りではない。**
     // **未ログインは今日どおり1件も受け取れない**(`viewer.kind === "anonymous"`)。
-    return viewer.kind === "signed_in" && !governedReference
+    //
+    // --- 【`V17-M4-T03c` / `AC-G21`。ユーザ決定 `D2` / `D4`】**旧文を1バイトも消していない** ---
+    //
+    // **旧(逐語)**:
+    //
+    //     return viewer.kind === "signed_in" && !governedReference
+    //       ? { kind: "deliver" }
+    //       : { kind: "withhold" };
+    //
+    // **旧は「ログインしていて、宣言した表の行から参照されていなければ配る」だった** ——
+    // **どのレコードにも載っていないファイルが、ログインしている全員に配られていた。**
+    // **さらに「宣言していない表の、その人には読めない行にだけ載っているファイル」も、
+    // 参照の事実が残らないまま「未参照」と判断されて配られていた。**
+    //
+    // **今日の規則(ユーザ決定 2026-09-08 の1文)**:
+    //
+    // > **そのファイルを載せているレコードを読めるなら受け取れる。まだどのレコードにも
+    // > 載っていない間は上げた本人だけ。上げた人が分からない古いファイルは誰にも渡さない。
+    // > 運営者も例外にしない。**
+    //
+    // **載っているなら、ここへ来た時点で「読める行が1つも無かった」ということである** ——
+    // **配らない。** **載っていないなら、上げた本人にだけ配る。**
+    // **`uploadedBy` が `null`(上げた人が分からない)なら誰にも配らない。**
+    // **未ログインは今日どおり1件も受け取れない**(`viewer.kind` が `signed_in` でなければ
+    // `actorId` を持たない)。
+    const anyReference = referenced || governedReference;
+    return !anyReference &&
+      viewer.kind === "signed_in" &&
+      uploadedBy !== null &&
+      uploadedBy === viewer.actorId
       ? { kind: "deliver" }
       : { kind: "withhold" };
   });
@@ -2880,6 +3413,10 @@ export function readVisibleReport(params: {
       string,
       (rows: Record<string, unknown>[]) => Record<string, unknown>[]
     >();
+    // **【`V18-M3-T02` / `PM-G6`】名簿 / グループ / 付与の表は、**親の行**を読まないと
+    // 母集団が決まらない。** **読む手だけをここで組む** —— **一覧の口とまったく同じ
+    // 1本であり、判定は `owner-scope.ts` の側に在る。**
+    const reportRowReaders = memoizedRowReaders(source, manifest);
     const visibleRowsOf = (
       readTableId: string,
     ): ((rows: Record<string, unknown>[]) => Record<string, unknown>[]) => {
@@ -2945,6 +3482,8 @@ export function readVisibleReport(params: {
           accessSources,
           tableRead,
           judge,
+          readRows: reportRowReaders.readRows,
+          readRow: reportRowReaders.readRow,
         });
         if (population.kind === "limit_exceeded") {
           reportLimit = population.limit;
@@ -3247,6 +3786,27 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
    *   複数テーブルを跨ぐので `undefined` を渡す** —— そのとき表の一致は検査しない
    *   (比べる相手が1つに決まらない。この限界は `batch-view-audience.test.ts` (Y) が固定する)。
    */
+  /**
+   * **画面名を名乗らない読取の「口の形」**(`V18-M4-T02`。`PM-G10` / `ADR-0435` §Decision 2 の 2)。
+   * **`"list"` = 一覧の口、`"single"` = 単票の口。** **この2つしかない**(計画 §11-2 決め9)。
+   */
+  type UnnamedViewReadShape = "list" | "single";
+  /**
+   * **その要求が壁の射程に入っているか**(`rejectNamedView` が立て、一覧と単票のハンドラが読む)。
+   *
+   * **【`c.set` を使っていない理由を、隠さずに書く】** —— **`c.set` で運ぶには
+   * `src/server/auth-context.ts` の `AuthEnv["Variables"]` に鍵を1本足すことになるが、
+   * **そのファイルは `ADR-0441` §Decision 3 の授権の表に行として無い**(行22〜35 のどれにも
+   * `auth-context.ts` が現れない)。 **`ADR-0440` §Decision 1 の物差し(「行として在るか」)に
+   * 従い、触らない側へ倒した。** **鍵は要求そのもの(`c.req.raw`)なので、要求が済めば
+   * 参照ごと消える**(`WeakMap`)。
+   */
+  const unnamedViewReads = new WeakMap<Request, UnnamedViewReadShape>();
+  /** **一覧の口の綴り**(`…/tables/<表>/records` ちょうどで終わる要求だけ)。 */
+  const UNNAMED_VIEW_LIST_PATH = /^\/api\/apps\/[^/]+\/tables\/[^/]+\/records$/;
+  /** **単票の口の綴り**(`…/records/<行>` ちょうどで終わる要求だけ)。 */
+  const UNNAMED_VIEW_SINGLE_PATH = /^\/api\/apps\/[^/]+\/tables\/[^/]+\/records\/[^/]+$/;
+
   const rejectNamedView = (
     appId: string,
     urlTableId: string | undefined,
@@ -3256,6 +3816,38 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
   ): Response | null => {
     const namedViewId = c.req.query("view");
     if (namedViewId === undefined || namedViewId === "") {
+      // --- 【`V18-M4-T02` / `PM-G10` / `ADR-0435` §Decision 2 の 2】--------------------
+      //
+      // **旧はここが `return null;` の1行だけだった。逐語で残す(1バイトも消していない)**:
+      //
+      //     return null;
+      //
+      // **`ADR-0435` §Decision 2 の 2 の逐語**: 「**`rejectNamedView` の「`?view=` が無ければ
+      // 即 `return null`」を書き換え、名乗らない要求についても、その表を指す画面の規則を
+      // 見る**」。
+      //
+      // **ここで立てるのは「口の形」だけである。** **可否の判定は1行も書かない** ——
+      // **壁の述語は `owner-scope.ts` の1箇所(`recordPopulationScope`)であり、それを呼ぶのは
+      // 一覧と単票のハンドラである**(`ADR-0061` 限定4。**判定の式を2箇所に書かない**)。
+      //
+      // **発火するのは2経路ちょうどである**(計画 §11-2 決め9):
+      //  - **`GET` だけ**(決め3。**作成・更新・削除の答えを1ビットも動かさない**)。
+      //  - **綴りが一覧の口か単票の口にちょうど一致する要求だけ** —— **同じ
+      //    `recordsAuthMiddleware` を通る集計表の口・「誰に配られているか」の口・到達不能の
+      //    行の口は、どちらの綴りにも一致しないので1度も立たない。**
+      //  - **バッチの口は `urlTableId === undefined` で来るうえ `POST` である**
+      //    (計画 §11-2 決め11。**バッチ経路に早期 `return` を1本も足していない**)。
+      if (urlTableId !== undefined && c.req.method === "GET") {
+        const path = c.req.path;
+        const shape: UnnamedViewReadShape | undefined = UNNAMED_VIEW_LIST_PATH.test(path)
+          ? "list"
+          : UNNAMED_VIEW_SINGLE_PATH.test(path)
+            ? "single"
+            : undefined;
+        if (shape !== undefined) {
+          unnamedViewReads.set(c.req.raw, shape);
+        }
+      }
       return null;
     }
     // マニフェストが読めない(JSON 破損等)なら「実在しない画面」に倒す(fail-closed)。
@@ -4332,6 +4924,12 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
   // **【塞いでいないもの。誇張しない】** **`GET /api/apps/:app_id/undo/preview` は今日も
   // 未認証で通る**(読取なので本タスクの射程外。ユーザ決定は書き換えの口だけを必須とした)。
   // **`GET /changelog` / `GET /requirements` も今日どおり未認証で、依頼文の逐語が読める。**
+  //
+  // **【`V17-M4-T02` による訂正。上の3行は1バイトも消していない】** **台帳 `AC-G20`** ——
+  // **その3本は今日、未ログインでは読めない(401)。** **掛かっているのは
+  // `changeAuthMiddleware` ではなく `manifestAuthMiddleware` である** —— **セッションだけを
+  // 見て、役割を1つも見ない。** **`POST /diffs` / `POST /undo` に掛かる本 middleware は
+  // 1バイトも変わっていない。**
   const changeAuthMiddleware: MiddlewareHandler<AuthEnv> = async (c, next) => {
     const appId = c.req.param("app_id") as string;
     const appError = ensureApp(appId);
@@ -4713,6 +5311,13 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
   //  - **`GET /api/apps/:app_id/changelog` / `undo/preview` / `requirements` は今日も
   //    未認証で読める** —— **本単位(`J-G24a`)の射程は定義の取得1本である。**
   //  - **MCP は HTTP を1本も叩かない**(`get_manifest` は今日も素通りである。`D-V8-20`)。
+  //
+  // **【`V17-M4-T02` による訂正。上の4行は1バイトも消していない】** **台帳 `AC-G20`** ——
+  // **1つ目はもう「塞がないもの」ではない。** **この middleware **そのもの** が、
+  // `registerChangeRoutes` へ `readAuthMiddleware` として渡され、その3本にも掛かっている。**
+  // **本 middleware の定義は1バイトも変えていない** —— **同じ1本を張る先が増えただけである。**
+  // **2つ目(MCP)は今日も真である** —— **`get_changelog` / `preview_undo` /
+  // `generate_requirements_doc` は今日どおり HTTP を1本も通らない。**
   const manifestAuthMiddleware: MiddlewareHandler<AuthEnv> = async (c, next) => {
     const appId = c.req.param("app_id") as string;
     // アプリが無ければ 404(セッション解決の前に確かめる。`recordsAuthMiddleware` と同型)。
@@ -5189,12 +5794,18 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // 全行を読んでから JS で絞り、絞ったあとの集合を母集団として `total` を数える。**
     // **「絞りが要るか」は母集団の分類がそのまま答える** —— **`"unfiltered"`(分岐5)だけが
     // DB の `LIMIT` / `OFFSET` を使ってよい。**
+    // **【`V18-M4-T02` / `PM-G10`】画面名を名乗らない読取の口の形**(`undefined` = 名乗った
+    // 要求。**答えは着手前と1バイトも変わらない**)。**この1度だけ引いて、下の母集団の判定にも
+    // 同じ値を渡す** —— **2度引くと、同じ要求に2つの答えが出うる。**
+    const unnamedViewRead = unnamedViewReads.get(c.req.raw);
     const populationScope = recordPopulationScope({
       manifest,
       table: resolved.table,
       anonymousPublic,
       accessSources,
       tableRead: roleTableRead,
+      unnamedViewRead,
+      roles: readerRoles,
     });
     const postFiltered = populationScope !== "unfiltered";
 
@@ -5252,6 +5863,11 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         accessSources,
         readerRoles,
       );
+      // **【`V18-M3-T02` / `PM-G6`】名簿 / グループ / 付与の表の母集団は、**親の行**を
+      // 読まないと決まらない。** **読む手だけをここで組んで渡す** —— **判定は
+      // `owner-scope.ts` の1本であり、ここに条件式を1行も書かない**(`ADR-0061` 限定4)。
+      // **`recordAccessJudge` が中で使っているのと同じ1本である**(読み方を2箇所に書かない)。
+      const rowReaders = memoizedRowReaders(source, manifest);
       const population = judgeRecordPopulation({
         manifest,
         table: resolved.table,
@@ -5264,6 +5880,11 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         tableRead: roleTableRead,
         judge,
         grantWrite,
+        readRows: rowReaders.readRows,
+        readRow: rowReaders.readRow,
+        // **【`V18-M4-T02` / `PM-G10`】口の形をそのまま渡す。** **判定は
+        // `owner-scope.ts` の1本であり、ここに壁の条件式を1行も書かない。**
+        unnamedViewRead,
       });
       // **1行でも上限に当たったら要求全体を 4xx にする**(`Z-G17` / `V7-M4-T04`)——
       // **黙って行を落とすと、上限に当たった状態と「本当に見えない」状態が
@@ -5360,6 +5981,39 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
               ),
             };
           }
+          case "unnamed_view_wall": {
+            // **【`V18-M4-T02` / `PM-G10` / `ADR-0435` §Decision 2 の 3】画面名を名乗らない
+            // 読取の壁が閉じている。**
+            //
+            // **応答から落とす** —— **`records` は 0件、`total` も 0 である**(計画 §3-3
+            // 決め4)。 **403 にしない** —— **「その表が在る」ことを役割の外へ漏らさない側に
+            // 倒す**(`ADR-0305` 限定11 / すぐ上の面の関門の 0件 と1バイトも同じ向き)。
+            // **返し方は面の関門(`roleGateBlocksWithoutGrants`)の 0件 と同じ形である。**
+            // **【禁止】これを「画面を隠した」と読まない** —— **隠れるのは行である。**
+            return {
+              status: 200 as const,
+              json: withSum({ records: [] as Record<string, unknown>[], total: 0 }, 0),
+            };
+          }
+          case "access_registry": {
+            // **【`V18-M3-T02` / `PM-G6` / `D-V18-21`】名簿表・グループ表・付与表。**
+            // **返し方は `role_conditional` と1バイトも同じである** —— **違うのは
+            // 母集団の決め方だけであり、それは `owner-scope.ts` の側に在る。**
+            // **`access` は載せない** —— **この表は行ごとの付与を1つも宣言していない
+            // (点が無い)。** **`total` も `sum` も可視集合から採るので、絞ったあとの
+            // 件数とページ送りが構造的に一致する**(計画 §11-4 の追加条件A)。
+            const visible = population.rows;
+            return {
+              status: 200 as const,
+              json: withSum(
+                {
+                  records: slicePage(visible, limit, offset).map((row) => dropHidden(row)),
+                  total: visible.length,
+                },
+                sumVisible(visible),
+              ),
+            };
+          }
           case "role_conditional": {
             // **条件つきの読取規則だけが立っている表(`J-G12`)。**
             // **`access` は載せない**(この枝は判定のクロージャを1度も呼んでいない。
@@ -5439,14 +6093,19 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // **判定は `owner-scope.ts` の1本**(ここに規則を読む条件式を1つも書かない)。
     // **【`V8-M19`】点が管轄内なら止めない**(`D-V8-23` の `OR`。下の合成判定が決める)。
     const singleSources = recordAccessSourceTables(manifest, tableId);
+    // **【`V18-M3-T02b`】この1本を変数に束ねた。** **式は着手前と1バイトも同じである** ——
+    // **下の母集団の判定(`judgeRecordPopulation`)に `tableRead` として渡すために要る。**
+    // **一覧の口が `roleTableRead` を1度だけ採って両方に使っているのと同じ形である**
+    // (答えを2度別々に採ると、面の規則が食い違ったときに気づけない)。
+    const singleTableRead = judgeRoleAccess({
+      manifest,
+      roles: actor?.roles ?? null,
+      target: { target: "table", table: tableId },
+      verb: "read",
+    });
     if (
       roleGateBlocksWithoutGrants({
-        role: judgeRoleAccess({
-          manifest,
-          roles: actor?.roles ?? null,
-          target: { target: "table", table: tableId },
-          verb: "read",
-        }),
+        role: singleTableRead,
         grantGoverned: singleSources !== undefined,
       })
     ) {
@@ -5468,7 +6127,13 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     const loadedRecord = withReadSource(dataRoot, manifest.app.id, (source) => {
       const read = readRecord(source, manifest, tableId, recordId);
       if (!read.ok || read.value === null) {
-        return { result: read, access: undefined, grantWrite: false };
+        return {
+          result: read,
+          access: undefined,
+          grantWrite: false,
+          registryHidden: false,
+          unnamedViewHidden: false,
+        };
       }
       const judge = recordAccessJudge(
         source,
@@ -5489,8 +6154,52 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         singleSources,
         actor?.roles ?? null,
       );
+      // **【`V18-M3-T02b` / `PM-G6` / `ADR-0435` §Decision 2 の 3】名簿 / グループ / 付与の
+      // 表は、単票の口でも一覧と同じ母集団に従う。** **`T02` は一覧の口だけを直しており、
+      // 単票はこれまで、一覧から落ちた行を 200 で返し続けていた。**
+      //
+      // **判定の家を2本目にしていない** —— **一覧の口が呼ぶのとまったく同じ
+      // `judgeRecordPopulation` に、行を1件だけ渡す。** **ここに絞りの式を1行も書かない**
+      // (`ADR-0061` 限定4)。**読む手も一覧とまったく同じ `memoizedRowReaders` である。**
+      //
+      // **分類が `"access_registry"` のときだけ見る** —— **他の分類(匿名公開 /
+      // 個人スコープ / 行ごとの付与 / 条件つきの面 / 非スコープ)は、この下の既存の壁が
+      // 今日どおり答えており、ここで重ねると答えを二重に出すことになる。**
+      // **`access_registry` は「付与の管轄外」の分類なので、点の判定(`judge`)を
+      // 1度も使わない**(`judgeRecordPopulation` のその枝が `judge` を読まない)。
+      const registryReaders = memoizedRowReaders(source, manifest);
+      const singlePopulation = judgeRecordPopulation({
+        manifest,
+        table: resolved.table,
+        tableId,
+        rows: [read.value as Record<string, unknown>],
+        anonymousPublic: c.get("anonymousPublic") === true,
+        actorId: actor?.id ?? null,
+        roles: actor?.roles ?? null,
+        accessSources: singleSources,
+        tableRead: singleTableRead,
+        judge: undefined,
+        readRows: registryReaders.readRows,
+        readRow: registryReaders.readRow,
+        // **【`V18-M4-T02` / `PM-G10`】単票の口の形。** **一覧の口とまったく同じ1本
+        // (`judgeRecordPopulation`)に渡す** —— **判定の家を2本目にしていない。**
+        unnamedViewRead: unnamedViewReads.get(c.req.raw),
+      });
       return {
         result: read,
+        // **【`V18-M3-T02b` は置き場所だけを動かした。式を1文字も変えていない】** ——
+        // **このキーは `access:` の**前**に在る。** **後ろに置くと、`access:` に載せた
+        // 判定の戻り値が使われていることを**綴りの距離**(`end + 3000`)で数えている既存の検査
+        // (`access-control-paths.test.ts` の (C-1))の窓から、下の
+        // `loadedRecord.access.verdict.read` がはみ出して赤くなる。**
+        // **`V8-M19` が同じ検査の窓に合わせて `if` の置き場所を動かしたのと同じ手当てである**
+        // (すぐ上の段落に逐語で書いてある)。**検査を1本も削らず、期待値も1文字も変えていない。**
+        registryHidden:
+          singlePopulation.kind === "visible" &&
+          singlePopulation.scope === "access_registry" &&
+          singlePopulation.rows.length === 0,
+        unnamedViewHidden:
+          singlePopulation.kind === "visible" && singlePopulation.scope === "unnamed_view_wall",
         access: judge === undefined ? undefined : judge(read.value as Record<string, unknown>),
         grantWrite:
           grantWrite === undefined ? false : grantWrite(read.value as Record<string, unknown>),
@@ -5567,6 +6276,28 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     if (loadedRecord.access !== undefined && !loadedRecord.access.verdict.read) {
       return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
     }
+    // **【`V18-M3-T02b` / `PM-G6`】名簿 / グループ / 付与の表で、一覧から落ちた行。**
+    //
+    // **`ADR-0435` §Decision 2 の 3 の逐語**: 「**一覧は応答から落とし(0件)、単件は
+    // 404 にする**(`ADR-0305` 限定11 を越えない)。**「403 で全部返す」形にしない**」。
+    // **403 にすると「その行が在る」ことが権限の外へ漏れる** —— **すぐ上の付与の 404 と
+    // 個人スコープの 404 と、1バイトも同じ向きである。**
+    // **運営(`owner`)はこの枝に1度も入らない**(`judgeRecordPopulation` の
+    // `access_registry` 枝が運営を先に通す。`D-V18-18` と同じ向き)。
+    if (loadedRecord.registryHidden) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    // **【`V18-M4-T02` / `PM-G10` / `ADR-0435` §Decision 2 の 3】画面名を名乗らない読取の壁。**
+    //
+    // **単票は 404 にする**(計画 §3-3 決め4)。 **本文は実在しない行の 404 とまったく同じ
+    // `unknownRecordError` 1本である** —— **行のIDのほかに1バイトも違わない。**
+    // **403 にしない** —— **「その行が在る」ことが役割の外へ漏れる**(すぐ上の3本の 404 と
+    // 1バイトも同じ向き)。
+    // **運営(`owner`)の素通しを1本も持たない**(計画 §3-3 決め5)—— **役割の規則が
+    // その画面を運営に開いていなければ、運営もここに落ちる。**
+    if (loadedRecord.unnamedViewHidden) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
     // 現在の版を ETag で返す(PATCH/DELETE の If-Match に使える。M5)。**版は整形前の行から
     // 取る** —— 表示名解決は `st_owner` の1キーしか触らないので CAS には混ざらない(V3-M8-T03)。
     const version = (result.value as { _updated_at?: unknown })._updated_at;
@@ -5618,6 +6349,203 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
   });
 
   /**
+   * **4a-2. 「どの付与行が効いて読み書きができるのか」を返す、読取専用の口**
+   * (`AC-G24` / `V17-M6-T04` / 利用者決定 `D1`)。
+   *
+   * **【置き場所】** —— **単票 `GET` より **1段深い** パスに置いた。**
+   * **今日 `records/:record_id` より深い経路は他に1本も無いので、ルート照合がぶつからない**
+   * (`unreachable-records` が兄弟のパスに置かれたのと逆向きの解である)。
+   *
+   * **【返すもの】** —— **通した付与行の `_id` と、その行が在る表のID、その付与が持つ
+   * 権限の名前、その権限が真にする動詞、引き継ぎで効いたときの段数と通った親の行。**
+   *
+   * **【返さないもの】** —— **付与行の中身(相手を指す欄・氏名・ログイン名)を1つも返さない。**
+   * **止めた層の名前(`blockedBy`)を1つも返さない**(`ADR-0402` 限定2。
+   * **`ADR-0308` §限界6 は今日も真である**)。 **効かなかった付与行を1件も返さない。**
+   * **役割の規則を1本も返さない。**
+   *
+   * **【`?member=`。利用者決定 `D1`(2026-09-08)】** —— **運営は「この行は誰に届いて
+   * いるのか」を問える。** **書けるのは運営だけであり、非運営が書くと 403 である。**
+   * **その代償として、運営は「誰が何を見られるか」を常に把握できる立場になる** ——
+   * **利用者はこの代償を読んだうえで選んだ。** **監査の記録は1件も残らない。**
+   *
+   * **【404 の規律。2つとも単票 `GET` にそろえる】**
+   *  - **要求している人自身が読めない行 → 404**(**`?member=` を書いても伏せる**)。
+   *    **200 にすると、運営に「その行が在ること」を確かめる新しい道ができる。**
+   *  - **問われた相手がその行を読めない → 200 で `sources` が空**(**要求者には既に
+   *    見えている行なので、404 にすると `D1` が許した問いそのものに答えられない**)。
+   *  - **`?member=` が名簿に実在しない行を指した → 400**(**その id が他の表に在るかを
+   *    1文字も漏らさない**)。
+   *
+   * **【判定式はこのハンドラに1行も無い】** —— **判定も、相手の解決(名簿の行 →
+   * 判定に渡す利用者ID)も `owner-scope.ts` の述語1本が持つ。**
+   * **宣言のキーの綴りをこのファイルに1文字も書いていない**(`ADR-0294` 限定12)。
+   *
+   * **【誇張しない】** —— **この口は付与を1件も作らず、1件も消さない。**
+   * **`sources` が空でも、その理由が面なのか点なのかは1文字も書かれていない** ——
+   * **ただし「`access.read` が真で `sources` が空」から「点以外の層で読めている」ことは
+   * **推測できる**。** **これは着手前には読めなかった情報である。**
+   */
+  // **認証の関門は `records` 5系統と同じ1本である**(2本目の判定を作らない)。
+  //
+  // **【登録の書き方を、関門を引数に混ぜない形にした理由。実測して気づいた】** ——
+  // **入口の全量表**(`src/server/entry-point-inventory.test.ts` の `scanRoutes()`)**は、
+  // 登録の綴り(`app` に `.get(` と二重引用符を**空白なしで**続けた形)でしか登録行を
+  // 拾わない。** **関門を第2引数に混ぜるとこの行が 100 文字を越えて整形器が折り、
+  // 引用符が次の行へ落ちて、この口が全量表から**見えなくなる**。**
+  // **見えない口は「1本増えたら赤」の歯止めを丸ごとすり抜ける。**
+  // **【禁止】この2行を1行にまとめない。**
+  app.use(
+    "/api/apps/:app_id/tables/:table_id/records/:record_id/access-sources",
+    recordsAuthMiddleware,
+  );
+  app.get("/api/apps/:app_id/tables/:table_id/records/:record_id/access-sources", (c) => {
+    const tableId = c.req.param("table_id");
+    const recordId = c.req.param("record_id");
+    const loaded = loadManifest(c.req.param("app_id"));
+    if (!loaded.ok) {
+      return c.json(errorBody(loaded.errors), 404);
+    }
+    const manifest = loaded.value;
+    const resolved = resolveTableForRoute(manifest, tableId);
+    if (!resolved.ok) {
+      return c.json(errorBody(resolved.errors), resolved.status);
+    }
+    const actor = c.get("user") as AuthUser | undefined;
+    // **名乗らない相手には1バイトも答えない**(**公開窓からこのハンドラまで届く表でも
+    // 伏せる**)。 **付与は名乗った人にしか届かないので、答えるものが無い。**
+    if (actor === undefined) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    const member = new URL(c.req.url).searchParams.get("member");
+    // **`?member=` を書けるのは運営だけである** —— **`unreachable-records` の口と
+    // 同じ広さ・同じ文面の 403 を使う**(**新しい文面を1本も足さない**)。
+    if (member !== null && !actor.roles.includes("owner")) {
+      return c.json(errorBody([forbiddenUnreachableListError()]), 403);
+    }
+    const doorSources = recordAccessSourceTables(manifest, tableId);
+    // **【`V18-M3-T02c`】この1本を変数に束ねた。** **`T02b` が単票の口で束ねたのと
+    // まったく同じ式である** —— **下の母集団の判定に `tableRead` として渡すために要る。**
+    const doorTableRead = judgeRoleAccess({
+      manifest,
+      roles: actor.roles,
+      target: { target: "table", table: tableId },
+      verb: "read",
+    });
+    const answered = withReadSource(dataRoot, manifest.app.id, (source) => {
+      const read = readRecord(source, manifest, tableId, recordId);
+      if (!read.ok || read.value === null) {
+        return { read, resolution: undefined, registryHidden: false };
+      }
+      // **行の読み方も、辿りの読み手も、判定の配管とまったく同じ1本である。**
+      const { readRows, readRow } = memoizedRowReaders(source, manifest);
+      // **【`V18-M3-T02c` / `PM-G6` / `ADR-0435` §Decision 2 の 3】名簿 / グループ /
+      // 付与の表は、この口でも一覧・単票とまったく同じ母集団に従う。**
+      // **`T02` は一覧を、`T02b` は単票を直したが、この口は一覧から落ちた行について
+      // 「その行が実在すること」と「その人から見た判定4値」を 200 で返し続けていた**
+      // (`V18-M3-T03` が台B で実測した)。**実在しない行では 404 が返るので、
+      // 応答の上で「見えない行」と「無い行」が区別できていた。**
+      //
+      // **判定の家を2本目にしていない** —— **一覧の口・単票の口が呼ぶのとまったく同じ
+      // `judgeRecordPopulation` に、行を1件だけ渡す。** **ここに絞りの式を1行も
+      // 書かない**(`ADR-0061` 限定4)。**読む手も上とまったく同じ1本である。**
+      //
+      // **分類が `"access_registry"` のときだけ見るのも `T02b` と1ビットも同じである**
+      // —— **他の分類は、この下の既存の壁(個人スコープ / 要求者自身の合成判定)が
+      // 今日どおり答えており、重ねると答えを二重に出すことになる。**
+      const population = judgeRecordPopulation({
+        manifest,
+        table: resolved.table,
+        tableId,
+        rows: [read.value as Record<string, unknown>],
+        anonymousPublic: c.get("anonymousPublic") === true,
+        actorId: actor.id,
+        roles: actor.roles,
+        accessSources: doorSources,
+        tableRead: doorTableRead,
+        judge: undefined,
+        readRows,
+        readRow,
+      });
+      return {
+        read,
+        registryHidden:
+          population.kind === "visible" &&
+          population.scope === "access_registry" &&
+          population.rows.length === 0,
+        resolution: resolveRecordAccessSources({
+          manifest,
+          tableId,
+          row: read.value as Record<string, unknown>,
+          actorId: actor.id,
+          roles: actor.roles,
+          member,
+          sources: doorSources,
+          readRows,
+          readRow,
+        }),
+      };
+    });
+    if (!answered.read.ok) {
+      return c.json(errorBody(answered.read.errors), 400);
+    }
+    const resolution = answered.resolution;
+    if (answered.read.value === null || resolution === undefined) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    // **上限に当たったら「見えない」に丸めない**(`Z-G17` / `V7-M4-T04` と同じ形)。
+    if (resolution.kind === "limit_exceeded") {
+      return c.json(errorBody([recordAccessLimitError(resolution.limit)]), 400);
+    }
+    if (resolution.kind === "unknown_member") {
+      return c.json(errorBody([unknownGrantTargetError()]), 400);
+    }
+    const doorRow = answered.read.value as Record<string, unknown>;
+    // **個人スコープ(`ADR-0016`)の伏せ方も単票 `GET` と1バイトも同じにそろえる** ——
+    // **判定は `owner-scope.ts` の `roleReadCrossesOwnerScope` 1本**(ここに条件式を書かない)。
+    const doorOwnerField = personalOwnerField(resolved.table);
+    if (
+      doorOwnerField !== undefined &&
+      !isOwnerVisible(doorRow[OWNER_FIELD], actor.id) &&
+      !roleReadCrossesOwnerScope({
+        manifest,
+        roles: actor.roles,
+        table: tableId,
+        row: doorRow,
+        subject: actor.id,
+      })
+    ) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    // **要求している人自身に見えない行は、単票 `GET` と同じ 404 で伏せる。**
+    if (!resolution.requester.read) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    // **【`V18-M3-T02c` / `PM-G6`】名簿 / グループ / 付与の表で、一覧から落ちた行。**
+    //
+    // **`ADR-0435` §Decision 2 の 3 の逐語**: 「**一覧は応答から落とし(0件)、単件は
+    // 404 にする**(`ADR-0305` 限定11 を越えない)。**「403 で全部返す」形にしない**」。
+    // **この口も単件である。** **403 にすると「その行が在る」ことが漏れる** ——
+    // **すぐ上の要求者自身の 404 と、個人スコープの 404 と、1バイトも同じ向きである。**
+    // **本文も、実在しない行を叩いたときの 404 と、行のIDのほかは1バイトも同じである。**
+    // **運営(`owner`)はこの枝に1度も入らない**(`judgeRecordPopulation` の
+    // `access_registry` 枝が運営を先に通す。`D-V18-18` と同じ向き)。
+    if (answered.registryHidden) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    return c.json({
+      // **`?member=` に書かれた値をそのまま返す**(**名簿の行の中身を1文字も返さない**)。
+      subject: { member, self: resolution.self },
+      // **4つのキーの形を書く場所は製品コードで1箇所である** —— **同じ1本を通す。**
+      access: recordRowAccessMap({
+        entries: [{ row: doorRow, verdict: resolution.subject }],
+        grantWrite: () => resolution.subjectGrantWrite,
+      }),
+      sources: resolution.sources,
+    });
+  });
+
+  /**
    * **4b. 「誰にも見えない行」を見つける、運営専用の口**(`Z-G19` / `V7-M5-T02` /
    * `D-V7-15`)。**`Z-G18` が閉じた行のうち、付与が1件も無いものだけを一覧で返す。**
    *
@@ -5661,6 +6589,18 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
    * **【誇張しない。この口が意味しないこと】**
    *  - **「運営が回復できる」ことを1ミリも意味しない** —— **付与を作れるのは行の作成者と
    *    運営である**(`D-V7-14`)が、**作成者が消えた行の回復手順は v7 の射程外である。**
+   *
+   * **【2026-09-08 訂正(`V17-M6-T01` / `AC-G22` / `ADR-0424`)。直前の3行を1バイトも
+   * 消していません】** —— **直前の「1ミリも意味しない」は、今日は**半分だけ**真である。**
+   *
+   *  - **今日も真**: **この口そのものは行を**見つける**だけであり、1バイトも変わっていない。**
+   *    **並ぶ行の母集団も、判定も、応答の形も、着手前とまったく同じである。**
+   *  - **今日は偽**: **「作成者が消えた行の回復手順は射程外である」。**
+   *    **`V17-M6-T01` が回復の側を開けた** —— **親の行が**読めない**ときに限り、
+   *    **運営ロール(`owner`)だけ**が、並んだ行を対象にした付与を作れるようになった。**
+   *    **判定は今日も `owner-scope.ts` の1本の中に在り、このファイルには1バイトも無い。**
+   *  - **広がっていないもの**: **行の作成者には広げていない。**
+   *    **親が**生きている**ときの拒否は、運営でも1ミリも緩んでいない。**
    *  - **付与は在るが相手が解決できない行(相手のメンバー行が消えた行)は、この口に
    *    1件も並ばない** —— **付与が0件ではないためである。**
    *  - **`st_public` はこの口の相手ではない** —— **`st_public` と宣言の同居は適用時に
@@ -5735,6 +6675,15 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // **【禁止】これを「伏せ方を緩めた」と読まない** —— **緩めていない。**
     // **【禁止】逆に「運営が回復できるようになった」とも書かない** —— **並んだ行に規則を
     // 足す手段を1つも増やしていない**(`Z-G19` の「誇張しない」をそのまま引き継ぐ)。
+    //
+    // **【2026-09-08 訂正(`V17-M6-T01` / `AC-G22` / `ADR-0424`)。直前の2行を1バイトも
+    // 消していません】** —— **「並んだ行に規則を足す手段を1つも増やしていない」は
+    // 今日は偽である。** **手段が今日から**1つ増えた** ——
+    // **親の行が読めない行に対して、運営ロール(`owner`)だけが付与を1件作れる。**
+    // **増えたのは `owner-scope.ts` の書込判定の側であって、この口ではない** ——
+    // **この口のハンドラは1バイトも変わっていない**(訂正のコメントだけを足した)。
+    // **【今日も禁止】この口を「取り残しが見えるようになった」と書かない** ——
+    // **見えるのは着手前からである。**
     const accessSources = recordAccessSourceTables(manifest, tableId);
     const grantGoverned = accessSources !== undefined;
     if (!grantGoverned && resolved.system) {
@@ -5934,6 +6883,24 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       }
       body.value[OWNER_FIELD] = (actor as AuthUser).id;
     }
+    // --- 面の**行ごと**の規則(`V17-M3` / `AC-G15`)-------------------------------------
+    //
+    // **判定は {@link roleRowBlocked} 1本であり、ここに条件式を1行も書かない。**
+    // **`st_owner` のスタンプの**あと**に当てる** —— **`{"field":"st_owner",
+    // "equals_current_user":true}` という最も自然な規則が、生のボディでは常に偽になるからである。**
+    // **書く前に判定する** —— **拒否されたとき1行も書かれない。**
+    if (
+      roleRowBlocked({
+        manifest,
+        tableId,
+        rows: [body.value],
+        roles: (actor as AuthUser | undefined)?.roles ?? null,
+        subject: (actor as AuthUser | undefined)?.id ?? null,
+        verb: "write",
+      })
+    ) {
+      return c.json(errorBody([forbiddenRoleAccessError(`表 "${tableId}" のこの行`, "作成")]), 403);
+    }
     // 行ごとのアクセス権(`Z-G11` / `V7-M3-T02`)。**関門は「作った人に何が渡るか」1つである。**
     //
     // **順序**: **(1) メンバー表に行が無ければ 400 →(2) 作った人に何も渡らない設定なら 400
@@ -5993,6 +6960,76 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // (単件 `POST` / `POST /batch`)であり、この口だけではない**(`ADR-0404` 限定7 /
       // 限定13。**述語は1本のままで、判定の式を1バイトも写していない**)。
       // **3行目(MCP / 受信口 / ワークフロー / 島)は今日も真である。**
+      // **【`V17-M2-T04c` による訂正(2026-09-07)。上の行を1バイトも消していない】** ——
+      // **逐語「3行目(MCP / 受信口 / ワークフロー / 島)は今日も真である。」は今日は偽である。**
+      // **`V17-M2`(台帳 `AC-G7a` / `ADR-0411`)が、行を**作る**側の関門を
+      // MCP・受信口・ワークフロー・島の4本の入口にも配線した**(`src/mcp/tools/write.ts` /
+      // `src/server/inbound-route.ts` / `src/kernel/workflow-runner.ts` の各1箇所)。
+      // **双方向に書く** —— **素通りするのは、決まった時刻に動く処理(schedule)1本だけである**
+      // (`ADR-0411` 限定1)。 **親の付け替え(更新)が効くのは今日も HTTP の2経路だけで、
+      // この4本の入口の**更新**は今日も素通りする**(同 限定4)——
+      // **親を指さずに作ってから、あとで親を書き入れる道は今日も開いている。**
+      // **受信口には逃げ道が今日1つも無い**(同 §限界1。`AC-G7b` は**保留**)。
+      // **【禁止】これを「塞いだ」「安全になった」と読まない。**
+      // **【`V18-M6-T03` による訂正(2026-09-13)。上の行を1バイトも消していない】** ——
+      // **逐語「親の付け替え(更新)が効くのは今日も HTTP の2経路だけで、この4本の入口の**更新**は
+      // 今日も素通りする」は今日は偽である**(`V18-M6-T02` / 台帳 `PM-G2` / `ADR-0443` 授権の表 行2)——
+      // **AI の口(MCP)の**更新**にも同じ関門が掛かった**(`src/mcp/tools/write.ts`。
+      // `update_record` と `write_records` の `update` op の、どちらにも掛かる)。
+      // **掛かる口は画面・HTTP・AI の口である。**
+      // **双方向に書く** —— **素通りする口は受信口・自動処理・コードの島の3本であり、
+      // 決まった時刻に動く処理も今日どおり素通りする。**
+      // **あわせて `V18-M6-T01`(`PM-G1` / 同 行1)が、**移す前の親**に要求する動詞を `write` から
+      // `delete` へ上げた**(`src/server/owner-scope.ts`。移した先の親は今日どおり `write` である)。
+      // **【禁止】これを「塞いだ」「安全になった」と読まない。**
+      // **【`V17-M5-T03d` / `AC-G10`。`ADR-0412`】その表に行を作れる立場を要求する。**
+      //
+      // **前提の関門である**(`AND`)—— **上の親の関門とまったく同じ置き方で、
+      // **合成(`OR`)より先に落とす**。** **`OR` の後ろに置くと、その表を名指しした
+      // 役割の規則が1本あるだけで素通りする。**
+      // **判定は `owner-scope.ts` の1本**(ここに条件式を書かない。`ADR-0296` 限定12)——
+      // **本ファイルは実効ロール集合を渡し、返ってきた真偽値を応答へ写しているだけである。**
+      // **書く前に判定する** —— **拒否されたとき1行も書かれない。**
+      // **親の関門(`judgeCreateParentAccess`)には1バイトも足していない** ——
+      // **あちらの呼び出しの本数を固定している検査が別に在る。**
+      //
+      // **【射程。誇張しない】** —— **効くのは HTTP の作成2経路(この単件 `POST` と
+      // まとめ書きの `create` op)だけである。** **AI の道具・受信口・自動処理・島・
+      // 時刻起動は今日も素通りする**(`ADR-0412` 限定7)。
+      // **更新にも削除にも1ミリも掛かっていない。**
+      // **【禁止】これを「全部の経路で作成の壁が立つ」と読まない。**
+      //
+      // **【2026-09-12 追記。`V18-M5-T01` / `PM-G2` / `ADR-0432` / `ADR-0442`】**
+      // **上の行を1バイトも消していない。偽になった文を名指ししてから訂正を足す。**
+      //
+      // **偽になった逐語**: 「**AI の道具・受信口・自動処理・島・時刻起動は今日も
+      // 素通りする**」のうち、**「AI の道具」だけ**が `V18-M5-T02` で偽になる。
+      // **`T01`(本追記)の時点ではまだ1文字も偽になっていない** ——
+      // **本葉は `src/mcp/` を1バイトも変えていないからである。**
+      // **この逐語の訂正は `T02` が書く**(先に書くと、その時点で嘘になる)。
+      // **受信口 / 自動処理 / 島 / 時刻起動 の4本は、本段を通して素通りのままである**
+      // (`D-V18-6`。**画面の「一覧の操作」から自動処理を経由して行を作る道
+      // (`runManualWorkflow`)も、この4本の1つを通るので壁が立たない**)。
+      //
+      // **【本葉が変えたこと】** **述語の返り値が真偽値から **3つの言葉** になり、
+      // 止まる理由が2つに割れた** —— **立場が決められていて挙がっていない側
+      // (今日までと1ビットも変わらない)と、立場が**一行も書かれていない**側
+      // (`V18-M5` が既定を反転して新しく止める側)である。**
+      // **判定は今日も `owner-scope.ts` の1本であり、ここに条件式を1つも書いていない。**
+      // **どちらも書く前に落ちるので、拒否されたとき1行も書かれない。**
+      {
+        const verdict = judgeRootCreatableRoles({
+          manifest,
+          tableId,
+          roles: (actor as AuthUser | undefined)?.roles ?? null,
+        });
+        if (verdict === "not_listed") {
+          return { denied: [forbiddenRootCreatableRoleError()], status: 403 as const };
+        }
+        if (verdict === "undeclared") {
+          return { denied: [forbiddenUndeclaredRootCreateError()], status: 403 as const };
+        }
+      }
       {
         const readers = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
         const denial = createParentDenial(
@@ -6115,12 +7152,20 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // 場所である** —— **`D-V4-124` がそれを引き直した。****射影は `owner-scope.ts` の
     // 1本で、読取経路(`dropHidden`)が呼ぶものと同一である**(`ADR-0061` 限定4)。
     // **【`V8-M17` / `J-G7`】面の項目の規則も、読取とまったく同じ隣り合わせで掛ける。**
-    const createdRecord = projectForRoleFields({
+    // **【`V17-M3` / `AC-G16`】行ごとの読取が偽なら、業務の列を全部落とす** ——
+    // **既存の射影の**外側**に1本重ねるだけで、`projectForRoleFields` を1バイトも触らない。**
+    const createdRecord = hideRowForRoleCondition({
       manifest,
       table: resolved.table,
-      row: result.value,
+      row: projectForRoleFields({
+        manifest,
+        table: resolved.table,
+        row: result.value,
+        roles: (actor as AuthUser | undefined)?.roles ?? null,
+        // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
+        subject: (actor as AuthUser | undefined)?.id ?? null,
+      }),
       roles: (actor as AuthUser | undefined)?.roles ?? null,
-      // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
       subject: (actor as AuthUser | undefined)?.id ?? null,
     });
     return c.json(
@@ -6284,6 +7329,31 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           }
         }
       }
+      // --- 面の**行ごと**の規則(`V17-M3` / `AC-G15`)---------------------------------
+      //
+      // **判定は {@link roleRowBlocked} 1本であり、ここに条件式を1行も書かない。**
+      // **更新前(`existing.value`)と更新後(`{...existing, ...body}`)の**両方**を渡す** ——
+      // **片方だけだと「条件の外へ逃がす更新」か「条件の中へ奪う更新」が素通りする。**
+      // **点を宣言した表では1ミリも掛からない**(すぐ上の合成判定が今日どおり答える)。
+      // **書く前に判定する** —— **拒否されたとき1バイトも書かれない。**
+      if (
+        roleRowBlocked({
+          manifest,
+          tableId,
+          rows: [
+            existing.value as Record<string, unknown>,
+            { ...(existing.value as Record<string, unknown>), ...body.value },
+          ],
+          roles: (c.get("user") as AuthUser | undefined)?.roles ?? null,
+          subject: (c.get("user") as AuthUser | undefined)?.id ?? null,
+          verb: "write",
+        })
+      ) {
+        return c.json(
+          errorBody([forbiddenRoleAccessError(`表 "${tableId}" のこの行`, "更新")]),
+          403,
+        );
+      }
       // **付与表への書込を絞る(`Z-G5` / `V7-M3-T03`)。** **判定に渡すのは「書き込んだあとの
       // 姿」である** —— **既存行に送られた値を重ねたものを渡す。** **そうしないと、相手だけを
       // 自分に付け替える `PATCH` が「相手が書かれていない」として素通りする。**
@@ -6325,6 +7395,29 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       //
       // **【射程。誇張しない】** —— **効くのは HTTP の4経路(作成2本 + 更新2本)である。**
       // **MCP / 受信口 / ワークフロー / 島は `D-V15-3` により今日も素通りする。**
+      // **【`V17-M2-T04c` による訂正(2026-09-07)。上の行を1バイトも消していない】** ——
+      // **逐語「効くのは HTTP の4経路(作成2本 + 更新2本)である。MCP / 受信口 / ワークフロー / 島は `D-V15-3` により今日も素通りする。」は今日は偽である。**
+      // **`V17-M2`(台帳 `AC-G7a` / `ADR-0411`)が、行を**作る**側の関門を
+      // MCP・受信口・ワークフロー・島の4本の入口にも配線した**(`src/mcp/tools/write.ts` /
+      // `src/server/inbound-route.ts` / `src/kernel/workflow-runner.ts` の各1箇所)。
+      // **双方向に書く** —— **素通りするのは、決まった時刻に動く処理(schedule)1本だけである**
+      // (`ADR-0411` 限定1)。 **親の付け替え(更新)が効くのは今日も HTTP の2経路だけで、
+      // この4本の入口の**更新**は今日も素通りする**(同 限定4)——
+      // **親を指さずに作ってから、あとで親を書き入れる道は今日も開いている。**
+      // **受信口には逃げ道が今日1つも無い**(同 §限界1。`AC-G7b` は**保留**)。
+      // **【禁止】これを「塞いだ」「安全になった」と読まない。**
+      // **【`V18-M6-T03` による訂正(2026-09-13)。上の行を1バイトも消していない】** ——
+      // **逐語「親の付け替え(更新)が効くのは今日も HTTP の2経路だけで、この4本の入口の**更新**は
+      // 今日も素通りする」は今日は偽である**(`V18-M6-T02` / 台帳 `PM-G2` / `ADR-0443` 授権の表 行2)——
+      // **AI の口(MCP)の**更新**にも同じ関門が掛かった**(`src/mcp/tools/write.ts`。
+      // `update_record` と `write_records` の `update` op の、どちらにも掛かる)。
+      // **掛かる口は画面・HTTP・AI の口である。**
+      // **双方向に書く** —— **素通りする口は受信口・自動処理・コードの島の3本であり、
+      // 決まった時刻に動く処理も今日どおり素通りする。**
+      // **あわせて `V18-M6-T01`(`PM-G1` / 同 行1)が、**移す前の親**に要求する動詞を `write` から
+      // `delete` へ上げた**(`src/server/owner-scope.ts`。移した先の親は今日どおり `write` である)。
+      // **【禁止】これを「塞いだ」「安全になった」と読まない。**
+      // **`DELETE` に掛けていないこと・参照を**空にする**更新が今日も通ることは、今日も真である。**
       // **`DELETE` にも掛けていない。** **参照を**空にする**更新(壁の内側から抜き出す)は
       // 今日も通る**(`ADR-0408` §限界3)。
       {
@@ -6377,14 +7470,22 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // **`_updated_at` は落ちない**(予約規約フィールドでも宣言つき項目でもない)ので、
       // **次の `If-Match` を組む手が消えることはない。**
       // **【`V8-M17` / `J-G7`】面の項目の規則も、読取とまったく同じ隣り合わせで掛ける。**
-      const updatedRecord = projectForRoleFields({
+      // **【`V17-M3` / `AC-G16`】行ごとの読取が偽なら、業務の列を全部落とす** ——
+      // **`_updated_at` は `table.fields` に無いので残る**(`ADR-0134` 限定4)。
+      const updatedRecord = hideRowForRoleCondition({
         manifest,
         table: resolved.table,
-        row: result.value,
+        row: projectForRoleFields({
+          manifest,
+          table: resolved.table,
+          row: result.value,
+          roles: (c.get("user") as AuthUser | undefined)?.roles ?? null,
+          // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
+          subject: (c.get("user") as AuthUser | undefined)?.id ?? null,
+        }) as typeof result.value,
         roles: (c.get("user") as AuthUser | undefined)?.roles ?? null,
-        // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
         subject: (c.get("user") as AuthUser | undefined)?.id ?? null,
-      }) as typeof result.value;
+      });
       return c.json(
         failures.length > 0
           ? { record: updatedRecord, workflow_history_failures: failures }
@@ -6489,6 +7590,33 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           }
         }
       }
+      // --- 面の**行ごと**の規則(`V17-M3` / `AC-G15`)---------------------------------
+      //
+      // **判定は {@link roleRowBlocked} 1本であり、ここに条件式を1行も書かない。**
+      // **消す相手は1行だけなので、渡す行も1つである**(更新のように2つ渡す理由が無い)。
+      // **行を読む形は、すぐ下の削除保護の関門と1バイトも違わない** —— **この経路は今日も
+      // トランザクションを1つも開かないので、読取は書込の外に在り、同じ TOCTOU の窓が残る。**
+      // **点を宣言した表では1ミリも掛からない**(すぐ上の合成判定が今日どおり答える)。
+      {
+        const existing = getRecord(db, manifest, tableId, recordId);
+        if (
+          existing.ok &&
+          existing.value !== null &&
+          roleRowBlocked({
+            manifest,
+            tableId,
+            rows: [existing.value as Record<string, unknown>],
+            roles: (actor as AuthUser | undefined)?.roles ?? null,
+            subject: (actor as AuthUser | undefined)?.id ?? null,
+            verb: "delete",
+          })
+        ) {
+          return c.json(
+            errorBody([forbiddenRoleAccessError(`表 "${tableId}" のこの行`, "削除")]),
+            403,
+          );
+        }
+      }
       // 削除不可規約(V4-M4-T05 / ADR-0073 = `B-G8`): **行の状態が `DELETE` を止める。**
       //
       // **位置**: `If-Match` の CAS と個人スコープの事前判定の**後ろ**、`writeWithAudit` の
@@ -6537,6 +7665,139 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             : null;
         if (denial !== null) {
           return c.json(errorBody(denial.errors), denial.status);
+        }
+      }
+      // --- 親を消すと残る行の連鎖(`V18-M7-T02` / `PM-G5` / `ADR-0444` §Decision 3)--------
+      // **【着手前の形】** **親を消しても、ぶら下がっていた行は黙って残り、運営者以外の全員から見えな
+      // くなっていた。** **この関門はその形を**起きなくする**ものではなく、「一度断って利用者に選ば
+      // せる」ところまでである**(`D-V18-9`)。 **【禁止】「安全になった」と読まない。** **位置は、すぐ
+      // 上の付与表を対象にした削除かどうかの**判定**と、下の実際の書込の**間**** —— **前に置くと、手前の
+      // 関門で止まるはずの人にまで**見えない行の件数**を返してしまう**(`ADR-0434` §Decision 6 の 5 の
+      // 「越えてはならない線」)。 **6段の順序は `ADR-0444` §Decision 3 が固定しており、下の分岐がその
+      // ① 〜 ⑥ である。** **③ が ④ より**先**なのは、自分に消せない行の件数を ④ が先に返すと、同じ趣旨
+      // を関門の内側で破ることになるからである。** **数える向きも判定も `owner-scope.ts` の1本が持ち、
+      // ここに条件式を1行も書かない**(`ADR-0061` 限定4)。 **行の読み出しはこの経路のほかの判定と同じ
+      // `memoizedRowReaders` である**(新しい読み手を作らず、中核の口も新しく取らない)。
+      // **【原子性を1ミリも取らない。隠さない】**(`D-V18-14` / `ADR-0444` 限定9)—— **子は深い段から1件
+      // ずつ消し、そのあとで親を消す**(まとめ書きの口は使わない)。 **途中で失敗したら、そこまでに消えた
+      // 行は**消えたまま**であり**(巻き戻さない)、**親の版が合わずに最後で断られた場合も子は消えたまま
+      // で、`D-V18-32` により中途半端になりうる行数は段数ぶん増える。** **【TOCTOU を1バイトも塞いで
+      // いない】** **この経路は今日もトランザクションを1つも開かない** —— **件数の印で「ずれたら消さ
+      // ない」までは言えるが、「ずれない」とは言えない。**
+      //
+      // --- **連鎖に入る前の事前照合**(`V18-M7-T07b`。`ADR-0444` 追記10)-------------------
+      // **【この段が作った退行を直すものである。実測台が見つけた】** —— **実測の所在は
+      // `docs/plan/v18/records/v18-m7.md` の `# (e) 原子的でないこと(**撃てた**)` の節
+      // (複製 `51` / ポート `4584`)。** **件数の印が正しく、版の印(`If-Match`)だけが古い要求を
+      // 撃つと、**子5行が消えたうえで親だけが残り**、応答は版が合わない断りになっていた。**
+      // **利用者が受け取るのは「先の変更を黙って上書きしないための保護です」という断りで、その裏で
+      // 5行が消えていた。** **着手前(`a594d2ac`)は、同じ要求が **1行も消さずに** 断られていた。**
+      // **原因は、下の ⑥(連鎖の実行)が、この経路のいちばん最後に在る親の版照合より **前** に
+      // 走ることである。**
+      //
+      // **【`D-V18-14` の射程外である。丸めない】** —— **`D-V18-14`(および `ADR-0444` 限定9)が
+      // 許したのは「連鎖の**途中で落ちたとき**、そこまでに消えた行は消えたままでよい」ことであって、
+      // 「**要求そのものが却下されたのに行が消えること**」ではない。**
+      //
+      // **【足すのは事前照合だけである。最後の CAS を1バイトも変えない】**(`ADR-0073` 限定10)——
+      // **版が合わなければ、下の `if` に入らずにそのまま最後の `deleteRecord(…, ifMatch)` へ落ちる。**
+      // **そこで CAS が同じ条件で落ち、**今日と1文字も同じ断り**が返る** —— **断り文を新しく1本も
+      // 作っていない**(作ると 版の印の断りが2本に割れる)。
+      //
+      // **【事前照合と最後の CAS の**両方**が要る理由。片方では足りない】**
+      //   **(a) 事前照合だけでは足りない** —— **この経路は今日もトランザクションを1つも開かない。**
+      //       **事前照合を通ったあとで別の書込が `_updated_at` を進めれば、最後の CAS が無ければ
+      //       **先の変更を黙って上書きして**親が消える。** **`If-Match` の関門はそこに在る。**
+      //   **(b) 最後の CAS だけでは足りない** —— **それが今日の退行そのものである。** **CAS は
+      //       連鎖が終わったあとにしか立たないので、却下が決まっている要求でも子が先に消える。**
+      // **【誇張しない。原子性は1ミリも取れていない】** —— **(a) の窓は今日も残る。** **事前照合が
+      // 通ったあとで別の書込が入れば、子だけが消えて親が残る形は**今日も起こりうる**。** **本段が
+      // 直したのは「**却下が決まっている要求**で1行も消えないこと」までである。**
+      //
+      // **判定は `_updated_at` と `If-Match` の1つの比較であり、権限も所有者も1ビットも見ない**
+      // (見る層は上の関門が全部済ませている)。 **行の読み出しはこの経路のほかの判定と同じ
+      // `getRecord` である**(新しい読み手を作らない)。 **対象が存在しないときは比較しない** ——
+      // **その場合は今日どおり最後の `deleteRecord` が「不在」を答え、404 になる。**
+      const parentAtCascade = getRecord(db, manifest, tableId, recordId);
+      const parentVersionFresh = !(
+        parentAtCascade.ok &&
+        parentAtCascade.value !== null &&
+        (parentAtCascade.value as { _updated_at?: unknown })._updated_at !== ifMatch
+      );
+      if (parentVersionFresh) {
+        const cascadeReaders = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+        const who = actor as AuthUser | undefined;
+        let childLimit: "depth" | "rows" | undefined;
+        const cascade = resolveRecordDeleteCascade({
+          manifest,
+          tableId,
+          recordId,
+          readRows: cascadeReaders.readRows,
+          judgeChildDelete: cascadeChildDeleteJudge({
+            dataRoot,
+            db,
+            manifest,
+            actor: who,
+            onLimit: (hit) => {
+              childLimit = hit;
+            },
+            // **配管を組む呼び出しはハンドラの中に置く**(上の逐語)。
+            judgeOf: (id) =>
+              recordAccessJudge(
+                { dataRoot, appDb: () => db },
+                manifest,
+                id,
+                who?.id ?? null,
+                recordAccessSourceTables(manifest, id),
+                who?.roles ?? null,
+              ),
+          }),
+        });
+        // **上限に当たったら「子は0件」にも「消せない」にも丸めない**(丸めると、辿りきれなかった行が
+        // 黙って残るか、403 の理由に化ける)。 **数える側の打ち切りと、子1件ずつの判定の打ち切りを、
+        // **同じ1箇所**で 4xx に翻訳する** —— **断り方はこの経路に既に在る上限の断り(`Z-G17` /
+        // `V7-M4-T04`)に寄せた**(理由が同じで文面が割れず、2本目にすると `ADR-0444` 限定13 に触れる)。
+        const cascadeLimit = cascade.kind === "limit_exceeded" ? cascade.limit : childLimit;
+        if (cascadeLimit !== undefined) {
+          return c.json(errorBody([recordAccessLimitError(cascadeLimit)]), 400);
+        }
+        // **② 子が0件なら、ここから下は着手前と1バイトも変わらない(204)。**
+        if (cascade.kind === "cascade" && cascade.total > 0) {
+          // **③ 1件でも消せない子が在れば、件数も表IDも1文字も出さずに断る**(`D-V18-31`)。
+          if (cascade.hasUndeletableChild) {
+            return c.json(errorBody([forbiddenCascadeDeleteError()]), 403);
+          }
+          // **件数の印は10進の整数ちょうどで、10進でない値・負の値・空・小数・符号つきはいずれも「印が
+          // 無い」と同じ扱いにする**(断り方を3本目にしない)—— **この段に来た人は ③ を通っている
+          // (= 全部の子を消せる)ので、④ の文面を返しても件数は1件も漏れない。**
+          const sealHeader = c.req.header("if-match-children")?.trim() ?? "";
+          const seal = /^[0-9]+$/.test(sealHeader) ? Number.parseInt(sealHeader, 10) : undefined;
+          const tableIds = cascade.perTable.map((entry) => entry.tableId);
+          // **④ / ⑤** —— **どちらも1行も消さない。** **文面は別である。**
+          if (seal === undefined || seal !== cascade.total) {
+            return c.json(
+              errorBody([cascadeChildrenConfirmationError(cascade.total, tableIds, seal)]),
+              409,
+            );
+          }
+          // **⑥ 深い段から消す**(述語が返した順序に従う。親はいちばん最後)。 **子には版の印を渡さない**
+          // —— **利用者が版を持っているのは親1件だけで、子の版まで要求するとこの操作は誰にも実行でき
+          // なくなる。** **監査は子1件につき1行残す**(親と同じ `delete_record`)—— **消えた行の唯一の
+          // 痕跡がここで、親1行にまとめるとどの行が消えたかが残らない。** **途中で落ちれば消えたまま。**
+          for (const child of cascade.deleteOrder) {
+            const removed = writeWithAudit(
+              db,
+              actor,
+              "delete_record",
+              child.tableId,
+              () => deleteRecord(db, manifest, child.tableId, child.recordId),
+              () => child.recordId,
+              (deleted) => deleted,
+            );
+            if (!removed.ok) {
+              return c.json(errorBody(removed.errors), removed.conflict === true ? 409 : 400);
+            }
+          }
         }
       }
       const result = writeWithAudit(
@@ -6862,6 +8123,50 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           if (denial !== null) {
             return c.json(errorBody(denial.errors), denial.status);
           }
+          // --- 面の**行ごと**の規則(`V17-M3` / `AC-G15`)-------------------------------
+          //
+          // **判定は {@link roleRowBlocked} 1本であり、ここに条件式を1行も書かない。**
+          // **単件 `POST` / 単件 `PATCH` とまったく同じものを、同じ相対位置(付与表の関門の
+          // 直後)で当てる** —— **入口を何本生やしても振る舞いが一致する**(`ADR-0003` §7)。
+          // **`update` op には更新前と更新後の両方を渡す**(単件 `PATCH` と同型)。
+          // **`create` op には送られた値に持ち主のスタンプを重ねたものを渡す**
+          // (`judgeOwnerScopedOp` が `values` を破壊的に上書きしたあとである)。
+          //
+          // **部分適用は起きない**: **この `return` はカーネルの `writeRecords`
+          // (1 IMMEDIATE tx)を開く**前**にループごと抜ける。**
+          // **まとめ書きの `delete` op には当て先が無い** —— **`delete` は語彙に無く、
+          // カーネルが 400 で断る**(実測は `src/server/role-conditions-write-enforcement.test.ts`
+          // の `(AC-G15-6)`)。
+          //
+          // **表を解決できなかった op には1バイトも掛けない**(`opTable !== undefined`)——
+          // **実在しない表を名指しした op は今日どおりカーネルが 400 で断る。**
+          // **この条件が無いと、既定が閉じている面が先に 403 を返し、応答コードが動く**
+          // (実測: `src/server/batch.test.ts` の「存在しない table で全ロールバック = 400」
+          // が 403 になった)。**同じ理由で、すぐ上の面の表の関門も `opTable` で守っている。**
+          if (
+            opTable !== undefined &&
+            roleRowBlocked({
+              manifest,
+              tableId: rawTableId,
+              rows:
+                before?.ok === true && before.value !== null
+                  ? [before.value as Record<string, unknown>, merged]
+                  : [merged],
+              roles: actor.roles,
+              subject: actor.id,
+              verb: "write",
+            })
+          ) {
+            return c.json(
+              errorBody([
+                forbiddenRoleAccessError(
+                  `表 "${rawTableId}" のこの行`,
+                  opWriteKind === "create" ? "作成" : "更新",
+                ),
+              ]),
+              403,
+            );
+          }
         }
         // **【`V15-M3-T02` / `CR-G5` / `CR-G1` / `CR-G3` / `CR-G6`。`ADR-0404`】親の行への
         // 書込を要求する。** **単件 `POST`(`:5944`)とまったく同じ述語を、まったく同じ
@@ -6883,6 +8188,52 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         //
         // **【射程。誇張しない】** —— **本 MS が足したのはこの2経路目までである。**
         // **MCP / 受信口 / ワークフロー / 島は `D-V15-3` が射程外にしたので今日も素通りする。**
+        // **【`V17-M2-T04c` による訂正(2026-09-07)。上の行を1バイトも消していない】** ——
+        // **逐語「MCP / 受信口 / ワークフロー / 島は `D-V15-3` が射程外にしたので今日も素通りする。」は今日は偽である。**
+        // **`V17-M2`(台帳 `AC-G7a` / `ADR-0411`)が、行を**作る**側の関門を
+        // MCP・受信口・ワークフロー・島の4本の入口にも配線した**(`src/mcp/tools/write.ts` /
+        // `src/server/inbound-route.ts` / `src/kernel/workflow-runner.ts` の各1箇所)。
+        // **双方向に書く** —— **素通りするのは、決まった時刻に動く処理(schedule)1本だけである**
+        // (`ADR-0411` 限定1)。 **親の付け替え(更新)が効くのは今日も HTTP の2経路だけで、
+        // この4本の入口の**更新**は今日も素通りする**(同 限定4)——
+        // **親を指さずに作ってから、あとで親を書き入れる道は今日も開いている。**
+        // **受信口には逃げ道が今日1つも無い**(同 §限界1。`AC-G7b` は**保留**)。
+        // **【禁止】これを「塞いだ」「安全になった」と読まない。**
+        // **【`V18-M6-T03` による訂正(2026-09-13)。上の行を1バイトも消していない】** ——
+        // **逐語「親の付け替え(更新)が効くのは今日も HTTP の2経路だけで、この4本の入口の**更新**は
+        // 今日も素通りする」は今日は偽である**(`V18-M6-T02` / 台帳 `PM-G2` / `ADR-0443` 授権の表 行2)——
+        // **AI の口(MCP)の**更新**にも同じ関門が掛かった**(`src/mcp/tools/write.ts`。
+        // `update_record` と `write_records` の `update` op の、どちらにも掛かる)。
+        // **掛かる口は画面・HTTP・AI の口である。**
+        // **双方向に書く** —— **素通りする口は受信口・自動処理・コードの島の3本であり、
+        // 決まった時刻に動く処理も今日どおり素通りする。**
+        // **あわせて `V18-M6-T01`(`PM-G1` / 同 行1)が、**移す前の親**に要求する動詞を `write` から
+        // `delete` へ上げた**(`src/server/owner-scope.ts`。移した先の親は今日どおり `write` である)。
+        // **【禁止】これを「塞いだ」「安全になった」と読まない。**
+        // **【`V17-M5-T03d` / `AC-G10`。`ADR-0412`】まとめ書きの `create` op にも、
+        // 単件 `POST` とまったく同じ述語を、まったく同じ相対位置(親の関門の直前)で当てる。**
+        // **判定は `owner-scope.ts` の1本であり、ここに条件式を1つも書いていない。**
+        // **部分適用は起きない**: **この `return` はカーネルの `writeRecords`(1 IMMEDIATE
+        // tx)を開く**前**にループごと抜ける** —— **1つでも当たれば1行も書かれない。**
+        // **【2026-09-12 追記。`V18-M5-T01` / `PM-G2` / `ADR-0432` / `ADR-0442`】**
+        // **上の行を1バイトも消していない。** **述語の返り値が **3つの言葉** になったので、
+        // 止まる理由ごとに断り文を出し分ける** —— **単件 `POST` とまったく同じ2本である。**
+        // **判定は今日も `owner-scope.ts` の1本であり、ここに条件式を1つも書いていない。**
+        // **部分適用は起きない**(この `return` は上のコメントのとおり、カーネルの
+        // `writeRecords` を開く**前**にループごと抜ける)。
+        if (opKind === "create" && typeof rawTableId === "string") {
+          const verdict = judgeRootCreatableRoles({
+            manifest,
+            tableId: rawTableId,
+            roles: actor.roles,
+          });
+          if (verdict === "not_listed") {
+            return c.json(errorBody([forbiddenRootCreatableRoleError()]), 403);
+          }
+          if (verdict === "undeclared") {
+            return c.json(errorBody([forbiddenUndeclaredRootCreateError()]), 403);
+          }
+        }
         if (opKind === "create" && typeof rawTableId === "string") {
           const denial = createParentDenial(
             judgeCreateParentAccess({
@@ -7108,13 +8459,21 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           );
         }
         // **【`V8-M17` / `J-G7`】面の項目の規則も、単件経路とまったく同じ隣り合わせで掛ける。**
+        // **【`V17-M3` / `AC-G16`】行ごとの読取が偽なら、業務の列を全部落とす** ——
+        // **表は行ごとに決まっているので、射影も行ごとにその表で当てる。**
         batchRecords.push(
-          projectForRoleFields({
+          hideRowForRoleCondition({
             manifest,
             table,
-            row,
+            row: projectForRoleFields({
+              manifest,
+              table,
+              row,
+              roles: actor.roles,
+              // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
+              subject: actor.id,
+            }),
             roles: actor.roles,
-            // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
             subject: actor.id,
           }),
         );
@@ -7214,10 +8573,31 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // orphan blob として T04 の検出プリミティブで拾える(実体無しのメタ行より安全側)。
     const sha256 = putBlob(dataRoot, appId, data);
     const fileId = crypto.randomUUID();
+    // **【`V17-M4-T03` / `AC-G21`】上げた人を1人だけ記録する。**
+    //
+    // **アップロードの口は `filesAuthMiddleware` がログインを要求している**ので、
+    // ここに未ログインは来ない見込みである。 **それでも `?? null` を書いてある** ——
+    // **来たときに落とさず「上げた人が分からない」として記録し、その未参照ファイルを
+    // 誰にも配らない**(ユーザ決定 `D2`。**fail-closed の側**)。
+    const uploader = resolveSessionUser(dataRoot, appId, c);
     withAppDb(dataRoot, appId, (db) => {
       // 既存アプリ(本機能導入前作成)の遅延マイグレーション。新規アプリは create-app が作成済み。
+      //
+      // **【`V17-M4-T03b`】上の1行の後半は今日すでに偽である。旧文を1バイトも消していない** ——
+      // **`create-app.ts` は `_files` を1文字も知らない**(実測 0 件)。 **作るのはここだけである。**
+      // **`ensureFilesTable` は7本目の列(上げた人)も、既存の `_files` に足す。**
       ensureFilesTable(db);
-      insertFileRecord(db, { file_id: fileId, sha256, mime, size: data.byteLength, filename });
+      // **旧(逐語。1バイトも消していない)**:
+      //
+      //     insertFileRecord(db, { file_id: fileId, sha256, mime, size: data.byteLength, filename });
+      insertFileRecord(db, {
+        file_id: fileId,
+        sha256,
+        mime,
+        size: data.byteLength,
+        filename,
+        uploaded_by: uploader?.id ?? null,
+      });
     });
 
     return c.json({ file_id: fileId, sha256, mime, size: data.byteLength, filename }, 201);
@@ -7379,6 +8759,21 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           // (`D-V8-35` の述語をそのまま渡す。**ここに条件式を書かない**)。
           (tableId) =>
             roleReadCrossesOwnerScope({ manifest, roles: user?.roles ?? null, table: tableId }),
+          // **【`V17-M4-T03c` / `AC-G21`】面の**行ごと**の規則を、既存の `roleRowBlocked` で
+          // 当てる**(`ADR-0296` 限定12 —— **判定式をここに1行も書かない**)。
+          // **未ログインには必ず `true` を返す** —— **匿名の枝を1バイトも変えないためである。**
+          (tableId, row) =>
+            user === undefined ||
+            !roleRowBlocked({
+              manifest,
+              tableId,
+              rows: [row],
+              roles: user.roles,
+              subject: user.id,
+              verb: "read",
+            }),
+          // **【`V17-M4-T03c`】上げた人**(`_files` の7本目の列。`D4` / `D2`)。
+          meta.uploaded_by,
         );
         // **上限に当たったら「見えない」に丸めない**(`Z-G17` / `V7-M4-T04`)——
         // **404 の存在秘匿とは応答の形を変える。**
@@ -7669,6 +9064,52 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     //   `let reportScanLimit: ReportLimitKind | undefined;` /
     //   `const result = withReadSource(dataRoot, manifest.app.id, (source) => {` は
     //   `readVisibleReport()` の中へ移った。
+    //
+    // --- 【`V17-M4-T01` / 台帳 `AC-G19`】この画面を閲覧してよいかを、読む前に1度だけ聞く ----
+    //
+    // **着手前、集計表の口には画面(`target: "view"`)の判定が1件も無かった**(自分で打った)——
+    // **表の読取を持つだけで、その集計表を「見せる」と1度も書いていない相手が、
+    // 200 で群と合計を受け取れた**(実測は `src/server/report-view-access.test.ts` の (A-1)。
+    // 実地の形の再現は `docs/plan/v17/records/v17-m4.md` §1)。
+    //
+    // **置いたのは `readVisibleReport()` の**呼び出しの直前**であって、関数の中ではない** ——
+    // **同関数の返り型は `{ ok: false, errors }` の1形しかなく、HTTP はそれを必ず 400 に写す**
+    // (下の `if (!result.ok)`)。**中に置くと 403 を返せず、返り型に枝を足すことになり、
+    // 「`read` を持つ役割の応答本文が着手前と1バイトも変わらない」を余計に危険にする。**
+    // **形は既存の先例(`views/:view_id/actions/run` の入口)をそのまま写した。**
+    //
+    // **【この判定が変えないもの。誇張しない】**
+    // - **未ログインは今日どおり 401 である**(手前の `app.use(… /report, recordsAuthMiddleware)`)。
+    // - **画面の規則を持つが表の規則を1本も持たない人には、今日どおり 200 で合計0が返る**
+    //   (`ADR-0343` 限定10 / `D-V8-128` の「403 にしない」)—— **この判定は画面しか見ない。**
+    // - **`?view=` の名指しの経路(`rejectNamedView`)を1バイトも触っていない。**
+    //
+    // --- 【`V18-M4-T04`(2026-09-12)。台帳 `PM-G10` / `ADR-0435` / 授権 `ADR-0441`】------
+    //
+    // **直上の逐語「`?view=` の名指しの経路(`rejectNamedView`)を1バイトも触っていない。」は
+    //   今日は偽である。** **旧文は1バイトも消していない**(このリポジトリの作法。訂正は追記)。
+    // **偽にしたのは `V17-M4-T01` ではなく、後から来た `V18-M4-T02` である** ——
+    //   **同段が `rejectNamedView` の「`?view=` が無ければ即 `return null`」(`app.ts:3572`)を
+    //   書き換え、名乗らない読取の「口の形」(`unnamedViewReads`)を立てるようにした。**
+    // **【この集計表の口の答えは、それでも1ビットも変わっていない】** ——
+    //   **立つのは一覧の口(`…/records`)と単票の口(`…/records/:record_id`)の綴りに
+    //   **ちょうど**一致する `GET` だけであり、この口の綴り(`…/report`)はどちらにも
+    //   一致しない**(`UNNAMED_VIEW_LIST_PATH` / `UNNAMED_VIEW_SINGLE_PATH`)。
+    //   **さらに、この口は `recordPopulationScope` に `unnamedViewRead` を1度も渡していない**
+    //   (`readVisibleReport` の中。渡さない呼び出しでは壁の `if` が1度も真にならない)。
+    // **したがって今日の正は2文である**: **(1) `rejectNamedView` はもう不変ではない。**
+    //   **(2) それでも集計表の口の応答は、`V17-M4-T01` の時点から1バイトも変わっていない。**
+    // **【禁止】これを「集計表の口にも壁を立てた」と読まない** —— **立てていない。**
+    if (
+      !judgeRoleAccess({
+        manifest,
+        roles: reportRoles,
+        target: { target: "view", view: viewId },
+        verb: "read",
+      }).allowed
+    ) {
+      return c.json(errorBody([forbiddenRoleAccessError(`画面 "${viewId}"`, "閲覧")]), 403);
+    }
     const result = readVisibleReport({
       dataRoot,
       manifest,
@@ -7813,6 +9254,15 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       dataRoot,
       ensureApp,
       changeAuthMiddleware,
+      // **【`V17-M4-T02`。台帳 `AC-G20`】読み物3本に掛ける関門**
+      // (`GET /undo/preview` / `GET /changelog` / `GET /requirements`)。
+      //
+      // **`GET /manifest` に掛けているものと同じ1本をそのまま渡す** —— **判定の写しを
+      // 2つ作らない。** **`manifestAuthMiddleware` の定義は1バイトも変えていない。**
+      //
+      // **`app.use` は `registerChangeRoutes` の中だけで張る** —— **ここ(`app.ts`)で
+      // 張ると、`runner` プロファイルで 404 が 401 になり配布物の契約が破れる。**
+      readAuthMiddleware: manifestAuthMiddleware,
       readJsonBody,
       // =====================================================================================
       // **【`V8-M30`。台帳 `T-G29` = 限定採用。ユーザ決定 `D-V8-47`】締め出しの防止の2本目**

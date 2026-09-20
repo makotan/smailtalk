@@ -2009,7 +2009,19 @@ describe("V3-M13-T09 第3のモードの実行(1トランザクション。完�
     if (line.ok) {
       throw new Error("失敗するはずの書込が成功しました。");
     }
-    expect(String(line.errors[0]?.message)).toContain("_apps");
+    // 【`V17-M3-T07b` / `AC-G27a` で期待値を1つ差し替えた。**旧の1行を逐語で残す**】
+    //
+    //     expect(String(line.errors[0]?.message)).toContain("_apps");
+    //
+    // **履歴へ行く文字列に「項目の値」を1バイトも載せなくなった** —— **`_apps` は
+    //   島が返した op の `table` の**値**なので落ちる。** **残るのは、落ちた場所
+    //   (`/ops/0`)と、そこに書ける表の一覧(`allowed_values`)である。**
+    // **「`_apps` を狙う op が1件も通らないこと」は、下の2つで今日も測れている** ——
+    //   **書込が失敗していること**と、**許可される表の一覧に `_apps` が1つも無いこと**。
+    const message = String(line.errors[0]?.message);
+    expect(message).toContain("/ops/0");
+    expect(message).toContain("許可される値: ");
+    expect(message.slice(message.indexOf("許可される値: "))).not.toContain("_apps");
     expect(readAll(manifest, "stock_move").length).toBe(0);
   });
 

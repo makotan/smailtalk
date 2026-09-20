@@ -52,17 +52,17 @@
 
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyDiff } from "../kernel/apply-diff.ts";
 import { applyManifest } from "../kernel/apply-manifest.ts";
 import { createApp } from "../kernel/create-app.ts";
 import { KernelMetaStore } from "../kernel/meta-store.ts";
-import { appDbPath } from "../kernel/storage-paths.ts";
+import { appDbPath, appSnapshotsDir, snapshotDir } from "../kernel/storage-paths.ts";
 import type { Manifest } from "../kernel/types.ts";
 import { previewUndo, redo, undo } from "../kernel/undo.ts";
-import { findUsableInvitation } from "./invitations.ts";
+import { findUsableInvitation, INVITATION_REVOKED_PREFIX, invitationState } from "./invitations.ts";
 import { AuthStore } from "./store.ts";
 
 const APP_ID = "undo-invitations";
@@ -370,5 +370,176 @@ describe("(T07-3) redo と予告と履歴", () => {
     // **したがって「いつ誰が招待を出したか / 取り消したか」を後から履歴で追う道は無い。**
     // **`_auth_activity`(監査記録)にも1行も書いていない**(`ADR-0336` 限定11 =
     // コードを2つ目の場所に置かない)。
+  });
+});
+
+// =====================================================================================
+// §4 **`V19-M2-T03` の撃ち直し**(**区別が付くようになった今日、上の §2 / §3 の前提が変わった**)
+//
+// **なぜ足すのか**: **`V19-M2-T00` が、取り消しの印を「素の時刻ではない値」に変えた**
+// (`ADR-0452` §Decision の案 (iv)。単位 `SV-G5`)。 **上の (2-a) / (2-b) / (3-a) は
+// 今日も緑のままだが、この3本で使用時刻を見ている `expect` は **2つだけ** であり
+// (`:249` の `toBeNull()` と `:309` の `not.toBeNull()`)、**どちらも値の形を1ミリも
+// 見ていない**。 **すなわち「取り消し」と「使用」が入れ替わっても、この3本は赤くならない。**
+// **§4 はそこを固定する** —— **上の3本の期待値は1つも書き換えていない**(消していない)。
+//
+// **【禁止の履行】「塞がった」と1文字も書かない。** **§4 が示すのは「**今日も起こる**」ことである。**
+// **`src/kernel/undo.ts` / `src/kernel/snapshot.ts` は本タスクでも **1バイトも** 触っていない。**
+//
+// **作り方**: **上の §1〜§3 と同じ「実測 → 定義 → 固定」である**(TDD ではない)。
+// **先に本物の `undo` / `redo` / スナップショットを動かして測り、測った値をそのまま
+// `expect()` に置いた。** **実装を1バイトも変えていない。**
+// =====================================================================================
+
+/** その相手の招待の状態(3値)。**行が無ければ `"none"`**(3値のどれとも区別する)。 */
+function stateOf(username: string): string {
+  return withStore((store) => {
+    const invitation = store.findInvitation(username);
+    return invitation === undefined ? "none" : invitationState(invitation);
+  });
+}
+
+/** その相手の使用時刻の**生の値**。**行が無い場合も `null`**(この §4 では行は必ず在る)。 */
+function usedAtOf(username: string): string | null {
+  return withStore((store) => store.findInvitation(username)?.usedAt ?? null);
+}
+
+/** 写しの名前の一覧。**`listSnapshots` を取り込むと上の検査の行番号が1行ずつ動くので、ここで直に読む。** */
+function snapshotNames(): string[] {
+  return readdirSync(appSnapshotsDir(dataRoot, APP_ID)).sort();
+}
+
+/**
+ * **スナップショットの中**の招待の行を直に読む(**現在の `app.sqlite` ではない**)。
+ *
+ * `restoreSnapshot` を1度も呼ばずに、過去の写しの中身だけを見るための口である。
+ */
+function invitationRowInSnapshot(
+  snapshotName: string,
+  username: string,
+): { code: string; used_at: string | null } | null {
+  const db = new Database(join(snapshotDir(dataRoot, APP_ID, snapshotName), "app.sqlite"), {
+    readonly: true,
+  });
+  try {
+    return db
+      .query<{ code: string; used_at: string | null }, [string]>(
+        `SELECT "code", "used_at" FROM "_auth_invitations" WHERE "username" = ?`,
+      )
+      .get(username);
+  } finally {
+    db.close();
+  }
+}
+
+describe("(V19-T03) 区別が付いた後の撃ち直し", () => {
+  test("(4-a) **取り消した招待は undo で復活し、今日も再び使える**(上の (2-a) を、印の形まで見る形で撃ち直す)", () => {
+    const ownerId = seedOwner();
+    const code = withStore(
+      (store) => store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }).code,
+    );
+    apply("d1", "f1"); // この直前の状態(= 取り消し前)がスナップショットに入る
+    withStore((store) => store.revokeInvitation("bob"));
+
+    // **(2-a) の時点には無かった区別**: 列は空ではなく、素の時刻でもない値が入っている。
+    expect(usedAtOf("bob")?.startsWith(INVITATION_REVOKED_PREFIX)).toBe(true);
+    expect(stateOf("bob")).toBe("revoked");
+    expect(withStore((store) => findUsableInvitation(store, "bob", code))).toBeUndefined();
+
+    expect(undo(dataRoot, APP_ID).valid).toBe(true);
+
+    // **実測値(2026-09-18)**: 印は列ごと消え、**同じコードがまた通る。今日も起こる。**
+    expect(usedAtOf("bob")).toBeNull();
+    expect(stateOf("bob")).toBe("unused");
+    expect(withStore((store) => findUsableInvitation(store, "bob", code)?.role)).toBe("editor");
+  });
+
+  test("(4-b) `redo` が書き戻すのは **取り消し済み** であって「使用済み」ではない(上の (3-a) の `expect` は両者を区別しない)", () => {
+    const ownerId = seedOwner();
+    const code = withStore(
+      (store) => store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }).code,
+    );
+    apply("d1", "f1");
+    withStore((store) => store.revokeInvitation("bob"));
+    expect(undo(dataRoot, APP_ID).valid).toBe(true);
+    expect(stateOf("bob")).toBe("unused");
+
+    expect(redo(dataRoot, APP_ID).valid).toBe(true);
+
+    // **実測値**: 3値のうち**取り消しの側**に戻る。**「使用済み」には化けない。**
+    expect(stateOf("bob")).toBe("revoked");
+    expect(usedAtOf("bob")?.startsWith(INVITATION_REVOKED_PREFIX)).toBe(true);
+    expect(withStore((store) => findUsableInvitation(store, "bob", code))).toBeUndefined();
+  });
+
+  test("(4-c) 使用済みの印は undo で消え、`redo` では **使用済み** として戻る(取り消しに化けない)", () => {
+    const ownerId = seedOwner();
+    const code = withStore(
+      (store) => store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }).code,
+    );
+    apply("d1", "f1");
+    withStore((store) => store.markInvitationUsed("bob"));
+
+    // **使用の印は素の時刻である**(取り消しの印と同じ列に、別の値域で入る)。
+    expect(stateOf("bob")).toBe("used");
+    expect(usedAtOf("bob")?.startsWith(INVITATION_REVOKED_PREFIX)).toBe(false);
+
+    expect(undo(dataRoot, APP_ID).valid).toBe(true);
+    expect(stateOf("bob")).toBe("unused");
+    expect(withStore((store) => findUsableInvitation(store, "bob", code))).toBeDefined();
+
+    expect(redo(dataRoot, APP_ID).valid).toBe(true);
+
+    // **実測値**: 戻るのは**使用済み**の側である。**取り消し済みに化けない。**
+    expect(stateOf("bob")).toBe("used");
+    expect(usedAtOf("bob")?.startsWith(INVITATION_REVOKED_PREFIX)).toBe(false);
+  });
+
+  test("(4-d) **取り消した後にスナップショットが取られると、出し直しても取り消しの印はその中に残る**", () => {
+    const ownerId = seedOwner();
+    const first = withStore((store) =>
+      store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }),
+    );
+    withStore((store) => store.revokeInvitation("bob"));
+    apply("d1", "f1"); // **この apply が、取り消し済みの状態を丸ごと写す**
+    const second = withStore((store) =>
+      store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }),
+    );
+
+    // **現在のファイルからは読めない**(`V19-M2-T04` が撃った側。行は1本のままである)。
+    expect(stateOf("bob")).toBe("unused");
+    expect(usedAtOf("bob")).toBeNull();
+    expect(second.code).not.toBe(first.code);
+
+    // **しかしスナップショットの中には残っている。**
+    const names = snapshotNames();
+    expect(names).toEqual(["0001-d1"]);
+    const row = invitationRowInSnapshot(names[0] ?? "", "bob");
+    expect(row?.code).toBe(first.code);
+    expect(row?.used_at?.startsWith(INVITATION_REVOKED_PREFIX)).toBe(true);
+    // **すなわち「取り消した事実がどこからも読めなくなる」は、取り消した後に差分を1本でも
+    // 適用した場合には当てはまらない。** **写しは `VACUUM INTO` でファイルを丸ごと取る。**
+  });
+
+  test("(4-e) その写しへ undo すると、**出し直した新しい招待が1件も残らない**(新旧どちらのコードも通らない)", () => {
+    const ownerId = seedOwner();
+    const first = withStore((store) =>
+      store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }),
+    );
+    withStore((store) => store.revokeInvitation("bob"));
+    apply("d1", "f1");
+    const second = withStore((store) =>
+      store.issueInvitation({ username: "bob", role: "editor", issuedBy: ownerId }),
+    );
+    expect(withStore((store) => findUsableInvitation(store, "bob", second.code))).toBeDefined();
+
+    expect(undo(dataRoot, APP_ID).valid).toBe(true);
+
+    // **実測値**: 行は取り消し済みの側に戻る。**出し直した新しいコードは表から消える。**
+    expect(stateOf("bob")).toBe("revoked");
+    expect(withStore((store) => store.findInvitation("bob")?.code)).toBe(first.code);
+    expect(withStore((store) => findUsableInvitation(store, "bob", first.code))).toBeUndefined();
+    expect(withStore((store) => findUsableInvitation(store, "bob", second.code))).toBeUndefined();
+    // **運営者に通知は1つも出ない。** **相手は、伝えられたばかりのコードで入れなくなる。**
   });
 });

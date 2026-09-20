@@ -684,35 +684,95 @@ test.describe("V10-M7-T03 買い物の流れ5段を端から端まで押す(chro
      *
      * **したがって、買った人(`editor`)にも運営(`owner`)にも同じ1行が見える。**
      * **書込の側は越えない**(上の編集ボタンが消えているのがその現れである)。
+     *
+     * ## **【2026-09-08。`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`。
+     *    上の段落を1バイトも消していない。期待値を反転させた】**
+     *
+     * **上の理由 1 は今日は偽である。** **`V17-M5-T05` が補完の呼び出しを
+     * `foldOperations` の出口へ移したので、`add_field` で後から `st_owner` を足した表にも
+     * 「自分の行、または持ち主が空の行」という条件が付く**(**補ったことは
+     * `apply_diff` / `POST /diffs` の応答の `role_condition_notices` に
+     * 4種目 `owner_scope_supplied` として載って返る**)。
+     * **理由 2(`roleReadCrossesOwnerScope` が `owner` を特別扱いしない)は今日も真である** ——
+     * **`src/server/owner-scope.ts` は1バイトも動いていない。**
+     * **変わったのは、その関数が読む規則に条件が入ったことだけである。**
+     *
+     * **今日の実測**: **買った人は自分の行を1件見る(上の期待値は動いていない)。**
+     * **運営(`owner`)は0件になる** —— **`owner` の規則にも同じ条件が補われるからである。**
+     * **【誇張しない】これは「運営から隠す機能を足した」のではない** ——
+     * **既定3役割のうち `owner` だけを補完から外していないので、
+     * 運営も「自分の行と持ち主が空の行」しか見なくなった、という副作用である。**
+     * **【この題材が今日も示していないこと】** **`st_owner` に書かれている値は
+     * `username` の側であり、画面の判定が持つ `userId` と一致しない**(躓き (i))——
+     * **その食い違いは1バイトも直っていない。**
+     *
+     * **旧の期待値(逐語)**:
+     *   ```
+     *   expect(await adminPage.getByTestId("list-row").count()).toBe(1);
+     *   await expect(adminPage.getByTestId("list-total")).toHaveText("1–1 件 / 全 1 件");
+     *   ```
      */
     const adminContext = await browser.newContext();
     await steps.app.authenticate(adminContext);
     const adminPage = await adminContext.newPage();
     await adminPage.goto(`/apps/${appId}/views/${STEP5_VIEW_ID}`);
     await expect(adminPage.getByTestId("list-total")).toBeVisible();
-    expect(await adminPage.getByTestId("list-row").count()).toBe(1);
-    await expect(adminPage.getByTestId("list-total")).toHaveText("1–1 件 / 全 1 件");
+    expect(await adminPage.getByTestId("list-row").count()).toBe(0);
+    await expect(adminPage.getByTestId("list-total")).toHaveText("0 件");
     await adminContext.close();
 
     /*
      * **サーバから見た姿も同じである**(画面だけを見て「分離されていない」と書かない)。
      * **そして `st_owner` に入っている値そのものを固定する** —— **躓き (i) の原因は
      * これであり、推測ではなく実測である。**
+     *
+     * **【2026-09-08。`V17-M5-T05` / `AC-G33` / `ADR-0423`。旧の本体を逐語で残す】**
+     * **旧: 買った人と運営の2つのヘッダを同じ `for` で回し、どちらも `total = 1` を撃っていた。**
+     *   ```
+     *   for (const headers of [buyer.authHeaders, steps.app.authHeaders]) {
+     *     const listed = await request.get(`/api/apps/${appId}/tables/${steps.tableId}/records`, {
+     *       headers,
+     *     });
+     *     expect(listed.status(), await listed.text()).toBe(200);
+     *     const body = (await listed.json()) as {
+     *       records: { _id: string; [key: string]: unknown }[];
+     *       total: number;
+     *     };
+     *     expect(body.total).toBe(1);
+     *     expect(body.records[0]?._id).toBe(recordId);
+     *     // **書き込まれたのは `username` の側であって、`userId` の側ではない。**
+     *     expect(body.records[0]?.[OWNER_FIELD]).toBe(buyer.username);
+     *     expect(body.records[0]?.[OWNER_FIELD]).not.toBe(buyer.userId);
+     *   }
+     *   ```
+     * **今日は2人の答えが割れたので、同じ `for` では回せない** ——
+     * **買った人は 1 件、運営は 0 件である。** **どちらも 200 で返る**(拒否ではない)。
      */
-    for (const headers of [buyer.authHeaders, steps.app.authHeaders]) {
-      const listed = await request.get(`/api/apps/${appId}/tables/${steps.tableId}/records`, {
-        headers,
-      });
-      expect(listed.status(), await listed.text()).toBe(200);
-      const body = (await listed.json()) as {
-        records: { _id: string; [key: string]: unknown }[];
-        total: number;
-      };
-      expect(body.total).toBe(1);
-      expect(body.records[0]?._id).toBe(recordId);
-      // **書き込まれたのは `username` の側であって、`userId` の側ではない。**
-      expect(body.records[0]?.[OWNER_FIELD]).toBe(buyer.username);
-      expect(body.records[0]?.[OWNER_FIELD]).not.toBe(buyer.userId);
-    }
+    const listedByBuyer = await request.get(`/api/apps/${appId}/tables/${steps.tableId}/records`, {
+      headers: buyer.authHeaders,
+    });
+    expect(listedByBuyer.status(), await listedByBuyer.text()).toBe(200);
+    const buyerBody = (await listedByBuyer.json()) as {
+      records: { _id: string; [key: string]: unknown }[];
+      total: number;
+    };
+    expect(buyerBody.total).toBe(1);
+    expect(buyerBody.records[0]?._id).toBe(recordId);
+    // **書き込まれたのは `username` の側であって、`userId` の側ではない。**
+    // **この食い違いは `V17-M5-T05` で1バイトも直っていない。**
+    expect(buyerBody.records[0]?.[OWNER_FIELD]).toBe(buyer.username);
+    expect(buyerBody.records[0]?.[OWNER_FIELD]).not.toBe(buyer.userId);
+
+    const listedByAdmin = await request.get(`/api/apps/${appId}/tables/${steps.tableId}/records`, {
+      headers: steps.app.authHeaders,
+    });
+    // **拒否ではない** —— **200 の空一覧である**(`ADR-0305` 限定11 と同じ向き)。
+    expect(listedByAdmin.status(), await listedByAdmin.text()).toBe(200);
+    const adminBody = (await listedByAdmin.json()) as {
+      records: { _id: string; [key: string]: unknown }[];
+      total: number;
+    };
+    expect(adminBody.total).toBe(0);
+    expect(adminBody.records).toEqual([]);
   });
 });

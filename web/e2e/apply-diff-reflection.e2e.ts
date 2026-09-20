@@ -106,7 +106,10 @@ function addFieldDiff(manifest: Manifest, view: ListView): { diff: Diff; addedFi
 const viewUrl = (app: FixtureApp, viewId: string): string => `/apps/${app.appId}/views/${viewId}`;
 
 async function changelogOf(request: APIRequestContext, app: FixtureApp): Promise<ChangelogEntry[]> {
-  const response = await request.get(`/api/apps/${app.appId}/changelog`);
+  // **【`V17-M4-T02`】`GET /changelog` にログインが要るようになったので cookie を渡す。**
+  const response = await request.get(`/api/apps/${app.appId}/changelog`, {
+    headers: app.authHeaders,
+  });
   expect(response.status(), await response.text()).toBe(200);
   const body = (await response.json()) as { changelog: ChangelogEntry[] };
   return body.changelog;
@@ -201,7 +204,10 @@ test("稼働中のサーバに apply_diff すると、リロードだけで新�
   expect(afterApply[1]?.intent).toBe(diff.intent);
 
   // --- (d) undo の事前確認は参照系。GET で引けて、画面は変わらない ---
-  const preview = await request.get(`/api/apps/${app.appId}/undo/preview`);
+  // **【`V17-M4-T02`】`GET /undo/preview` にログインが要るようになったので cookie を渡す。**
+  const preview = await request.get(`/api/apps/${app.appId}/undo/preview`, {
+    headers: app.authHeaders,
+  });
   expect(preview.status(), await preview.text()).toBe(200);
   const previewBody = (await preview.json()) as { preview: { diff_id: string; intent: string } };
   expect(previewBody.preview.diff_id).toBe(diff.diff_id);

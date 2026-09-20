@@ -17,6 +17,12 @@
  *
  * - **`?view=` を渡さない要求は今日どおり通る。** **下の (Z) が実測で固定する。**
  *   **したがってこれは「画面を名乗った要求を拒否する」遮断であって、「表を閉じる」遮断ではない。**
+ *   **【`V18-M4-T02b`(2026-09-12)による訂正。上の2行は1バイトも消していない】**
+ *   **上の2行は今日は無条件には成り立たない** —— **`V18-M4-T02` が「画面名を名乗らない
+ *   読取」にも壁を立てた**(`ADR-0441`)。 **その表を指す、要求の形に合う画面を1本も
+ *   読めない相手の一覧は 0件・単票は 404 になる。** **(Z) の2本が今日も通るのは、
+ *   `customer` に `customer-catalog` の読取を、`anonymous` に `public-catalog` の読取を
+ *   書いてあるからである** —— **書かなければ (Z) の値は変わる。**
  * - **規則を1本も書いていない画面は誰にでも開く**(裁定 `R-4` の管轄外)。
  *   **旧層が持っていた「未ログインには宣言した画面だけ」という閉じる向きの既定は、面に無い**
  *   (下の (C) が実測で固定する)。
@@ -97,6 +103,23 @@ function manifest(): Manifest {
         },
         // **未ログインに開く画面**(旧 `audience: ["anonymous"]` = `ADR-0074` の置き直し先)。
         { id: "public-catalog", type: "list_view", table: "product", columns: ["name"] },
+        // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】客に開く商品の一覧を
+        // 1本足した。**
+        //
+        // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+        // 一覧系の画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は
+        // 0件になる。** **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を
+        // 役割の規則に1行も書いていない場合も止まる。**
+        //
+        // **この題材は `product` を指す一覧を3本(`catalog-list` / `admin-product-list` /
+        // `public-catalog`)宣言しながら、`customer` にはそのどれの規則も書いていなかった**
+        // —— **その結果 (Z) の1本目(`?view=` を外した客の読取)が 1件 → 0件になっていた。**
+        //
+        // **既存の3本に規則を足して済ませることはできない** —— **`catalog-list` は
+        // (C) が「規則の無い画面」として測っており、`public-catalog` は (C) が
+        // 「anonymous だけに開いた画面は customer には開かない」を測っており、
+        // `admin-product-list` は (A) が測っている。** **そこで、客に開く一覧を別に1本置く。**
+        { id: "customer-catalog", type: "list_view", table: "product", columns: ["name"] },
         // 自分の注文(customer に開く)。
         { id: "my-order-list", type: "list_view", table: "order", columns: ["total"] },
         // **運営だけの注文フォーム。** `order` は `st_owner` を持つので **customer は今日
@@ -138,6 +161,10 @@ function manifest(): Manifest {
             // `201` → `403` になり、対照そのものが成立しない。**
             { target: "table", table: "order", can: ["read", "write"] },
             { target: "table", table: "product", can: ["read"] },
+            // **【`V18-M4-T02b` / `D-V18-26`】(Z) の1本目を成立させる1本。**
+            // **(Z) が測っているのは「`?view=` を外した要求は遮断しない」ことであって
+            // 画面の規則ではないので、主張(`expect`)は1バイトも書き換えていない。**
+            { target: "view", view: "customer-catalog", can: ["read"] },
           ],
         },
         {

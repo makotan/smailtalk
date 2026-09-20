@@ -1086,28 +1086,68 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     //   **`ADR-0408` 限定5 が「効く経路は HTTP の4本ちょうど」を、この `createGates: 4` で
     //   固定している** —— **5本目に広げたらこの検査が赤くなる。**
     const orphanScans = countIn("resolveRecordWithoutGrants(");
+    /**
+     * **【`V17-M6-T04`(台帳 `AC-G24`)が足した数え上げ。旧の式を1バイトも消していない】**
+     *
+     * **付与の出どころを返す口は、配管(`recordAccessJudge`)を1度も呼ばない** ——
+     * **`owner-scope.ts` の述語1本を呼び、その中で合成判定と `judgeRecordAccess` が走る。**
+     * **その述語は同じ辿り(`walkAccessInheritance`)を通るので `limit_exceeded` を返しうる**
+     * —— **したがって翻訳が1件増えて 11 件になった。**
+     * **【緩めていない。突き合わせる相手を1本増やしただけである】** ——
+     * **「打ち切りを返しうる呼び出しの本数」と「4xx へ翻訳する本数」が一致することを、
+     * 今日も1件のずれも許さずに見ている**(8 + 1 + 1 + 1 = 11)。
+     */
+    const sourceScans = countIn("resolveRecordAccessSources(");
     const createGates = countIn("judgeCreateParentAccess(");
     /** **作成の関門の打ち切りを応答へ写す関数の**定義**の数**(`ADR-0404` 限定13 = 1本)。 */
     const createGateTranslators = countIn("function createParentDenial(");
     /** **その関数を**呼んでいる**場所の数**(定義そのものを引く)。 */
     const createGateTranslated = countIn("createParentDenial(") - createGateTranslators;
+    // **【`V17-M6-T04`(台帳 `AC-G24`)による更新。旧の式を1バイトも消していない】**
+    // **旧: `expect({ pipeCalls, orphanScans, createGates, createGateTranslators,`**
+    // **`createGateTranslated, translations: … }).toEqual({ pipeCalls: 8, orphanScans: 1,`**
+    // **`createGates: 4, createGateTranslators: 1, createGateTranslated: 4, translations: 10 });`**
+    // **旧の突き合わせの式**:
+    //   `expect(pipeCalls + orphanScans + createGateTranslators).toBe(countIn("recordAccessLimitError("));`
+    // **理由は「実物が変わった」側である** —— **付与の出どころを返す口が1本増えた。**
+    // **【`V18-M7-T02`(台帳 `PM-G5` / `ADR-0444` 授権の表 行8)による更新。旧の式を1バイトも
+    //   消していない】**
+    // **旧: `pipeCalls: 8` / `translations: 11`**(その前は 8 / 10、その前は 8 / 10、
+    //   その前は 8 / 9、その前は 7 / 8、さらにその前は 8 / 8)。
+    // **理由は「実物が変わった」側である** —— **`DELETE` に、親を消すと残る行の連鎖の関門が1本
+    //   増えた。** **その関門は子の表ごとに配管を組むので `pipeCalls` が1件増え(8 → 9)、
+    //   その打ち切りを 4xx に翻訳する場所も1件増えた(11 → 12)。**
+    // **【最重。丸めていないことを、ここに書いておく】** —— **増えた配管の呼び出しは、子1件ずつの
+    //   「この人に消せるか」を問う側に在る。** **その判定が `limit_exceeded` を返したとき、
+    //   実装は「消せない」に**丸めていない**** —— **呼び出し側(`DELETE` ハンドラ)へ渡し、
+    //   `recordAccessLimitError` で 400 に翻訳している。** **丸めていたら、辿りきれなかっただけの
+    //   行が 403 の理由に化け、**この検査は数が釣り合ったまま緑で嘘をつく**ことになっていた。**
+    // **【同じ1箇所が2つの打ち切りを翻訳していることも隠さない】** —— **その翻訳の場所は、
+    //   数える側の述語(`resolveRecordDeleteCascade`)自身の打ち切りも同時に受けている。**
+    //   **したがって「打ち切りを返しうる呼び出し」は 13 本で、翻訳の綴りは 12 である** ——
+    //   **`createGates`(4)と `createGateTranslators`(1)が既にそうであるように、
+    //   **1つの翻訳を複数の呼び出しが共有する**形である。**
+    // **【緩めていない】** **下の2本の突き合わせは今日も1件のずれも許さずに成り立つ**:
+    //   **1. 9 + 1 + 1 + 1 = 12 / 2. `createGates`(4)= `createGateTranslated`(4)。**
     expect({
       pipeCalls,
       orphanScans,
+      sourceScans,
       createGates,
       createGateTranslators,
       createGateTranslated,
       translations: countIn("recordAccessLimitError("),
     }).toEqual({
-      pipeCalls: 8,
+      pipeCalls: 9,
       orphanScans: 1,
+      sourceScans: 1,
       createGates: 4,
       createGateTranslators: 1,
       createGateTranslated: 4,
-      translations: 10,
+      translations: 12,
     });
     // **突き合わせそのものを式で撃つ**(上の数値表が動いても、関係が崩れたら赤くなる)。
-    expect(pipeCalls + orphanScans + createGateTranslators).toBe(
+    expect(pipeCalls + orphanScans + sourceScans + createGateTranslators).toBe(
       countIn("recordAccessLimitError("),
     );
     expect(createGates).toBe(createGateTranslated);
@@ -1129,6 +1169,114 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     expect(errorsImportLine ?? "").not.toContain("recordAccessLimitError(");
     // **`limit_exceeded` を 404 に混ぜている行が1つも無い。**
     expect(/limit_exceeded[^\n]*\n[^\n]*unknownRecordError/.test(source)).toBe(false);
+  });
+
+  // **【`V17-M2-T05a`。`ADR-0411` 限定12 の【実装時に置く】検査】**
+  //
+  // **限定12 の逐語の測る式**: **「`apps/smailtalk/src/`(test を除く)における
+  // 前提の関門の**呼び出し**の総数が **7** である」。**
+  //
+  // **【綴りを散文に書かない。理由は罠である】** —— **この検査が数える綴りを、
+  // 本ファイルの散文やコメントに1度でも書くと、そのファイルが `src/` 配下にある限り
+  // 数が水増しされる。** **したがって関門の名前は下で**部品から組み立てて**おり、
+  // 本ファイルのどこにも綴り全体は現れない**(本ファイルは `*.test.ts` なので
+  // 走査の対象からも外れるが、外れることに寄りかからない)。
+  //
+  // **【定義行を必ず引く。素朴な数え方は 8 を返す】** —— **`export function <関門名>(`
+  // という**定義**の行が、呼び出しとまったく同じ綴りを含む。** **引かないと 8 になる。**
+  // **この罠は本マイルストーンで実際に1度踏まれている**(計画 §2-3 / §3-1 が予告した)。
+  //
+  // **【着手前は 4 だった】** —— **土台 `818581cd`(`V17-M1` をマージした直後の `main`)で
+  // 同じ式を打つと、`app.ts` に4件・`owner-scope.ts` に定義1件で、5 - 1 = **4** が返る。**
+  // **本段(`V17-M2-T01b` / `T02b` / `T03b`)が MCP・受信口・自動処理と島の3入口に
+  // 1件ずつ足して 7 になった。**
+  //
+  // **【ファイル別の内訳まで固定する理由】** —— **総数だけを見ると、呼び出しを
+  // ファイル間で**移し替え**ても緑のままになる。** **「各入口にちょうど1件」という
+  // 限定12 の中身は、内訳を並べて初めて機械で守れる。**
+  // **【`V18-M6-T02`(2026-09-13)/ `PM-G2` / `ADR-0443` 授権の表 行5 が改名した。
+  //    旧のテスト名を逐語でここに残す。1バイトも消していない】**
+  // **旧**: `test("(E-5) 前提の関門の呼び出しは7箇所ちょうどである(`ADR-0411` 限定12)", ...)`
+  // **改名した理由** —— **`V18-M6-T02` が AI の口の**更新**2本に同じ述語を配線したので、
+  // `write.ts` の呼び出しが 1 から 3 に増え、総数が 7 から **9** になった。**
+  // **測っている中身(各入口の内訳まで固定する)は1ミリも緩めていない** ——
+  // **動かしたのは `write.ts` の1行と総数の1行だけであり、他の4行と定義の数は
+  // 1ビットも変えていない。**
+  //
+  // **【`V18-M8-T02`(2026-09-16)/ `PM-G9` / `D-V18-34` / `ADR-0445` 追記の授権の表 行26 が
+  //    改名した。旧のテスト名を逐語でここに残す。1バイトも消していない】**
+  // **旧**: `test("(E-5) 前提の関門の呼び出しは9箇所ちょうどである(`ADR-0411` 限定12 / `ADR-0443`)", ...)`
+  // **改名した理由** —— **`V18-M8-T02` が**表示の述語の家**(`owner-scope.ts`)に、**表示の時点で
+  // 決まる断りのうち (h8)(付与表そのものが `inherit_from` を宣言した形の親の関門)を**行ごとに**
+  // 写す**ための呼び出しを1件足したので、総数が 9 から **10** になった。**
+  // **足したのは**入口ではない** —— **入口(HTTP の4経路 / 受信口 / AI の口 / 自動処理と島)の
+  // 4ファイルの内訳は **1件も** 動いていない。**
+  // **測っている中身(各入口の内訳まで固定する)は1ミリも緩めていない** ——
+  // **動かしたのは `owner-scope.ts` の1行と総数の1行だけであり、他の4行と定義の数は
+  // 1ビットも変えていない。**
+  // **授権したのは `D-V18-34`(`docs/plan/v18/01-user-decisions.md` §23)と
+  // `ADR-0445` の追記(§C / 授権の表 行26)である。**
+  test("(E-5) 前提の関門の呼び出しは10箇所ちょうどである(`ADR-0411` 限定12 / `ADR-0443` / `ADR-0445`)", async () => {
+    // **関門の名前を部品から組み立てる**(上の【 】の理由)。
+    const gateName = ["judge", "Create", "Parent", "Access"].join("");
+    const gateCall = `${gateName}(`;
+    const gateDefinition = `export function ${gateCall}`;
+    const srcRoot = join(PRODUCT_ROOT, "src");
+    const perFile: Record<string, { calls: number; definitions: number }> = {};
+    let totalCalls = 0;
+    let totalDefinitions = 0;
+    for (const entry of await Array.fromAsync(new Bun.Glob("**/*.ts").scan({ cwd: srcRoot }))) {
+      if (entry.endsWith(".test.ts")) {
+        continue; // **限定12 の式は test を除く。**
+      }
+      const text = await Bun.file(join(srcRoot, entry)).text();
+      const definitions = text.split(gateDefinition).length - 1;
+      const calls = text.split(gateCall).length - 1 - definitions;
+      if (calls === 0 && definitions === 0) {
+        continue;
+      }
+      perFile[entry] = { calls, definitions };
+      totalCalls += calls;
+      totalDefinitions += definitions;
+    }
+    // **総数**(限定12 が固定している数そのもの)。
+    // **【`V18-M6-T02` が 7 から 9 へ上げた。旧の式を逐語で残す】**
+    // **旧**: `expect(totalCalls).toBe(7);`
+    // **【`V18-M8-T02` が 9 から 10 へ上げた。旧の式を逐語で残す。1バイトも消していない】**
+    // **旧**: `expect(totalCalls).toBe(9);`
+    expect(totalCalls).toBe(10);
+    // **述語は今日も1本である**(`ADR-0411` 限定2「判定の式を2本に増やさない」)。
+    expect(totalDefinitions).toBe(1);
+    // **内訳** —— **各入口にちょうど1件。移し替えても赤くなる。**
+    expect(perFile).toEqual({
+      // **HTTP の4経路**(単件 `POST` / `PATCH` / 画面の操作起点 / まとめ書き)。
+      // **`V15-M2` / `V15-M3` / `ADR-0404` / `ADR-0408` が置いた4件であり、
+      // 本段は1件も足していない。**
+      "server/app.ts": { calls: 4, definitions: 0 },
+      // **述語の家**(定義だけが在り、呼び出しは0件)。
+      // **【`V18-M8-T02` が 0 から 1 へ上げた。旧の行を逐語で残す。1バイトも消していない】**
+      // **旧**: `"server/owner-scope.ts": { calls: 0, definitions: 1 },`
+      // **定義の家に呼び出しが1件入った。** **これは**入口ではなく表示の述語**である**
+      // ——(`rowGrantWriteJudge` が、(h8) の断りを行ごとに写すために呼ぶ)。
+      // **4本の入口の内訳(`app.ts` 4 / `inbound-route.ts` 1 / `write.ts` 3 /
+      // `workflow-runner.ts` 1)は **1件も** 動かしていない。**
+      // **`definitions` は今日も 1 である**(判定の家を2本目にしていない)。
+      "server/owner-scope.ts": { calls: 1, definitions: 1 },
+      // **受信口**(`V17-M2-T02b`)。
+      "server/inbound-route.ts": { calls: 1, definitions: 0 },
+      // **AI(MCP)の作成経路**(`V17-M2-T01b`)——
+      // **`write_records` と `insert_sample_data` の2本の道具が
+      // **同じ1件**(`denyRecordCreate` の中)を通る。**
+      // **【`V18-M6-T02` が 1 から 3 へ上げた。旧の行を逐語で残す】**
+      // **旧**: `"mcp/tools/write.ts": { calls: 1, definitions: 0 },`
+      // **足したのは**更新**の2本**(`update_record` と `write_records` の `update` op)
+      // **であり、作成の1件(`denyRecordCreate` の中)は1バイトも動かしていない。**
+      "mcp/tools/write.ts": { calls: 3, definitions: 0 },
+      // **自動処理と島**(`V17-M2-T03b`)——
+      // **`create_record` / 島の `write_ops` の create op / `output_table` の全置換の
+      // 3つの呼び出し元が、**同じ1件**(`judgeAutomationWrite` の作成の枝)を通る。**
+      "kernel/workflow-runner.ts": { calls: 1, definitions: 0 },
+    });
   });
 });
 
@@ -1177,6 +1325,13 @@ describe("V7-M4-T04 (F): 上限は `src/server/` の定数であって語彙で�
         // **【2026-09-06。`V15-M1-T05`】8キー目。門A の本審査 = `V15-M0`。判定値 = 限定採用。**
         // **上限を宣言するキーではない**(`maxItems` を1つも持たない)。
         "creatable_by",
+        // **【2026-09-08。`V17-M5-T03e`】9キー目。門A の本審査 = `V16-M0`。判定値 = 限定採用
+        // (`AC-G10` / `ADR-0412`)。** **旧の期待値は直上の `"creatable_by",` で終わる8本で
+        // あり、この行が無かった**(逐語で残す。`ADR-0053` 限定4)。
+        // **これも上限を宣言するキーではない** —— **値域は `app.roles[].id` の配列で、
+        // `maxItems` を1つも持たない。** **テスト名は1文字も書き換えていない**
+        // (名前と本体の食い違いは 2026-09-06 の断りが既に書いており、これで2度目である)。
+        "creatable_by_roles",
         "creator_permission",
         "enabled",
         "grant",

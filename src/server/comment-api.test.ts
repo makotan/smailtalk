@@ -1015,7 +1015,19 @@ test("V10-M15-T01: 繋ぎの枝を足しても HTTP の口は 51本のままで�
   //   `  (entry) => entry.startsWith("GET ") && entry.includes("/comments"),`
   //   `);`
   //   `expect(reads).toEqual([]);`
-  expect(scanRoutes()).toHaveLength(52);
+  // **【`V17-M6-T04c'`(2026-09-08。台帳 `AC-G24`。**門外**(`Δ7`)/ 限定採用)が
+  //   さらに1本増やした。テスト名も上の逐語も1バイトも書き換えていない】** ——
+  //   **付与の出どころを返す読取専用の口(`GET …/records/:record_id/access-sources`)を
+  //   1本足したので、口の全量は 52本 → 53本 になった。**
+  // **旧の期待値(逐語。1バイトも消していない)**: `expect(scanRoutes()).toHaveLength(52);`
+  // **【本検査は計画の予測に入っていなかった。隠さない】** —— **`V17-M6` 計画 §2-5 は
+  //   `entry-point-inventory.test.ts` の2本だけを予告しており、`scanRoutes()` を
+  //   **自前で持つ2本目の走査**が本ファイルに在ることを見落としていた。**
+  //   **`ADR-0176` 限定6(入口の全量表を2つに分けない)が守っているのは**表**であって
+  //   **走査**ではない** —— **走査は今日2本ある。**
+  // **下の `/comments` の2本を撃つ式は1バイトも緩めていない**(足した口は `/comments` を
+  //   1文字も含まないので、`writes` にも `reads` にも1件も入らない)。
+  expect(scanRoutes()).toHaveLength(53);
   const writes = scanRoutes().filter(
     (entry) => entry.startsWith("POST ") && entry.includes("/comments"),
   );
@@ -1036,8 +1048,19 @@ test("V10-M15-T01: コメントの行 → diff_id → 適用の記録の行 の2
 
   // 2. 既存の口(GET /changelog)で、当てた差分が記録に実在することを採る
   //    (新しい層またぎを1本も作らない)。
+  //
+  // **【`V17-M4-T02` による改訂。上の2行は1バイトも書き換えていない】** **台帳 `AC-G20`** ——
+  // **`GET /changelog` は今日からログインが要る。** **旧の逐語**:
+  //   `const changelogRes = await app.request(`
+  //   `  new Request(\`http://localhost/api/apps/${APP_ID}/changelog\`),`
+  //   `);`
+  // **cookie を1本足しただけで、期待値(200 と、当てた差分が記録に在ること)は1つも
+  // 書き換えていない。** **この検査が測っているのは「コメントの行 → diff_id → 記録の行」の
+  // 繋ぎであって、認証ではない。**
   const changelogRes = await app.request(
-    new Request(`http://localhost/api/apps/${APP_ID}/changelog`),
+    new Request(`http://localhost/api/apps/${APP_ID}/changelog`, {
+      headers: { cookie: seeded.cookie },
+    }),
   );
   expect(changelogRes.status).toBe(200);
   const changelogPayload = (await changelogRes.json()) as {

@@ -3244,3 +3244,295 @@ src/server/batch-create-parent-write.test.ts:appDbPath
 src/server/batch-create-parent-write.test.ts:applyManifest
 src/server/batch-create-parent-write.test.ts:createApp
 src/server/batch-create-parent-write.test.ts:createRecord
+
+# **【`V17-M4-T03`(`AC-G21`。添付ファイルの配布判定を、そのファイルを載せている
+#   レコードの読取に揃える)による更新。2026-09-08。旧の行を1バイトも消していない】**
+# **3件増え、0件減った。** **全件が新規の検査ファイル1本から出ている** ——
+# **製品コードの層またぎは0件である**(`src/server/app.ts` が足したのは同じ `src/server/` 層の
+#   `roleRowBlocked` の呼び出しと、`src/shared/files-table.ts` の定数だけである)。
+#   src/server/file-delivery-uploader.test.ts:KernelMetaStore / applyManifest / createApp
+#     —— **`src/server/files-delivery.test.ts` / `src/server/file-attachment.test.ts` /
+#        `src/server/nonadmin-layer-removal.test.ts` とまったく同じ3件であり、
+#        新しい層またぎの**種類**は0本である。**
+#        **本物の SQLite に役割の規則(条件つきの `read` を含む)を書いたマニフェストを
+#        適用しないと、「条件から外れる行に載ったファイル」も「他人の個人所有の行にだけ
+#        載っているファイル」も「上げた人の列を持たない `_files` を既に持つアプリ」も
+#        測れない。** **ファイルのアップロードと配布は実 HTTP で打っている。**
+# **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `src/kernel/` と `schemas/` に1バイトの差分も出していない
+#   (`CP-V17` 条件7)。
+# 記録: docs/plan/v17/records/v17-m4.md §3。
+src/server/file-delivery-uploader.test.ts:KernelMetaStore
+src/server/file-delivery-uploader.test.ts:applyManifest
+src/server/file-delivery-uploader.test.ts:createApp
+
+# **【`V17-M5-T03d`(`AC-G10` / `ADR-0412`。親を持たない表に「行を作れる立場」の関門を立てる)
+#   による更新。2026-09-08。旧の行を1バイトも消していない】**
+# **5件増え、0件減った。** **全件が新規の検査ファイル1本から出ている** ——
+#   src/server/root-creatable-roles.test.ts:KernelMetaStore / createApp / applyManifest /
+#                                           createRecord / appDbPath
+#     —— **`inherit_from` を持たない表の宣言に「行を作れる役割」を書いたアプリで、
+#        挙がっていない役割の作成が **403**、挙がっている役割が **201** になることを、
+#        **本物の HTTP と本物の SQLite** から測る**
+#        (`docs/plan/v16/02-implementation-tasks.md` の `V17-M5-T03`)。
+#        **`createRecord` は利用者の表の行・付与の行・更新の対照に使う既存の行を仕込むために
+#        使い、`appDbPath` はその仕込みで開く app.sqlite の場所を引くために使う。**
+# **新しい層またぎの種類は0本である** —— **5本とも `create-parent-write.test.ts` /
+#   `batch-create-parent-write.test.ts` が着手前から使っている綴りとまったく同じであり、
+#   同じ `src/kernel/index.ts` から同じ5シンボルを引いている検査ファイルが1本増えただけである。**
+#   **新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)——
+#   **`src/server/app.ts` / `src/server/owner-scope.ts` が `src/kernel/` から値として
+#   import するものは1件も増えていない**(足したのは同じ `src/server/` 層の
+#   `judgeRootCreatableRoles` の呼び出しだけである)。
+# **`ADR-0009` 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `schemas/` に1バイトの差分も出していない(`git diff --numstat --
+#   schemas` は空)。 **`src/kernel/` は空ではない** —— **`creatable-by.test.ts`(+26 / -0)と
+#   `table-access-control.test.ts`(+22 / -0)の2本が動いている。** **どちらも `*.test.ts` で
+#   あり、非テストの製品コードは1バイトも動いていない**(凍結面の打ち直し。`V17-M5-T03e`)。
+#   **【禁止】これを「`src/kernel/` に差分を出していない」と丸めない**(`CP-V17` 条件7)。
+# **【正直に】この赤は `V17-M5` の計画 §2-5 の予測(`R1`〜`R16`)に1行も無かった。**
+#   **新しい検査ファイルを1本足せば必ず出る形であり、実測で見つけた。**
+# 記録: `V17-M5-T03d` の記録(`m5-t03def.md` §7 の発見1)。
+src/server/root-creatable-roles.test.ts:KernelMetaStore
+src/server/root-creatable-roles.test.ts:appDbPath
+src/server/root-creatable-roles.test.ts:applyManifest
+src/server/root-creatable-roles.test.ts:createApp
+src/server/root-creatable-roles.test.ts:createRecord
+
+# **【`V17-M5-T04`(`AC-G17` / `AC-G18`。行ごとのアクセス権を条件なしで踏み越える役割の規則を
+#   適用の応答で知らせる)による更新。2026-09-08。旧の行を1バイトも消していない】**
+# **3件増え、0件減った。** **全件が新規の検査ファイル1本から出ている** ——
+#   src/server/role-condition-grants-bypassed.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **`access_control` を宣言した表を条件なしで扱う役割の規則を `set_roles` で置いた差分を
+#        **HTTP(`POST /diffs`)と MCP(`apply_diff`)の両方**から送り、応答の
+#        `role_condition_notices` に同じ1件が載ることを測る**
+#        (`docs/plan/v16/02-implementation-tasks.md` の `V17-M5-T04`)。
+#        **3シンボルはどれも題材アプリを起こすためのセットアップであり、
+#        `src/server/role-conditions-enforcement.test.ts` / `src/server/role-grant-union.test.ts` が
+#        着手前から使っている綴りとまったく同じである。**
+# **新しい層またぎの種類は0本である** —— **新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)——
+#   **`src/server/` の非テストは1バイトも動いていない**(`T04` が触ったのは
+#   `src/kernel/apply-diff.ts` と `src/kernel/types.ts` の2本だけである)。
+# **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `schemas/` に1バイトの差分も出していない(`git diff --numstat --
+#   apps/smailtalk/schemas` は空)。 **`src/kernel/` は空ではない** ——
+#   **`apply-diff.ts` と `types.ts` の2本が動いている(どちらも非テストの製品コードである)。**
+#   **【禁止】これを「`src/kernel/` に差分を出していない」と丸めない**(`CP-V17` 条件7)。
+# **【正直に】この赤は `V17-M5` の計画 §2-5 の予測(`R1`〜`R16`)に1行も無かった。**
+#   **`V17-M5-T03d` が同じ形で1度踏んでおり、本単位で2度目である。**
+#   **新しい検査ファイルを1本足せば必ず出る形であり、実測で見つけた。**
+# 記録: `V17-M5-T04` の記録(`m5-t04.md` §4 の予測になかった赤 1)。
+src/server/role-condition-grants-bypassed.test.ts:KernelMetaStore
+src/server/role-condition-grants-bypassed.test.ts:applyManifest
+src/server/role-condition-grants-bypassed.test.ts:createApp
+
+# **【`V17-M5-T05`(`AC-G33`。持ち主の列を後から足したときの補完と知らせ)による更新。
+#   2026-09-08。旧の行を1バイトも消していない】**
+# **3件増え、0件減った。** **全件が新規の検査ファイル1本から出ている** ——
+#   src/server/owner-scope-supplied-notice.test.ts:KernelMetaStore / createApp / applyManifest
+#     —— **`st_owner` を1本も持たない表を作り、あとから別の差分で `add_field` により
+#        `st_owner` だけを足したとき、応答の `role_condition_notices` が空でなくなり、
+#        他人の行を単件 `GET` すると 404 になることを、本物のサーバで測る**
+#        (`docs/plan/v16/02-implementation-tasks.md` の `V17-M5-T05`)。
+#        **3シンボルはどれも題材アプリを起こすためのセットアップであり、
+#        `src/server/role-condition-grants-bypassed.test.ts` /
+#        `src/server/role-conditions-enforcement.test.ts` が着手前から使っている綴りと
+#        まったく同じである。**
+# **新しい層またぎの種類は0本である** —— **新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)——
+#   **`src/server/` の非テストは1バイトも動いていない**(`T05` が触った非テストは
+#   `src/kernel/apply-diff.ts` / `src/kernel/types.ts` / `src/mcp/tools/read.ts` の3本で、
+#   `read.ts` の差分は doc の訂正だけである)。
+# **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `schemas/` に1バイトの差分も出していない(`git diff --numstat --
+#   apps/smailtalk/schemas` は空)。 **`src/kernel/` は空ではない** ——
+#   **`apply-diff.ts` と `types.ts` の2本が動いている(どちらも非テストの製品コードである)。**
+#   **【禁止】これを「`src/kernel/` に差分を出していない」と丸めない**(`CP-V17` 条件7)。
+# **【正直に】この赤は `V17-M5` の計画 §2-5 の予測(`R1`〜`R16`)に1行も無かった。**
+#   **`V17-M5-T03d` / `V17-M5-T04` が同じ形で踏んでおり、本単位で3度目である。**
+#   **新しい検査ファイルを1本足せば必ず出る形であり、着手前に予定へ入れてあった。**
+# 記録: `V17-M5-T05` の記録(`m5-t05.md` §4 の予測になかった赤)。
+src/server/owner-scope-supplied-notice.test.ts:KernelMetaStore
+src/server/owner-scope-supplied-notice.test.ts:applyManifest
+src/server/owner-scope-supplied-notice.test.ts:createApp
+#
+# **【`V17-M6-T06b`(台帳 `AC-G22` / `AC-G24` / `AC-G30b`)による更新。
+#   上の注記も行も1バイトも消していない】**
+# **12件増え、0件減った** —— **出どころは新しい検査ファイル**3本**である**
+# (`git show --numstat` で1本ずつ出どころを確かめた):
+#   `scripts/skill-grant-table-view.test.ts`(`V17-M6-T03a`)          …… 2件
+#   `src/server/access-control-orphan-recovery.test.ts`(`V17-M6-T01a`) …… 5件
+#   `src/server/record-access-sources.test.ts`(`V17-M6-T04a`)         …… 5件
+# **本段が足した新規 `.test.ts` は4本だが、`src/server/app-change-vs-undo.test.ts`
+#   (`V17-M6-T02a'`)はカーネルからの値 import を1件も持たないので、この表に載らない。**
+# **12件はすべて既に他の検査が採っている組である**(`KernelMetaStore` / `appDbPath` /
+#   `applyManifest` / `createApp` / `createRecord`)—— **新しい層またぎの種類は0本であり、
+#   新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(12件とも `*.test.ts`)—— **本段が触った非テストは
+#   `src/server/app.ts` と `src/server/owner-scope.ts` の2本だけで、
+#   どちらもカーネルからの値 import を1件も増やしていない。**
+# **`ADR-0009` 限定2 の照合**: 12件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `schemas/` にも `src/kernel/` にも1バイトの差分を出していない
+#   (`git diff --numstat 3f37c002 HEAD -- apps/smailtalk/src/kernel apps/smailtalk/schemas`
+#    は 0行。`CP-V17` 条件7)。 **`V17-M5` は `src/kernel/` が空ではなかったが、
+#    本段は空である** —— **【禁止】前段の書き方をそのまま写さない。**
+# **【予定に入れてあった赤である】** **新しい検査ファイルを1本でも足せば必ず出る形であり、
+#   段の計画 §5 の理由4 / §7 の罠5 が、打ち直しを `T06b` に**1回だけ**束ねた。**
+#   **`V17-M5` は同じ形を3度(`T03d` / `T04` / `T05`)踏んで、そのたびに打ち直していた。**
+# 記録: `docs/plan/v17/records/v17-m6.md` §6。
+scripts/skill-grant-table-view.test.ts:KernelMetaStore
+scripts/skill-grant-table-view.test.ts:createApp
+src/server/access-control-orphan-recovery.test.ts:KernelMetaStore
+src/server/access-control-orphan-recovery.test.ts:appDbPath
+src/server/access-control-orphan-recovery.test.ts:applyManifest
+src/server/access-control-orphan-recovery.test.ts:createApp
+src/server/access-control-orphan-recovery.test.ts:createRecord
+src/server/record-access-sources.test.ts:KernelMetaStore
+src/server/record-access-sources.test.ts:appDbPath
+src/server/record-access-sources.test.ts:applyManifest
+src/server/record-access-sources.test.ts:createApp
+src/server/record-access-sources.test.ts:createRecord
+#
+# **【`V18-M3-T01`(`PM-G6` / `ADR-0435` / `ADR-0439`)による更新。
+#   上の注記も行も1バイトも消していない】**
+# **5件増え、0件減った** —— **出どころは新しい検査ファイル**1本**である**:
+#   `src/server/access-control-registry-read.test.ts`(`V18-M3-T01`) …… 5件
+# **その1本は「名簿表・グループ表・付与表への読取が、権限を1件も持たない利用者に
+#   今日どおり全件返ってしまう」ことを固定する**TDD の赤**である**
+#   (`records/v18-m0.md:1684` の完了条件 (a)〜(d))。
+#   **本物の HTTP と本物の SQLite の上で撃つので、台を起こすのにカーネルの5本が要る。**
+# **5件はすべて既に他の検査が採っている組である**(`KernelMetaStore` / `appDbPath` /
+#   `applyManifest` / `createApp` / `createRecord`)—— **新しい層またぎの種類は0本であり、
+#   新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(5件とも `*.test.ts`)—— **`V18-M3-T01` は製品コードを
+#   1バイトも触っていない**(`git diff --numstat -- apps/smailtalk/src/ apps/smailtalk/web/src/`
+#   のうち `.test.ts` 以外が0行)。
+# **`ADR-0009` 限定2 の照合**: 5件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `schemas/` にも `src/kernel/` にも1バイトの差分を出していない。
+# **【予定に入っていなかった赤である。正直に書く】** **`ADR-0435` の授権の表にも
+#   `ADR-0439` の授権2点にも、このスナップショットの行は1行も無い。**
+#   **`V18-M3` の計画 §10 の罠にも挙がっていなかった。**
+#   **新しい検査ファイルを1本でも足せば必ず出る形であり、`V17-M6-T06b` / `V17-M5` の
+#   3回とまったく同型である。** **段の実施者は、この打ち直しを `CP-V18` 条件7 で
+#   名指しできるようにすること。**
+# 記録: `V18-M3-T01` の記録(`v18-m3-t01.md`)。
+src/server/access-control-registry-read.test.ts:KernelMetaStore
+src/server/access-control-registry-read.test.ts:appDbPath
+src/server/access-control-registry-read.test.ts:applyManifest
+src/server/access-control-registry-read.test.ts:createApp
+src/server/access-control-registry-read.test.ts:createRecord
+#
+# **【`V18-M4-T01`(`PM-G10` / `ADR-0435` / `ADR-0441`)による更新。
+#   上の注記も行も1バイトも消していない】**
+# **3件増え、0件減った** —— **出どころは新しい検査ファイル**1本**である**:
+#   `src/server/unnamed-view-read-wall.test.ts`(`V18-M4-T01`) …… 3件
+# **その1本は「『この画面は見せない』と決めた相手でも、画面名を名乗らずに表の口を
+#   直接叩けば行が全件返る」ことを固定する**TDD の赤**である**
+#   (`records/v18-m0.md` の `V18-M4-T01` 完了条件)。
+#   **本物の HTTP と本物の SQLite の上で撃つので、台を起こすのにカーネルの3本が要る。**
+# **3件はすべて既に他の検査が採っている組である**(`KernelMetaStore` / `applyManifest` /
+#   `createApp`)—— **新しい層またぎの種類は0本であり、新しい綴りを1つも足していない。**
+# **行を作るのに `createRecord` を使っていない**(`V18-M3-T01` との差。**運営の HTTP の口
+#   `POST .../records` から作っている**)—— **層またぎが1件少ない理由である。**
+# **製品コードの層またぎは0件**(3件とも `*.test.ts`)—— **`V18-M4-T01` は製品コードを
+#   1バイトも触っていない。**
+# **`ADR-0009` 限定2 の照合**: 3件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ8` の照合**: `schemas/` にも `src/kernel/` にも1バイトの差分を出していない。
+# **授権**: **`ADR-0441` §Decision 3 授権の表 行29**(逐語「**検査ファイルを足したことで
+#   必ず出る打ち直しだけ** —— **スナップショットへの登録**(末尾への追記。既存の行を
+#   1バイトも書き換えない)と、**`:1923` の `sha` の打ち直し**」)。 **実装する葉は
+#   **`V18-M4-T01`** と名指しされている。** **打ち直す前に実際に赤を見た**(`ADR-0402` 限定9)。
+# 記録: `V18-M4-T01` の記録。
+src/server/unnamed-view-read-wall.test.ts:KernelMetaStore
+src/server/unnamed-view-read-wall.test.ts:applyManifest
+src/server/unnamed-view-read-wall.test.ts:createApp
+
+# **【`V18-M5-T02b`(`PM-G2` / `PM-G3`。根の表に「行を作れる立場」が一行も書かれていないとき
+#   の既定を「作れない」へ反転し、同じ関門を AI の口にも新しく掛ける)による更新。2026-09-12。
+#   旧の行を1バイトも消していない】**
+# **10件増え、0件減った。** **全件が新規の検査ファイル2本から出ている** ——
+#   src/server/root-create-closed-by-default.test.ts:KernelMetaStore / appDbPath / applyManifest /
+#                                                    createApp / createRecord
+#     —— **`V18-M5-T01` が足した、画面と HTTP の口の検査**(**本物の HTTP と本物の SQLite**
+#        の上で、9キー目を一行も書いていない根の表への作成が **403** になり、書いた表・
+#        `inherit_from` を宣言した表・`access_control` を宣言していない表・`enabled: false`
+#        の表では今日と1バイトも変わらないことを撃つ)。
+#   src/mcp/root-create-closed-by-default-mcp.test.ts:KernelMetaStore / appDbPath / applyManifest /
+#                                                     createApp / createRecord
+#     —— **`V18-M5-T02` が足した、AI の口の検査**(同じ題材・同じ利用者で
+#        `insert_sample_data` と `write_records` の `create` op を撃ち、HTTP と答えが
+#        1ビットも違わないことを測る)。
+# **新しい層またぎの種類は0本である** —— **10本とも `root-creatable-roles.test.ts` /
+#   `create-parent-write.test.ts` が着手前から使っている綴りとまったく同じ5シンボルであり、
+#   同じ `src/kernel/index.ts` から引いている検査ファイルが2本増えただけである。**
+#   **新しい綴りを1つも足していない。**
+# **製品コードの層またぎは0件**(10件とも `*.test.ts`)—— **`src/server/app.ts` /
+#   `src/server/owner-scope.ts` / `src/mcp/tools/write.ts` が `src/kernel/` から値として
+#   import するものは1件も増えていない。**
+# **`ADR-0009` 限定2 の照合**: 10件のいずれも `normalizeSort` / `sortErrorPath` /
+#   `validateSortKeys` ではない。**整列規則の再実装は1本も無い。**
+# **`Δ5` の照合**: `schemas/` にも `src/kernel/` にも1バイトの差分を出していない。
+# **授権**: **`ADR-0442` §Decision 3 授権の表**(層越えの基準値の行)。 **`ADR-0441` 行29 は
+#   射程が `V18-M4` だけなので根拠にできない**(`ADR-0007:1882`)—— **`ADR-0442` が自分で
+#   授権し直している。** **打ち直す前に実際に赤を見た**(`ADR-0402` 限定9)。
+# 記録: `V18-M5-T02b` の記録。
+src/mcp/root-create-closed-by-default-mcp.test.ts:KernelMetaStore
+src/mcp/root-create-closed-by-default-mcp.test.ts:appDbPath
+src/mcp/root-create-closed-by-default-mcp.test.ts:applyManifest
+src/mcp/root-create-closed-by-default-mcp.test.ts:createApp
+src/mcp/root-create-closed-by-default-mcp.test.ts:createRecord
+src/server/root-create-closed-by-default.test.ts:KernelMetaStore
+src/server/root-create-closed-by-default.test.ts:appDbPath
+src/server/root-create-closed-by-default.test.ts:applyManifest
+src/server/root-create-closed-by-default.test.ts:createApp
+src/server/root-create-closed-by-default.test.ts:createRecord
+
+# --- V18-M7-T02(`DELETE` に関門と連鎖を配線する。台帳 `PM-G5` / `ADR-0444`)----------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本**(`ADR-0444` §Decision 3 の6段を、
+#   本物の HTTP と本物の SQLite で1段ずつ測る)からであり、**5本とも
+#   `access-control-delete.test.ts` が着手前から使っているのとまったく同じ5シンボルである。**
+#   **新しい層またぎの種類は0本。** **製品コードの層またぎは0件**(`src/server/app.ts` が
+#   `src/kernel/` から値として取るものは1件も増えていない —— 連鎖の実行は着手前から在る
+#   `deleteRecord` / `writeWithAudit` をそのまま使う)。 **`ADR-0009` 限定2 の照合**: 5件とも
+#   `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。 **`Δ5` の照合**:
+#   `schemas/` にも `src/kernel/` にも1バイトの差分を出していない。
+# **授権**: `ADR-0444` 授権の表 行20(`+0 〜 +5`)。 **【隠さない。2点】** **(1) 行20 の条件文は
+#   「`app.ts` が中核の口を新しく取る場合に限り」で、今回動いたのは**新しい検査ファイル**の
+#   ぶんである**(`app.ts` 側は 0件)。 **(2) データ行は5本で枠に収まるが、この作法どおりの
+#   審査コメントを含めると本ブロックは **+20行** であり、行20 の上限を超えている。**
+# 記録: `V18-M7-T02` の報告。
+src/server/parent-delete-cascade-route.test.ts:KernelMetaStore
+src/server/parent-delete-cascade-route.test.ts:appDbPath
+src/server/parent-delete-cascade-route.test.ts:applyManifest
+src/server/parent-delete-cascade-route.test.ts:createApp
+src/server/parent-delete-cascade-route.test.ts:createRecord
+
+# --- V18-M7-T03(AI の口に同じ関門を配線する。台帳 `PM-G5` / `ADR-0444`)--------------------
+# **5件増え、0件減った。** 増えたのは**新しい検査ファイル1本**(`ADR-0444` §Decision 3 の6段を、
+#   AI の口(MCP)と HTTP の**両方**で撃ち、断りの中身が1ビットも違わないことを測る)からであり、
+#   **5本とも直前の `V18-M7-T02` が足したのとまったく同じ5シンボルである。**
+#   **新しい層またぎの種類は0本。** **製品コードの層またぎは0件** —— **`src/mcp/tools/write.ts`
+#   が `src/kernel/` から値として取るものは1件も増えていない**(足した2本 `isDeleteProtectedRow` /
+#   `resolveRecordDeleteCascade` は `src/server/owner-scope.ts` からであり、カーネルではない)。
+#   **`ADR-0009` 限定2 の照合**: 5件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys`
+#   ではない。 **`Δ5` の照合**: `schemas/` にも `src/kernel/` にも1バイトの差分を出していない。
+# **授権**: `ADR-0444` 授権の表 行20(`+0 〜 +5`)。 **【隠さない。3点】** **(1) 行20 の条件文は
+#   「`app.ts` が中核の口を新しく取る場合に限り」で、今回動いたのは**新しい検査ファイル**の
+#   ぶんである**(`write.ts` 側も `app.ts` 側も 0件)。 **(2) 行20 の実装する葉は `V18-M7-T02` と
+#   書かれており、本葉(`T03`)は名指しされていない。** **(3) データ行は5本で枠に収まるが、この
+#   作法どおりの審査コメントを含めると本ブロックは枠を超えている**(直前の `T02` と同じ形)。
+# 記録: `V18-M7-T03` の報告。
+src/mcp/tools/parent-delete-cascade-mcp.test.ts:KernelMetaStore
+src/mcp/tools/parent-delete-cascade-mcp.test.ts:appDbPath
+src/mcp/tools/parent-delete-cascade-mcp.test.ts:applyManifest
+src/mcp/tools/parent-delete-cascade-mcp.test.ts:createApp
+src/mcp/tools/parent-delete-cascade-mcp.test.ts:createRecord

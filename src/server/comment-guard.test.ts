@@ -59,7 +59,7 @@
  * ## 注釈を落とす処理が巻き込みうるもの(黙って落とさない)
  *
  * `stripComments` は `//` から行末までを機械的に落とすので、**文字列リテラルの中の `//`**
- * (例: URL)も巻き込みうる。 実際に `src/server/auth-routes.ts:4027` の
+ * (例: URL)も巻き込みうる。 実際に `src/server/auth-routes.ts:4112` の
  * `hint: "例: https://openrouter.ai/api/v1。"` は、この関数を通すと `https:` から
  * 行末までが丸ごと落ちる —— **この行は本ファイルが検索する識別子(`gp_comments` /
  * `CommentStore` / `visibleComments` / 3値の綴り / `authLimiter` 等)を1つも含まないため、

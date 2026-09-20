@@ -544,7 +544,11 @@ describe("V7-M5-T04 (B): 付与を消した後に巻き戻すと、復活する"
     expect(
       (await del("B-3 revoke", recordPath("doc_grant", created.id), admin.cookie)).status,
     ).toBe(204);
-    const preview = await get("B-3 preview", `/api/apps/${APP}/undo/preview`);
+    // **【`V17-M4-T02` による改訂。台帳 `AC-G20`】** **旧の逐語**:
+    //   `const preview = await get("B-3 preview", \`/api/apps/${APP}/undo/preview\`);`
+    // **`GET /undo/preview` は今日からログインが要る。** **運営の cookie を1本足しただけで、
+    // 期待値(200 /「doc_grant」は出る /「権限」は1文字も出ない)は1つも書き換えていない。**
+    const preview = await get("B-3 preview", `/api/apps/${APP}/undo/preview`, admin.cookie);
     expect(preview.status).toBe(200);
     // **表IDと件数は出る**(`doc_grant` が1件戻る)。**「権限」という語は1文字も出ない。**
     expect(preview.body).toContain("doc_grant");

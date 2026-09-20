@@ -158,9 +158,23 @@ function applied(searchFields: Record<string, string[]> = {}): Manifest {
   if (customerRole === undefined) {
     throw new Error("題材が customer を宣言していません");
   }
+  // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+  //
+  // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+  // 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+  // (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+  // 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+  //
+  // **この題材は `ticket-list` / `admin-list` / `open-list`(いずれも `list_view`。
+  // 表 `ticket`)を宣言しながら、`customer` にはその画面の規則を1本も書いていなかった。**
+  // **足すのは `ticket-list` の読取1本だけである** —— **(C) が測っている `admin-list`
+  // (`owner` にしか開いていない画面)には1本も足していないので、(C) の 403 は今日も
+  // そのまま立つ。** **(B) / (E) が測っているのは検索の口が境界を迂回しないことなので、
+  // 主張(`expect`)は1バイトも書き換えていない。**
   customerRole.rules = [
     ...(customerRole.rules ?? []),
     { target: "table", table: "ticket", can: ["read", "write"] },
+    { target: "view", view: "ticket-list", can: ["read"] },
   ];
   return manifest as unknown as Manifest;
 }

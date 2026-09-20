@@ -36,7 +36,14 @@ test("要件定義書が画面に出て、全記述に出典が付いている",
   await app.authenticate(page.context());
 
   // --- 期待値は API から導く(**セッション cookie を1つも載せない**)---
-  const response = await request.get(`/api/apps/${app.appId}/requirements?format=json`);
+  // **【`V17-M4-T02` による訂正。上の1行は1バイトも消していない】** **台帳 `AC-G20`** ——
+  // **要件定義書にはログインが要るようになった。** **旧の逐語**:
+  //   ``const response = await request.get(`/api/apps/${app.appId}/requirements?format=json`);``
+  // **`request`(`APIRequestContext`)はブラウザ context と cookie を共有しないので、
+  // `app.authHeaders` を明示的に渡す**(このファイルの他の呼び出しと同じ形)。
+  const response = await request.get(`/api/apps/${app.appId}/requirements?format=json`, {
+    headers: app.authHeaders,
+  });
   expect(response.status(), await response.text()).toBe(200);
   const { requirements } = (await response.json()) as RequirementsResponse;
   expect(requirements.app_id).toBe(app.appId);
@@ -133,7 +140,9 @@ test("要件定義書はマニフェストの変更に追随する(焼き込ま�
   await page.getByTestId("open-requirements-doc").click();
   await expect(statements.first()).toBeVisible();
 
-  const response = await request.get(`/api/apps/${app.appId}/requirements?format=json`);
+  const response = await request.get(`/api/apps/${app.appId}/requirements?format=json`, {
+    headers: app.authHeaders,
+  });
   const { requirements } = (await response.json()) as RequirementsResponse;
   await expect(statements).toHaveCount(requirements.statements.length);
   expect(requirements.statements.length).toBeGreaterThan(before);

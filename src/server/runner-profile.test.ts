@@ -73,6 +73,28 @@ const EDIT_MIDDLEWARE: readonly string[] = [
 ];
 
 /**
+ * **読み物3本の関門**(`V17-M4-T02`。台帳 `AC-G20` = 門外 / 限定採用)。
+ *
+ * **`GET /undo/preview` / `GET /changelog` / `GET /requirements` にも `app.use` が掛かった** ——
+ * **`app.ts` が `GET /manifest` に掛けているものと同じ1本である。**
+ *
+ * **【なぜ `EDIT_MIDDLEWARE` に足さないのか】** —— **上の定数の名前と doc は「編集系の2つ」を
+ * 指しており、読み物の関門を混ぜると名前が嘘になる**(期待値は赤くならないまま、名前だけが
+ * 事実と食い違う)。 **本数の効き方は同じである** —— **`DROPPED_ENTRIES` が 12 → 15 になる。**
+ *
+ * **【禁止】この 12 → 15 を「`runner` を緩めた」とも「厳しくした」とも読まないこと。**
+ * **`runner` に登録される口は1本も増減していない**(3本はもともと `runner` に無い)。
+ * **動いたのは「`full` に在って `runner` に無いもの」の数え方だけである** ——
+ * **`runner` の登録の全量が着手の前後で1エントリも動いていないことは、下の
+ * `(d) 【V17-M4-T02】` が撃つ。**
+ */
+const READ_MIDDLEWARE: readonly string[] = [
+  "ALL /api/apps/:app_id/undo/preview",
+  "ALL /api/apps/:app_id/changelog",
+  "ALL /api/apps/:app_id/requirements",
+];
+
+/**
  * **`D-V5-96`(2026-08-06)で `runner` から追加で落ちることになった5エントリ**
  * (`docs/plan/v5/records/v5-distribution-handover.md` §2-2)。
  *
@@ -92,10 +114,17 @@ const OWNER_DROPPED_ROUTES: readonly string[] = [
   "DELETE /api/apps/:app_id/escape-hatch-assets/:asset_id",
 ];
 
-/** **`runner` が落とす全量(7 + 5 = 12エントリ)。** */
+/**
+ * **`runner` が落とす全量。**
+ *
+ * **【`V17-M4-T02` による改訂。旧の逐語(1バイトも書き換えていない)】**:
+ *   `/** **`runner` が落とす全量(7 + 5 = 12エントリ)。** *\/`
+ * **今日は 5 + 2 + 3 + 5 = **15エントリ** である**(読み物3本の関門が足された)。
+ */
 const DROPPED_ENTRIES: readonly string[] = [
   ...EDIT_ROUTES,
   ...EDIT_MIDDLEWARE,
+  ...READ_MIDDLEWARE,
   ...OWNER_DROPPED_ROUTES,
 ];
 
@@ -208,7 +237,9 @@ describe("V5-M3-T02 実行専用の起動プロファイル", () => {
       dropped: [...DROPPED_ENTRIES].sort(),
       added: [],
     });
-    expect(dropped.length).toBe(12);
+    // **【`V17-M4-T02`】旧の逐語**: `expect(dropped.length).toBe(12);`
+    // **読み物3本の関門(`READ_MIDDLEWARE`)が `full` に足されたぶんだけ増えた。**
+    expect(dropped.length).toBe(15);
   });
 
   test("(d) 【D-V5-96】残す12本は runner にも今日どおり登録されている", () => {
@@ -216,6 +247,45 @@ describe("V5-M3-T02 実行専用の起動プロファイル", () => {
     const missing = KEPT_OWNER_ROUTES.filter((entry) => !runner.includes(entry));
     expect(missing).toEqual([]);
     expect(KEPT_OWNER_ROUTES.length).toBe(12);
+  });
+
+  // **【`V17-M4-T02`。台帳 `AC-G20`】** **`full` から落ちる数が 12 → 15 になったが、
+  // `runner` に登録される口は1本も増減していない** —— **その全量を数で固定する。**
+  //
+  // **着手前(`089637ab`)に同じ式を打った値**: **`full` = 77 / `runner` = **65**。**
+  // **着手後**: **`full` = 80 / `runner` = **65**。**
+  // **`runner` 側の並びは着手の前後で1エントリも違わなかった**(実出力は記録
+  // `docs/plan/v17/records/v17-m4.md` §2 に貼ってある)。
+  // **【2026-09-08。`V17-M6-T04`。台帳 `AC-G24` = 門外(`Δ7`)/ 限定採用。
+  //   テスト名は1バイトも書き換えていない】**
+  //
+  // **旧の期待値2つを逐語で残す**:
+  //   `expect(runner.length).toBe(65);`
+  //   `expect(registeredRoutes("full").length).toBe(65 + 15);`
+  //
+  // **【`V17-M4-T02` が固定した 65 を、本段が動かす。名指しで書く】** ——
+  // **`V17-M4-T02` の記録は「**`runner` 側の並びは着手の前後で1エントリも違わなかった**」と
+  // 書いている**(上のコメントの逐語)。 **`V17-M6-T04` はその 65 を **67** にする。**
+  // **【禁止】これを「増えていない」と書かない。**
+  //
+  // **【なぜ 66 ではなく 67 なのか。計画の予測と1つずれた】** —— **計画 §3-4b の (7) は
+  // 「`runner` **65 → 66** / `full` **65+15 → 66+15**」と予測していた。**
+  // **実測は **67** である** —— **この検査が数えているのは Hono の `app.routes` であり、
+  // **`app.use` による関門の登録も1エントリとして数える**。**
+  // **付与の出どころを返す口は、関門を第2引数に混ぜず `app.use` で別に置いた**
+  // (理由は `app.ts` の登録の直前に書いた。混ぜると整形器が行を折り、入口の全量表から
+  // 口が見えなくなる)—— **したがって増えるのは口1本ぶんの `GET` と、関門1本ぶんの
+  // 登録の**2エントリ**である。**
+  // **`src/server/entry-point-inventory.test.ts` の側は `app.get(` の綴りだけを数えるので、
+  // あちらは **52 → 53**(1本)である** —— **数え方が違うので数も違う。**
+  //
+  // **`runner` から落ちる数(`DROPPED_ENTRIES` = 15本)は1本も動いていない** ——
+  // **この口は `runner` にも登録する**(配って動かす版の運営者も同じ問いを持つ)。
+  test("(d) 【V17-M4-T02】runner の登録の全量は着手前と同じ 65エントリである", () => {
+    const runner = registeredRoutes("runner");
+    expect(runner.length).toBe(67);
+    // **陽性対照** —— **`full` 側は3本だけ増えている**(読み物3本の関門)。
+    expect(registeredRoutes("full").length).toBe(67 + 15);
   });
 
   test("(d) runner プロファイルにも実行系の代表が今日どおり登録されている", () => {

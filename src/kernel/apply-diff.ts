@@ -60,6 +60,8 @@ import type {
   Operation,
   // **画面種別の4種目**(`V8-M8`。台帳 `Q-G1`)。**`applyViewChanges` の分岐が値として使う。**
   ReportView,
+  // **【`V17-M5-T04`】表のIDの集合を持つのに使う型。値を1つも増やしていない。**
+  ResourceId,
   RoleCondition,
   RoleConditionNotice,
   RoleDeclaration,
@@ -77,9 +79,36 @@ import { DEFAULT_ROLE_IDS, renameFilterField } from "./types.ts";
 import { MAX_UNDOABLE_DIFF_ID_LENGTH } from "./undo.ts";
 import { validateDiff, validateManifestFull } from "./validate.ts";
 
-/** `foldOperations` の結果。 */
+/**
+ * **カーネルが1本の規則へ実際に `when` を書いたことの記録**(`V17-M5-T05` / 台帳 `AC-G33`)。
+ *
+ * **`export` しない** —— **`scripts/kernel-export-drift.test.ts` の一覧は
+ * 「`src/kernel/` の公開エクスポートが増えたか」を見るものであり、
+ * 本タスクは公開面を1つも増やさない**(`ADR-0009` の層またぎも0件である)。
+ *
+ * **`role` / `table` は識別子、`roleIndex` / `ruleIndex` は知らせの `path` を組むための位置である。**
+ */
+type OwnerScopeSupply = {
+  readonly role: ResourceId;
+  readonly table: ResourceId;
+  readonly roleIndex: number;
+  readonly ruleIndex: number;
+};
+
+/**
+ * `foldOperations` の結果。
+ *
+ * **【2026-09-08 追記(`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`)。
+ * 旧の1行を逐語で残す】**
+ * **旧: `  | { valid: true; manifest: Manifest }`**
+ * **成功形に `ownerScopeSupplies` を1本足した** —— **{@link supplyOwnerScopeConditions} が
+ * 実際に `when` を書いた規則の一覧である。** **`applyDiff` はこれを知らせ(4種目
+ * `owner_scope_supplied`)に変える。** **適用後のマニフェストだけを見ても
+ * 「作者が書いた条件」と「カーネルが補った条件」は区別が付かないので、
+ * 補った側が書いた時点で記録して運ぶ。**
+ */
 export type FoldOperationsResult =
-  | { valid: true; manifest: Manifest }
+  | { valid: true; manifest: Manifest; ownerScopeSupplies: readonly OwnerScopeSupply[] }
   | { valid: false; errors: ValidationError[] };
 
 /** `applyDiff` の結果。失敗形は `ValidationResult` と同一。 */
@@ -448,7 +477,28 @@ export function foldOperations(current: Manifest, operations: Operation[]): Fold
   if (errors.length > 0) {
     return { valid: false, errors };
   }
-  return { valid: true, manifest };
+  // **【2026-09-08。`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`。
+  //   旧の1行を逐語で残す】**
+  // **旧: `  return { valid: true, manifest };`**
+  //
+  // **{@link supplyOwnerScopeConditions} の呼び出しを、`foldSetRoles` の中から
+  // **ここ**(すべての op を畳み終えた出口)へ移した。** **呼ぶのは1度だけである。**
+  //
+  // **この1つの移動が3つを同時に直す**(台帳 `AC-G33` の当たり先3つ):
+  //
+  // 1. **`add_field` で後から `st_owner` を足した表** —— **`set_roles` が来なくても
+  //    最後の姿を見るので補われる。**
+  // 2. **順序に依る穴((o-11))** —— **同じ差分で `set_roles` を `add_table` /
+  //    `add_field` より**先**に並べても、見るのは畳み終えた後の姿である。**
+  // 3. **二重呼び出しが消える** —— **1つの差分に `set_roles` が2本あっても1度しか走らない。**
+  //
+  // **【広がった射程を正直に書く。丸めない】** **着手前は `set_roles` を含む差分でしか
+  // 走らなかったが、今日は**すべての差分**の出口で走る。** **`add_view` だけの差分でも
+  // 走る**(着手前の実測: そのとき補完は1本も走らず、知らせも `[]` だった)。
+  // **拒否は1本も増えていない** —— **この関数はここまでで `errors` を確定させており、
+  // 補完は `valid: true` の側でしか動かない。**
+  const ownerScopeSupplies = supplyOwnerScopeConditions(manifest);
+  return { valid: true, manifest, ownerScopeSupplies };
 }
 
 // =====================================================================================
@@ -598,23 +648,56 @@ const DEFAULT_ROLE_RULE_VERBS: {
  *   `add_table` の時点で入るので、そのときの姿しか見ていない)。
  * - **`change_table` で後から行ごとのアクセス権を宣言した表**からは、既に入った自動付与が
  *   1本も外れない(カスケードしない。`ADR-0012` 限定4 と同じ作法)。
+ *
+ * **【2026-09-08 追記(`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`)。
+ * 上の2行は1バイトも消していない】**
+ * **1つ目(「`add_field` で後から `st_owner` を足した表には条件が付かない」)は、
+ * 今日は偽である。** **この関数の見え方そのものは1バイトも変わっていない**
+ * (**今日もこの関数は「渡された1つの表の姿」しか見ない**)—— **変わったのは
+ * {@link supplyOwnerScopeConditions} を呼ぶ位置であり、
+ * {@link foldOperations} が**すべての op を畳み終えた後**に1度だけ呼ぶようになった。**
+ * **したがって `add_field` で後から足した `st_owner` も、その差分の出口で
+ * 条件なしの規則に補われる**(**補ったことは知らせ `owner_scope_supplied` で返る**)。
+ * **2つ目(`change_table` のカスケードしない件)は今日も真である** —— **本タスクは
+ * 自動付与を1本も外していない。**
  */
 type DefaultTableGrantPlan =
   | { readonly kind: "skip" }
   | { readonly kind: "grant"; readonly when?: RoleCondition };
+
+/**
+ * **その表が「行ごとのアクセス権」を宣言しているか**(`access_control.enabled === true`)。
+ *
+ * **`enabled !== true` は「宣言していない表と同じ扱い」である**(`schemas/manifest.schema.json`
+ * の逐語)。**`src/server/owner-scope.ts` の `accessControlOf` と同じ読み方であり、
+ * カーネルは `src/server/` を import できない**(`ADR-0009` の層分離)ので、
+ * **同じ読み方がカーネルとサーバの2箇所にある。隠さない。**
+ *
+ * **読む相手は2つだけである**({@link defaultTableGrantPlan} と
+ * {@link collectRoleConditionNotices})—— **どちらもカーネルの内側である。**
+ */
+function declaresRecordGrants(table: Table): boolean {
+  const declared = (table as { access_control?: unknown }).access_control;
+  return (
+    typeof declared === "object" &&
+    declared !== null &&
+    !Array.isArray(declared) &&
+    (declared as { enabled?: unknown }).enabled === true
+  );
+}
 
 function defaultTableGrantPlan(table: Table): DefaultTableGrantPlan {
   // **`enabled !== true` は「宣言していない表と同じ扱い」である**(schema の逐語)——
   // **`src/server/owner-scope.ts` の `accessControlOf` と同じ読み方であり、
   // 判定を1本増やしていない。** **カーネルは `src/server/` を import できない**
   // (`ADR-0009` の層分離)ので、読み方が2箇所にある。**隠さない。**
-  const declared = (table as { access_control?: unknown }).access_control;
-  if (
-    typeof declared === "object" &&
-    declared !== null &&
-    !Array.isArray(declared) &&
-    (declared as { enabled?: unknown }).enabled === true
-  ) {
+  //
+  // **【2026-09-08 追記(`V17-M5-T04` / `AC-G18`)。上の4行は1バイトも消していない】**
+  // **読み方の本体を {@link declaresRecordGrants} へ括り出した** —— **同じ問いを
+  // `collectRoleConditionNotices` も要るようになったからである。** **カーネル側の
+  // 読み方は今日も1本のままであり、`src/server/` 側と合わせて2箇所である**
+  // (**3箇所目を作っていない**)。
+  if (declaresRecordGrants(table)) {
     return { kind: "skip" };
   }
   if (table.fields.some((field) => field.id === OWNER_SCOPE_COLUMN)) {
@@ -1416,10 +1499,48 @@ function foldSetTheme(manifest: Manifest, theme: Theme): void {
  *   自認している穴は、`set_roles` 経由でだけ塞がる)。
  * - **実在しない表を名指しした規則は今日も拒否されない**((o-7))。 **本関数は拒否を
  *   1本も増やさない** —— **表を引けないので何もしない。**
+ *
+ * ## **【2026-09-08 追記(`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`)。
+ *    直前の3項を1バイトも消していない】**
+ *
+ * **上の3項のうち、最初の2項は今日は偽である。**
+ *
+ * - **「順序に依る」は今日は偽である** —— **本関数を呼ぶ位置が {@link foldOperations} の
+ *   出口(すべての op を畳み終えた後)へ移ったので、同じ差分で `set_roles` を
+ *   `add_table` / `add_field` より先に並べても、見るのは畳み終えた後の姿である。**
+ * - **「`add_field` で後から `st_owner` を足した表は、`set_roles` が来るまで補われない」も
+ *   今日は偽である** —— **`set_roles` を1本も含まない差分でも、出口で1度走る。**
+ *   **「`add_field` の畳み込みは規則を1本も触らない」は今日も真である**
+ *   (**触るのは畳み込みが終わった後の1回だけであり、`foldAddField` は1バイトも
+ *   変わっていない**)。
+ * - **3項目(実在しない表を名指しした規則)は今日も真である** —— **本関数は今日も
+ *   拒否を1本も増やさない。**
+ *
+ * **【本関数が今日も塞いでいないもの。丸めない】**
+ *
+ * - **一度補った条件は、あとから `st_owner` の列を消しても外れない**(カスケードしない。
+ *   `defaultTableGrantPlan` の doc の `change_table` の項と同じ作法)。
+ * - **作者が書いた条件と、本関数が補った条件は、適用後のマニフェストの上では
+ *   1バイトも区別が付かない** —— **区別できるのは、補った差分の応答に載る知らせ
+ *   (`owner_scope_supplied`)を読んだ人だけである。**
+ * - **知らせは補った瞬間の1回しか出ない** —— **次の差分では既に `when` が在るので、
+ *   本関数は素通りし、知らせも出ない。**
  */
-function supplyOwnerScopeConditions(manifest: Manifest): void {
-  for (const declaration of manifest.app.roles ?? []) {
-    for (const rule of declaration.rules ?? []) {
+function supplyOwnerScopeConditions(manifest: Manifest): OwnerScopeSupply[] {
+  // **【2026-09-08 追記(`V17-M5-T05` / `AC-G33` / `ADR-0423`)。旧の1行を逐語で残す】**
+  // **旧: `function supplyOwnerScopeConditions(manifest: Manifest): void {`**
+  // **旧: `  for (const declaration of manifest.app.roles ?? []) {`**
+  // **旧: `    for (const rule of declaration.rules ?? []) {`**
+  // **書いた規則の位置を返すようにした** —— **補ったことを知らせに変えるのは
+  // `applyDiff` の側であり、この関数は知らせを1件も組み立てない。**
+  // **書き込む中身(`rule.when`)は1バイトも変えていない。**
+  // **`for ... of` と `continue` の形はそのまま残した**(`.entries()` で位置を添えただけ
+  // である)—— **`ADR-0423` 限定2 の第3列が「`rule.when !== undefined` の `continue` が
+  // 残っていること」を式にしているので、`forEach` に書き換えるとその式が実装の側から
+  // 偽になる**(記憶 `limit-table-checks-can-be-born-false` の同型を作らない)。
+  const supplies: OwnerScopeSupply[] = [];
+  for (const [roleIndex, declaration] of (manifest.app.roles ?? []).entries()) {
+    for (const [ruleIndex, rule] of (declaration.rules ?? []).entries()) {
       // **表の規則だけである** —— **画面・ボタン・`app` / `role` には判定する行が1つも
       // 無く、スキーマの `allOf` が `when: false` で閉じている**({@link RoleRule} の doc)。
       if (rule.target !== "table" || rule.when !== undefined) {
@@ -1436,8 +1557,17 @@ function supplyOwnerScopeConditions(manifest: Manifest): void {
       // **規則ごとに写しを配る**({@link grantDefaultRoleRules} と同じ理由 ——
       // 同じオブジェクトを共有すると、あとで1本を書き換えたときに他まで変わる)。
       rule.when = structuredClone(plan.when);
+      supplies.push({
+        role: declaration.id,
+        // **ここに来るのは `rule.table` が実在する表を指しているときだけである**
+        // (上の `find` が `undefined` を弾いている)。
+        table: table.id,
+        roleIndex,
+        ruleIndex,
+      });
     }
   }
+  return supplies;
 }
 
 /**
@@ -1450,10 +1580,23 @@ function supplyOwnerScopeConditions(manifest: Manifest): void {
  * manifest.app.roles = structuredClone(roles); }`**
  * **今日は写しを積んだ**後**に {@link supplyOwnerScopeConditions} を1度呼ぶ** ——
  * **呼び出し側が渡した `roles` は1バイトも書き換わらない**(補うのは写しの側である)。
+ *
+ * **【2026-09-08 追記(`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`)。
+ * 上の段落を1バイトも消していない】**
+ * **上の「今日は写しを積んだ**後**に {@link supplyOwnerScopeConditions} を1度呼ぶ」は、
+ * 今日は偽である。** **呼び出しはこの関数から外し、{@link foldOperations} の出口
+ * (すべての op を畳み終えた後)へ移した。** **この関数は写しを積むだけに戻った。**
+ * **「呼び出し側が渡した `roles` は1バイトも書き換わらない」は今日も真である**
+ * (補うのは畳み込み後のマニフェストの側であり、引数の `roles` ではない)。
  */
 function foldSetRoles(manifest: Manifest, roles: RoleDeclaration[]): void {
+  // **【2026-09-08。`V17-M5-T05` / `AC-G33` / `ADR-0423`。旧の1行を逐語で残す】**
+  // **旧: `  supplyOwnerScopeConditions(manifest);`**
+  // **この1行を外した。** **呼ぶのは {@link foldOperations} の出口の1箇所だけである** ——
+  // **`set_roles` の時点の表の姿しか見えない位置で呼んでいたことが、
+  // 台帳 `AC-G33` の穴3つ(後から足した `st_owner` / 順序依存 / 二重呼び出し)の
+  // 出どころそのものだった。**
   manifest.app.roles = structuredClone(roles);
-  supplyOwnerScopeConditions(manifest);
 }
 
 function foldChangeTable(
@@ -2598,6 +2741,151 @@ function foldCondition(node: RoleCondition, anonymous: boolean): ConditionTruth 
 }
 
 /**
+ * **知らせの文面に出す動詞の日本語**(`V17-M5-T04`)。
+ *
+ * **{@link RoleRuleVerb} の3語ちょうどに対応する** —— **4語目を足していない。**
+ */
+const RULE_VERB_LABELS: Readonly<Record<RoleRuleVerb, string>> = {
+  read: "読取",
+  write: "書込",
+  delete: "削除",
+};
+
+/**
+ * **行ごとのアクセス権を配っている表を、条件なしで扱う役割の規則を知らせる**
+ * (`V17-M5-T04`。台帳 `AC-G17`(`:1843`)/ `AC-G18`(`:1844`)。ユーザ決定 `D-V16-6`
+ * の逐語「**今の動きは変えず、設定した人に警告を出す**」。`ADR-0422`)。
+ *
+ * **拒否しない。適用は通る。知らせるだけである** —— **ふるまいを1ミリも変えていない。**
+ * **面(役割の規則)と点(行ごとの付与)の合成の式(`src/server/owner-scope.ts` の
+ * `combineRoleAndGrantAccess`)は1バイトも動いていない**(`ADR-0422` 限定1)。
+ *
+ * ## 出す条件(**状態で見る。差分の中身を1バイトも見ない**)
+ *
+ * 1. **その規則が表(`target: "table"`)を名指ししている。**
+ * 2. **その表が `access_control` を `enabled: true` で宣言している。**
+ * 3. **その規則が `when` を1つも持たない。**
+ *
+ * ## **【役割 `owner` は対象から外してある。ユーザ決定 `D3`(2026-09-08)】**
+ *
+ * **`owner` はアプリの運営者であり、全表を条件なしで扱えることは意図された設定である。**
+ * **したがって `role.id === "owner"` の規則には、上の3つを満たしても知らせを出さない。**
+ *
+ * **【正直に書く。これは穴である】** **着手前の実測(計画 `06-v17-m5-plan.md` §2-1d)で、
+ * ディスク上のアプリでこの形に当たる規則は3本あり、3本とも `owner` のものだった** ——
+ * **したがって、その3本は着手後も1件も知らされない。** **【禁止】これを「塞いだ」と書かない。**
+ *
+ * ## この関数が見ていないもの(**名指しで書く**)
+ *
+ * - **条件を**書いてある**規則と付与の層との重なりは1件も見ない** —— **見るのは
+ *   「条件を1つも書いていない」形だけである。**
+ * - **項目(`target: "field"`)の規則は見ない** —— **点の単位は行であり、
+ *   台帳の逐語も「表」を主語にしている。**
+ * - **規則2本以上にまたがる重なりは今日も見ない**(`collectRoleConditionNotices` の
+ *   「検出できない形」の 5 は今日も真である)。
+ */
+function collectGrantsBypassedNotice(
+  notices: RoleConditionNotice[],
+  grantDeclaredTables: ReadonlySet<ResourceId>,
+  roleId: ResourceId,
+  roleIndex: number,
+  rule: RoleRule,
+  ruleIndex: number,
+): void {
+  // **ユーザ決定 `D3`** —— **運営者の規則には知らせを出さない。**
+  if (roleId === "owner") return;
+  if (rule.target !== "table" || rule.table === undefined) return;
+  if (!grantDeclaredTables.has(rule.table)) return;
+  const verbs = rule.can.map((verb) => RULE_VERB_LABELS[verb]).join("・");
+  notices.push({
+    kind: "grants_bypassed",
+    role: roleId,
+    // **`/when` を付けない** —— **`when` が無い規則なので、指し先が存在しないからである。**
+    // **既存2種(`never_matches` / `always_matches`)の `path` とは形が違う**
+    // (`src/kernel/types.ts` の `path` の doc に訂正で書いてある)。
+    path: `/app/roles/${roleIndex}/rules/${ruleIndex}`,
+    // **【2026-09-17。`V18-M9-T11` / `ADR-0446` 授権の表 行1 / ユーザ決定 `D-V18-35`。**
+    // **`message` の末尾の1文だけを書き換えた。旧の文面を逐語で残す —— 1バイトも消していない】**
+    // **旧: `この規則がある間、その表に配った行ごとの権限は、この役割については意味を持ちません。`**
+    // **何が偽か** —— **読取は今日も効いている。** **`ADR-0438` §誇張しない 1 が同じサーバ・
+    // 同じ状態で撃って確かめている**(推論ではない): **知らせは出る(`grants_bypassed` |
+    // `viewer`)のに、同じ状態での実際の読取は `user3 | projects | total= 1` であり、
+    // **配りが効いている**。**
+    // **「意味を持ちません」と言い切ると、利用者は「配った行が読めなくなる」と誤解する。**
+    // **【動作は1ミリも変えていない】** —— **判定の側(早期 return と `verbs` の組み立て)も、
+    // `kind` / `role` / `path` も、`hint` も、呼び出し(`:2969` 付近)も1文字も変えていない。**
+    // **この知らせが出る条件も、出た後に起きることも、今日と1ビットも変わらない。**
+    message:
+      `役割 "${roleId}" の規則は、行ごとにアクセス権を配っている表 "${rule.table}" を` +
+      `条件なしで ${verbs} できるようにしています。` +
+      `この規則がある間、その表に配った行ごとの権限は、この役割については当てになりません` +
+      `(ただし読み取りは今日も、配ったとおりに絞られます)。`,
+    hint:
+      "行ごとの権限で絞りたいなら、この規則に条件を付けるか、この規則ごと消してください" +
+      "(適用は通っています —— 拒否ではなく、お知らせです)。",
+  });
+}
+
+/**
+ * **カーネルが条件を補ったことを、書いた人に返る形で伝える**(`V17-M5-T05`。台帳
+ * `AC-G33`(`:1862`)。踏む条文 `ADR-0318` 限定12。引き受けは `ADR-0331`。`ADR-0423`)。
+ *
+ * **拒否ではない。適用は通る。知らせるだけである**(既存3種と同じ性質)。
+ *
+ * ## なぜ「状態で見る」側を採れないのか(**既存3種と違う唯一の点**)
+ *
+ * **既存3種(`never_matches` / `always_matches` / `grants_bypassed`)は、適用後の
+ * マニフェストだけを見て判定できる。** **4種目はできない** —— **補った後の `when` は、
+ * 作者が同じ条件を自分で書いた場合と1バイトも違わないからである。**
+ * **したがってこの1種だけは、{@link supplyOwnerScopeConditions} が書いた瞬間の記録を運ぶ。**
+ * **その代わり、知らせは補った差分の応答に1回しか出ない**(次の差分では既に `when` が
+ * 在るので、補完も知らせも走らない)。
+ *
+ * ## **【役割 `owner` を対象から外していない。`AC-G18` の3種目とは向きが違う】**
+ *
+ * **`grants_bypassed`(3種目)はユーザ決定 `D3` により `owner` を外してある** ——
+ * **あちらは「運営者が全表を条件なしで扱えるのは意図された設定である」という理由であり、
+ * カーネルは何も書き換えていない。**
+ * **4種目は逆である** —— **カーネルが `owner` の規則を実際に書き換え、
+ * 「自分の行と持ち主が空の行だけ」へ**狭めて**いる。**
+ * **ここで `owner` を外すと、運営者の規則が黙って狭まり、書いた人は1件も知らされない** ——
+ * **それは本単位が塞ごうとしている「黙って」そのものである。**
+ * **したがって `owner` にも出す。** **【正直に書く】この決定は `D3` を1ミリも引き直して
+ * いない** —— **`D3` は3種目についての決定であり、4種目には及ばない。**
+ *
+ * ## この関数が見ていないもの(**名指しで書く**)
+ *
+ * - **補われた結果その役割が実際に何行読めるようになったか / 読めなくなったかは
+ *   1件も測らない** —— **カーネルは行を1件も読まない。**
+ * - **既に `when` を書いてある規則は1件も載らない**(補完の対象外であり、
+ *   `ADR-0318` 限定12 の線の内側である)。
+ * - **`applyManifest` の経路(差分を通さない適用)では補完も知らせも1度も走らない** ——
+ *   **`applyManifest` に補完は1バイトも入っていない**(入れると毎回の適用で条件が復活し、
+ *   あとから外せなくなる。{@link grantDefaultRoleRules} の doc と同じ理由である)。
+ */
+function collectOwnerScopeSuppliedNotices(
+  notices: RoleConditionNotice[],
+  supplies: readonly OwnerScopeSupply[],
+): void {
+  for (const supply of supplies) {
+    notices.push({
+      kind: "owner_scope_supplied",
+      role: supply.role,
+      // **既存2種と同じ `/when` 付きの形である** —— **実際に書いた `when` を指すので、
+      // 指し先が存在する**(3種目 `grants_bypassed` が `/when` を付けないのとは逆である)。
+      path: `/app/roles/${supply.roleIndex}/rules/${supply.ruleIndex}/when`,
+      message:
+        `役割 "${supply.role}" の規則に、持ち主で絞る条件を補いました` +
+        `(表 "${supply.table}" は持ち主の列を持っています)。` +
+        `この役割は、自分の行と持ち主が空の行だけを扱えます。`,
+      hint:
+        "全員の行を扱わせたいなら、条件を明示的に書き直してください" +
+        "(適用は通っています —— 拒否ではなく、お知らせです)。",
+    });
+  }
+}
+
+/**
  * **誰も通さない条件・全員を通す条件を、書いた人に返る形で伝える**(`V8-M18`。台帳
  * `J-G16` の限定の逐語「**書いた人に返る形で伝える**」。メインの裁定 `R-17-6`)。
  *
@@ -2637,13 +2925,69 @@ function foldCondition(node: RoleCondition, anonymous: boolean): ConditionTruth 
  *    **【`V8-M20`。台帳 `J-G27`〜`J-G30`】着手前はここに `audience` の層も並んでいた。**
  *    **その層は今日は存在しない**(`audience` / `writable_by` / `st_admin_readable` は
  *    `V8-M20` が廃止した)。**残る予約規約フィールドは4本である。**
+ *
+ *    **【2026-09-08。`V17-M5-T04` / `AC-G17` / `AC-G18` / `ADR-0422`。直前の項を
+ *    1バイトも消していない】** **上の「1度も突き合わせない」は今日から一部が偽である。**
+ *    **今日は、行ごとの付与を宣言した表(`access_control.enabled === true`)を
+ *    **条件なしで**扱う規則だけを突き合わせる**(3種目 `grants_bypassed`)。
+ *    **他の重なりは今日も1件も見ない** —— **`st_owner` の層とは今日も1度も
+ *    突き合わせず、条件を**書いてある**規則と付与の層との重なりも1件も見ない。**
+ *    **役割 `owner` の規則は、条件なしでも1件も知らせない**(ユーザ決定 `D3`)。
+ *
+ *    **【2026-09-08。`V17-M5-T05` / `AC-G33` / `ADR-0423`。直前の2つの段落を
+ *    1バイトも消していない】** **直前の追記の「`st_owner` の層とは今日も1度も
+ *    突き合わせず」は、この配列に載るものについては今日は正確ではない。**
+ *    **この関数は今日も `st_owner` の層を1度も突き合わせない**(判定は1本も持たない)——
+ *    **が、`st_owner` の列を持つ表について**カーネルが条件を補った**ことを、
+ *    4種目 `owner_scope_supplied` として同じ配列に載せるようになった。**
+ *    **載せる材料は {@link supplyOwnerScopeConditions} が畳み込みの出口で採った記録であり、
+ *    この関数が突き合わせた結果ではない**({@link collectOwnerScopeSuppliedNotices})。
+ *    **【禁止】これを「`st_owner` の層との矛盾を見つけるようになった」と読まない** ——
+ *    **矛盾は1件も見ていない。補ったことを報告しているだけである。**
+ *    **4種目は役割 `owner` にも出す**(3種目の `D3` は4種目に及ばない。理由は
+ *    {@link collectOwnerScopeSuppliedNotices} の doc)。
  */
-function collectRoleConditionNotices(manifest: Manifest): RoleConditionNotice[] {
+function collectRoleConditionNotices(
+  manifest: Manifest,
+  // **【2026-09-08 追記(`V17-M5-T05` / `AC-G33` / `ADR-0423`)。旧の1行を逐語で残す】**
+  // **旧: `function collectRoleConditionNotices(manifest: Manifest): RoleConditionNotice[] {`**
+  // **4種目 `owner_scope_supplied` だけは「状態で見る」ことができない** ——
+  // **補った後のマニフェストの上では、作者が書いた条件と1バイトも区別が付かないからである。**
+  // **したがってこの1つだけは、書いた側({@link supplyOwnerScopeConditions})が
+  // 差分の畳み込みで採った記録を受け取る。** **既存3種の判定は今日どおり
+  // 適用後のマニフェストだけを見ており、この引数を1度も読まない。**
+  ownerScopeSupplies: readonly OwnerScopeSupply[] = [],
+): RoleConditionNotice[] {
   const notices: RoleConditionNotice[] = [];
+  collectOwnerScopeSuppliedNotices(notices, ownerScopeSupplies);
+  // **【`V17-M5-T04` / `AC-G18`】行ごとのアクセス権を宣言した表の集合。**
+  // **判定の材料は適用後のマニフェストだけである** —— **この差分が何を置いたかを
+  // 1バイトも見ない**(`ADR-0422` の限定5)。**「状態で見る」側を採ったので、
+  // 別の差分が置いた規則も、宣言をあとから足した表も、同じ1件として載る。**
+  const grantDeclaredTables = new Set<ResourceId>();
+  for (const table of manifest.app.tables ?? []) {
+    if (declaresRecordGrants(table)) {
+      grantDeclaredTables.add(table.id);
+    }
+  }
   (manifest.app.roles ?? []).forEach((role, roleIndex) => {
     const anonymous = role.id === "anonymous";
     (role.rules ?? []).forEach((rule, ruleIndex) => {
-      if (rule.when === undefined) return;
+      // **【2026-09-08。`V17-M5-T04` / `AC-G18`。旧の1行を逐語で残す】**
+      // **旧: `if (rule.when === undefined) return;`** —— **条件を書いていない規則を
+      // 1本も見ずに素通ししていた。** **今日は素通りする前に3種目を1度だけ当てる**
+      // (**当たらなければ今日どおり素通りする**)。
+      if (rule.when === undefined) {
+        collectGrantsBypassedNotice(
+          notices,
+          grantDeclaredTables,
+          role.id,
+          roleIndex,
+          rule,
+          ruleIndex,
+        );
+        return;
+      }
       const truth = foldCondition(rule.when, anonymous);
       if (truth === "unknown") return;
       const path = `/app/roles/${roleIndex}/rules/${ruleIndex}/when`;
@@ -2846,7 +3190,15 @@ export function applyDiff(dataRoot: string, appId: string, diff: unknown): Apply
         entry,
         // **`V8-M18` / 台帳 `J-G16`。****commit の後に作る** —— **知らせは適用の
         // 可否を1ミリも変えないからである(拒否ではない)。**
-        role_condition_notices: collectRoleConditionNotices(applied.manifest),
+        // **【2026-09-08 追記(`V17-M5-T05` / `AC-G33` / `ADR-0423`)。旧の1行を逐語で残す】**
+        // **旧: `        role_condition_notices: collectRoleConditionNotices(applied.manifest),`**
+        // **畳み込みが採った「実際に条件を補った規則」の記録を渡す** ——
+        // **役割と規則の並びは `foldOperations` の出口から `applyManifest` を通っても
+        // 1バイトも入れ替わらないので、位置(`roleIndex` / `ruleIndex`)はそのまま使える。**
+        role_condition_notices: collectRoleConditionNotices(
+          applied.manifest,
+          folded.ownerScopeSupplies,
+        ),
       };
     } catch (error) {
       // 2 以降のどこで落ちても、適用前スナップショットへ戻してから投げ直す。

@@ -504,9 +504,27 @@ describe("(7) `V7-M2-T01` が動かしていないもの", () => {
     expect(schema.$defs.table.required).toEqual(["id", "name", "fields"]);
   });
 
-  test("`permissions` の要素は今日も5キーちょうどである(`Z-G10` 限定 (2))", () => {
+  // -------------------------------------------------------------------------------
+  // **【2026-09-10。`V17-M10-T04`。台帳 `AC-G4a` / `ADR-0429`(門A の本審査 =
+  // `V17-M10-T02`。判定値 = 限定採用)】期待値を5キー → 6キーへ打ち直した。**
+  // **旧テスト名の逐語**: "`permissions` の要素は今日も5キーちょうどである(`Z-G10` 限定 (2))"
+  // **旧の期待値の逐語**:
+  //
+  //     expect(Object.keys(item.properties)).toEqual(["id", "name", "read", "write", "delete"]);
+  //
+  // **足したのは6キー目 `restrictive`(「この権限名は上限である」の符号)である。**
+  // **`required` と `additionalProperties: false` は1バイトも動いていない**(`ADR-0429` 限定2)。
+  // -------------------------------------------------------------------------------
+  test("`permissions` の要素は今日 6キーちょうどである(`Z-G10` 限定 (2) / `ADR-0429` 限定1)", () => {
     const item = accessControlSchema().properties.permissions.items as Any;
-    expect(Object.keys(item.properties)).toEqual(["id", "name", "read", "write", "delete"]);
+    expect(Object.keys(item.properties)).toEqual([
+      "id",
+      "name",
+      "read",
+      "write",
+      "delete",
+      "restrictive",
+    ]);
     expect(item.required).toEqual(["id", "name", "read", "write", "delete"]);
     expect(item.additionalProperties).toBe(false);
   });

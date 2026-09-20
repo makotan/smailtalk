@@ -41,8 +41,53 @@ diff.schema.json:sha256:3a97e9c675067a953f46f0b211999a5438f64ec7e76bd4de5c6eb939
 # 動かしたのは $defs/table.properties.access_control に8キー目 creatable_by を足したことと、
 # 同じ $comment への訂正の追記(既存の文は1バイトも消していない)の2箇所だけである。
 # diff.schema.json の2行は1バイトも動いていない(値域を書き写していない。ADR-0405 限定7)。
-manifest.schema.json:bytes:378026
-manifest.schema.json:sha256:de8745c75b14ada19d67dc88fed2f4f95d7b2af68b8d6899b6ac479f48768919
+# 【2026-09-08。V17-M5-T03e。AC-G10 / ADR-0412(門A・限定採用)】manifest.schema.json の
+# 2行をもう一度打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:378026
+#   manifest.schema.json:sha256:de8745c75b14ada19d67dc88fed2f4f95d7b2af68b8d6899b6ac479f48768919
+# 動かしたのは $defs/table.properties.access_control に9キー目 creatable_by_roles を足したことと、
+# 同じ $comment 2箇所への訂正の追記(既存の文は1バイトも消していない)だけである。
+# $defs は今日も 30 のまま・permissions[] は5キーのまま・required は4本のままである
+# (ADR-0412 限定1 / 限定2)。
+# diff.schema.json の2行は今日も1バイトも動いていない(値域を書き写していない。同 限定1)。
+# 【2026-09-10。V17-M10-T04。AC-G4a / ADR-0429(門A・限定採用)】manifest.schema.json の
+# 2行を3度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:385621
+#   manifest.schema.json:sha256:0d5a16b4a2b2d942eee08083650696c39cca976779a05b8062bb263cca9b955e
+# 動かしたのは $defs/table.properties.access_control.properties.permissions.items.properties に
+# 6キー目 restrictive(「この権限名は上限である」の符号)を足した1箇所だけである。
+# 既存の $comment / description は1バイトも書き換えていない(訂正の追記も1文字もしていない)。
+# $defs は今日も 30 のまま・access_control は9キーのまま・grant は5キーのまま・
+# permissions[].items.required は5キーのままである(ADR-0429 限定1 / 限定2 / 限定3)。
+# 面(roles[] / rules[] / can)にも1バイトも足していない(同 限定4)。
+# diff.schema.json の2行は今日も1バイトも動いていない(値域を書き写していない。同 限定1 第4項)。
+# 【2026-09-10。V17-M10B-T08b。AC-G4a / ADR-0430(docs/adr/0430-upper-bound-through-group-and-inheritance.md
+#   §Decision 7 の授権の表)】manifest.schema.json の2行を4度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:390764
+#   manifest.schema.json:sha256:e7d2d1133e73b0f3bbcea66e32c8c44f124a76f11aff892f214dcaa4aaf9d6f5
+# 動かしたのは $defs/table.properties.access_control.properties.permissions.items.properties.restrictive の
+# $comment と description の2つに訂正を追記した1箇所だけである(561行目と562行目。git diff --numstat = 2 2)。
+# 旧文は1バイトも消していない(どちらも旧文が先頭から逐語で残っていることを確かめた)。
+# キーを1つも増やしていない: $defs は今日も 30 のまま・access_control は9キーのまま・
+# permissions[] の要素は6キーのまま・access_control.required は
+# ["enabled","permissions","grant","creator_permission"] の4本のままである。
+# diff.schema.json の2行は今日も1バイトも動いていない(0バイト。ADR-0430 §Decision 7 の表)。
+# 【2026-09-17。V18-M9-T11 が動かした分に V18-M9-T15 が追随した。ADR-0446 の
+#   【2026-09-17 追記】§C の授権の表 行8】manifest.schema.json の2行を5度目に打ち直した。
+#   旧値の逐語:
+#   manifest.schema.json:bytes:396026
+#   manifest.schema.json:sha256:9bdddab3bb6691798e8e98fef0b57e39e2160f577f2e9e9c13a17a65d3b41056
+# 動かしたのは $defs/table.properties.access_control.properties.creatable_by_roles の
+# $comment と description の2つに訂正を追記した1箇所だけである(656行目と657行目。git diff --numstat = 2 2)。
+# 旧文は1バイトも消していない(どちらも旧文が先頭から逐語で残っていることを確かめた)。
+# キーを1つも増やしていない: $defs は今日も 30 のまま・access_control は9キーのまま・
+# permissions[] の要素は6キーのまま・creatable_by_roles は6キーのまま・access_control.required は
+# ["enabled","permissions","grant","creator_permission"] の4本のままである(自分で打った)。
+# diff.schema.json の2行は今日も1バイトも動いていない(100822 / 3a97e9c6… が :35 / :36 と一致)。
+# 値は検査の失敗出力から1文字も写していない —— wc -c と shasum -a 256 を自分で打った。
+# V18-M9-T11 が記録に書いた参考値とも一致した。
+manifest.schema.json:bytes:398011
+manifest.schema.json:sha256:afc8921a11d6ed49d9e4d6befdf78b98b5c7bea5859b32fb96c8690e64ac714e
 
 # --- manifest.schema.json の $defs(宣言順)---------------------------------------------
 manifest.schema.json:$defs:resource_id

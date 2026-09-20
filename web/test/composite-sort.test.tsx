@@ -34,7 +34,7 @@ import { createServerApp } from "../../src/server/app.ts";
 import { seedSession, TEST_ORIGIN } from "../../src/server/test-helpers.ts";
 import { fetchRecords } from "../src/api.ts";
 import { ListViewRenderer } from "../src/views/ListViewRenderer.tsx";
-import { ADMIN_ROLES, grantRules, tableCan } from "./role-rules.ts";
+import { ADMIN_ROLES, grantRules, tableCan, viewRead } from "./role-rules.ts";
 
 const APP_ID = "book-log";
 const originalFetch = globalThis.fetch;
@@ -87,7 +87,19 @@ function manifestWith(sort: Sort | Sort[] | undefined): Manifest {
   // 直に入れるので、書込の規則は要らない)。
   // **既定の3役割(owner / editor / viewer)を全部宣言し、どれも規則を1本以上持たないと
   // `applyManifest` が `valid: false` になる**(適用時検査。実測)。
-  return grantRules(manifest, ADMIN_ROLES, [tableCan("books", "read")]);
+  // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を1本足した。**
+  //
+  // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す、
+  // 要求の形に合う画面(一覧の口 → `list_view` / `report_view`)を**1本も読めない**相手の
+  // 一覧は 0件になる。** **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を
+  // 役割の規則に1行も書いていない場合も止まる。**
+  //
+  // **この題材は `book-list`(`list_view`)を宣言しながら、その画面の規則を1本も
+  // 書いていなかった** —— **今日の正から見て設計図が不完全だった。**
+  // **足すのは画面 `book-list` の読取だけである。** **この検査の主題は「並び替えの解釈が
+  // カーネル / HTTP / レンダラで一致すること」であって権限ではないので、
+  // 主張(`expect`)は1バイトも書き換えていない。**
+  return grantRules(manifest, ADMIN_ROLES, [tableCan("books", "read"), viewRead("book-list")]);
 }
 
 let dataRoot: string;

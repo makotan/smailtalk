@@ -16,6 +16,16 @@
  * import しない**(値の文字列/定数のみ)ため、フロント(web)が `accept` 属性や表示に
  * `ALLOWED_IMAGE_MIME` を値 import してもビルドが壊れない。
  *
+ * ## 【`V17-M4-T03b`(`AC-G21`)による訂正。上の段落を1バイトも消していない】
+ *
+ * **上の「カーネル(`create-app.ts` の新規アプリ初期化)」は、今日すでに偽である。**
+ * **`src/kernel/create-app.ts` は `_files` も本ファイルも1文字も参照していない**
+ * (実測: `LC_ALL=C /usr/bin/grep -c "_files\\|files-table" src/kernel/create-app.ts` = **0**)。
+ * **`_files` を実際に作るのはサーバ層の遅延マイグレーション1本だけである**
+ * (`src/server/files-store.ts` の `ensureFilesTable`。アップロード API が INSERT の前に流す)。
+ * **したがって「両方が要る」の実体は今日「サーバ層だけが要る」であり、
+ * 単一ソースであることの意味は変わらない。**
+ *
  * ## 投影しない(物理テーブルのみ)
  *
  * `_files` は `_apps` / `_changelog` / `_ai_usage`(`SYSTEM_TABLES`)のような**カーネル状態の
@@ -108,10 +118,61 @@ export const DEFAULT_UPLOAD_MIME = "application/octet-stream";
  * 両方で同一 SQL を使える。列は T01 の申し送り(`records.ts` の前提)どおり:
  * `file_id TEXT PRIMARY KEY, sha256 TEXT NOT NULL, mime TEXT NOT NULL,
  *  size INTEGER NOT NULL, filename TEXT, created_at TEXT NOT NULL`。
+ *
+ * **【`V17-M4-T03b`(`AC-G21`)による訂正。上の3行を1バイトも消していない】**
+ *
+ * **「新規アプリの初期化(`create-app.ts`)」は今日すでに偽である**(上の訂正と同じ実測)。
+ * **同一 SQL を使うのは、遅延マイグレーションの1本だけである。**
+ *
+ * **ディスク上の `_files` は 6列 → 7列になった。** **7本目は `uploaded_by TEXT`(NULL 許容)
+ * = 上げた人である**(ユーザ決定 `D4` / `D2`)。
+ * **`NOT NULL` にしていない** —— **`ALTER TABLE ADD COLUMN` は既定値の無い `NOT NULL` を
+ * 受け付けず、列を足す前に上げた行には値が無いからである。**
+ * **NULL は「上げた人が分からない」を意味し、その未参照ファイルは誰にも配らない**
+ * (**運営者も例外にしない**)。
+ *
+ * **【7本目をこの `CREATE TABLE` に書いていない。理由を書く】**
+ *
+ * **7本目は `ensureFilesTable()`(`src/server/files-store.ts`)の
+ * `ALTER TABLE ADD COLUMN` **1本だけ**が足す。** **新規のアプリでも、`_files` は
+ * `CREATE`(6列)→ `ALTER`(7列目)の順で作られる** —— **`_files` を作る経路は
+ * `ensureFilesTable()` ただ1つだから、ディスク上の `_files` はどれも7列になる。**
+ *
+ * **`CREATE TABLE` の側に書かなかったのは、`src/kernel/create-app.test.ts` が
+ * この関数の作る列の一覧を逐語で凍結しており、`V17-M4` は `src/kernel/` に
+ * 1バイトも差分を出せない**(`CP-V17` 条件7)**からである。**
+ * **計画 `docs/plan/v17/05-v17-m4-plan.md` §3-3 の (3) は「`createFilesTableSql()` に
+ * 1列足す」と書いていたが、その計画は検査を1度も走らせていない**(同 §1-2 の 1)——
+ * **実行して初めて分かった衝突であり、実施担当が置き場だけを変えた。**
+ * **列の綴りは今日も1本(`FILES_UPLOADED_BY_COLUMN_DDL`)であり、単一ソースは保たれている。**
  * `required` を DDL の NOT NULL にする方針は `ddl.ts` のユーザテーブルとは別 ——
  * `_files` はカーネル/サーバが直接 INSERT する内部テーブルで additive マイグレーションの
  * 対象外なので、ここは NOT NULL を素直に付けて不変条件を DB に固定する。
  */
+/**
+ * **`_files` の7本目の列の DDL 断片**(`V17-M4-T03b` / `AC-G21`)。
+ *
+ * **`CREATE TABLE` と `ALTER TABLE ADD COLUMN` の両方がこの1本を使う** ——
+ * **同じ列の綴りを2箇所に写すと、片方だけ直したときに列がずれる**(このファイルの主旨)。
+ * **先例は `src/auth/store.ts` の `ACTIVITY_CHANGES_COLUMN_DDL` である。**
+ *
+ * **【`V17-M4-T06` による訂正。上の3行を1バイトも消していない】**
+ *
+ * **「`CREATE TABLE` と `ALTER TABLE ADD COLUMN` の両方がこの1本を使う」は、
+ * これを書いたその場で偽である。** **今日この定数を使うのは `ensureFilesTable()` の
+ * `ALTER TABLE ADD COLUMN` の**1つだけ**であり、`createFilesTableSql()` は今日も6列のまま
+ * この定数を1度も読まない**(下の関数の本体がそのとおりである)。
+ * **そう書けない理由は、この doc の30行ほど上に自分で正しく書いてある** ——
+ * **`src/kernel/create-app.test.ts` が `createFilesTableSql()` の列を逐語で凍結しており、
+ * `V17-M4` は `src/kernel/` に1バイトも差分を出せないからである。**
+ * **単一ソースであること(綴りを2箇所に写さない)自体は今日も真であり、
+ * 2箇所目ができたときにこの定数を読ませればよい。** **独立点検の指摘。**
+ */
+export const FILES_UPLOADED_BY_COLUMN_DDL = '"uploaded_by" TEXT';
+
+/** `_files` の「上げた人」列の名前。**NULL は「上げた人が分からない」を意味する。** */
+export const FILES_UPLOADED_BY = "uploaded_by";
+
 export function createFilesTableSql(): string {
   return (
     `CREATE TABLE IF NOT EXISTS "${FILES_TABLE_ID}" (\n` +

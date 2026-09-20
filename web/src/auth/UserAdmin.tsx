@@ -40,16 +40,22 @@ import { useCallback, useEffect, useState } from "react";
 // **`roleOrder` の土台から `DEFAULT_USER_KIND` を落としたので、値としての参照が0箇所になった。**
 import { RESERVED_ROLES } from "../../../src/auth/types.ts";
 import {
+  type AppInvitation,
   type AppUser,
+  type AppUserList,
+  type IssuedInvitationResult,
   isLastOwnerConflict,
+  issueInvitation,
   listAppUsers,
   type Role,
+  revokeInvitation,
   setAppUserRole,
+  type ValidationError,
 } from "../api.ts";
 import { type AsyncState, toValidationErrors } from "../async.ts";
 import { ErrorList } from "../ErrorList.tsx";
 import { Button } from "../ui/button.tsx";
-import { Select } from "../ui/form-controls.tsx";
+import { Input, Label, Select } from "../ui/form-controls.tsx";
 import { Alert, Card, Skeleton } from "../ui/surfaces.tsx";
 import {
   Table,
@@ -256,18 +262,31 @@ export function UserAdmin({
   roles?: readonly UserKind[];
 }) {
   const labels = roleLabels(roles);
-  const [state, setState] = useState<AsyncState<AppUser[]>>({ status: "loading" });
+  const [state, setState] = useState<AsyncState<AppUserList>>({ status: "loading" });
   /** ロール変更の失敗文面(409 やその他)。成功でクリアする。 */
   const [roleError, setRoleError] = useState<string | null>(null);
   /** 変更を送信中のユーザID(その行のセレクトを一時的に無効化する)。 */
   const [savingId, setSavingId] = useState<string | null>(null);
   /** 確認待ちの降格(D-M3-3)。`null` のあいだは警告を出さない。 */
   const [pendingDemotion, setPendingDemotion] = useState<PendingDemotion | null>(null);
+  /**
+   * **発行 / 出し直しで受け取った招待**(`V19-M3-T02`。台帳 `SV-G3`)。
+   *
+   * **着手前はこの値を `InvitePanel` が自分で持っていた。** **この段が親へ持ち上げた** ——
+   * **出し直しは一覧の行から撃つが、出たコードを見せる場所は発行の結果欄 1箇所のままに
+   * したいからである**(`ADR-0452` ⑮「コードの提供先は発行の応答本文の1箇所ちょうど」)。
+   *
+   * **【禁止の履行】コードを一覧の行に出す経路を1本も作っていない** ——
+   * **作ると `web/test/invitation-list-panel.test.tsx` の `(3-a)` / `(3-b)` と
+   * `web/e2e/invitation-list.e2e.ts` の (4) が守っているものが崩れる。**
+   */
+  const [issued, setIssued] = useState<IssuedInvitationResult | null>(null);
 
   const load = useCallback(() => {
     setState({ status: "loading" });
     listAppUsers(appId).then(
-      (users) => setState({ status: "ready", value: users }),
+      // **招待も一緒に受け取る**(`V19-M3-T01`)—— **着手前はここで招待を捨てていた。**
+      (list) => setState({ status: "ready", value: list }),
       (reason: unknown) => setState({ status: "error", errors: toValidationErrors(reason) }),
     );
   }, [appId]);
@@ -286,7 +305,10 @@ export function UserAdmin({
           previous.status === "ready"
             ? {
                 status: "ready",
-                value: previous.value.map((user) => (user.id === userId ? updated : user)),
+                value: {
+                  ...previous.value,
+                  users: previous.value.users.map((user) => (user.id === userId ? updated : user)),
+                },
               }
             : previous,
         );
@@ -373,7 +395,7 @@ export function UserAdmin({
       )}
       {state.status === "error" && <ErrorList errors={state.errors} />}
       {state.status === "ready" &&
-        (state.value.length === 0 ? (
+        (state.value.users.length === 0 ? (
           <p data-testid="user-admin-empty" className={cn("m-0", "text-muted-foreground")}>
             ユーザがいません。
           </p>
@@ -404,7 +426,7 @@ export function UserAdmin({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {state.value.map((user) => (
+                {state.value.users.map((user) => (
                   <TableRow
                     key={user.id}
                     className={cn("user-row")}
@@ -446,7 +468,482 @@ export function UserAdmin({
             </Table>
           </TableFrame>
         ))}
+
+      {/*
+       * **【`V19-M3-T01` / 台帳 `SV-G2`】発行済みの招待の一覧を足した。**
+       * **サーバが招待を載せなかったときは、この節ごと出さない** ——
+       * **持ち主でない人の応答では `invitations` がキーごと落ちる。**
+       * **空配列(= 読めるが1件も無い)とは別の状態であり、混ぜない。**
+       */}
+      {state.status === "ready" && state.value.invitations !== undefined && (
+        <InvitationList
+          appId={appId}
+          invitations={state.value.invitations}
+          users={state.value.users}
+          labels={labels}
+          onReissued={(result) => {
+            // **出たコードは発行の結果欄に出す**(出どころを2箇所に割らない)。
+            setIssued(result);
+            load();
+          }}
+          onRevoked={() => {
+            // **取り消したのに前のコードが残っていると、まだ使えるように見える。**
+            setIssued(null);
+            load();
+          }}
+        />
+      )}
+
+      {/*
+       * **【`V19-M3-T00` / 台帳 `SV-G1`】発行の口をこの画面に足した。**
+       * **既存4本の列も、その見出しの文言も、行の目印も1バイト変えていない** ——
+       * 足したのは**表の後ろ**の1節だけである。
+       */}
+      <InvitePanel
+        appId={appId}
+        roleIds={roleIds}
+        labels={labels}
+        issued={issued}
+        setIssued={setIssued}
+        onIssued={load}
+      />
     </Card>
+  );
+}
+
+/**
+ * **既定で選ばれる立場**(`V19-M3-T00`)。
+ *
+ * **運営3ロールのうち、できることが最も少ないものを既定にする。**
+ * **これは新しい方針ではない** —— **この画面は着手前から「誤クリックの当たり先を既定から
+ * 遠ざける」という規律を持っており**(`ROLE_ORDER` の doc)、**同じ規律をここに当てている。**
+ * **並びの先頭(最も強い立場)を既定にすると、押し間違いが「運営者を1人増やす」になる。**
+ *
+ * **【これは防御ではない】** —— **選び直せば強い立場でも発行できる。** **止めているものは無い。**
+ */
+export function defaultInviteRole(options: readonly Role[]): Role {
+  return options.find((role) => role === "viewer") ?? options[options.length - 1] ?? "viewer";
+}
+
+/**
+ * **招待を発行する節**(`V19-M3-T00`。台帳 `SV-G1`)。
+ *
+ * ## 作りの4点
+ *
+ * - **叩く口は着手前から在るものである**(`POST /api/apps/:app_id/auth/invitations`)——
+ *   **新しい口を1本も足していない**(個別限定①)。
+ * - **行のロール変更セレクトとは別の目印を付けている。** **同じ目印にすると、
+ *   `web/test/customer-signup.test.tsx` が**添字**で行を特定しているので、黙って別の行を指す**
+ *   (`UserIdCell` の doc が同じ理由で同じ規律を書いている)。
+ * - **失敗はサーバの文面をそのまま出す** —— **フロントで作り直さない**(この画面が
+ *   着手前から採っている作法。`changeRole` の catch と同じ)。
+ * - **登録リンクはサーバが載せたときだけ出す。** **サーバは期待 origin から組み立てられない
+ *   ときキーごと落とす** —— **画面の側でリンクを発明すると、黙って壊れたリンクを配ることになる。**
+ *
+ * ## 【正直に書く】ここで担保していないこと
+ *
+ * - **発行できる人の範囲を、この節は1ミリも決めていない。** **決めるのはサーバの
+ *   `requireOwner` である。** **【禁止】「画面に出さないこと」を制限の担保にしない。**
+ * - **同じ相手に2度発行すると、サーバは行を差し替える**(主キーが相手の名前1列)——
+ *   **前の状態は消える。** **この節はそれを見せも止めもしない**(`V19-M3-T02` の射程)。
+ * - **出したコードを画面から消す仕掛けは1つも無い**(`V19-M3-T04` = `SV-G7b` の射程)。
+ */
+function InvitePanel({
+  appId,
+  roleIds,
+  labels,
+  onIssued,
+  issued,
+  setIssued,
+}: {
+  appId: string;
+  roleIds: readonly string[];
+  /** **ロール → 表示名。** 行のセレクトと同じものを使う(2箇所で別の名前を出さない)。 */
+  labels: Record<string, string>;
+  /**
+   * **発行に成功したら呼ぶ**(`V19-M3-T01`)。
+   *
+   * **一覧を取り直すためである** —— **これが無いと、発行した直後の画面は
+   * 「発行したのに一覧に出ていない」状態になる**(手元の一覧が古いまま残る)。
+   * **失敗したときは呼ばない。**
+   */
+  onIssued?: () => void;
+  /**
+   * **発行 / 出し直しで受け取った招待**(`V19-M3-T02`)。
+   *
+   * **【2026-09-18。`V19-M3-T02`】この2本は着手前この節の中の `useState` だった。**
+   * **旧(逐語)**: `const [issued, setIssued] = useState<IssuedInvitationResult | null>(null);`
+   * **親へ持ち上げたのは、一覧の行から撃つ出し直しも同じ欄に結果を出すためである。**
+   * **この節が出す中身も、出す条件も、1バイトも変わっていない。**
+   */
+  issued: IssuedInvitationResult | null;
+  setIssued: (result: IssuedInvitationResult | null) => void;
+}) {
+  const options = roleOrder(roleIds);
+  const [username, setUsername] = useState("");
+  const [role, setRole] = useState<Role>(() => defaultInviteRole(options));
+  const [issuing, setIssuing] = useState(false);
+  const [errors, setErrors] = useState<ValidationError[] | null>(null);
+
+  const submit = useCallback(async () => {
+    setIssuing(true);
+    setErrors(null);
+    try {
+      setIssued(await issueInvitation(appId, username, role));
+      // **成功したときだけ一覧を取り直す**(`V19-M3-T01`)。
+      onIssued?.();
+    } catch (reason: unknown) {
+      // **失敗したのだから、前の結果を画面に残さない** —— 残すと「今の操作が通った」に見える。
+      setIssued(null);
+      setErrors(toValidationErrors(reason));
+    } finally {
+      setIssuing(false);
+    }
+    // **【2026-09-18。`V19-M3-T02`】`setIssued` を1つ足した。**
+    // **旧(逐語)**: `}, [appId, username, role, onIssued]);`
+    // **親から受け取る値になったので、依存に挙げないと `biome` が
+    // `useExhaustiveDependencies` で赤くする。** **挙動は1ミリも変わらない**
+    // (渡ってくるのは `useState` の setter であり、描画のたびに変わらない)。
+  }, [appId, username, role, onIssued, setIssued]);
+
+  return (
+    <section
+      className={cn("user-admin-invite", "flex flex-col gap-s2")}
+      data-testid="user-admin-invite"
+    >
+      <h4 className={cn("m-0")}>招待を発行する</h4>
+      <p className={cn("m-0", "text-note text-muted-foreground")}>
+        まだ登録していない相手に、登録のときに使う招待コードを発行します。有効期限は発行から24時間で、1件ごとには変えられません。
+      </p>
+
+      {/*
+       * **ラベルと入力欄は `htmlFor` / `id` の対で結ぶ**(`LoginPage` と同じ作法)——
+       * **`Label` は `htmlFor` を型で必須にしているので、結ばれないラベルを作れない。**
+       */}
+      <div className={cn("flex flex-col gap-s1")}>
+        <Label htmlFor="invite-username-field">招く相手のログイン名</Label>
+        <Input
+          id="invite-username-field"
+          data-testid="invite-username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+        />
+      </div>
+
+      <div className={cn("flex flex-col gap-s1")}>
+        <Label htmlFor="invite-role-field">立場</Label>
+        <Select
+          id="invite-role-field"
+          data-testid="invite-role"
+          value={role}
+          onChange={(event) => setRole(event.target.value as Role)}
+        >
+          {options.map((candidate) => (
+            <option key={candidate} value={candidate}>
+              {labels[candidate] ?? candidate}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div>
+        <Button
+          data-testid="invite-submit"
+          disabled={issuing}
+          onClick={() => {
+            void submit();
+          }}
+        >
+          発行する
+        </Button>
+      </div>
+
+      {errors !== null && (
+        <div data-testid="invite-error">
+          <ErrorList errors={errors} />
+        </div>
+      )}
+
+      {issued !== null && (
+        <div className={cn("invite-result", "flex flex-col gap-s1")} data-testid="invite-result">
+          <p className={cn("m-0", "text-note")}>「{issued.invitation.username}」への招待コード</p>
+          <code data-testid="invite-code">{issued.invitation.code}</code>
+          {issued.signupUrl !== undefined && (
+            <>
+              <p className={cn("m-0", "text-note text-muted-foreground")}>登録リンク</p>
+              <a data-testid="invite-signup-url" href={issued.signupUrl}>
+                {issued.signupUrl}
+              </a>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * **招待の状態の表示名**(`V19-M3-T01`。台帳 `SV-G2`)。
+ *
+ * **3値を導出するのはサーバの1関数だけである**(`src/auth/invitations.ts` の
+ * `invitationState`)—— **画面は受け取った値を引き当てるだけである。**
+ *
+ * **【禁止の履行】使用の時刻(`usedAt`)の有無から状態を組み立てない** ——
+ * **取り消しも使用と同じ列に入るので、時刻から導くと2つが同じ表示になる。**
+ * **この画面は `usedAt` を1列も描いていない。**
+ *
+ * **受けるのは `Record<string, string>` である** —— **知らない値が来たら、その値を
+ * そのまま出す**(黙って別の状態に化けさせない)。
+ */
+const INVITATION_STATE_LABELS: Record<string, string> = {
+  unused: "未使用",
+  used: "使用済み",
+  revoked: "取り消し済み",
+};
+
+/**
+ * **発行済みの招待の一覧**(`V19-M3-T01`。台帳 `SV-G2`)。
+ *
+ * ## 作りの5点
+ *
+ * - **新しい HTTP の口を1本も足していない**(個別限定①)—— **並べるのは一覧の口
+ *   (`GET /auth/users`)が**着手前から**返していた値である。** **捨てていたのは
+ *   `web/src/api.ts` の受け皿のほうだった。** **サーバを1バイトも直していない。**
+ * - **コードの列を1本も持たない**(個別限定②)—— **サーバが一覧の応答にコードを
+ *   1バイトも載せていないのに加えて、画面の側にも出す口を作らない。**
+ * - **使用済み・取り消し済みを1件も落とさない**(`ADR-0336` 限定16 / 個別限定③)——
+ *   **絞り込みも「未使用だけ」の既定も持たない。** **受け取った順にそのまま並べる。**
+ * - **状態はサーバの `state` を読む**({@link INVITATION_STATE_LABELS})。
+ * - **期限はサーバが返した値をそのまま出す** —— **画面で組み直さない**(表示のために
+ *   時刻を作り替えると、どの時間帯で読んだかによって別の値が出る)。
+ *
+ * ## 【正直に書く】ここで担保していないこと
+ *
+ * - **誰がこの一覧を読めるかを、この節は1ミリも決めていない。** **決めるのはサーバで
+ *   あり、持ち主でなければ `invitations` はキーごと落ちる。**
+ *   **【禁止】「画面に出さないこと」を制限の担保にしない。**
+ * - **期限が切れた行がいつ消えるかは、この節は1つも示していない** —— **掃除が走るのは
+ *   招待を発行したときだけである**(サーバの `purgeExpiredInvitations`)。
+ * - **出し直し / 取り消しの操作は1つも持たない**(`V19-M3-T02` / `T03` の射程)。
+ *
+ * =====================================================================================
+ * **【2026-09-18。`V19-M3-T02`。台帳 `SV-G3` / `SV-G4`。直前の1行は着手前の逐語であり
+ *   1バイトも消していない —— 今日この節は2つの操作を持つ】**
+ * =====================================================================================
+ *
+ * - **叩く口は着手前から在る1本だけである**(`POST /api/apps/:app_id/auth/invitations`)——
+ *   **出し直しは `{ username, role }` の再送、取り消しは同じ口への `{ username, revoke: true }`。**
+ *   **`DELETE` のルートを1本も足していない。** **行を1行も消さない。**
+ * - **立場を選び直させない** —— **出し直しは、その行が今持っている `role` をそのまま送る。**
+ *   **選ばせる形にすると `role-select` が行の数だけ増え、`web/test/customer-signup.test.tsx`
+ *   が**添字**で指している行が黙ってずれる**(`UserIdCell` と `InvitePanel` が同じ理由で
+ *   同じ規律を書いている)。
+ * - **列を1本も足していない。** **2つのボタンは「状態」の欄に同居する** ——
+ *   **同じ形の先例がこのファイルの中に在る**(`UserIdCell`: 値の `<span>` と `Button` が
+ *   1つのセルに同居し、検査は `<span>` の文字列を読む)。
+ *
+ * ## 【正直に書く】この2つのボタンが持ち込む嘘と、持ち込まない嘘
+ *
+ * - **【持ち込まない】取り消しは「未使用」の行にだけ出す**(`H-V19-5`)——
+ *   **使用済み / 取り消し済みの招待に取り消しを掛けると、サーバは `200` を返すのに
+ *   何も書かない。** **押せるようにすると、画面が「取り消した」と見せて嘘をつく。**
+ *   **サーバ側の穴は1バイトも塞いでいない**(塞ぐ段は v19 の中に1本も無い。計画 `§9-B-6`)。
+ *   **【禁止の履行】行そのものは1行も隠していない**(`ADR-0336` 限定16)——
+ *   **隠すのはボタンだけである。**
+ * - **【持ち込む。塞がない】出し直すと、前の状態が消える**(罠23 / `H-V19-1`)——
+ *   **取り消し済みの行から出し直すと `used_at` が `null` に戻り、表示が「未使用」に戻る。**
+ *   **「取り消した」という事実は、どこにも残らない。** **この節はそれを見せも止めもしない。**
+ *   **`web/e2e/invitation-actions.e2e.ts` が、塞がずにそのまま撃って示す。**
+ * - **使用済みの行には出し直しを出さない** —— **その相手は既に登録を済ませており、
+ *   出し直すと「登録済みなのに未使用と出る行」と「誰も使えないコード」ができる。**
+ *   **これは防御ではない** —— **HTTP の口は今日もそれを受理する。** **止めていない。**
+ * - **押し間違いを止める確認は1つも無い。** **取り消すは押した瞬間に送る。**
+ *   **戻す手段は出し直しだが、戻すと上の1点(取り消した事実が消える)を踏む。**
+ */
+function InvitationList({
+  appId,
+  invitations,
+  users,
+  labels,
+  onReissued,
+  onRevoked,
+}: {
+  appId: string;
+  invitations: readonly AppInvitation[];
+  /** **発行者の欄を引くためだけに使う**(同じ応答で受け取った相手の一覧)。 */
+  users: readonly AppUser[];
+  /** **ロール → 表示名。** 行のセレクトと同じものを使う(2箇所で別の名前を出さない)。 */
+  labels: Record<string, string>;
+  /** **出し直しに成功したら呼ぶ。** 受け取った招待(コードを持つ)をそのまま親へ渡す。 */
+  onReissued: (result: IssuedInvitationResult) => void;
+  /** **取り消しに成功したら呼ぶ。** **応答本文を1バイトも渡さない**(コードが載らない)。 */
+  onRevoked: () => void;
+}) {
+  /** **出し直し / 取り消しの失敗文面。** **サーバの文面をそのまま出す**(作り直さない)。 */
+  const [actionError, setActionError] = useState<ValidationError[] | null>(null);
+  /** **送信中の相手。** その行の2つのボタンだけを一時的に押せなくする。 */
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const reissue = useCallback(
+    async (invitation: AppInvitation) => {
+      setBusy(invitation.username);
+      setActionError(null);
+      try {
+        // **発行とまったく同じ呼び出しである** —— **出し直し専用の関数も口も作っていない。**
+        onReissued(await issueInvitation(appId, invitation.username, invitation.role));
+      } catch (reason: unknown) {
+        setActionError(toValidationErrors(reason));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [appId, onReissued],
+  );
+
+  const revoke = useCallback(
+    async (invitation: AppInvitation) => {
+      setBusy(invitation.username);
+      setActionError(null);
+      try {
+        await revokeInvitation(appId, invitation.username);
+        onRevoked();
+      } catch (reason: unknown) {
+        setActionError(toValidationErrors(reason));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [appId, onRevoked],
+  );
+
+  return (
+    <section
+      className={cn("user-admin-invitations", "flex flex-col gap-s2")}
+      data-testid="user-admin-invitations"
+    >
+      <h4 className={cn("m-0")}>発行済みの招待</h4>
+      {/*
+       * **出し直し / 取り消しの失敗**(`V19-M3-T02`)。**節に1つだけ置く。**
+       * **形は `invite-error` と同じで、出すのはサーバが返した文面そのままである。**
+       */}
+      {actionError !== null && (
+        <div data-testid="invitation-action-error">
+          <ErrorList errors={actionError} />
+        </div>
+      )}
+      {invitations.length === 0 ? (
+        <p
+          data-testid="user-admin-invitations-empty"
+          className={cn("m-0", "text-muted-foreground")}
+        >
+          発行済みの招待はありません。
+        </p>
+      ) : (
+        // **表は横に溢れうるので包む**(利用者の表と同じ作法。`D-V4-44`)。
+        <TableFrame>
+          <Table className={cn("user-admin-invitations-table")}>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col" className="px-s2 py-s1">
+                  相手
+                </TableHead>
+                <TableHead scope="col" className="px-s2 py-s1">
+                  立場
+                </TableHead>
+                <TableHead scope="col" className="px-s2 py-s1">
+                  期限
+                </TableHead>
+                <TableHead scope="col" className="px-s2 py-s1">
+                  発行者
+                </TableHead>
+                <TableHead scope="col" className="px-s2 py-s1">
+                  状態
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invitations.map((invitation) => (
+                // **主キーは相手の名前1列である**(同じ相手の行は1つしか無い)。
+                <TableRow
+                  key={invitation.username}
+                  className={cn("invitation-row")}
+                  data-testid="invitation-row"
+                  data-username={invitation.username}
+                >
+                  <TableCell data-testid="invitation-row-username" className="px-s2 py-s1">
+                    {invitation.username}
+                  </TableCell>
+                  <TableCell data-testid="invitation-row-role" className="px-s2 py-s1">
+                    {labels[invitation.role] ?? invitation.role}
+                  </TableCell>
+                  <TableCell data-testid="invitation-row-expires" className="px-s2 py-s1">
+                    {invitation.expiresAt}
+                  </TableCell>
+                  <TableCell data-testid="invitation-row-issuer" className="px-s2 py-s1">
+                    {/*
+                     * **手元の一覧に居る人なら、その人の名前で出す。**
+                     * **居なければ受け取った値をそのまま出す** —— **名前を発明しない**
+                     * (発行した人が既に退会していることがある)。
+                     */}
+                    {users.find((user) => user.id === invitation.issuedBy)?.username ??
+                      invitation.issuedBy}
+                  </TableCell>
+                  {/*
+                   * **【2026-09-18。`V19-M3-T02`】このセルに2つのボタンを同居させた。**
+                   * **旧(逐語)**:
+                   *
+                   *     <TableCell data-testid="invitation-row-state" className="px-s2 py-s1">
+                   *       {INVITATION_STATE_LABELS[invitation.state] ?? invitation.state}
+                   *     </TableCell>
+                   *
+                   * **`data-testid` はセルから `<span>` へ移した** —— **状態の文字列を読む
+                   * 既存の検査(`web/test/invitation-list-panel.test.tsx` の `(2-a)`〜`(2-d)`、
+                   * `web/e2e/invitation-list.e2e.ts`、`web/e2e/invitation-states.e2e.ts`)が
+                   * ボタンの文字を巻き込まないようにするためである。**
+                   * **同じ形の先例が `UserIdCell` である**(値の `<span>` と `Button` の同居)。
+                   */}
+                  <TableCell className="px-s2 py-s1">
+                    <div className={cn("flex flex-wrap items-center gap-s1")}>
+                      <span data-testid="invitation-row-state">
+                        {INVITATION_STATE_LABELS[invitation.state] ?? invitation.state}
+                      </span>
+                      {/* **使用済みには出さない**(登録済みの相手に使えないコードを配らない)。 */}
+                      {invitation.state !== "used" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          data-testid="invitation-row-reissue"
+                          disabled={busy === invitation.username}
+                          onClick={() => {
+                            void reissue(invitation);
+                          }}
+                        >
+                          出し直す
+                        </Button>
+                      )}
+                      {/* **未使用にだけ出す**(`H-V19-5` を踏まない。行は隠していない)。 */}
+                      {invitation.state === "unused" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          data-testid="invitation-row-revoke"
+                          disabled={busy === invitation.username}
+                          onClick={() => {
+                            void revoke(invitation);
+                          }}
+                        >
+                          取り消す
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableFrame>
+      )}
+    </section>
   );
 }
 

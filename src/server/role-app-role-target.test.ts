@@ -51,11 +51,28 @@ const CLOSED: RoleAccessDecision = {
   conditional: false,
 };
 
+// **【2026-09-11 追記(`V18-M2-T10`。ユーザ決定 `D-V18-19` / `ADR-0438` 行11)。
+//   旧の逐語を1バイトも消していない】**
+//
+// **旧**:
+//
+//     const OPEN: RoleAccessDecision = {
+//       allowed: true,
+//       governed: true,
+//       blockedBy: null,
+//       conditional: false,
+//     };
+//
+// **`ADR-0438` 行11 が `RoleAccessDecision` に旗 `unconditionalAllow` を1つ足した。**
+// **条件を1つも持たない規則で許可が出た判定には、この鍵が `true` で載る。**
+// **`app` / `role` の答えは1ビットも変わっていない**(`allowed` / `governed` /
+// `blockedBy` / `conditional` の4つは旧と同じである)。
 const OPEN: RoleAccessDecision = {
   allowed: true,
   governed: true,
   blockedBy: null,
   conditional: false,
+  unconditionalAllow: true,
 };
 
 // --- (a) 規則を1本も書いていなければ、既定で閉じる(`D-V8-59`)------------------------

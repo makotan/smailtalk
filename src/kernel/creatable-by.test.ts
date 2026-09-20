@@ -15,6 +15,8 @@
  * | `(a-2)` | 値域(`array` / `uniqueItems` / `minItems` / 要素の綴り)がインラインで書かれている | **赤** |
  * | `(a-3)` | `required` は今日どおり4本(`creatable_by` を入れない) | **緑のまま**(陰性対照) |
  * | `(a-4)` | `permissions[]` の要素は today どおり5キー | **緑のまま**(陰性対照) |
+ * | ↑ | **【2026-09-10 訂正。上の行を1バイトも消していない】`AC-G4a` / `ADR-0429` が6キー目
+ *   `restrictive` を足したので、`(a-4)` の期待値は今日 **6キー** である**(`required` は5キーのまま) | ―― |
  * | `(a-5)` | `$defs` の本数・`$defs/table` の6キーが動かない | **緑のまま**(陰性対照) |
  * | `(b-1)` | 実在しない権限名を書くと適用時に拒否される | **赤** |
  * | `(b-2)` | `inherit_from` を宣言していない表に書くと適用時に拒否される | **赤** |
@@ -61,6 +63,31 @@ function accessControlSchema(): Any {
 
 test("(a-1) access_control のキーは8つで、8つ目が creatable_by である(`ADR-0405` 限定1)", () => {
   // **順序ごと固定する** —— `scripts/vocabulary-snapshot.txt` が名前と順序の両方を見るため。
+  // ---------------------------------------------------------------------------------------
+  // **【2026-09-08。`V17-M5-T03e`。`AC-G10` / `ADR-0412`(門A・限定採用)】期待値を8キー →
+  // 9キーへ打ち直した。****旧の期待値の逐語**:
+  //
+  //     expect(Object.keys(accessControlSchema().properties)).toEqual([
+  //       "enabled",
+  //       "permissions",
+  //       "creator_permission",
+  //       "grant",
+  //       "members",
+  //       "groups",
+  //       "inherit_from",
+  //       "creatable_by",
+  //     ]);
+  //
+  // **テスト名を1文字も書き換えていない**(`ADR-0053` 限定4)—— **名前が言う「キーは8つ」は
+  // 今日は偽で、実物は9つである。** **8つ目が `creatable_by` であることは今日も真である。**
+  // **検査は1本も消していない・`.skip` にしていない・緩めていない。**
+  //
+  // **【この面は `ADR-0412` §打ち直す凍結面 の表(6面)に無い7面目である。隠さずに書く】** ——
+  // **同 限定4 の第3列は「本ファイルが期待値を1本も書き換えずに緑」と書いており、
+  // その式は9キー目を足した時点で必ず偽になる。** **ユーザ決定 `D2`(2026-09-08)が
+  // 「打ち直して食い違いを記録する」を選んだ。** **限定違反として記録に名指しで書いてある。**
+  // **`ADR-0412` の本文は1バイトも書き換えていない。**
+  // ---------------------------------------------------------------------------------------
   expect(Object.keys(accessControlSchema().properties)).toEqual([
     "enabled",
     "permissions",
@@ -70,6 +97,7 @@ test("(a-1) access_control のキーは8つで、8つ目が creatable_by であ�
     "groups",
     "inherit_from",
     "creatable_by",
+    "creatable_by_roles",
   ]);
 });
 
@@ -99,9 +127,28 @@ test("(a-3) 陰性対照: required は今日どおり4本である(creatable_by 
   ]);
 });
 
-test("(a-4) 陰性対照: permissions[] の要素は今日どおり5キーである(限定2)", () => {
+// ---------------------------------------------------------------------------------
+// **【2026-09-10。`V17-M10-T04`。台帳 `AC-G4a` / `ADR-0429`(門A の本審査 = `V17-M10-T02`。
+// 判定値 = 限定採用)】期待値を5キー → 6キーへ打ち直した。****旧テスト名の逐語**:
+// "(a-4) 陰性対照: permissions[] の要素は今日どおり5キーである(限定2)"
+// **旧の期待値の逐語**:
+//
+//     expect(Object.keys(item.properties)).toEqual(["id", "name", "read", "write", "delete"]);
+//
+// **`ADR-0405` 限定2 が引いた「6キー目を足さない」の線は、`ADR-0429` が引き直した**
+// (`ADR-0429` §Decision 6 の (1) の 14)。**`ADR-0405` の本文は1バイトも書き換えていない。**
+// **`required` は今日も5キーのままである**(`ADR-0429` 限定2)。
+// ---------------------------------------------------------------------------------
+test("(a-4) 陰性対照: permissions[] の要素は今日 6キーである(限定2 → `ADR-0429` が引き直した)", () => {
   const item = accessControlSchema().properties.permissions.items as Any;
-  expect(Object.keys(item.properties)).toEqual(["id", "name", "read", "write", "delete"]);
+  expect(Object.keys(item.properties)).toEqual([
+    "id",
+    "name",
+    "read",
+    "write",
+    "delete",
+    "restrictive",
+  ]);
   expect(item.required).toEqual(["id", "name", "read", "write", "delete"]);
   expect(item.additionalProperties).toBe(false);
 });

@@ -132,6 +132,27 @@ test("Z-G2: access_control は object・additionalProperties: false・必須4本
   // **`required` は今日も4本のままである**(すぐ上の行。`ADR-0405` 限定4)——
   // **`creatable_by` を書かない表は今日と1バイトも変わらない。**
   // ---------------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------------
+  // **【2026-09-08。`V17-M5-T03e`。`AC-G10` / `ADR-0412`(門A・限定採用)】期待値を8キー →
+  // 9キーへ打ち直した。****旧の期待値の逐語**:
+  //
+  //     expect(Object.keys(key.properties)).toEqual([
+  //       "enabled",
+  //       "permissions",
+  //       "creator_permission",
+  //       "grant",
+  //       "members",
+  //       "groups",
+  //       "inherit_from",
+  //       "creatable_by",
+  //     ]);
+  //
+  // **足したのは `access_control` の9キー目 `creatable_by_roles` である**(末尾に1本)。
+  // **検査は1本も消していない・`.skip` にしていない・緩めていない**(`ADR-0053` 限定4)。
+  // **テスト名は1文字も書き換えていない**(「必須4本」は今日も真である)。
+  // **`required` は今日も4本のままである**(すぐ上の行。`ADR-0412` 限定2)——
+  // **`creatable_by_roles` を書かない表は今日と1バイトも変わらない。**
+  // ---------------------------------------------------------------------------------
   expect(Object.keys(key.properties)).toEqual([
     "enabled",
     "permissions",
@@ -141,10 +162,27 @@ test("Z-G2: access_control は object・additionalProperties: false・必須4本
     "groups",
     "inherit_from",
     "creatable_by",
+    "creatable_by_roles",
   ]);
 });
 
-test("Z-G10: permissions は1〜8件で、要素は id / name / read / write / delete の5キーである", () => {
+// ---------------------------------------------------------------------------------
+// **【2026-09-10。`V17-M10-T04`。台帳 `AC-G4a` / `ADR-0429`(門A の本審査 = `V17-M10-T02`。
+// 判定値 = 限定採用)】期待値を5キー → 6キーへ打ち直した。****旧テスト名の逐語**:
+//
+//     "Z-G10: permissions は1〜8件で、要素は id / name / read / write / delete の5キーである"
+//
+// **旧の期待値の逐語**:
+//
+//     expect(Object.keys(item.properties)).toEqual(["id", "name", "read", "write", "delete"]);
+//
+// **足したのは `permissions[]` の要素の6キー目 `restrictive` である**(末尾に1本)。
+// **`required` は今日も5キーのままである**(すぐ下の行。`ADR-0429` 限定2)——
+// **書かなかった権限名は今日と1バイトも変わらない。**
+// **検査は1本も消していない・`.skip` にしていない・緩めていない。**
+// **テスト名は「5キー」が今日は偽になるので打ち直した**(上に旧名を逐語で残した)。
+// ---------------------------------------------------------------------------------
+test("Z-G10: permissions は1〜8件で、要素は id / name / read / write / delete + restrictive の6キーである", () => {
   const permissions = accessControlSchema().properties.permissions as Any;
   expect(permissions.type).toBe("array");
   expect(permissions.minItems).toBe(1);
@@ -153,7 +191,14 @@ test("Z-G10: permissions は1〜8件で、要素は id / name / read / write / d
   expect(item.type).toBe("object");
   expect(item.additionalProperties).toBe(false);
   expect(item.required).toEqual(["id", "name", "read", "write", "delete"]);
-  expect(Object.keys(item.properties)).toEqual(["id", "name", "read", "write", "delete"]);
+  expect(Object.keys(item.properties)).toEqual([
+    "id",
+    "name",
+    "read",
+    "write",
+    "delete",
+    "restrictive",
+  ]);
   expect(item.properties.id.pattern).toBe("^[a-z0-9_]{1,32}$");
   for (const flag of ["read", "write", "delete"]) {
     expect(item.properties[flag].type, flag).toBe("boolean");
@@ -534,4 +579,200 @@ test("Z-G37: change_table でも値域の外は拒否される($ref が実際に
 test("Z-G37: changes に近そうな6つ目のキーを書くと拒否される(additionalProperties: false)", () => {
   expect(validateDiff(diffWithChanges({ access_controls: VALID })).valid).toBe(false);
   expect(validateDiff(diffWithChanges({})).valid).toBe(false);
+});
+
+// --- (g) `AC-G4a`: 権限名に「この権限名は上限である」の符号を1本足す ------------------------
+//
+// **【2026-09-10。`V17-M10-T04`。台帳 `AC-G4a`(門A の本審査 = `V17-M10-T02`。判定値 =
+// 限定採用・限定13点)。ADR = `docs/adr/0429-record-permission-upper-bound.md`】**
+//
+// **この節が固定するのは「宣言が書けること」だけである。** **判定は1バイトも変わっていない。**
+// **今日この符号を書いても、行の読取・書込・削除のふるまいは今日どおりである**
+// —— **和集合の2段化(`ADR-0429` §Decision 2 の (2))と前提の関門(同 (3))は
+// `V17-M10B-T06` の担当であり、`V17-M10-T04` の時点で実装は 0バイト である。**
+// **【禁止】この節を根拠に「狭められるようになった」と読まない。**
+//
+// **綴りは `ADR-0429` が1文字も固定していない**(同 §Decision 2 の (1) の
+// 逐語「**本 ADR も固定しない。**」)。**`V17-M10-T04` が `restrictive` に決めた。**
+// **条文が課した拘束は3点ちょうどである** —— (a) snake_case / (b) `required` に入れない /
+// (c) 既に「上限」と呼んでいるもの(引き継ぎの段数 5・件数 1000 の**打ち切り**)と
+// 読み違えない綴り。**却下した候補と理由は段の記録 `docs/plan/v17/records/v17-m10.md`
+// §3-4 の `T04-0` に在る。**
+
+/** **`AC-G4a` が足した `permissions[].items` の6キー目の綴り。** */
+const UPPER_BOUND_KEY = "restrictive";
+
+test("(g-1) AC-G4a: permissions[].items に6キー目が在り、値域は boolean ちょうどである", () => {
+  const item = accessControlSchema().properties.permissions.items as Any;
+  const node = item.properties[UPPER_BOUND_KEY] as Any;
+  expect(node).toBeDefined();
+  expect(node.type).toBe("boolean");
+  // **`$ref` を使わない(`ADR-0429` 限定1)** —— 値域はその場に書く。
+  expect(node.$ref).toBeUndefined();
+  // **列挙も文字列も3値目も作らない(同 限定3)。**
+  expect(node.enum).toBeUndefined();
+  expect(node.oneOf).toBeUndefined();
+  expect(node.anyOf).toBeUndefined();
+  expect(node.const).toBeUndefined();
+  // **「このキーは何をするか」を `$comment` に書く**(`V17-M10` の §3-X の拘束2)。
+  expect(typeof node.$comment).toBe("string");
+  expect(node.$comment).toContain("AC-G4a");
+  expect(node.$comment).toContain("ADR-0429");
+  expect(node.$comment).toContain("**permissions[] の要素の6キー目である。**");
+});
+
+test("(g-2) AC-G4a: 6キー目は required に入っておらず、additionalProperties: false のままである", () => {
+  const item = accessControlSchema().properties.permissions.items as Any;
+  // **`required` は今日も5キーちょうどである(`ADR-0429` 限定2)** ——
+  // **書かなかった権限名は今日と1バイトも変わらない。**
+  expect(item.required).toEqual(["id", "name", "read", "write", "delete"]);
+  expect(item.required).not.toContain(UPPER_BOUND_KEY);
+  expect(item.additionalProperties).toBe(false);
+  // **`properties` は 5 → 6 になり、6キー目は末尾に1本だけ足す。**
+  expect(Object.keys(item.properties)).toEqual([
+    "id",
+    "name",
+    "read",
+    "write",
+    "delete",
+    UPPER_BOUND_KEY,
+  ]);
+  // **`required` に入っていないキーはちょうど1本で、その型は boolean である**
+  // (`ADR-0429` 限定3 の第3列の式そのもの)。
+  const optional = Object.keys(item.properties).filter((key) => !item.required.includes(key));
+  expect(optional).toEqual([UPPER_BOUND_KEY]);
+  for (const key of optional) {
+    expect((item.properties[key] as Any).type, key).toBe("boolean");
+    expect((item.properties[key] as Any).$ref, key).toBeUndefined();
+  }
+});
+
+test("(g-3) AC-G4a: 6キー目を書いた宣言は schema 検証を通る(true / false の両方)", () => {
+  for (const value of [true, false]) {
+    const permissions = [
+      {
+        id: "reader",
+        name: "参照のみ",
+        read: true,
+        write: false,
+        delete: false,
+        [UPPER_BOUND_KEY]: value,
+      },
+      { id: "writer", name: "編集可", read: true, write: true, delete: false },
+    ];
+    const input = manifestWith({ ...VALID, permissions });
+    const result = validateManifestFull(input);
+    expect(result.valid, `${value}: ${JSON.stringify(result)}`).toBe(true);
+  }
+});
+
+test("(g-4) AC-G4a 陰性対照: 6キー目を書かない宣言は今日どおり通り、boolean 以外は拒否される", () => {
+  // **書かない宣言は今日と1バイトも変わらない**(`ADR-0429` 限定2)。
+  expect(validateManifestFull(manifestWith(VALID)).valid).toBe(true);
+  // **`access_control` を書いていない表も今日どおり通る。**
+  expect(validateManifestFull(manifestWith()).valid).toBe(true);
+  // **値域は boolean ちょうど** —— 文字列も数値も列挙の3値目も通らない(同 限定3)。
+  for (const bad of ["true", 1, "readonly", null]) {
+    const permissions = [
+      {
+        id: "reader",
+        name: "参照のみ",
+        read: true,
+        write: false,
+        delete: false,
+        [UPPER_BOUND_KEY]: bad,
+      },
+      { id: "writer", name: "編集可", read: true, write: true, delete: false },
+    ];
+    expect(validateManifest(manifestWith({ ...VALID, permissions })).valid, String(bad)).toBe(
+      false,
+    );
+  }
+});
+
+test("(g-5) AC-G4a 陰性対照: $defs 30 / access_control 9キー / grant 5キー が1つも動いていない", () => {
+  const schema = readSchema("manifest.schema.json");
+  // **`$defs` を1つも増やさない(`ADR-0429` 限定1)** —— 値域をインラインで書いたことの実測。
+  expect(Object.keys(schema.$defs)).toHaveLength(30);
+  const accessControl = accessControlSchema();
+  // **`access_control` の10キー目を足さない(同 限定1)。**
+  expect(Object.keys(accessControl.properties)).toEqual([
+    "enabled",
+    "permissions",
+    "creator_permission",
+    "grant",
+    "members",
+    "groups",
+    "inherit_from",
+    "creatable_by",
+    "creatable_by_roles",
+  ]);
+  // **`grant` の6キー目を足さない(同 限定1。道 (i) を採っていない)。**
+  expect(Object.keys((accessControl.properties.grant as Any).properties)).toEqual([
+    "table",
+    "target",
+    "member",
+    "group",
+    "permission",
+  ]);
+  // **`$defs/table` も6キーのままである。**
+  expect(Object.keys(schema.$defs.table.properties)).toHaveLength(6);
+});
+
+test("(g-6) AC-G4a 陰性対照: 面(roles / rules / can)に1バイトも足していない", () => {
+  // **`ADR-0429` 限定4。** **道 (iv) を採っていないことの実測である。**
+  const roles = readSchema("manifest.schema.json").$defs.app.properties.roles as Any;
+  expect(Object.keys(roles.items.properties)).toEqual(["id", "name", "rules", "signup"]);
+  const rules = roles.items.properties.rules as Any;
+  expect(Object.keys(rules.items.properties)).toEqual([
+    "target",
+    "table",
+    "field",
+    "view",
+    "action",
+    "can",
+    "when",
+  ]);
+  const can = rules.items.properties.can as Any;
+  expect(can.items.enum).toEqual(["read", "write", "delete"]);
+  expect(can.minItems).toBe(1);
+  expect(can.maxItems).toBe(3);
+});
+
+test("(g-7) AC-G4a 陰性対照: diff.schema.json に6キー目の綴りが1件も現れない", () => {
+  // **`ADR-0429` 限定1 の第4項(`ADR-0412` 限定1 第4項と同じ作法)** ——
+  // **`change_table` は manifest 側の `access_control` 全体を `$ref` で受けるので、
+  // 差分操作を1つも増やさずに後から宣言できる。**
+  const raw = readFileSync(join(ROOT, "schemas", "diff.schema.json"), "utf8");
+  expect(raw.includes(UPPER_BOUND_KEY)).toBe(false);
+  // **`change_table` 経由でも6キー目を書いた宣言が通る**($ref が実際に効いている)。
+  const permissions = [
+    {
+      id: "reader",
+      name: "参照のみ",
+      read: true,
+      write: false,
+      delete: false,
+      [UPPER_BOUND_KEY]: true,
+    },
+  ];
+  const result = validateDiff(
+    diffWithChanges({ [KEY]: { ...VALID, permissions, creator_permission: "reader" } }),
+  );
+  expect(result.valid, JSON.stringify(result)).toBe(true);
+});
+
+test("(g-8) AC-G4a 陰性対照: 既存の $comment / description を1バイトも書き換えていない", () => {
+  const accessControl = accessControlSchema();
+  const item = accessControl.properties.permissions.items as Any;
+  // **長さごと固定する** —— 1文字でも消したり書き換えたりすれば赤くなる。
+  expect((item.properties.id as Any).$comment).toHaveLength(1709);
+  expect((accessControl.properties.permissions as Any).description).toHaveLength(126);
+  expect(accessControl.$comment).toHaveLength(4403);
+  // **read / write / delete の3語を1語も増やしていない**(`ADR-0405` 限定2 の後段。
+  // **足したのは符号であって動詞ではない**)。
+  for (const verb of ["read", "write", "delete"]) {
+    expect((item.properties[verb] as Any).type, verb).toBe("boolean");
+    expect((item.properties[verb] as Any).description, verb).toBeDefined();
+  }
 });

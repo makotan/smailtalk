@@ -1352,6 +1352,46 @@ describe("V7-M1-T05: アクセス権管理の宣言が規約から外れてい�
     expectUserFacing(errorAt(errors, "/app/tables/0/access_control/grant"));
   });
 
+  // --- 項目9 の枝2本目(`V17-M5-T01` / `AC-G5`)---------------------------------------
+  //
+  // **「相手はグループだけ」と書いた宣言は、今日は適用時に通り、行を作ろうとした時点で
+  // 400 になる。** **付与行に書き込む相手は利用者の行だけなので、グループを指す項目を
+  // いくつ書いても、行を作った人には権限が1つも渡らない。**
+  // **着手前の実測**: `(9d)` は `valid = true` が返って赤くなった(`V17-M5-T01a`)。
+  test("(9d) グループを指す項目だけを書いた宣言は拒否される(利用者を指す項目が要る)", () => {
+    const manifest = clone(accessControlManifest);
+    const grant = declarationOf(manifest).grant as Record<string, unknown>;
+    grant.member = undefined;
+    // **グループの側は残す**(`groups` の宣言も `grant.group` も規約どおりのままである)。
+    const errors = expectInvalid(validateReferentialIntegrity(manifest));
+    const error = errorAt(errors, "/app/tables/0/access_control/grant/member");
+    expectUserFacing(error);
+    // **文面は `app.ts` が行の作成を断るときの 400 と同じことを言う**(起票の完了条件)。
+    expect(error.message).toContain("行を作った人に権限が1つも渡らない");
+  });
+
+  test("(9e) enabled: false でもグループだけの宣言は拒否される(有効にした日に初めて落ちない)", () => {
+    const manifest = clone(accessControlManifest);
+    declarationOf(manifest).enabled = false;
+    const grant = declarationOf(manifest).grant as Record<string, unknown>;
+    grant.member = undefined;
+    const errors = expectInvalid(validateReferentialIntegrity(manifest));
+    expectUserFacing(errorAt(errors, "/app/tables/0/access_control/grant/member"));
+  });
+
+  test("(9f) 【陰性対照】利用者を指す項目を書いてあれば、グループを書いていなくても通る", () => {
+    const manifest = clone(accessControlManifest);
+    const grant = declarationOf(manifest).grant as Record<string, unknown>;
+    grant.group = undefined;
+    declarationOf(manifest).groups = undefined;
+    // `members.group` がグループの表を指しているので、そちらも外す。
+    const memberFields = fieldsOf(manifest, "member");
+    memberFields.splice(1, 1);
+    const members = declarationOf(manifest).members as Record<string, unknown>;
+    members.group = undefined;
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+  });
+
   test("(9b) 利用者を指す項目を書いたのに利用者の表を宣言していないと拒否される", () => {
     const manifest = clone(accessControlManifest);
     declarationOf(manifest).members = undefined;
@@ -1365,6 +1405,327 @@ describe("V7-M1-T05: アクセス権管理の宣言が規約から外れてい�
     const errors = expectInvalid(validateReferentialIntegrity(manifest));
     // `members.group` もグループの表を指しているので、そちらにもエラーが立つ。
     expectUserFacing(errorAt(errors, "/app/tables/0/access_control/grant/group"));
+  });
+
+  // --- 兼用の宣言の拒否(`V17-M9-T05` / `AC-G29` / `ADR-0428`)-------------------------
+  //
+  // **守られる表そのものを「権限を記録する表」に指定した宣言**(`table.id` と
+  // `grant.table` が同じ)**を、適用時に差分ごと拒否する。**
+  //
+  // **着手前の実測**: `(12a)` と `(12b)` は `valid = true` が返って**赤かった**。
+  // **`(12c)` 〜 `(12f)` は着手前から緑である**(陰性対照。**赤くはならない**)——
+  // **陰性対照だけでは「全部拒否する」実装を捕まえられないので、`(12c)` の中に
+  // 兼用の側を対にして置いた**(陽性対照)。
+  const selfGrantManifest = (): Manifest => {
+    const manifest = clone(accessControlManifest);
+    const bookFields = fieldsOf(manifest, "books");
+    bookFields.push({ id: "member", name: "利用者", type: "reference", reference_table: "member" });
+    bookFields.push({ id: "group", name: "グループ", type: "reference", reference_table: "team" });
+    bookFields.push({
+      id: "permission",
+      name: "権限",
+      type: "select",
+      options: ["reader", "writer"],
+    });
+    const grant = declarationOf(manifest).grant as Record<string, unknown>;
+    // **兼用**: 守られる表(`books`)自身を、権限を記録する表として指す。
+    grant.table = "books";
+    grant.target = "parent";
+    return manifest;
+  };
+
+  test("(12a) 権限を記録する表として自表を指した宣言は拒否される", () => {
+    const errors = expectInvalid(validateReferentialIntegrity(selfGrantManifest()));
+    const error = errorAt(errors, "/app/tables/0/access_control/grant/table");
+    expectUserFacing(error);
+    // **文面は実測した2つの帰結を両方言う**(`ADR-0428` §Decision の 2 の (4))。
+    expect(error.message).toContain("1行も作れなくなり");
+    expect(error.message).toContain("見えなくなります");
+    // **`hint` には書き手が直せる宣言のキー名を書く。**
+    expect(String(error.hint)).toContain("grant.table");
+  });
+
+  test("(12b) enabled: false でも自表を指した宣言は拒否される(有効にした日に初めて落ちない)", () => {
+    const manifest = selfGrantManifest();
+    declarationOf(manifest).enabled = false;
+    const errors = expectInvalid(validateReferentialIntegrity(manifest));
+    expectUserFacing(errorAt(errors, "/app/tables/0/access_control/grant/table"));
+  });
+
+  test("(12c) 【陰性対照】権限を記録する表が別表なら、今日どおり受理される", () => {
+    expect(validateReferentialIntegrity(accessControlManifest)).toEqual({ valid: true });
+    expect(validateManifestFull(accessControlManifest).valid).toBe(true);
+    // **陽性対照**: 同じ検査の中で兼用の側も撃つ(「全部通す」実装をここで落とす)。
+    expectInvalid(validateReferentialIntegrity(selfGrantManifest()));
+  });
+
+  test("(12d) 【止めないと決めた形】利用者の表が守られる表そのものでも止まらない", () => {
+    const manifest = clone(accessControlManifest);
+    const bookFields = fieldsOf(manifest, "books");
+    bookFields.push({ id: "account", name: "ログイン", type: "text" });
+    bookFields.push({ id: "group", name: "グループ", type: "reference", reference_table: "team" });
+    const members = declarationOf(manifest).members as Record<string, unknown>;
+    members.table = "books";
+    // 付与を記録する表の「相手」の列は、利用者の表(= いまは `books`)を指す必要がある。
+    (at(fieldsOf(manifest, "book_grant"), 1) as Record<string, unknown>).reference_table = "books";
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+  });
+
+  test("(12e) 【止めないと決めた形】グループの表が守られる表そのものでも止まらない", () => {
+    const manifest = clone(accessControlManifest);
+    // 項目7(グループの中にグループを入れない)に当たらないよう、自己参照の列を外す。
+    fieldsOf(manifest, "books").splice(1, 1);
+    declarationOf(manifest).inherit_from = undefined;
+    (declarationOf(manifest).groups as Record<string, unknown>).table = "books";
+    (at(fieldsOf(manifest, "book_grant"), 2) as Record<string, unknown>).reference_table = "books";
+    (at(fieldsOf(manifest, "member"), 1) as Record<string, unknown>).reference_table = "books";
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+  });
+
+  test("(12f) 【止めないと決めた形】権限を記録する表と利用者の表の兼用は止まらない", () => {
+    const manifest = clone(accessControlManifest);
+    const grantFields = fieldsOf(manifest, "book_grant");
+    grantFields.push({ id: "account", name: "ログイン", type: "text" });
+    (at(grantFields, 1) as Record<string, unknown>).reference_table = "book_grant";
+    const members = declarationOf(manifest).members as Record<string, unknown>;
+    members.table = "book_grant";
+    members.account = "account";
+    members.group = "group";
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+  });
+
+  // --- 上限の符号(`restrictive`)の整合(`V17-M10-T05` / `AC-G4a` / `ADR-0429`)--------
+  //
+  // **`V17-M10-T04` が `permissions[].items` に足した6キー目 `restrictive` の整合を、
+  // ここ(適用時検査)で見る。** **`ADR-0429` §Decision 5 が本葉に許したのは
+  // 「アクセス権管理の宣言の側の類型17 に条項を足すことだけ」であり、その中身として
+  // (1) この符号を書いた権限名が `permissions[]` の中に在ること、
+  // (2) 矛盾する組み合わせを拒むこと、の2つを名指ししている。**
+  //
+  // **【この節が測らないもの。先に書く】** **判定(誰に何が見えるか)は今日も1バイトも
+  // 変わっていない**(`ADR-0429` §誇張しない の 1)。 **和集合の2段化と前提の関門は
+  // `V17-M10B-T06` の担当である。** **ここで測るのは「宣言を保存できるかどうか」だけである。**
+  // **【禁止】この節を根拠に「狭められるようになった」と読まない。**
+  //
+  // **足した条項は3本ちょうどである**(採らなかった候補3本は下の `(13h)`〜`(13j)` が
+  // 「止めていない」側として撃つ。**理由は段の記録 `docs/plan/v17/records/v17-m10.md`
+  // §3-5 の `T05-1`**):
+  //  - **条項A**: `creator_permission` が絞る側の権限名を指している宣言を拒否する。
+  //  - **条項B**: `permissions[]` の全部が絞る側である宣言を拒否する。
+  //  - **条項C**: 絞る側なのに読み・書き・消しの3つとも許している権限名を拒否する。
+  //
+  // **着手前の実測**: `(13a)`〜`(13e)` は赤かった(`(13e)` は中に置いた陽性対照が落ちる)。
+  // **`(13f)`〜`(13k)` は着手前から緑である**(陰性対照 / 止めないと決めた形)。
+  //
+  // **【`V17-M10B-T06c` の訂正。上の文は1バイトも書き換えていない】**
+  // **ユーザ決定 `D-V17-L` が点の答えの式の1段目を「符号を持たない付与の和集合」から
+  // 「**すべての**付与の和集合」へ置き換えた**(`ADR-0430` §Decision 4-1、`:150`-`:162`)。
+  // **その結果、上の3本のうち**条項B(`permissions[]` の全部が絞る側である宣言の拒否)の
+  // 拒否の理由が偽になり、`V17-M10B-T06c` が条項B を外した。**
+  // **条項A と条項C は残っており、理由のコメントを `referential-integrity.ts` の側で
+  // 書き換えた**(条項A は理由の中身が入れ替わり、条項C は理由の**性格**が変わった)。
+  // **【禁止】これを「`V17-M10-T05` が間違っていた」と読まない** —— **`T05` は当時の式に
+  // 忠実だった。式のほうがユーザ決定で動いた。**
+  // **この訂正で書き換えたのは `(13b)` と `(13d)` の中の条項B の塊だけである**
+  // (`ADR-0430` の授権に `V17-M10B-T06c` の着手前にメインが足した段落、`:224`-`:232`)。
+  // **`(13a)` / `(13c)` / `(13e)`〜`(13k)` の9本は1バイトも書き換えていない。**
+  // **検査は1本も消していない**(11本のままである)。
+  //
+  // **【`V17-M10B-T06c` の訂正2。直前の1文のうち `(13a)` の部分は今日は偽である。
+  // 上の文は1バイトも消していない】** **メインが `ADR-0430` の末尾に足した3つ目の授権
+  // (2026-09-10。「条項A の `message` と `hint` を今日の理由を述べる形へ書き換える」)に
+  // したがって、`(13a)` の逐語の期待値を**1本だけ**書き換えた** ——
+  // 旧: `expect(error.message).toContain("行を作った人に権限が1つも渡らない");`
+  // 新: `expect(error.message).toContain("何がどこまで渡るのかを宣言から読み取れません");`
+  // **旧の期待値が撃っていた文面(「行を作った人に権限が1つも渡らないため、作った本人にも
+  // その行が見えなくなります。」)は `D-V17-L` の後は偽であり、`referential-integrity.ts` の
+  // 側で書き換えた**(旧文面の逐語はあちらのコメントに残してある)。
+  // **`(13a)` の他の行と、`(13c)` / `(13e)`〜`(13k)` の8本は今日も1バイトも書き換えていない。**
+  // **`:1370`(`(9d)`)と `(13j)` の中の同じ言い回しは、`項目9` の枝(`grant.member`)の
+  // 文面を撃っているので1バイトも触っていない** —— **そちらが今日も真かどうかは、この葉は
+  // 1件も測っていない。**
+
+  /** `permissions[]` の1件を取り出す(0 = `reader` / 1 = `writer`)。 */
+  const permissionAt = (manifest: Manifest, index: number): Record<string, unknown> =>
+    at(declarationOf(manifest).permissions as Record<string, unknown>[], index);
+
+  test("(13a) 行を作った人に渡す権限が絞る側だと拒否される", () => {
+    const manifest = clone(accessControlManifest);
+    // `writer` を絞る側にする(`creator_permission` は `writer` を指している)。
+    permissionAt(manifest, 1).restrictive = true;
+    const errors = expectInvalid(validateReferentialIntegrity(manifest));
+    const error = errorAt(errors, "/app/tables/0/access_control/creator_permission");
+    expectUserFacing(error);
+    // **文面は帰結を言う**(先例 `AC-G5` / `AC-G29` と同じ作法)。
+    expect(error.message).toContain("何がどこまで渡るのかを宣言から読み取れません");
+    // **`hint` には書き手が直せる宣言のキー名を書く。**
+    expect(String(error.hint)).toContain("creator_permission");
+  });
+
+  test("(13b) 宣言した権限名が全部「絞る側」でも、参照整合性の側は今日から受理する(`V17-M10B-T06c` が条項B を外した)", () => {
+    // **`ADR-0430` §Decision 4-1(`:161`)。** **ユーザ決定 `D-V17-L` で点の答えの式の1段目が
+    // 「符号を持たない付与の和集合」から「**すべての**付与の和集合」に変わった。**
+    // **その結果、条項B の拒否の理由(「足す側が1つも書けないので、だれにも1ミリも渡らない」)が
+    // 偽になった** —— **各人は自分の権限名ぶんを受け取り、それ以上には決してならない。**
+    // **【禁止】これを「`V17-M10-T05` が間違っていた」と読まない** —— **`T05` は当時の式
+    // (`ADR-0429` §Decision 2 の (2))に忠実だった。** **式のほうがユーザ決定で動いた。**
+    const manifest = clone(accessControlManifest);
+    permissionAt(manifest, 0).restrictive = true;
+    permissionAt(manifest, 1).restrictive = true;
+    // 条項A の側の拒否と混ざらないよう、`creator_permission` は外す。
+    declarationOf(manifest).creator_permission = undefined;
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+    // **【`V17-M10B-T06c` が実測して分かったこと。誇張しない】** **定義の形は
+    // `creator_permission` を**必須**にしている。** **したがってこの宣言は、そのままでは
+    // 保存できない** —— **落ちるのは類型17 の条項ではなく、定義の形のほうである。**
+    expect(validateManifestFull(manifest).valid).toBe(false);
+    // **`creator_permission` を書き戻すと、権限名が全部絞る側である以上それも絞る側を指す
+    // ことになり、今日も条項A が拒否する。** **つまり「全部が絞る側」の宣言を今日止めて
+    // いるのは、外した3本目ではなく**条項A**である。**
+    // **陽性対照**でもある(「全部通す」実装をここで落とす。罠14)。
+    const withCreator = clone(accessControlManifest);
+    permissionAt(withCreator, 0).restrictive = true;
+    permissionAt(withCreator, 1).restrictive = true;
+    const errors = expectInvalid(validateReferentialIntegrity(withCreator));
+    expectUserFacing(errorAt(errors, "/app/tables/0/access_control/creator_permission"));
+    // **`permissions` そのものを指す拒否は1件も立たない**(3本目が消えたことを、場所で撃つ)。
+    expect(
+      errors.filter((candidate) => candidate.path === "/app/tables/0/access_control/permissions"),
+    ).toHaveLength(0);
+  });
+
+  test("(13c) 絞る側なのに読み・書き・消しを3つとも許している権限名は拒否される", () => {
+    const manifest = clone(accessControlManifest);
+    const permission = permissionAt(manifest, 0);
+    permission.restrictive = true;
+    permission.read = true;
+    permission.write = true;
+    permission.delete = true;
+    const errors = expectInvalid(validateReferentialIntegrity(manifest));
+    const error = errorAt(errors, "/app/tables/0/access_control/permissions/0/restrictive");
+    expectUserFacing(error);
+    expect(error.message).toContain("1ミリも絞りません");
+  });
+
+  test("(13d) enabled: false でも条項A と条項C は拒否される(有効にした日に初めて落ちない)", () => {
+    // **条項A**
+    const a = clone(accessControlManifest);
+    declarationOf(a).enabled = false;
+    permissionAt(a, 1).restrictive = true;
+    expectUserFacing(
+      errorAt(
+        expectInvalid(validateReferentialIntegrity(a)),
+        "/app/tables/0/access_control/creator_permission",
+      ),
+    );
+    // **条項B を外したので、`enabled: false` でも受理される側になった**
+    // (`ADR-0430` §Decision 4-1 の `:161`。**条項B が無いことを、ここで撃つ**)。
+    const b = clone(accessControlManifest);
+    declarationOf(b).enabled = false;
+    declarationOf(b).creator_permission = undefined;
+    permissionAt(b, 0).restrictive = true;
+    permissionAt(b, 1).restrictive = true;
+    expect(validateReferentialIntegrity(b)).toEqual({ valid: true });
+    // **条項C**
+    const c = clone(accessControlManifest);
+    declarationOf(c).enabled = false;
+    const permission = permissionAt(c, 0);
+    permission.restrictive = true;
+    permission.read = true;
+    permission.write = true;
+    permission.delete = true;
+    expectUserFacing(
+      errorAt(
+        expectInvalid(validateReferentialIntegrity(c)),
+        "/app/tables/0/access_control/permissions/0/restrictive",
+      ),
+    );
+  });
+
+  test("(13e) 【陰性対照】符号を1つも書かない宣言は今日どおり受理される", () => {
+    expect(validateReferentialIntegrity(accessControlManifest)).toEqual({ valid: true });
+    expect(validateManifestFull(accessControlManifest).valid).toBe(true);
+    // **陽性対照**: 同じ検査の中で拒否される側も撃つ(「全部通す」実装をここで落とす。罠14)。
+    const rejected = clone(accessControlManifest);
+    permissionAt(rejected, 1).restrictive = true;
+    expectInvalid(validateReferentialIntegrity(rejected));
+  });
+
+  test("(13f) 【陰性対照】「この行だけ閲覧のみ」の宣言は通る(この葉が塞いではならない形)", () => {
+    const manifest = clone(accessControlManifest);
+    const permission = permissionAt(manifest, 0);
+    permission.restrictive = true;
+    permission.read = true;
+    permission.write = false;
+    permission.delete = false;
+    // `creator_permission` は足す側(`writer`)のままである。
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest).valid).toBe(true);
+  });
+
+  test("(13g) 【陰性対照】restrictive: false は今日と1バイトも変わらない(足す側のままである)", () => {
+    const manifest = clone(accessControlManifest);
+    permissionAt(manifest, 0).restrictive = false;
+    // `creator_permission` が指す `writer` にも明示的に false を書く。
+    permissionAt(manifest, 1).restrictive = false;
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest).valid).toBe(true);
+  });
+
+  test("(13h) 【止めないと決めた形】creatable_by が絞る側の権限名を指していても止まらない", () => {
+    const manifest = clone(accessControlManifest);
+    permissionAt(manifest, 0).restrictive = true;
+    permissionAt(manifest, 0).write = false;
+    permissionAt(manifest, 0).delete = false;
+    declarationOf(manifest).creatable_by = ["reader"];
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+  });
+
+  test("(13i) 【止めないと決めた形】3つとも許さない上限は止まらない(いちばん強く絞る形)", () => {
+    const manifest = clone(accessControlManifest);
+    const permission = permissionAt(manifest, 0);
+    permission.restrictive = true;
+    permission.read = false;
+    permission.write = false;
+    permission.delete = false;
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest).valid).toBe(true);
+  });
+
+  test("(13j) 【止めないと決めた形】グループだけの宣言は、本葉ではなく既存の条項が拒否している", () => {
+    const manifest = clone(accessControlManifest);
+    const grant = declarationOf(manifest).grant as Record<string, unknown>;
+    grant.member = undefined;
+    permissionAt(manifest, 0).restrictive = true;
+    permissionAt(manifest, 0).write = false;
+    permissionAt(manifest, 0).delete = false;
+    const errors = expectInvalid(validateReferentialIntegrity(manifest));
+    // **拒否は `V17-M5-T01`(`AC-G5`)が足した既存の条項のものである。**
+    const error = errorAt(errors, "/app/tables/0/access_control/grant/member");
+    expect(error.message).toContain("行を作った人に権限が1つも渡らない");
+    // **符号に触る新しい条項は1件も立っていない**(足しても1度も発火しない = 死んだ条項になる)。
+    expect(errors.filter((candidate) => candidate.path.includes("restrictive"))).toHaveLength(0);
+    // **符号を1つも書かなくても、同じ1件が同じ場所に立つ**
+    // (拒否の原因が符号ではないことの対照)。
+    const plain = clone(accessControlManifest);
+    (declarationOf(plain).grant as Record<string, unknown>).member = undefined;
+    expectUserFacing(
+      errorAt(
+        expectInvalid(validateReferentialIntegrity(plain)),
+        "/app/tables/0/access_control/grant/member",
+      ),
+    );
+  });
+
+  test("(13k) 符号を permissions[] の外(宣言の直下)に書くと、定義の形が拒否する", () => {
+    // **`ADR-0429` §Decision 5 の (1)「符号を書いた権限名が `permissions[]` の中に在ること」は、
+    // `V17-M10-T04` がキーを `permissions[].items` の中に置いたことで構造的に満たされている**
+    // —— **宣言の直下に書けば `additionalProperties: false` が拒否する。**
+    const manifest = clone(accessControlManifest);
+    (declarationOf(manifest) as Record<string, unknown>).restrictive = true;
+    expect(validateManifestFull(manifest).valid).toBe(false);
+    // **一方、参照整合性の側は宣言の直下の符号を1件も見ない**(見る対象が `permissions[]` だから)。
+    expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
   });
 
   // --- 全体の性質 ---------------------------------------------------------------------

@@ -87,19 +87,32 @@ import {
 } from "../../kernel/index.ts";
 import { recordAccessLimitError } from "../../server/errors.ts";
 import {
+  // **【`V18-M6-T02`】親の関門の答えの型**(翻訳の関数が受け取る。判定の式は写していない)。
+  type CreateParentAccessVerdict,
   combineRoleAndCreatorGrant,
   creatorGrantPlan,
   type GrantWriteOp,
   isAllowedOwnerUpdate,
+  // **【`V18-M7-T03` / `PM-G5` / `ADR-0444` 授権の表 行4】削除保護の判定と、子を数える述語。**
+  // **どちらも `owner-scope.ts` の既存の述語であり、判定の式を1行も写していない**(`ADR-0411` 限定2)。
+  isDeleteProtectedRow,
   isOwnerVisible,
+  // **【`V17-M2-T01b`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2】**
+  // **判定の家は `owner-scope.ts` の既存の述語1本のままである** —— **判定の式を1行も
+  // 写さず、この道具は「呼んで、答えをこの経路が今日持っている断りの形へ翻訳する」だけである。**
+  judgeCreateParentAccess,
   judgeGrantWrite,
   judgeOwnerScopedOp,
   judgeRoleAccess,
   judgeRoleFieldWrite,
+  // **【`V18-M5-T02`(2026-09-12)/ `PM-G3` / `ADR-0432` / `ADR-0442`】**
+  // **判定の家は `owner-scope.ts` の述語1本のままである**(判定の式を1行も写していない)。
+  judgeRootCreatableRoles,
   OWNER_FIELD,
   personalOwnerField,
   recordAccessSourceTables,
   resolveCombinedRecordAccess,
+  resolveRecordDeleteCascade,
   roleGateBlocksWithoutGrants,
 } from "../../server/owner-scope.ts";
 import { routePath } from "../../shared/route.ts";
@@ -430,6 +443,168 @@ function creatorGrantUnreachableError(): ValidationError {
   };
 }
 
+// --- 前提の関門の断り文(`V17-M2-T01b` / `AC-G7a` / `ADR-0411`)-----------------------
+//
+// **3本とも HTTP(`src/server/app.ts`)の同名の関数から**文面だけ**を写した。**
+// **`app.ts` の関数そのものは非 export なので写せず、写していない** ——
+// **写したのは応答文であり、判定の式は1行も無い**(`ADR-0411` 限定2)。
+// **断り文の**種類**を1本も増やしていない** —— **HTTP が既に持っている3種を、
+// この道具が今日持っている形(`ValidationError[]`)に載せ替えただけである**(限定5)。
+//
+// **【`hint` も1文字も変えていない】** —— **この3本の `hint` は HTTP の言葉も道具名も
+// 1つも含んでいない**(上の6本と同じ事情である)。
+//
+// **【文面で誇張しない】** —— **止まったのはこの1件の作成だけである。**
+// **行は1件も消えていないし、権限も1つも変わっていない。**
+// **運営ロールも同じ壁で止まる** —— **「管理者に頼めば作れる」とは書かない。**
+
+/** 元になる行に書けないので作れない(HTTP の `forbiddenCreateParentAccessError` の文面)。 */
+function forbiddenParentCreateError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表の行は、元になる行に書き込める人だけが作れます。あなたには、指定された元の行を書き換える権限がありません。",
+    hint: "元になる行の権限を持っている人に、あなたへその行の書き込みの権限を渡してもらってください(役割を変えても作れるようにはなりません)。",
+  };
+}
+
+/** 名指しした種類の権限が無い(HTTP の `forbiddenNamedPermissionMissingError` の文面)。 */
+function forbiddenNamedPermissionCreateError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表の行は、元になる行に対してアプリが決めた種類の権限を持つ人だけが作れます。あなたは元になる行を書き換えられますが、その種類の権限を持っていません。",
+    hint: "元になる行の権限を渡せる人に、この表が求めている種類の権限をあなたへ渡してもらってください(どの種類が要るかはアプリを作った人が決めています。書き込みの権限を持っているだけでは作れません)。",
+  };
+}
+
+/** 元になる行の側が何も決めていない(HTTP の `forbiddenUngovernedParentError` の文面)。 */
+function forbiddenUngovernedParentCreateError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表の行は、元になる行の側で「誰が何をできるか」が決められていないため、今は誰も作れません。",
+    hint: "アプリを作った人に、元になる行を持つ表にも権限の設定を入れてもらってください(権限を渡しても、この断りは変わりません)。",
+  };
+}
+
+// --- 根の表に行を作れる立場の断り文(`V18-M5-T02` / `PM-G3` / `ADR-0432` / `ADR-0442`)---
+//
+// **2本とも HTTP(`src/server/app.ts`)の同名の関数から**文面だけ**を写した。**
+// **`app.ts` の関数そのものは非 export なので写せず、写していない** ——
+// **写したのは応答文であり、判定の式は1行も無い**(上の3本とまったく同じ作法である)。
+// **`hint` も1文字も変えていない** —— **この2本の `hint` は HTTP の言葉も道具名も
+// 1つも含んでいないからである。**
+// **写しである以上、片方だけを変えると黙ってずれる** —— **2経路の文面が1文字違わない
+// ことは `src/mcp/root-create-closed-by-default-mcp.test.ts` の `(F-1)` が、
+// HTTP 側の源から文字列を取り出して突き合わせる。**
+//
+// **【断り文の**種類**を1本も増やしていない】** —— **HTTP が既に持っている2種を、
+// この道具が今日持っている形(`ValidationError[]`)に載せ替えただけである。**
+//
+// **【文面で誇張しない】** —— **止まったのはこの1件の作成だけである。**
+// **行は1件も消えていないし、権限も1つも変わっていない。**
+// **読むことも、既に在る行を書き換えることも、消すことも1ミリも止まっていない。**
+// **運営ロールも同じ壁で止まる**(`D-V18-28`)—— **「管理者に頼めば作れる」とは書かない。**
+
+/** 立場は決まっているが挙がっていない(HTTP の `forbiddenRootCreatableRoleError` の文面)。 */
+function forbiddenRootCreatableRoleError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この表に行を作れる立場が決められており、あなたの立場はそこに挙がっていないため、行を作れません。",
+    hint: "アプリを作った人に、行を作れる立場の一覧へあなたの立場を足してもらってください(この表の行の権限をもらっても、この断りは変わりません)。",
+  };
+}
+
+/** 立場が一行も決められていない(HTTP の `forbiddenUndeclaredRootCreateError` の文面)。 */
+function forbiddenUndeclaredRootCreateError(): ValidationError {
+  return {
+    path: "",
+    message: "この表に行を作れる立場が一行も決められていないため、今はどなたも行を作れません。",
+    hint: "アプリを作った人に、この表に行を作れる立場を決めてもらってください(あなたに行の権限をもらっても、この断りは変わりません)。",
+  };
+}
+
+// --- 親を**付け替える更新**の断り文と翻訳(`V18-M6-T02` / `PM-G2` / `ADR-0443` 行2)---
+//
+// **HTTP(`src/server/app.ts`)の同名の関数から**文面だけ**を写した** ——
+// **`app.ts` の関数そのものは非 export なので写せず、写していない**(上の5本と同じ作法)。
+// **`hint` も1文字も変えていない。**
+// **写しである以上、片方だけを変えると黙ってずれる** —— **2つの口の文面が1文字違わない
+// ことは `src/mcp/update-parent-reparent-mcp.test.ts` の `(F-1)` / `(F-2)` が、
+// HTTP 側の源から文字列を取り出し、**本物の HTTP の応答**とも突き合わせる。**
+//
+// **【断り文の**種類**を1本も増やしていない】** —— **HTTP が既に持っている4種のうち、
+// この道具が未だ持っていなかった1種を、今日の形(`ValidationError[]`)へ載せ替えただけである。**
+//
+// **【文面で誇張しない】** —— **止まったのはこの1件の更新だけである。**
+// **行は1件も消えていないし、権限も1つも変わっていない。** **運営ロールも同じ壁で止まる。**
+// **参照を**空にする**更新は今日も通る**(`AC-G9` は却下。`ADR-0411` 限定10)——
+// **この断りを「持ち出しを塞いだ」と読まない。**
+
+// **【`V18-M6-T03b`(2026-09-13)による差し替え。上のどの行も1バイトも消していない】**
+//
+// **下の `message` / `hint` を差し替えた** —— **`V18-M6-T01` が、移す前の元の行に
+// 要求する権限を「書ける」から「消せる」へ上げたのに、文面が「書き込める必要が
+// あります」のままだったためである。** **利用者は、書き込みの権限をもらっても移せない
+// のに、それを求めに行くことになっていた。**
+//
+// **旧の逐語(2026-09-13 まで利用者に出ていた文面。1バイトも変えずに写す)**:
+//   message: 「この行を別の元の行へ移すには、移す前の元の行にも書き込める必要があります。あなたには、移す前の元の行を書き換える権限がありません。」
+//   hint:    「移す前の元の行の権限を持っている人に、あなたへその行の書き込みの権限を渡してもらってください(移した先の元の行に書き込めるだけでは移せません。役割を変えても移せるようにはなりません)。」
+//
+// **【なぜ「足す」ではなく「差し替える」のか】** —— **`V18-M5` は同じ場面で
+// 「新しい断り文を足して古いほうは残す」形を採ったが、今回は採らない** ——
+// **旧の文面は**どの場合にも真でなくなった**からである。** **残せば利用者を誤った
+// 先へ案内し続ける。** **旧の逐語は上に残してある。**
+//
+// **【断り文の**種類**を1本も増やしていない】**(`ADR-0411` §Decision 2 の 5)——
+// **既存の1本の文面を差し替えただけである。**
+// **`src/server/app.ts` の源も同じ文字列に差し替えた** —— **2つの口の文面が1文字違わない
+// ことは `src/mcp/update-parent-reparent-mcp.test.ts` の `(F-1)` が、HTTP 側の源から
+// 文字列を取り出して突き合わせる。**
+// **【禁止】これを「塞いだ」「安全になった」と読まない。**
+
+/** 移す前の親に権限が無い(HTTP の `forbiddenPreviousParentAccessError` の文面)。 */
+function forbiddenPreviousParentUpdateError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この行を別の元の行へ移すには、移す前の元の行を消せる必要があります。あなたには、移す前の元の行を消す権限がありません(移す前の元の行に書き込めるだけでは移せません)。",
+    hint: "移す前の元の行の権限を持っている人に、あなたへその行を消せる権限を渡してもらってください(移す前の元の行に書き込めるだけでは移せません。移した先の元の行に書き込めるだけでも移せません。役割を変えても移せるようにはなりません)。",
+  };
+}
+
+/**
+ * **親の関門の答えを、この道具が今日持っている断りの形へ翻訳する**(更新の枝)。
+ *
+ * **判定を1つも行わない** —— **`owner-scope.ts` の述語が返した `kind` を写すだけであり、
+ * 判定の式は1行も無い**(`ADR-0411` 限定2 / `ADR-0443`)。 **翻訳を1本にまとめてあるのは、
+ * **2本の道具**(`update_record` と `write_records` の `update` op)が同じ答えを返すため
+ * である** —— **2箇所に書くと、片方だけを直したときに黙ってずれる。**
+ * **上限に当たったことを「権限が無い」に丸めない**(`Z-G17` の作法)。
+ * **新しい親で止まったときの断り文は、作成の枝が今日使っているものと同じ関数である。**
+ */
+function parentUpdateDenial(verdict: CreateParentAccessVerdict): ValidationError[] | null {
+  if (verdict.kind === "limit_exceeded") {
+    return [recordAccessLimitError(verdict.limit)];
+  }
+  if (verdict.kind === "ungoverned_parent") {
+    return [forbiddenUngovernedParentCreateError()];
+  }
+  if (verdict.kind === "missing_named_permission") {
+    return [forbiddenNamedPermissionCreateError()];
+  }
+  if (verdict.kind === "denied_previous_parent") {
+    return [forbiddenPreviousParentUpdateError()];
+  }
+  if (verdict.kind === "allowed") {
+    return null;
+  }
+  return [forbiddenParentCreateError()];
+}
+
 // --- 付与表への書込の断り文(`V8-M31` 第3波)---------------------------------------
 //
 // **6本とも HTTP(`src/server/app.ts`)の同名関数から逐語で写した。**
@@ -492,6 +667,70 @@ function unknownGrantTargetError(): ValidationError {
     path: "",
     message: "どの行に対する権限なのかが決まらないため、権限を渡せません。",
     hint: "権限を渡したい行を選んでから、もう一度試してください。",
+  };
+}
+
+/**
+ * **ぶら下がっている行のうち1件でも、その人が**単体で**消せないものが在るときの断り**
+ * (`V18-M7-T03` / `PM-G5` / `D-V18-31`。`ADR-0444` §Decision 3 の ③)。
+ *
+ * **`message` と `hint` は `src/server/app.ts` の `forbiddenCascadeDeleteError` から**逐語で
+ * 写した**(このファイルの上の注記「import ではなく写し」と同じ理由 —— **向こうは
+ * モジュール私有であり、export を足すと本段が `app.ts` を書き換えることになる**)。
+ * **`path` も同じ `""` である** —— **この断りは件数の印の話ではなく、権限の話だからである。**
+ * **写しである以上、片方だけを変えると黙ってずれる** —— **その見張りが
+ * `src/mcp/tools/parent-delete-cascade-mcp.test.ts` の `(H-1)` である。**
+ *
+ * **【最重】件数も表のIDも1文字も書かない**(`ADR-0434` §Decision 6 の 5)。
+ * **【代償を隠さない】** **受け取った人は**どの行が原因かを自分では突き止められない**。**
+ */
+function forbiddenCascadeDeleteError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この行にぶら下がっている行の中に、あなたには消せないものがあります。この行は消せません。",
+    hint: "ぶら下がっている行は、あなたが1件ずつ消せるものだけがまとめて消えます。どの行が消せないかは、この応答では示しません。ぶら下がっている行を消せる人に、先に消してもらうか、この行の削除を依頼してください。",
+  };
+}
+
+/**
+ * **ぶら下がっている行が在るのに件数の印が無い / 印の件数が今の件数と違うときの断り**
+ * (`V18-M7-T03` / `PM-G5` / `D-V18-9`。`ADR-0444` §Decision 3 の ④ / ⑤)。
+ *
+ * **`message` は `src/server/app.ts` の `cascadeChildrenConfirmationError` から**逐語で写した**。**
+ * **`hint` だけを AI の口の言葉に差し替える** —— **HTTP は要求ヘッダ `If-Match-Children` で
+ * 印を運ぶが、AI の口は引数 `if_match_children` で運ぶ。** **この差し替えは、このファイルが
+ * 既に採っている作法そのものである**(上の注記の逐語「**`hint` だけを MCP の道具名
+ * (`set_roles` / `list_records`)に差し替える**」)。 **【禁止】版の印(`if_match`)の断りの
+ * 文面を1文字も使い回さない**(計画 §10-6 の17)—— **利用者が版を直しに行ってしまう。**
+ * **【禁止】画面が版不一致の表示に吸う語を1度も書かない**(`ADR-0444` 限定10)。
+ *
+ * **`path` は `"/if_match_children"` である** —— **AI の口の断りは今日すべて HTTP `200` +
+ * `isError: true` であり**(`ADR-0444` 追記1)、**状態コードでは3つの断りを見分けられない。**
+ * **今日の実測は「版の印が無い = `/if_match`」「版がずれた = `""`」なので、件数の印には
+ * その2つと違う `path` を与える**(同 追記1 の3点目。見張りは `(F-1)`)。
+ * **【HTTP と揃っていない点を隠さない】** **HTTP 側のこの断りの `path` は `""` である。**
+ * **本段はそれを揃えない**(同 追記1 の末尾。`V18-M7-T07` が塞がない穴として書く)。
+ *
+ * @param total 合計(下の段まで)/ @param tableIds 子が居る表のID / @param seal 印(無ければ ④)。
+ */
+function cascadeChildrenConfirmationError(
+  total: number,
+  tableIds: readonly string[],
+  seal: number | undefined,
+): ValidationError {
+  const where = tableIds.length > 0 ? `(${tableIds.join(" / ")})` : "";
+  if (seal === undefined) {
+    return {
+      path: "/if_match_children",
+      message: `この行には、ぶら下がっている行が ${total} 件あります${where}。まとめて消してよければ、件数の印を付けて同じ操作をもう一度実行してください。1行も消していません。`,
+      hint: `件数の印は if_match_children(10進の整数)で、値は ${total} です。版の印(if_match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。`,
+    };
+  }
+  return {
+    path: "/if_match_children",
+    message: `ぶら下がっている行の件数が、指定された件数の印(${seal})と合いません。今は ${total} 件です${where}。1行も消していません。`,
+    hint: `件数の印(if_match_children)に ${total} を指定して、同じ操作をもう一度実行してください。版の印(if_match)ではありません。ぶら下がっている行は、数えた後にも増えたり減ったりします。`,
   };
 }
 
@@ -679,6 +918,97 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
       : null;
 
   /**
+   * **面(役割に束ねた権限)の**行ごと**の規則**(`V17-M3` / `AC-G15`)。
+   *
+   * **HTTP の `src/server/app.ts` の `roleRowWriteBlocked` とまったく同じ形である** ——
+   * **点(行ごとの付与)を宣言していない表のときだけ当て、`owner-scope.ts` の
+   * `judgeRoleAccess` に行と名乗った人を渡す。** **ここに条件式を1行も書かない。**
+   *
+   * **すぐ上の {@link denyRoleTableWrite} は行を渡さない**(表そのものを書けるか)——
+   * **行を伴わない判定は条件つきの規則を「通しうる」として扱うので、条件は
+   * そこでは1度も評価されない。** **この関門が、行を手元に持ってから同じ判定を引き直す。**
+   *
+   * **更新には更新前と更新後の両方を渡す** —— **片方だけだと「条件の外へ逃がす更新」か
+   * 「条件の中へ奪う更新」が素通りする**(HTTP の単件 `PATCH` と同じ理由)。
+   */
+  const denyRoleRowWrite = (
+    manifest: Manifest,
+    tableId: string,
+    rows: readonly Record<string, unknown>[],
+    actorId: string,
+    roles: Role[],
+    verb: "write" | "delete",
+  ): ValidationError[] | null => {
+    if (recordAccessSourceTables(manifest, tableId) !== undefined) {
+      return null;
+    }
+    return rows.some(
+      (row) =>
+        !judgeRoleAccess({
+          manifest,
+          roles,
+          target: { target: "table", table: tableId },
+          verb,
+          row,
+          subject: actorId,
+        }).allowed,
+    )
+      ? [
+          forbiddenRoleAccessError(
+            `表 "${tableId}" のこの行`,
+            verb === "delete" ? "削除" : "書き込み",
+          ),
+        ]
+      : null;
+  };
+
+  /**
+   * **書込の**成功**戻り値から、その相手に見せない行の業務の列を落とす**
+   * (`V17-M3` / `AC-G16`。**ユーザ決定 2026-09-07「AI 側も同時に塞ぐ」**)。
+   *
+   * **HTTP の `src/server/app.ts` の `hideRowForRoleCondition` とまったく同じ形である** ——
+   * **行ごとの読取が偽なら「全項目が hidden」として扱い、落とすのは `table.fields` の
+   * id 集合ちょうどである。** **`_id` / `_created_at` / `_updated_at` は `table.fields` に
+   * 無いので自動的に残る**(次の `if_match` を組む手が消えない)。
+   *
+   * **【これは `ADR-0134` 限定1 の逐語「MCP の `write_records` の応答に1バイトも掛けない」を
+   * 破る】** —— **ユーザ決定により引き直した。** **引き直す ADR は `ADR-0418` である。**
+   * **【禁止】「限定1 を守った」と書かない。**
+   *
+   * **解決できない表(システムの表を含む)は1バイトも触らない** ——
+   * **`get_changelog` などの応答は今日どおりである**(限定1 のうち引き直していない部分)。
+   */
+  const hideRowForRoleCondition = <T extends Record<string, unknown>>(
+    manifest: Manifest,
+    tableId: string,
+    row: T,
+    actorId: string,
+    roles: Role[],
+  ): T => {
+    const table = manifest.app.tables.find((candidate) => candidate.id === tableId);
+    if (table === undefined || recordAccessSourceTables(manifest, tableId) !== undefined) {
+      return row;
+    }
+    if (
+      judgeRoleAccess({
+        manifest,
+        roles,
+        target: { target: "table", table: tableId },
+        verb: "read",
+        row,
+        subject: actorId,
+      }).allowed
+    ) {
+      return row;
+    }
+    const hidden: Record<string, unknown> = { ...row };
+    for (const field of table.fields) {
+      delete hidden[field.id];
+    }
+    return hidden as T;
+  };
+
+  /**
    * **既存の行1件を書き換える/消せるか**(面と点を重ねた合成判定)。
    *
    * **関門の順序は HTTP の単件 `PATCH` / `DELETE` と同じ**:
@@ -752,10 +1082,88 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
     tableId: string,
     actorId: string,
     roles: Role[],
+    /**
+     * **これから作る行の値**(`V17-M2-T01b` / `AC-G7a` / `ADR-0411`)。
+     *
+     * **前提の関門(引き継ぎ元の行に書けるか)は、行の中身(元の行を指す参照の値)を見る** ——
+     * **したがってこの引数は「行ごとに」渡さなければならない。**
+     */
+    values: Record<string, unknown>,
   ): ValidationError[] | null => {
     const sources = recordAccessSourceTables(manifest, tableId);
     if (sources === undefined) {
       return null;
+    }
+    // **【`V18-M5-T02`(2026-09-12)/ 審査の単位 `PM-G3` / `ADR-0432`(決定の本体)/
+    // `ADR-0442`(授権)/ `D-V18-3` / `D-V18-27` / `D-V18-28`】**
+    // **根の表に「行を作れる立場」が**一行も書かれていない**とき、この層からも
+    // 行を作れなくする関門である。**
+    //
+    // **【「穴を塞ぐ」ではなく「新しく掛ける」である。誇張しない】** ——
+    // **この止めは着手時点でこの層に**1本も**配線されていなかった**
+    // (`ADR-0432` §Status 3)。 **着手前は、名簿に登録済みの一般利用者なら誰でも
+    // 行を作れていた**(実測は `V18-M5-T00b` の記録)。 **【禁止】「安全になった」と書かない。**
+    //
+    // **【置き場所は上の早期 return の直後である。射程の条件を1文字も書き足していない】**
+    // —— **あの早期 return は「表が実在しない」か「権限管理が宣言されていない /
+    // 止めてある」ときだけ起きるので、`D-V18-27`(権限管理を一行も宣言していない表は
+    // 1バイトも変えない)の射程と**ちょうど一致する**。**
+    // **したがってここに射程の条件式を1つも書いていない。**
+    //
+    // **【判定の家を2本目にしていない】** —— **呼ぶのは `owner-scope.ts` の述語1本だけで
+    // あり、判定の式を1行も写していない**(`ADR-0432` 限定1)。 **ここにあるのは
+    // 「3つの言葉のうち2つを、この道具が今日持っている断りの形へ翻訳する」ことだけである。**
+    //
+    // **【1箇所にしか書いていない】** —— **この関門を通るのは、行をまとめて入れる道具と
+    // 書込の操作を並べる道具の**両方**である**(どちらもこの関数を呼ぶ)。
+    // **2箇所に書くと、片方だけを直したときに黙ってずれる。**
+    //
+    // **【掛かっていないもの。丸めない】** —— **更新と削除には1ミリも掛かっていない**
+    // (この壁は作成の枝にしか立っていない)。 **受信口 / 自動処理 / 島 / 時刻起動 の
+    // 4本にも1ビットも掛けていない**(`D-V18-6`)—— **どれも今日も素通りする。**
+    // **運営ロールの例外を1つも置いていない**(`D-V18-28`)。
+    const rootCreatable = judgeRootCreatableRoles({ manifest, tableId, roles });
+    if (rootCreatable === "not_listed") {
+      return [forbiddenRootCreatableRoleError()];
+    }
+    if (rootCreatable === "undeclared") {
+      return [forbiddenUndeclaredRootCreateError()];
+    }
+    // **【`V17-M2-T01b`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2 の 2】**
+    // **前提の関門。** **`creatorGrantPlan` の直前に置く**(HTTP の単件 `POST` と同じ並び)。
+    //
+    // **判定の式を1行も写していない** —— **呼ぶのは `owner-scope.ts` の既存の述語1本だけで
+    // あり、ここにあるのは「答えを、この道具が今日持っている断りの形(`ValidationError[]`)へ
+    // 翻訳する」ことだけである**(`ADR-0411` 限定2 / 限定5)。
+    // **断り文の**種類**を1本も増やしていない** —— **`app.ts` の `createParentDenial` は
+    // 非 export なので写せず、写していない。**
+    //
+    // **【上限に当たったことを「権限が無い」に丸めない】**(`Z-G17` の作法。
+    // 同ファイルの `denyRecordWrite` が既に同じ形で `recordAccessLimitError` を返している)。
+    const parent = judgeCreateParentAccess({
+      manifest,
+      tableId,
+      values,
+      actorId,
+      readRows: (id) => accessSourceRows(db, manifest, id),
+      readRow: (id, recordId) => {
+        const found = getRecord(db, manifest, id, recordId);
+        return found.ok && found.value !== null
+          ? (found.value as unknown as Record<string, unknown>)
+          : undefined;
+      },
+    });
+    if (parent.kind === "limit_exceeded") {
+      return [recordAccessLimitError(parent.limit)];
+    }
+    if (parent.kind === "ungoverned_parent") {
+      return [forbiddenUngovernedParentCreateError()];
+    }
+    if (parent.kind === "missing_named_permission") {
+      return [forbiddenNamedPermissionCreateError()];
+    }
+    if (parent.kind !== "allowed") {
+      return [forbiddenParentCreateError()];
     }
     const plan = creatorGrantPlan({
       manifest,
@@ -958,6 +1366,96 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
       return [forbiddenOwnerError()];
     }
     return null;
+  };
+
+  /**
+   * **「その子を、この人が**単体で** `delete_record` したときに通る関門」を1件ずつ当てる判定を組む**
+   * (`V18-M7-T03` / `PM-G5` / `D-V18-31`。`ADR-0444` §Decision 3 の ③)。
+   *
+   * **当てるのは HTTP の `src/server/app.ts` の `cascadeChildDeleteJudge` と同じ5本である** ——
+   * **(1) 所有者スコープ /(2) 行ごとのアクセス権の `read` と `delete` /(3) 面の行ごとの規則 /
+   * (4) 削除保護 /(5) 付与表を対象にした削除かどうかの判定。** **1つでも通らなければ `false`。**
+   * **順序も HTTP と同じである。** **判定の式を1行も書いていない** —— **呼ぶのは
+   * `owner-scope.ts` の既存の述語と、このファイルが既に持っている断りの翻訳だけである。**
+   *
+   * **【最重。非対称を隠さない】** **AI の口には今日「削除保護」の関門が**そもそも無い**** ——
+   * **`delete_record` は `st_undeletable` の立った行を今日も消せる**(HTTP は 409 で止める)。
+   * **本段は**親については今日どおり掛けない**(射程を広げない。`ADR-0444` の授権の表に1行も
+   * 無い)。** **子については掛ける** —— **連鎖で消える行が、単体では消せない行であっては
+   * ならないからである**(`D-V18-31` の決定文「**誰の権限も1ミリも増えない**」)。
+   * **この非対称は `src/mcp/tools/parent-delete-cascade-mcp.test.ts` の `(C-1)` と `(C-5)` が
+   * 両側から固定しており、`V18-M7-T07` が塞がない穴として書く。**
+   *
+   * **【誇張しない】** **(i) 上限に当たった子は「消せない」に倒し、あわせて `onLimit` で
+   * 呼び出し側に渡す**(fail-closed かつ**丸めない**)。 **(ii) 判定が変わる窓(TOCTOU)を
+   * 1バイトも塞いでいない。** **(iii) 行を1件も消さない。** **(iv) 子1件ごとに付与表・
+   * 利用者の表を読み直す**(このファイルの他の判定と同じで、メモ化していない。速さは1件も
+   * 測っていない)。
+   */
+  const cascadeChildDeleteJudge = (input: {
+    readonly db: Database;
+    readonly manifest: Manifest;
+    readonly actorId: string;
+    readonly roles: Role[];
+    readonly onLimit: (limit: "depth" | "rows") => void;
+  }): ((child: { readonly tableId: string; readonly row: Record<string, unknown> }) => boolean) => {
+    const { db, manifest, actorId, roles, onLimit } = input;
+    return (child) => {
+      const table = manifest.app.tables.find((candidate) => candidate.id === child.tableId);
+      // **解けない表 / 書けない表の行は「消せない」に倒す**(fail-closed)。
+      if (table === undefined || isSystemTableId(child.tableId)) {
+        return false;
+      }
+      // **(1) 所有者スコープ** —— **他人の行・見えない行は、単体なら「存在しません」である。**
+      if (
+        personalOwnerField(table) !== undefined &&
+        !isOwnerVisible(child.row[OWNER_FIELD], actorId)
+      ) {
+        return false;
+      }
+      // **(2) 行ごとのアクセス権** —— **`read` が偽なら「存在しません」、`delete` が偽なら権限の断り。**
+      const sources = recordAccessSourceTables(manifest, child.tableId);
+      if (sources !== undefined) {
+        const access = resolveCombinedRecordAccess({
+          manifest,
+          tableId: child.tableId,
+          row: child.row,
+          actorId,
+          roles,
+          sources,
+          readRows: (id) => accessSourceRows(db, manifest, id),
+          readRow: (id, recordId) => {
+            const found = getRecord(db, manifest, id, recordId);
+            return found.ok && found.value !== null
+              ? (found.value as unknown as Record<string, unknown>)
+              : undefined;
+          },
+        });
+        // **打ち切りを「消せない」に丸めない** —— **丸めると、辿りきれなかっただけの行が
+        // 権限の断りに化ける**(HTTP 側と同じ向き)。
+        if (access.kind === "limit_exceeded") {
+          onLimit(access.limit);
+          return false;
+        }
+        if (!access.verdict.read || !access.verdict.delete) {
+          return false;
+        }
+      }
+      // **(3) 面の行ごとの規則** —— **点を宣言した表では今日どおり掛からない。**
+      if (
+        denyRoleRowWrite(manifest, child.tableId, [child.row], actorId, roles, "delete") !== null
+      ) {
+        return false;
+      }
+      // **(4) 削除保護** —— **行の状態が削除を止める**(上の【最重】の非対称を参照)。
+      if (isDeleteProtectedRow(table, child.row)) {
+        return false;
+      }
+      // **(5) 付与表を対象にした削除かどうかの判定。**
+      return (
+        denyGrantWrite(db, manifest, child.tableId, "delete", child.row, actorId, roles) === null
+      );
+    };
   };
 
   // --- 7. create_app --------------------------------------------------------------
@@ -1425,6 +1923,23 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         stampOwner(manifest, table_id, row, guard.value.id);
       }
 
+      // **面の**行ごと**の規則**(`V17-M3` / `AC-G15`)。**持ち主のスタンプの**あと**に
+      // 当てる** —— **HTTP の単件 `POST` と同じ理由である。** **1行でも断られたら
+      // 要求全体を断る**(この道具の契約1「`isError` は何も変わっていない」を保つ)。
+      for (const row of rows) {
+        const deniedRow = denyRoleRowWrite(
+          manifest,
+          table_id,
+          [row],
+          guard.value.id,
+          guard.value.roles,
+          "write",
+        );
+        if (deniedRow !== null) {
+          return toolError(deniedRow);
+        }
+      }
+
       // R6: DBは全行で**1回だけ**開き、`finally` で閉じる。行ごとに開閉すると
       // 行数ぶんのファイルハンドルとWALの生成・破棄が起き、投入も遅くなる。
       return withAppDb(dataRoot, app_id, (db) => {
@@ -1448,9 +1963,64 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         // **作成の下見**(`V8-M31-T05`)。**行の内容に依らないので、行ループの外で1度だけ
         // 問う** —— **判定は (表, 作る人) に閉じており、`rows` の中身を1バイトも見ない。**
         // **1件でも作る前に断る**(契約1: `isError` は「何も変わっていない」)。
-        const denied = denyRecordCreate(db, manifest, table_id, guard.value.id, guard.value.roles);
-        if (denied !== null) {
-          return toolError(denied);
+        //
+        // =============================================================================
+        // **【`V17-M2-T01b` による訂正(2026-09-07)。上の3行を1バイトも消していない】**
+        // =============================================================================
+        //
+        // **「行の内容に依らないので、行ループの外で1度だけ問う」は今日は偽である。**
+        // **「判定は (表, 作る人) に閉じており、`rows` の中身を1バイトも見ない」も今日は偽である。**
+        //
+        // **`AC-G7a`(`ADR-0411`)が前提の関門をこの下見に足した。** **その関門は
+        // 「その行が指す**元になる行**に書けるか」を問うので、**行の中身(参照の値)を見る**。**
+        // **同じ表・同じ作る人でも、行ごとに答えが割れる。**
+        //
+        // **したがって、書込ループの**前**に `rows` を1周する下見のループを置いた** ——
+        // **同ファイルの `denyFieldWrite`(項目単位)/ `denyGrantWrite`(付与表)の下見と
+        // まったく同じ形である。**
+        //
+        // **【変えていないこと。ここが訂正の要点である】**
+        //  - **「1件でも作る前に断る」は今日も真である**(契約1 は1ミリも動いていない)——
+        //    **1行でも断られたら `toolError` で返し、`createRecord` を1度も呼ばない。**
+        //  - **断りを部分成功(`failed[]`)に混ぜていない** —— **混ぜると契約1 が壊れる**
+        //    (権限で落ちた行を「行ごとの検証の失敗」として返すと、AI は値を直せば通ると学習する)。
+        //  - **`inherit_from` を宣言していない表では1ミリも変わらない** —— **述語が
+        //    その表で `allowed` を返すので、行を何周しても答えは着手前と同じである**
+        //    (`ADR-0411` 限定7。実測は `src/mcp/actor-authz.test.ts` の `(AC-G7a-0)`)。
+        //  - **前提の関門の呼び出しをこのファイルに2件目として書いていない**
+        //    (`ADR-0411` 限定12 が呼び出し総数7を固定している)—— **下見のループが呼ぶのは
+        //    `denyRecordCreate` であり、関門はその中の1箇所だけである。**
+        //    **【綴りをこのコメントにも書かない】** —— **限定12 の式は源を走査して
+        //    数えるので、散文に書くだけで本数が1つ増えて赤くなる**(実測)。
+        //  - **行が0件でも1度は問う** —— **着手前は行ループの**外**で必ず1度呼ばれていた
+        //    ので、空の `rows` に対する応答を1ミリも変えないためである**(空で呼ぶときの
+        //    値は空の行であり、前提の関門はそこで「掛からない」と答える = `(b-3)` と同じ形)。
+        //
+        // **【2026-09-12 訂正。`V18-M5-T02` / `PM-G3` / `ADR-0432` / `ADR-0442`。
+        //   直上の行を1バイトも消していない】**
+        // **直上の逐語「**空の `rows` に対する応答を1ミリも変えない**」は、今日は偽である。**
+        // **本段が、行を作れる立場が一行も書かれていない根の表への作成を断るように
+        // なったからである。** **その関門は下見の呼び先の中に在り、行の中身を1つも
+        // 見ない** —— **したがって `rows` が空でも同じ答えを返す。**
+        // **実測(本段の前後)**: **その形の表へ `rows: []` を渡すと、着手前は
+        // 「成功・0件投入」が返っていたが、今日は断りが返る**
+        // (担保は `src/mcp/root-create-closed-by-default-mcp.test.ts` の `(E-1)`)。
+        // **変わるのはその形の表だけである** —— **権限管理を一行も宣言していない表への
+        // `rows: []` は、今日も「成功・0件投入」のままである**(同 `(E-2)`)。
+        // **上の3点(契約1 / 部分成功に混ぜない / 引き継ぎを宣言していない表)は
+        // 1つも変わっていない。**
+        for (const row of rows.length === 0 ? [{} as Record<string, unknown>] : rows) {
+          const denied = denyRecordCreate(
+            db,
+            manifest,
+            table_id,
+            guard.value.id,
+            guard.value.roles,
+            row,
+          );
+          if (denied !== null) {
+            return toolError(denied);
+          }
         }
         const inserted: RecordRow[] = [];
         const failed: { index: number; errors: ValidationError[] }[] = [];
@@ -1471,10 +2041,21 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         // R7: 部分成功でも `isError` は立てない。理由はファイル冒頭の契約3を参照。
         // V1-M9-T12: 履歴書き込み失敗は「操作は成功したが記録の一部が残らなかった」なので
         // `toolError` にせず、成功戻り値の明示項目に載せる(失敗が無ければ項目そのものを付けない)。
+        // **【`V17-M3` / `AC-G16`】行ごとの読取が偽なら、業務の列を全部落とす。**
+        const shown = inserted.map(
+          (record) =>
+            hideRowForRoleCondition(
+              manifest,
+              table_id,
+              record as unknown as Record<string, unknown>,
+              guard.value.id,
+              guard.value.roles,
+            ) as unknown as RecordRow,
+        );
         return toolOk(
           failures.length > 0
-            ? { inserted, failed, workflow_history_failures: failures }
-            : { inserted, failed },
+            ? { inserted: shown, failed, workflow_history_failures: failures }
+            : { inserted: shown, failed },
         );
       });
     },
@@ -1647,6 +2228,24 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             if (denied !== null) {
               return toolError(denied);
             }
+            // **面の**行ごと**の規則**(`V17-M3` / `AC-G15`)。**更新前と更新後の両方を渡す。**
+            const deniedRow = denyRoleRowWrite(
+              manifest,
+              table_id,
+              [
+                existing.value as unknown as Record<string, unknown>,
+                {
+                  ...(existing.value as unknown as Record<string, unknown>),
+                  ...(changes as Record<string, unknown>),
+                },
+              ],
+              guard.value.id,
+              guard.value.roles,
+              "write",
+            );
+            if (deniedRow !== null) {
+              return toolError(deniedRow);
+            }
             // **付与表への書込の判定**(`V8-M31` 第3波)。**HTTP の `PATCH` と同じく
             // 行の判定の**あと**に置き、「書き込んだあとの姿」を渡す** ——
             // **既存行に送られた値を重ねないと、相手だけを自分に付け替える更新が
@@ -1666,6 +2265,49 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             if (deniedGrant !== null) {
               return toolError(deniedGrant);
             }
+            // **【`V18-M6-T02`(2026-09-13)/ 審査の単位 `PM-G2` / `ADR-0443` 授権の表 行2 /
+            // ユーザ決定 `D-V18-29`】親の関門を、**更新**にも通す。**
+            //
+            // **着手前、この道具は親の関門を1本も通っていなかった** —— **親を指さずに
+            // 作った行に、あとから親を書き入れることも、別の親へ付け替えることも、
+            // AI の口からは素通りで通っていた**(実測は `actor-authz.test.ts` の
+            // `(AC-G7a-4b)`。**HTTP だけが 403 を返していた**)。
+            // **【禁止】これを「安全になった」と書かない。**
+            //
+            // **判定の式を1行も写していない** —— **呼ぶのは `owner-scope.ts` の既存の
+            // 述語1本だけであり、ここにあるのは「更新前の行を渡して呼ぶ」ことと、
+            // 答えを断りの形へ翻訳する1本の呼び出しだけである**(`ADR-0411` 限定2)。
+            // **`previous` を渡すのが要である** —— **述語はそれを受け取ったときだけ、
+            // 要求が親の参照を**変える**要素に絞って見る。** **項目を送らない更新と、
+            // 同じ値を送り直す更新には1ミリも掛からない。**
+            //
+            // **置き場所は HTTP の単件 `PATCH` と同じ並びである** —— **行ごとの判定
+            // (見えない / 書けない)と付与表の判定の**後ろ**に置く。** **前に置くと、
+            // 見えない行の存在が断りの文面から漏れる。** **新しい I/O を1件も足していない**
+            // —— **更新前の行は `existing.value` として既に読んである。**
+            //
+            // **【射程。誇張しない】** —— **掛けたのは AI の口の更新2本だけである。**
+            // **受信口 / 自動処理 / 島 / 時刻起動 は今日も素通りする**(`D-V18-6`)。
+            // **`delete_record` にも1バイトも掛けていない。** **参照を**空にする**更新は
+            // 今日も通る**(`AC-G9` は却下。`ADR-0411` 限定10)。
+            const parent = judgeCreateParentAccess({
+              manifest,
+              tableId: table_id,
+              values: changes as Record<string, unknown>,
+              previous: existing.value as unknown as Record<string, unknown>,
+              actorId: guard.value.id,
+              readRows: (id) => accessSourceRows(db, manifest, id),
+              readRow: (id, recordId) => {
+                const found = getRecord(db, manifest, id, recordId);
+                return found.ok && found.value !== null
+                  ? (found.value as unknown as Record<string, unknown>)
+                  : undefined;
+              },
+            });
+            const deniedParent = parentUpdateDenial(parent);
+            if (deniedParent !== null) {
+              return toolError(deniedParent);
+            }
           }
         }
         // 読み取り専用拒否・テーブル不在・レコード不在・値の検証は**すべてカーネル側**。
@@ -1680,10 +2322,18 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         }
         // 履歴失敗は成功戻り値の明示項目に載せる(失敗が無ければ項目を付けない)。理由は
         // `insert_sample_data` と同じ(操作は成功しているので `toolError` にしない)。
+        // **【`V17-M3` / `AC-G16`】行ごとの読取が偽なら、業務の列を全部落とす。**
+        const shown = hideRowForRoleCondition(
+          manifest,
+          table_id,
+          result.value as unknown as Record<string, unknown>,
+          guard.value.id,
+          guard.value.roles,
+        ) as unknown as typeof result.value;
         return toolOk(
           failures.length > 0
-            ? { record: result.value, workflow_history_failures: failures }
-            : { record: result.value },
+            ? { record: shown, workflow_history_failures: failures }
+            : { record: shown },
         );
       });
     },
@@ -1705,6 +2355,16 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           "削除には if_match(あなたが読んだレコードの現在の版 = _updated_at)を必ず渡してください。" +
           "他の誰かがあなたの取得後にこのレコードを変更していると、版が一致せず削除は拒否されます" +
           "(黙って消さないための保護)。その場合は list_records で最新を読み直してから再検討してください。\n" +
+          // **【`V18-M7-T03`(2026-09-14)/ `PM-G5` / `ADR-0444` §Decision 3】**
+          // **ぶら下がっている行の関門を、AI の口にも配線した。** **【禁止】これを「安全に
+          // なった」と読まない** —— **止めているのは削除そのものではなく、**一度断って
+          // 利用者に選ばせる**ところまでである。**
+          "この行を親として参照している行(ぶら下がっている行)が1件でもあるときは、1回目は必ず拒否されます。" +
+          "拒否の文面に載っている件数を if_match_children に渡して同じ呼び出しをもう一度行うと、" +
+          "その行と、ぶら下がっている行が下の段まで**まとめて消えます**(取り消せません)。" +
+          "if_match は版の印、if_match_children は件数の印であり、別のものです。両方を渡してください。" +
+          "ぶら下がっている行の中に、あなたが1件ずつ消せないものが1件でもあるときは、" +
+          "件数を出さずに拒否されます(その場合は、その行を消せる人に先に消してもらってください)。\n" +
           DELETE_RECORD_SHOW_TARGET_FIRST +
           "\n" +
           RECORD_WRITE_SYSTEM_TABLE_READONLY +
@@ -1726,9 +2386,23 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             "**必須**。削除前に読んだレコードの現在の版(_updated_at)。" +
               "他の操作が先に変更していれば版が合わず削除は拒否される(黙って消さないための保護)。",
           ),
+        // **【`V18-M7-T03`】件数の印**(`ADR-0444` §Decision 4 / 限定3)。
+        // **`required` に入れない** —— **ぶら下がっている行が0件なら要らない印であり、
+        // 必須にすると子の居ない削除まで壊す**(同 追記2 の裁定)。 **`if_match` の扱いは
+        // 1ビットも変えていない**(今日も `required` には入っていない)。
+        // **真偽のフラグではない**(同 限定4)—— **型は `number` である。**
+        if_match_children: z
+          .number()
+          .optional()
+          .describe(
+            "省略可。**版ではなく件数の印**。この行にぶら下がっている行(この行を親として参照している行)を" +
+              "下の段まで数えた合計。1回目の拒否の文面に載っている件数をそのまま渡すと、" +
+              "その行とぶら下がっている行がまとめて消える(取り消せない)。" +
+              "数えた件数と食い違えば1行も消さずに拒否する。版の印は if_match であり、これとは別物である。",
+          ),
       },
     },
-    ({ app_id, table_id, record_id, if_match }) => {
+    ({ app_id, table_id, record_id, if_match, if_match_children }) => {
       const guard = requireActorAndApp(dataRoot, app_id, actor);
       if (!guard.ok) {
         return toolError(guard.errors);
@@ -1795,6 +2469,18 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             if (denied !== null) {
               return toolError(denied);
             }
+            // **面の**行ごと**の規則**(`V17-M3` / `AC-G15`)。**消す相手は1行だけである。**
+            const deniedRow = denyRoleRowWrite(
+              manifest,
+              table_id,
+              [existing.value as unknown as Record<string, unknown>],
+              guard.value.id,
+              guard.value.roles,
+              "delete",
+            );
+            if (deniedRow !== null) {
+              return toolError(deniedRow);
+            }
             // **付与表からの削除の判定**(`V8-M31` 第3波。HTTP の `DELETE` と同じ位置)。
             // **渡すのは既存行である**(`delete` は「相手が誰か」を見ない ——
             // **自分の権限を手放すことは止めない**。`judgeGrantWrite` の doc)。
@@ -1813,6 +2499,127 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             );
             if (deniedGrant !== null) {
               return toolError(deniedGrant);
+            }
+          }
+        }
+        // --- 親を消すと残る行の連鎖(`V18-M7-T03` / `PM-G5` / `ADR-0444` §Decision 3)--------
+        // **【着手前の形】** **AI の口は、親を消してもぶら下がっていた行を黙って残していた**
+        // (`parent-delete-cascade-route.test.ts` の冒頭が「本ファイルが緑でも AI の口は今日も
+        // 親だけを消して子を残す」と書いていた、その口である)。 **この関門はその形を**起きな
+        // くする**ものではなく、「一度断って利用者に選ばせる」ところまでである**(`D-V18-9`)。
+        // **【禁止】「安全になった」と読まない。**
+        // **位置は HTTP と1ビットも同じである** —— **すぐ上の付与表を対象にした削除かどうかの
+        // **判定**と、下の実際の削除の**間**。** **前に置くと、手前の関門で止まるはずの人にまで
+        // **見えない行の件数**を返してしまう**(`ADR-0434` §Decision 6 の 5 の「越えてはならない
+        // 線」)。 **6段の順序は `ADR-0444` §Decision 3 が固定しており、下の分岐がその ① 〜 ⑥
+        // である。** **③ が ④ より**先**なのは、自分に消せない行の件数を ④ が先に返すと、同じ
+        // 趣旨を関門の内側で破ることになるからである。** **数える向きも判定も `owner-scope.ts`
+        // の述語が持ち、ここに条件式を1行も書かない**(`ADR-0061` 限定4)。
+        // **【状態コードで書けない。隠さない】** **AI の口の断りは今日すべて HTTP `200` +
+        // `isError: true` である**(`ADR-0444` 追記1)。 **③ / ④ / ⑤ は `path` と文面でしか
+        // 見分けられない** —— **③ は `""`、④ / ⑤ は `/if_match_children` を持つ。**
+        // **【原子性を1ミリも取らない。隠さない】**(`D-V18-14` / `ADR-0444` 限定9)—— **子は
+        // 深い段から1件ずつ消し、そのあとで親を消す**(まとめ書きの口は使わない。`write_records`
+        // に `delete` を1バイトも足していない)。 **途中で失敗したら、そこまでに消えた行は
+        // **消えたまま**であり**(巻き戻さない)、**親の版が合わずに最後で断られた場合も子は
+        // 消えたままである。**
+        // **【監査は HTTP と揃っていない。丸めない】** —— **HTTP は親1件 + 子N件を
+        // `writeWithAudit` で残すが、AI の口の削除は今日 `writeWithAudit` を1度も通らない**
+        // (親1件の削除も同じである)。 **したがって子を消しても `_auth_activity` に1行も
+        // 残らない。** **本段はこれを揃えていない** —— **揃えるには AI の口の削除全体を監査に
+        // 載せることになり、それは `ADR-0444` の授権の表に1行も無い。** **実測は
+        // `parent-delete-cascade-mcp.test.ts` の `(B-6)` であり、`V18-M7-T07` が穴として書く。**
+        // **【TOCTOU を1バイトも塞いでいない】** **この経路も今日はトランザクションを1つも
+        // 開かない** —— **件数の印で「ずれたら消さない」までは言えるが、「ずれない」とは言えない。**
+        //
+        // --- **連鎖に入る前の事前照合**(`V18-M7-T07b`。`ADR-0444` 追記10)-------------------
+        // **【この段が作った退行を直すものである。AI の口の側も実地データの複製の上で撃って
+        // 確かめた】** —— **「正しい件数の印(5)+ 古い版の印」を1回渡したところ、`milestones` が
+        // 2→1、`issues` が 4→0 になり、**親だけが残って**版が合わない断りが返った**(実測は
+        // `ADR-0444` 追記10-2。HTTP 側の実測は `docs/plan/v18/records/v18-m7.md` の
+        // `# (e) 原子的でないこと(**撃てた**)` の節)。 **着手前(`a594d2ac`)は、同じ要求が
+        // **1行も消さずに** 断られていた。** **原因は HTTP と1ビットも同じで、下の ⑥(連鎖の実行)が
+        // この経路のいちばん最後に在る親の版照合より **前** に走ることである。**
+        //
+        // **【`D-V18-14` の射程外である。丸めない】** —— **許されたのは「連鎖の**途中で落ちたとき**」
+        // であって、「**要求そのものが却下されたのに行が消えること**」ではない。**
+        //
+        // **【足すのは事前照合だけである。最後の CAS を1バイトも変えない】** —— **版が合わなければ
+        // 下の `if` に入らず、そのまま最後の `deleteRecord(db, manifest, table_id, record_id,
+        // if_match)` へ落ちる。** **そこで CAS が同じ条件で落ち、**今日と1文字も同じ断り**が返る**
+        // —— **断り文を新しく1本も作っていない**(HTTP と割れる)。
+        //
+        // **【事前照合と最後の CAS の**両方**が要る理由。片方では足りない】**
+        //   **(a) 事前照合だけでは足りない** —— **この口も今日はトランザクションを1つも開かない。**
+        //       **事前照合を通ったあとで別の書込が `_updated_at` を進めれば、最後の CAS が無ければ
+        //       **先の変更を黙って上書きして**親が消える。**
+        //   **(b) 最後の CAS だけでは足りない** —— **それが今日の退行そのものである。** **CAS は連鎖の
+        //       あとにしか立たないので、却下が決まっている要求でも子が先に消える。**
+        // **【誇張しない。原子性は1ミリも取れていない】** —— **(a) の窓は今日も残る。**
+        //
+        // **行の読み出しはこの経路のほかの判定と同じ `getRecord` である。** **対象が存在しないときは
+        // 比較しない** —— **その場合は今日どおり最後の `deleteRecord` が「不在」を答える。**
+        const parentAtCascade = getRecord(db, manifest, table_id, record_id);
+        const parentVersionFresh = !(
+          parentAtCascade.ok &&
+          parentAtCascade.value !== null &&
+          (parentAtCascade.value as unknown as { _updated_at?: unknown })._updated_at !== if_match
+        );
+        if (parentVersionFresh) {
+          // **件数の印は0以上の整数ちょうどで、小数・負の値はいずれも「印が無い」と同じ扱いに
+          // する**(断り方を3本目にしない)—— **HTTP が10進の整数だけを印として読むのと同じ
+          // 向きである**(`app.ts` の `/^[0-9]+$/`)。 **この段に来た人は ③ を通っている
+          // (= 全部の子を消せる)ので、④ の文面を返しても件数は1件も漏れない。**
+          const seal =
+            if_match_children !== undefined &&
+            Number.isSafeInteger(if_match_children) &&
+            if_match_children >= 0
+              ? if_match_children
+              : undefined;
+          let childLimit: "depth" | "rows" | undefined;
+          const cascade = resolveRecordDeleteCascade({
+            manifest,
+            tableId: table_id,
+            recordId: record_id,
+            // **可視性を1ビットも効かせずに読む** —— **見落とした子が黙って残るのを防ぐ**
+            // (`ADR-0444` §Decision 3 の ①)。
+            readRows: (id) => accessSourceRows(db, manifest, id),
+            judgeChildDelete: cascadeChildDeleteJudge({
+              db,
+              manifest,
+              actorId: guard.value.id,
+              roles: guard.value.roles,
+              onLimit: (hit) => {
+                childLimit = hit;
+              },
+            }),
+          });
+          // **上限に当たったら「子は0件」にも「消せない」にも丸めない。** **数える側の打ち切りと、
+          // 子1件ずつの判定の打ち切りを、**同じ1箇所**で断りに翻訳する** —— **文面は HTTP が
+          // 寄せた先(`recordAccessLimitError`)と同じものである。**
+          const cascadeLimit = cascade.kind === "limit_exceeded" ? cascade.limit : childLimit;
+          if (cascadeLimit !== undefined) {
+            return toolError([recordAccessLimitError(cascadeLimit)]);
+          }
+          // **② 子が0件なら、ここから下は着手前と1バイトも変わらない。**
+          if (cascade.kind === "cascade" && cascade.total > 0) {
+            // **③ 1件でも消せない子が在れば、件数も表IDも1文字も出さずに断る**(`D-V18-31`)。
+            if (cascade.hasUndeletableChild) {
+              return toolError([forbiddenCascadeDeleteError()]);
+            }
+            const tableIds = cascade.perTable.map((entry) => entry.tableId);
+            // **④ / ⑤** —— **どちらも1行も消さない。** **文面は別である。**
+            if (seal === undefined || seal !== cascade.total) {
+              return toolError([cascadeChildrenConfirmationError(cascade.total, tableIds, seal)]);
+            }
+            // **⑥ 深い段から消す**(述語が返した順序に従う。親はいちばん最後)。 **子には版の印を
+            // 渡さない** —— **利用者が版を持っているのは親1件だけで、子の版まで要求すると
+            // この操作は誰にも実行できなくなる**(HTTP と同じ扱い)。
+            for (const child of cascade.deleteOrder) {
+              const removed = deleteRecord(db, manifest, child.tableId, child.recordId);
+              if (!removed.ok) {
+                return toolError(removed.errors);
+              }
             }
           }
         }
@@ -2011,9 +2818,26 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
                 opTable,
                 guard.value.id,
                 guard.value.roles,
+                // **【`V17-M2-T01b`】前提の関門に渡す、これから作る行の値**(`AC-G7a`)。
+                // **この経路は着手前から op ループの内側であり、`opValueObject` が
+                // すぐ上に在る** —— **移動は1行もしていない。**
+                opValueObject,
               );
               if (denied !== null) {
                 return toolError(denied);
+              }
+              // **面の**行ごと**の規則**(`V17-M3` / `AC-G15`)。**持ち主のスタンプの
+              // あとの値を渡す**(`judgeOwnerScopedOp` が `values` を上書き済みである)。
+              const deniedRow = denyRoleRowWrite(
+                manifest,
+                opTable,
+                [opValueObject],
+                guard.value.id,
+                guard.value.roles,
+                "write",
+              );
+              if (deniedRow !== null) {
+                return toolError(deniedRow);
               }
               // **付与表への書込の判定**(`V8-M31` 第3波)。**create は送られた値そのもの。**
               const deniedGrant = denyGrantWrite(
@@ -2050,6 +2874,21 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             if (denied !== null) {
               return toolError(denied);
             }
+            // **面の**行ごと**の規則**(`V17-M3` / `AC-G15`)。**更新前と更新後の両方を渡す。**
+            const deniedRow = denyRoleRowWrite(
+              manifest,
+              opTable,
+              [
+                existing.value as unknown as Record<string, unknown>,
+                { ...(existing.value as unknown as Record<string, unknown>), ...opValueObject },
+              ],
+              guard.value.id,
+              guard.value.roles,
+              "write",
+            );
+            if (deniedRow !== null) {
+              return toolError(deniedRow);
+            }
             // **付与表への書込の判定**(`V8-M31` 第3波)。**update は「既存行に送られた値を
             // 重ねたもの」を渡す**(HTTP の `POST /batch` と同型)。
             const deniedGrant = denyGrantWrite(
@@ -2067,6 +2906,32 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             if (deniedGrant !== null) {
               return toolError(deniedGrant);
             }
+            // **【`V18-M6-T02` / `PM-G2` / `ADR-0443` 授権の表 行2 / `D-V18-29`】**
+            // **まとめ書きの `update` op にも同じ関門を通す**(`D-V18-29` は2本とも塞ぐ)。
+            //
+            // **単件の道具とまったく同じ述語・同じ翻訳を通る** —— **道具ごとに判定の家も
+            // 断り文も割っていない。** **新しい I/O を1件も足していない**(更新前の行は
+            // すぐ上の `getRecord` で既に読んである)。
+            // **1件でも断られたらこの要求は1行も書かない**(この経路は既にそういう形で
+            // あり、順序も1ミリも動かしていない)。
+            const parent = judgeCreateParentAccess({
+              manifest,
+              tableId: opTable,
+              values: opValueObject,
+              previous: existing.value as unknown as Record<string, unknown>,
+              actorId: guard.value.id,
+              readRows: (id) => accessSourceRows(db, manifest, id),
+              readRow: (id, recordId) => {
+                const found = getRecord(db, manifest, id, recordId);
+                return found.ok && found.value !== null
+                  ? (found.value as unknown as Record<string, unknown>)
+                  : undefined;
+              },
+            });
+            const deniedParent = parentUpdateDenial(parent);
+            if (deniedParent !== null) {
+              return toolError(deniedParent);
+            }
           }
           // カスケードの履歴書き込み失敗を、この同期区間が生んだぶんだけ収集する(他ツールと同型)。
           // 監査記録(recordActivity)は MCP では付けない —— 既存の update_record / insert_sample_data と
@@ -2082,10 +2947,25 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           if (!result.ok) {
             return toolError(result.errors);
           }
+          // **【`V17-M3` / `AC-G16`】行ごとの読取が偽なら、業務の列を全部落とす。**
+          // **1つの要求が複数の表を跨ぐので、表は op の索引で引く**(HTTP の
+          // `POST /batch` が行ごとに表を決めるのと同じ向きである)。
+          const shownRecords = result.results.map((record, index) => {
+            const opTableId = (ops as unknown as { table?: unknown }[])[index]?.table;
+            return typeof opTableId === "string"
+              ? (hideRowForRoleCondition(
+                  manifest,
+                  opTableId,
+                  record as unknown as Record<string, unknown>,
+                  guard.value.id,
+                  guard.value.roles,
+                ) as unknown as typeof record)
+              : record;
+          });
           return toolOk(
             failures.length > 0
-              ? { records: result.results, workflow_history_failures: failures }
-              : { records: result.results },
+              ? { records: shownRecords, workflow_history_failures: failures }
+              : { records: shownRecords },
           );
         });
       } catch (error) {

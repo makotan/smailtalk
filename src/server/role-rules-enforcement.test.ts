@@ -72,9 +72,24 @@ const RULED_ROLES = [
       { target: "view", view: "note-list", can: ["read"] },
       // (4) ボタン —— `task-detail` の `mark-done` は `owner` だけに出る。
       { target: "action", view: "task-detail", action: "mark-done", can: ["read"] },
+      // **【`V18-M4-T02b` / `D-V18-26`】壁を開けるための画面の読取(主題ではない)。**
+      // - `order-board` … (A) の「`owner` は `orders` を今日どおり一覧できる」と
+      //   (G) の和集合、(I) の `set_roles` 後の一覧に要る。
+      // - `task-detail` … (D) が `owner` で単票を読んで `etag` を取るのに要る
+      //   (**単票の口は `detail_view` / `form` を見る**)。**ボタンの規則は
+      //   1本も増やしていない** —— **(D) の主題はそちらである。**
+      { target: "view", view: "order-board", can: ["read"] },
+      { target: "view", view: "task-detail", can: ["read"] },
     ],
   },
-  { id: "editor", name: "編集者" },
+  {
+    id: "editor",
+    name: "編集者",
+    // **【`V18-M4-T02b` / `D-V18-26`】(B) が `editor` で `notes` を一覧するのに要る1本。**
+    // **表(`notes`)の規則は1本も足していない** —— **(A) の「`editor` の `notes` 一覧は
+    // 空」は今日もそのまま立つ**(止めているのは表の層である)。
+    rules: [{ target: "view", view: "note-board", can: ["read"] }],
+  },
   { id: "viewer", name: "閲覧者" },
 ];
 
@@ -113,6 +128,21 @@ function manifest(roles: unknown[]): Manifest {
       views: [
         { id: "note-list", type: "list_view", table: "notes", columns: ["body"] },
         { id: "order-list", type: "list_view", table: "orders", columns: ["title"] },
+        // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】一覧の口を開ける画面を
+        // 2本足した。**
+        //
+        // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+        // 一覧系の画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は
+        // 0件になる。** **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を
+        // 役割の規則に1行も書いていない場合も止まる。**
+        //
+        // **既存の `order-list` / `note-list` に規則を足して済ませることはできない** ——
+        // **(C) が「`order-list` は誰の規則にも名指しされていないので `owner` でも
+        // `editor` でも 403」「`note-list` は `owner` だけが名乗れる」を測っており、
+        // そこへ規則を足すとその測定が丸ごと消えるからである。**
+        // **そこで、壁を開けるためだけの画面を別に2本置く。**
+        { id: "order-board", type: "list_view", table: "orders", columns: ["title"] },
+        { id: "note-board", type: "list_view", table: "notes", columns: ["body"] },
         {
           id: "task-detail",
           type: "detail_view",
@@ -458,11 +488,41 @@ test("(F) 判定は「止めたのはどちらの層か」を名指しする(面
     allowed: true,
     blockedBy: [],
   });
+  // =====================================================================================
+  // **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437` / ユーザ決定 `D-V18-18`)。
+  // 直下の1本の期待値を打ち直した。旧文を1バイトも消していない】**
+  //
+  //     旧: ).toEqual({ allowed: true, blockedBy: ["grant"] });
+  //     新: ).toEqual({ allowed: false, blockedBy: ["grant"] });
+  //
+  // **なぜ期待値の側が今日の正でなくなったか** —— **`passed` は「条件(`when`)を1つも
+  // 持たない規則だけが通した面」(`conditional: false`)であり、**読取**については
+  // 点が管轄内のときに `OR` へ入らなくなったからである。**
+  // **この検査の主題(止めた層を名指しできる)は1ミリも動いていない** ——
+  // **`blockedBy` は `["grant"]` のままである**(**面だけを見れば通していた**の意味を保つ)。
+  // **`V8-M19` が `AND` から `OR` へ変える前の値と同じ値に戻った**(上の「旧の期待値」の
+  // 2本目の逐語と同じ)。 **戻したのは**読取の1動詞だけ**であり、`AND` へ戻したのではない**
+  // —— **書込・削除は今日も `OR` である**(`D-V18-17`)。
+  //
+  // **【`D-V18-18` はこの呼び方では効かない。隠さない】** **`passed` は `roles: ["owner"]`
+  // から作った面だが、`RoleAccessDecision` は「誰が要求したか」を1バイトも持っていない。**
+  // **運営者の例外は、合成に `roles` を渡したときだけ効く**(製品の読取経路では
+  // `resolveCombinedRecordAccess` が渡している)。 **その形を直後の1本で撃つ。**
   expect(
     combineRoleAndGrantAccess({
       role: passed,
       grant: { read: false, write: false, delete: false },
       verb: "read",
+    }),
+  ).toEqual({ allowed: false, blockedBy: ["grant"] });
+  // **【`V18-M2-T04` が足した1本】** **同じ入力に `roles: ["owner"]` を添えると、運営者は
+  // 今日どおり通る**(`D-V18-18`)。 **`blockedBy` は1ビットも変わらない。**
+  expect(
+    combineRoleAndGrantAccess({
+      role: passed,
+      grant: { read: false, write: false, delete: false },
+      verb: "read",
+      roles: ["owner"],
     }),
   ).toEqual({ allowed: true, blockedBy: ["grant"] });
   expect(

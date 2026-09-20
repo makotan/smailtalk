@@ -62,7 +62,13 @@ import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer } from "../src/mcp/server.ts";
-import { describeTool, SKILL_GUIDE } from "../src/mcp/vocabulary.ts";
+import {
+  CANNOT_DO,
+  describeTool,
+  OUT_OF_SCOPE_BEHAVIOR,
+  SKILL_GUIDE,
+  VOCABULARY_SCOPE,
+} from "../src/mcp/vocabulary.ts";
 
 /**
  * **公開単位の根**(`apps/smailtalk/`)。`plugins/` も `.claude-plugin/` もここに在るので、
@@ -145,7 +151,7 @@ const SKILL_NAMES = ["diff-shape", "view-shape", "automation-shape", "app-build"
 // --- 上限(根拠は上の doc コメント。**今日の実測ぴったりではない**)---
 
 /** 1. 接続直後に渡る合計文字数の上限。127,057(2026-08-07 実測)+ 24,943(`VOCABULARY_SCOPE` 全文1本分)。 */
-const CONNECT_TOTAL_MAX = 152000;
+import { CONNECT_TOTAL_MAX } from "./measure-connect.ts"; // **定義はこの1箇所だけ**(`V17-M0-T01a`)
 
 /** 2. 全ツールに貼られる共通部の長さの上限。762(2026-08-07 実測)の2倍 = 同じ量の余裕1本分。 */
 const SHARED_PREAMBLE_MAX = 1524;
@@ -159,6 +165,11 @@ async function measureAtConnect(): Promise<{
   toolsListJson: number;
   toolCount: number;
   total: number;
+  /**
+   * **`V17-M0-T01f`**: `resources/list` の JSON の長さ。
+   * **`total` には足していない**(下の doc と `scripts/measure-connect.ts` を参照)。
+   */
+  resourcesListJson: number;
 }> {
   const server = createMcpServer({
     dataRoot: "data",
@@ -171,11 +182,13 @@ async function measureAtConnect(): Promise<{
     const instructions = client.getInstructions() ?? "";
     const { tools } = await client.listTools();
     const toolsListJson = JSON.stringify({ tools }).length;
+    const { resources } = await client.listResources();
     return {
       instructions: instructions.length,
       toolsListJson,
       toolCount: tools.length,
       total: instructions.length + toolsListJson,
+      resourcesListJson: JSON.stringify({ resources }).length,
     };
   } finally {
     await client.close();
@@ -194,8 +207,23 @@ function sharedPreambleLength(): number {
 }
 
 /** 貼る中身を**語彙境界の全文に戻した**ときの共通部の長さ(**歯の材料**。今日は `apply_diff` だけが受け取る)。 */
+/**
+ * **【`V17-M0-T01f`(`ADR-0413`)。上の1行は1バイトも消していない。今日の読み方はこう】**
+ *
+ * **`describeTool("", { withFullVocabulary: true })` はもう「全文に戻した世界」ではない。**
+ * **2026-09-07 に3定数が `tools/list` から MCP の resource へ移り、この分岐が貼るのは
+ * 短い案内(`VOCABULARY_RESOURCE_POINTER`)になった** —— そのまま材料に使うと
+ * 歯1・歯2 の両方が上限の**下**に落ち、**「厚くしたら赤くなる」歯が2本とも黙って消える**
+ * (点検者の実測: 共通部 1,214文字 / 復元値 107,497。どちらも上限以下)。
+ *
+ * **そこで材料を、`describeTool` から**3定数そのものの連結**へ取り替えた。**
+ * **`ADR-0287` `H-G11` 限定2 により3定数の `export` は残っているので、これができる。**
+ * **上限定数(`SHARED_PREAMBLE_MAX` / `CONNECT_TOTAL_MAX`)は1文字も動かしていない。**
+ */
+const VOCABULARY_FULL_TEXT = [VOCABULARY_SCOPE, CANNOT_DO, OUT_OF_SCOPE_BEHAVIOR].join("\n");
+
 function fullVocabularyPreambleLength(): number {
-  return describeTool("", { withFullVocabulary: true }).length;
+  return sharedPreambleLength() + VOCABULARY_FULL_TEXT.length;
 }
 
 function frontMatterOf(skill: string): string {
@@ -371,11 +399,60 @@ test("歯2: 貼る中身を全ツールで全文に戻すと、接続直後の�
   const measured = await measureAtConnect();
   // 今日すでに全文を受け取っているツールが1本ある(`apply_diff`)ので、増える分は
   // 「残りのツールの本数 × (全文の共通部 − 今日の共通部)」である。
-  const alreadyFull = [describeTool("", { withFullVocabulary: true })];
-  const others = measured.toolCount - alreadyFull.length;
-  const restored =
-    measured.total + others * (fullVocabularyPreambleLength() - sharedPreambleLength());
+  //
+  // **【`V17-M0-T01f`(`ADR-0413`)。上の2行もテスト名も1バイトも書き換えていない】**
+  // **「今日すでに全文を受け取っているツールが1本ある」は 2026-09-07 から偽である** ——
+  // **今日は0本である**(3定数は MCP の resource へ移った)。
+  // **したがって増える分は「全ツールの本数 × 3定数の全文」である。**
+  // **上限 `CONNECT_TOTAL_MAX` は1文字も動かしていない。**
+  const alreadyFull = EXPECTED_FULL_VOCABULARY_TOOLS_IN_TOOLS_LIST;
+  const others = measured.toolCount - alreadyFull;
+  const restored = measured.total + others * VOCABULARY_FULL_TEXT.length;
   expect(restored).toBeGreaterThan(CONNECT_TOTAL_MAX);
+});
+
+/**
+ * **`V17-M0-T01f`**: `tools/list` の中で3定数の全文を受け取っている道具の本数。
+ *
+ * **2026-09-07 から 0 である。** **1以上に戻った日は、歯2 の復元値が小さく出るだけでなく、
+ * 下の `V17-M0-T01f` の余白の検査が赤くなる。**
+ */
+const EXPECTED_FULL_VOCABULARY_TOOLS_IN_TOOLS_LIST = 0;
+
+// --- `V17-M0-T01f`: 起票の完了条件そのものと、その自己規律 ---------------------------
+//
+// **起票の逐語**(`docs/plan/v16/02-implementation-tasks.md:50`):
+// **「`measure-connect.ts` 相当の実測で `152000 - total` が 1,000 以上になること
+//   (今日は 1)」。** **その 1,000 をここで機械にする。**
+
+test("V17-M0-T01f: 接続直後の余白(上限 − 合計)が 1,000 以上ある", async () => {
+  const measured = await measureAtConnect();
+  const margin = CONNECT_TOTAL_MAX - measured.total;
+  expect(
+    margin,
+    `余白 ${margin}文字(上限 ${CONNECT_TOTAL_MAX} − 合計 ${measured.total})が 1,000 を下回った`,
+  ).toBeGreaterThanOrEqual(CONNECT_MARGIN_MIN);
+  // **道具を消して余白を作る形を素通りさせない**(上の「1. 接続直後…」と同じ1行)。
+  expect(measured.toolCount).toBeGreaterThan(SKILL_NAMES.length);
+});
+
+/** 起票が要求する余白の下限。**`CONNECT_TOTAL_MAX` とは別の数であり、上限は1文字も動かしていない。** */
+const CONNECT_MARGIN_MIN = 1000;
+
+test("V17-M0-T01f: resources/list を足した合計も上限を超えていない", async () => {
+  // **【正直さの規律】(計画 §4-3)** —— **`total` の定義は今日どおり
+  // `instructions + tools/list` のまま1文字も変えていない。**
+  // **「resources を分母から外したから減った」形にしないため、`resources/list` を
+  // 足した値も別に撃つ。** **クライアントによっては接続直後にこれも取りに行く。**
+  const measured = await measureAtConnect();
+  const withResources = measured.total + measured.resourcesListJson;
+  expect(
+    withResources,
+    `instructions ${measured.instructions} + tools/list ${measured.toolsListJson} + ` +
+      `resources/list ${measured.resourcesListJson} = ${withResources} が上限 ${CONNECT_TOTAL_MAX} を超えた`,
+  ).toBeLessThanOrEqual(CONNECT_TOTAL_MAX);
+  // **`resources/list` に本文が混ざっていないこと**(混ざれば外した意味が消える)。
+  expect(measured.resourcesListJson).toBeLessThan(VOCABULARY_FULL_TEXT.length);
 });
 
 test("歯3: skill の説明を上限より長くすると、その skill の検査が赤になる", () => {

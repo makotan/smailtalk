@@ -161,7 +161,16 @@ covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:access_control.grou
 covers	plugins/smailtalk/skills/diff-shape/SKILL.md	manifest:access_control.permission.properties
 count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`access_control` に書けるキーは{n}つで、{n+1}つ目は書けない。**	manifest:table.access_control.properties
 count	plugins/smailtalk/skills/diff-shape/SKILL.md	**そのうち必須は{n}つである。**	manifest:table.access_control.required
-count	plugins/smailtalk/skills/diff-shape/SKILL.md	の{n}キーで、{n}キーとも必須である。	manifest:access_control.permission.properties
+# **【2026-09-10。`V17-M10-T04`。台帳 `AC-G4a` / `ADR-0429`(門A の本審査 = 限定採用)】**
+# **旧の1行の逐語**: count\tplugins/smailtalk/skills/diff-shape/SKILL.md\tの{n}キーで、{n}キーとも必須である。\tmanifest:access_control.permission.properties
+# **6キー目 `restrictive` が入って `properties`(6)と `required`(5)の件数が割れたので、2行に割った。**
+# **旧の1行は、そのままだと「6キーで、6キーとも必須である」に展開されて偽になる**
+# (`ADR-0429` 限定2 が `required` を5キーのまま据え置くからである)。
+# **`grant` / `members` が既に `.properties` と `.required` を別々に持っているのと同じ形に揃えた。**
+# **SKILL.md の旧文(「5キーで、5キーとも必須である。」)は1バイトも消していない** ——
+# **新しい2つの逐語は、その下に足した 2026-09-10 の訂正の段落に在る。**
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	に書けるキーは `restrictive` を入れて{n}キーである。	manifest:access_control.permission.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	必須は今日も{n}キーである	manifest:access_control.permission.required
 count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`grant` は{n}キー**	manifest:access_control.grant.properties
 count	plugins/smailtalk/skills/diff-shape/SKILL.md	**そのうち必須は{n}つ**(`table` / `target` / `permission`)	manifest:access_control.grant.required
 count	plugins/smailtalk/skills/diff-shape/SKILL.md	**`members` は{n}キー**	manifest:access_control.members.properties
@@ -232,3 +241,12 @@ pair	plugins/smailtalk/skills/view-shape/SKILL.md	ただし表・画面・ボタ
 
 # --- 2026-09-05。組み込みの「編集」「削除」も行ごとの判定で出し分けるようになった。新文1組を登録する ---
 pair	plugins/smailtalk/skills/view-shape/SKILL.md	詳細画面に元から在る「編集」「削除」の2つのボタンも、同じように行ごとの判定で出し分けられる	遮断は今日どおりサーバの 403 である	組み込みの「編集」「削除」も出し分けるという側だけが写しに届くと「画面が遮断している」と読まれ、遮断がサーバの 403 のままであることが落ちる。逆に遮断の側だけが届くと「ボタンは今日も出しっぱなし」と読まれる。どちらも逆向きの嘘になるので組にする。
+
+# --- 2026-09-12。画面名を名乗らない読取にも画面の規則の壁が立つようになった(V18-M4 / PM-G10 / ADR-0435)。旧文1組を登録する ---
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	画面を名乗らずにテーブルの URL を直接叩いた要求は、今日どおり通ります	画面名を名乗らない読取にも、画面の規則の壁が立つ	(b) は V18-M4-T02 / T03 の後に偽になった。旧文だけを配ると「画面名を名乗らなければ画面の規則は1ミリも効かない」という今日は偽の文が届く。訂正は引用の外に置いた。
+
+# --- 2026-09-14。ぶら下がっている行が在る行の削除に、一度断る関門が立った。旧文2組を登録する ---
+# 2組とも「旧文 → 訂正」が同じファイルの中で同居している。旧の逐語だけを切り出して配ると、
+# 「削除には何の関門も増えていない」という今日は読み違えを招く文が届く。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	削除(`DELETE`)にはこの壁が今日も1文字も掛かっていない	ただし削除には、今日から**別の関門**が1つ立った	旧の1文は親を指す側の壁については今日も真だが、それだけを配ると「削除には関門が1つも無い」と読まれる。ぶら下がっている行が在る行の削除は1回目に断られ、件数の印を添えた2回目でだけまとめて消える。訂正が写しから落ちても赤くなるように組にする。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	ただし項目に書いた規則とボタンの壁は、今日も DELETE に1ミリも掛かりません	削除に掛かる関門は今日これだけではない	引用は今日も逐語で正だが、その節だけを配ると「削除に掛かるのは消す権限だけ」と読まれる。ぶら下がっている行が在る行の削除には、件数の印を添えた2回目を求める関門が別に立っている。訂正は引用の外に置いた。

@@ -161,6 +161,13 @@ function manifest(): Manifest {
             enabled: true,
             permissions: PERMISSIONS.map((permission) => ({ ...permission })),
             creator_permission: "writer",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+            // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+            // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+            // **(8) が測っている「作成で割れること」の中身が、名簿の断り(400)から
+            // 立場の断り(403)へすり替わっていた。** **測りたいのは名簿の側なので、
+            // この関門は素通りさせる。**
+            creatable_by_roles: ["owner", "editor"],
             grant: {
               table: "armed_grant",
               target: "note",
@@ -570,10 +577,30 @@ describe("V7-M5-T06 / Z-G20: 宣言していない表と `enabled: false` の表
     //
     // **変わるものが1つも無くなったわけではない** —— **下の「取り残し一覧」の口が
     // 404 から 200 に変わる。** **ここが (6) の主題として残った部分である。**
+    //
+    // =====================================================================================
+    // **【2026-09-11 追記(`V18-M2-T04`。`PM-G8` / `ADR-0437` / ユーザ決定 `D-V18-18`)。
+    // 直上の説明は今日から偽である。旧文を1バイトも消していない】**
+    //
+    // **打ち直した2つの期待値(旧 → 新。逐語)**:
+    //
+    //     旧: expect(after.status).toBe(200);
+    //     新: expect(after.status).toBe(404);
+    //     旧: expect((JSON.parse(afterList.body) as { total: number }).total).toBe(1);
+    //     新: expect((JSON.parse(afterList.body) as { total: number }).total).toBe(0);
+    //
+    // **なぜ期待値の側が今日の正でなくなったか** —— **この2行が緑であること自体が、
+    // 直上の説明が名指ししている穴(自動付与で入った**条件なしの読取**が、行ごとに配った
+    // 設定を丸ごと無効にする)の実測だったからである。** **`V18-M2` はその穴を塞ぐ側の
+    // 段であり、「見えたまま」を守ることが今日の正ではない。**
+    // **この2行は `V8-M26` が 404 / 0 から書き換えたものであり、今日その2値へ戻った**
+    // (直上の「旧: …404」「旧: …0」の逐語と同じ値である)。
+    // **【1ビットも変えていない側】** **`editorSession` は運営者(`owner`)ではない** ——
+    // **運営者は `D-V18-18` により今日どおり見える。** **【禁止】「塞いだ」と一般化しない。**
     const after = await hit("GET", singlePath(PAUSED, pausedRow), { cookie: editorSession.cookie });
-    expect(after.status).toBe(200);
+    expect(after.status).toBe(404);
     const afterList = await hit("GET", recordsPath(PAUSED), { cookie: editorSession.cookie });
-    expect((JSON.parse(afterList.body) as { total: number }).total).toBe(1);
+    expect((JSON.parse(afterList.body) as { total: number }).total).toBe(0);
     const afterDoor = await hit("GET", doorPath(PAUSED), { cookie: ownerSession.cookie });
     expect(afterDoor.status).toBe(200);
     expect((JSON.parse(afterDoor.body) as { records: { _id: string }[] }).records[0]?._id).toBe(

@@ -132,7 +132,15 @@ async function currentManifest(appId: string = APP_ID): Promise<Manifest> {
 }
 
 async function currentChangelog(appId: string = APP_ID): Promise<ChangelogEntry[]> {
-  const response = await request(changelogPath(appId));
+  // **【`V17-M4-T02` による改訂。台帳 `AC-G20`】** **旧の逐語**:
+  //   `const response = await request(changelogPath(appId));`
+  // **`GET /changelog` は今日からログインが要る。** **セッションはアプリごとに独立なので、
+  // 別アプリの履歴を読むにはそのアプリの cookie が要る**(`currentManifest` が `V8-M21` で
+  // 採ったのと同じ直しである)。 **足したのは cookie の選び分けだけで、期待値は1つも
+  // 緩めていない。**
+  const response = await app.request(
+    authed(appId === APP_ID ? cookie : otherCookie)(changelogPath(appId)),
+  );
   expect(response.status).toBe(200);
   const body = await json(response);
   return body.changelog as ChangelogEntry[];

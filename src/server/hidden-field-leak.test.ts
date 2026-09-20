@@ -188,6 +188,10 @@ function manifest(): Manifest {
           columns: ["name", "price"],
           sort: { field: "cost", order: "desc" },
         } as never,
+        // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】壁を開けるためだけの一覧。**
+        // **`catalog-list` と違って `sort` を持たない** —— **(a) が測っている
+        // 「画面が隠した項目で並べ替えると宣言している」形は1バイトも増やしていない。**
+        { id: "shop-list", type: "list_view", table: "product", columns: ["name"] },
         { id: "profile-list", type: "list_view", table: "profile", columns: ["nickname"] },
         { id: "note-list", type: "list_view", table: "note", columns: ["title"] },
       ],
@@ -219,7 +223,29 @@ function seededManifest(): Manifest {
     app: { roles: { id: string; name: string; rules?: unknown[] }[] };
   };
   const customer = m.app.roles.find((role) => role.id === "customer") as { rules: unknown[] };
-  customer.rules = [...customer.rules, { target: "table", table: "product", can: ["read"] }];
+  // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+  //
+  // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+  // 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+  // (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+  // 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+  //
+  // **この題材は `product` を指す一覧(`catalog-list`)を宣言しながら、`customer` には
+  // 画面の規則を1本も書いていなかった** —— **その結果
+  // `GET ...?sum=no_such_field` が 400 ではなく 200 を返していた**(壁が合計の検査より
+  // 手前で一覧を空にするため)。**本ファイルの主題は「宣言つき項目のIDが 400 の本文に
+  // 並ばないこと」であって画面の規則ではないので、主張(`expect`)は1バイトも
+  // 書き換えていない。**
+  //
+  // **`catalog-list` に規則を足して済ませることはできない** —— **(a) が
+  // 「匿名と客は `?view=catalog-list` を名乗って 403」を測っており、そこへ客の規則を
+  // 足すと 403 が 400 になって、その測定が丸ごと消えるからである**(実測で1本落ちた)。
+  // **そこで、壁を開けるためだけの一覧 `shop-list` を題材に1本足し、そちらを名指しする。**
+  customer.rules = [
+    ...customer.rules,
+    { target: "table", table: "product", can: ["read"] },
+    { target: "view", view: "shop-list", can: ["read"] },
+  ];
   m.app.roles.push({
     id: "anonymous",
     name: "未ログイン",
@@ -601,7 +627,30 @@ test("(b)【限定5】3件・2表を跨ぐバッチで、行ごとに正しい�
   // **表の配列の長さが `results` の長さと一致していなければ、末尾の行が素通りして
   // `cost: 222` が現れる** —— 下の全文検査がそれを赤にする。
   expect(body.records).toHaveLength(3);
-  expect(body.records.map((row) => row.name ?? row.nickname)).toEqual(["P1", "だれか", "P2"]);
+  // **【`V17-M3` / `AC-G16` による反転。旧の1行を1バイトも消していない】**
+  //
+  // **旧(逐語)**:
+  //
+  //     expect(body.records.map((row) => row.name ?? row.nickname)).toEqual(["P1", "だれか", "P2"]);
+  //
+  // **`editor` の面は `profile` に `write` しか書いていない**(この fixture の `ROLES`)——
+  // **したがって `editor` はこの表の行を1件も読めない。** **すぐ下で実測する。**
+  // **`AC-G16` は「書けるが読めない」相手の書込の応答から業務の列を全部落とすので、
+  // `nickname` はもう現れない。**
+  //
+  // **並びの検出は1ミリも弱まっていない** —— **表の割り当てがズレて中央の行に `product` の
+  // 宣言が当たっていたら、その行は「読める」と判定されて `nickname` が残り、
+  // 予約規約フィールドだけの比較が赤になる。**
+  expect(body.records.map((row) => row.name)).toEqual(["P1", undefined, "P2"]);
+  expect(Object.keys(body.records[1] as object).sort()).toEqual([
+    "_created_at",
+    "_id",
+    "_updated_at",
+  ]);
+  // **実測(反転の前提)** —— **`editor` はこの表を1行も読めない。**
+  const editorProfiles = await req(cookie("editor"), "GET", PROFILES);
+  expect(editorProfiles.status).toBe(200);
+  expect(((await editorProfiles.json()) as { records: unknown[] }).records).toHaveLength(0);
   // 0件目・2件目 = product。**`cost` は落ち、`sku`(editor に見せる)は残る。**
   for (const index of [0, 2]) {
     const row = body.records[index] as Record<string, unknown>;

@@ -602,14 +602,42 @@ function httpManifest(): Manifest {
       // **旧 `audience: ["editor"]` の2本 → `editor` の2本の規則。**
       // **旧 `audience: ["customer"]` の1本 → `customer` の1本の規則。**
       // **`owner` / `viewer` には規則を1本も書かない** —— **allow-list なので壁の外になる。**
+      // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面(`view`)の読取を足した。**
+      //
+      // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+      // 一覧系の画面(`list_view` / `report_view`)を1本も読めない相手の一覧は 0件、
+      // 単票系(`detail_view` / `form`)を1本も読めない相手の単票は 404 になる。**
+      // **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を役割の規則に
+      // 1行も書いていない場合も止まる。**
+      //
+      // **直上の「`owner` / `viewer` には規則を1本も書かない」は、画面については今日は
+      // 偽である(1バイトも消していない)。** **足すのは画面の**読取**だけであり、
+      // ボタン(`action`)の規則は1本も足していない** —— **(H) 群と (BT) 群の 403 は
+      // ボタンの規則で立っているので、壁の顔ぶれは1ミリも動いていない。**
+      // **(H-4) / (BT-2) / (BT-3) / (BT-4) が測っているのは書込の壁であって画面の規則では
+      // ないので、主張(`expect`)は1バイトも書き換えていない。**
       roles: [
-        { id: "owner", name: "持ち主" },
+        {
+          id: "owner",
+          name: "持ち主",
+          rules: [
+            // (H-4) `order` の一覧 / (BT-3) の対照
+            { target: "view", view: "order-list", can: ["read"] },
+            // (BT-4) `product` の一覧
+            { target: "view", view: "catalog-list", can: ["read"] },
+            // (BT-2) `product` の単票(`detail_view`)
+            { target: "view", view: "product-detail", can: ["read"] },
+          ],
+        },
         {
           id: "editor",
           name: "編集者",
           rules: [
             { target: "action", view: "catalog-list", action: "go-order", can: ["read"] },
             { target: "action", view: "product-detail", action: "mark-sold", can: ["read"] },
+            // **【`V18-M4-T02b` / `D-V18-26`】(BT-3) が `editor` で `order` / `coupon` の
+            // 行数を数えるのに要る1本。**
+            { target: "view", view: "order-list", can: ["read"] },
           ],
         },
         { id: "viewer", name: "閲覧者" },

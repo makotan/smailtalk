@@ -20,6 +20,13 @@
  *   **本ファイルはその3本に認証を1バイトも足していない**(`01` §7 の `V5-M3` 行)。
  *   **`runner` プロファイルで登録しないだけであって、塞いだのではない。**
  *
+ * - **【`V17-M4-T02` による訂正。上の3行は1バイトも消していない】** **台帳 `AC-G20`** ——
+ *   **その3本には今日、認証が要る。** **`app.ts` が `GET /manifest` に掛けているものと同じ
+ *   1本の関門(`readAuthMiddleware`)を、下の `registerChangeRoutes` が張っている。**
+ *   **未ログインは 401 である。**
+ *   **【誇張しない】** **`runner` の挙動は1ミリも変わっていない**(3本はもともと登録されない)。
+ *   **`GET /api/apps`(アプリの一覧)は今日どおり未ログインで通る** —— **閉じたのは3本だけである。**
+ *
  * ## カーネル関数を引数で受け取っている理由(**設計上の最善ではない。制約への適合である**)
  *
  * **`auth-routes.ts` / `inbound-route.ts` は `src/kernel/` を直接 import している。**
@@ -138,6 +145,23 @@ export type ChangeRouteDeps = {
    */
   changeAuthMiddleware: MiddlewareHandler<AuthEnv>;
   /**
+   * **`GET /undo/preview` / `GET /changelog` / `GET /requirements` に掛かる関門**
+   * (`V17-M4-T02`。台帳 `AC-G20`)。
+   *
+   * **`app.ts` が `GET /manifest` に掛けているものと**同じ1本**をそのまま受け取る** ——
+   * **判定の写しを2つ作らない**(上の `changeAuthMiddleware` と同じ理由)。
+   *
+   * **欲しい性質は3つで、どれも `app.ts` 側の定義が既に持っている**:
+   * **(i) 未ログインには 401、(ii) アプリが無ければセッション解決より先に 404、
+   * (iii) 役割を1つも見ない。** **`app.ts` 側の定義は1バイトも変えていない。**
+   *
+   * **【この関門を `app.ts` 側で張ってはならない】** —— **ルートだけ `runner` から外して
+   * 関門を `app.ts` に残すと、`runner` で 404 が 401 になり「その口はあるが認証が要る」に
+   * 見える**(下の `app.use` の直前の doc と同じ理由)。**`registerChangeRoutes` の中で張れば、
+   * `runner` にはルートも関門も1本も登録されない。**
+   */
+  readAuthMiddleware: MiddlewareHandler<AuthEnv>;
+  /**
    * **締め出しの防止の2本目**(`V8-M30`。台帳 `T-G29` / ユーザ決定 `D-V8-47`)。
    *
    * **差分を当てたら「人に役割を配れる人」が0人になるかどうかを答える** ——
@@ -173,8 +197,19 @@ export type ChangeRouteDeps = {
  * 呼ばれないので、**この5本は1本も登録されない**(検査: `runner-profile.test.ts`)。
  */
 export function registerChangeRoutes(app: Hono<AuthEnv>, deps: ChangeRouteDeps): void {
-  const { dataRoot, ensureApp, changeAuthMiddleware, readJsonBody, kernel, rejectGrantLockout } =
-    deps;
+  // **【`V17-M4-T02`】旧の1行(逐語。1バイトも消していない)**:
+  //   `const { dataRoot, ensureApp, changeAuthMiddleware, readJsonBody, kernel, rejectGrantLockout } =`
+  //   `    deps;`
+  // **`readAuthMiddleware` を1本足したので、整形の都合で複数行になった。**
+  const {
+    dataRoot,
+    ensureApp,
+    changeAuthMiddleware,
+    readAuthMiddleware,
+    readJsonBody,
+    kernel,
+    rejectGrantLockout,
+  } = deps;
 
   // --- 変更系(V0-P4-T06 / ADR-0003 §4「Phase 4 での変更」)-------------------------
   //
@@ -192,6 +227,12 @@ export function registerChangeRoutes(app: Hono<AuthEnv>, deps: ChangeRouteDeps):
   // **`GET /undo/preview` / `GET /changelog` / `GET /requirements` は今日も未認証で通る。**
   // **MCP はこの HTTP を1本も叩かない(カーネル直呼び)ので1ミリも影響を受けない。**
   //
+  // **【`V17-M4-T02` による訂正。上の2行を含め、ここまでの記述は1バイトも消していない】**
+  // **台帳 `AC-G20`** —— **その3本にも関門が掛かった。未ログインは 401 である。**
+  // **`127.0.0.1` バインドが唯一の防御ではなくなった度合いがもう一段増えたが、消えてもいない**
+  // (`ST_BIND_HOST=0.0.0.0` で非ループバックに開く経路は今日も在る)。
+  // **MCP の行は今日も真である** —— **同じ3つの読み物は MCP の道具として今日どおり読める。**
+  //
   // **【`V5-M3-T01` による移設。上の記述は1バイトも書き換えていない】**
   // **本ブロックは `src/server/app.ts` から移設しただけである。** **`app.use` の2本も
   // 一緒に移した** —— **ルートだけ外して関門を残すと、`runner` プロファイルで
@@ -199,6 +240,22 @@ export function registerChangeRoutes(app: Hono<AuthEnv>, deps: ChangeRouteDeps):
   // 見えてしまう。**
   app.use("/api/apps/:app_id/diffs", changeAuthMiddleware);
   app.use("/api/apps/:app_id/undo", changeAuthMiddleware);
+
+  // **【`V17-M4-T02` による追加。上の記述は1バイトも書き換えていない】**
+  // **読み物3本(`GET /undo/preview` / `GET /changelog` / `GET /requirements`)にも関門が
+  // 掛かった** —— **`app.ts` が `GET /manifest` に掛けているものと同じ1本
+  // (`readAuthMiddleware`)である。** **未認証は 401、アプリが無ければ 404、役割は1つも見ない。**
+  //
+  // **ここ(`change-routes.ts` の中)に置く理由は、上の2本とまったく同じである** ——
+  // **`app.ts` 側に置くと、`runner` プロファイルで 404 が 401 になり「その口はあるが認証が
+  // 要る」に見えてしまう。** **`registerChangeRoutes` は `profile === "full"` のときしか
+  // 呼ばれないので、`runner` には3本のルートも3本の関門も1つも登録されない。**
+  //
+  // **【誇張しない】** **未ログインで関門が1本も無い口を全部塞いだのではない** ——
+  // **`GET /api/apps` は今日どおり未ログインで通る**(閉じないと決めた)。
+  app.use("/api/apps/:app_id/undo/preview", readAuthMiddleware);
+  app.use("/api/apps/:app_id/changelog", readAuthMiddleware);
+  app.use("/api/apps/:app_id/requirements", readAuthMiddleware);
 
   // 10. 差分の適用(apply_diff)
   app.post("/api/apps/:app_id/diffs", async (c) => {
@@ -325,6 +382,25 @@ export function registerChangeRoutes(app: Hono<AuthEnv>, deps: ChangeRouteDeps):
   // 変更意図が読める」状態の**影響拡大**である。要件定義書は intent を逐語引用として含むので、
   // 業務上の意図がより読みやすい形で無認証に出る。認証の不在は `127.0.0.1` バインドのみで
   // 防がれている。**解決していない。記録する。**
+  //
+  // =====================================================================================
+  // **【`V17-M4-T02` による訂正。上の8行は1バイトも消していない】** **台帳 `AC-G20`**
+  // =====================================================================================
+  //
+  // **上の3点はどれも今日の正ではない。**
+  //
+  //  1. **「changelog / manifest と同列のローカル専用(認証なし)」** —— **`manifest` は
+  //     `V8-M21`(2026-08-10)からログインが要る。** **`changelog` と要件定義書も今日から要る。**
+  //     **3本が同列であることだけは今日も真である**(**同列の位置が「認証なし」から
+  //     「ログインが要る」へ動いた)。
+  //  2. **「owner 検査を足すには changelog より厳しい理由が要るが、その理由が無い」** ——
+  //     **今日も owner 検査は足していない。** **足したのはセッションの有無だけで、役割を
+  //     1つも見ない**(閲覧者にも読める)。 **この行の判断そのものは覆っていない。**
+  //  3. **「無認証に出る。認証の不在は `127.0.0.1` バインドのみで防がれている」** ——
+  //     **未ログインには出ない(401)。** **`ADR-0006` Consequences が記録した状態の影響拡大は、
+  //     この口については解消した。** **【誇張しない】** **`GET /api/apps`(アプリの一覧)は
+  //     今日どおり未ログインで通り、そこにはアプリ名が並ぶ。** **MCP の道具からは同じ
+  //     読み物が今日どおり読める。** **「変更意図を隠した」とは書けない。**
   //
   // 生成物は保存しない(限定12)。呼ばれるたびにその時点の状態から作り直す。
   app.get("/api/apps/:app_id/requirements", (c) => {

@@ -34,6 +34,7 @@ import {
   originDecision,
   startMcpHttpServer,
 } from "./http-transport.ts";
+import { CANNOT_DO, OUT_OF_SCOPE_BEHAVIOR, VOCABULARY_SCOPE } from "./vocabulary.ts";
 
 const REPO_ROOT = dirname(dirname(import.meta.dir));
 const PREVIEW_BASE_URL = "http://127.0.0.1:3000";
@@ -349,4 +350,77 @@ test("【否定形 ii】: src/mcp/index.ts は今日も stdio だけを繋ぎ、
   expect(entry.includes("streamableHttp")).toBe(false);
   expect(entry.includes("StreamableHTTPServerTransport")).toBe(false);
   expect(entry.includes("Bun.serve")).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// **`V17-M0-T01b`**: resource を3本足しても、HTTP トランスポートは**無改修で通る**
+// ---------------------------------------------------------------------------
+//
+// **`docs/plan/v17/01-v17-m0-plan.md` §10-6 の L4** —— 点検者が「無改修で通る」と実測した。
+// **その実測をここで機械にする** —— `src/mcp/http-transport.ts` は本段で1バイトも
+// 変えていないので、変えないと通らなくなった日にこの2本が赤くなる。
+//
+// **測っているのは「HTTP 越しでも同じものが返ること」だけである** ——
+// 実在の MCP クライアントが `resources/read` を自発的に呼ぶかは1ミリも測っていない。
+
+test("V17-M0-T01b: HTTP 越しに resources/list が3本を返す(トランスポートは無改修)", async () => {
+  await fetch(endpoint(), {
+    method: "POST",
+    headers: postHeaders({ origin }),
+    body: JSON.stringify(INITIALIZE),
+  });
+  const response = await fetch(endpoint(), {
+    method: "POST",
+    headers: postHeaders({ origin }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "resources/list" }),
+  });
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    result?: { resources?: { uri?: string }[] };
+  };
+  expect((body.result?.resources ?? []).map((resource) => resource.uri).sort()).toEqual([
+    "vocabulary://cannot-do",
+    "vocabulary://out-of-scope",
+    "vocabulary://scope",
+  ]);
+});
+
+test("V17-M0-T01b: HTTP 越しの resources/read が定数の全文を逐語で返す", async () => {
+  await fetch(endpoint(), {
+    method: "POST",
+    headers: postHeaders({ origin }),
+    body: JSON.stringify(INITIALIZE),
+  });
+  for (const [uri, constant] of [
+    ["vocabulary://scope", VOCABULARY_SCOPE],
+    ["vocabulary://cannot-do", CANNOT_DO],
+    ["vocabulary://out-of-scope", OUT_OF_SCOPE_BEHAVIOR],
+  ] as const) {
+    const response = await fetch(endpoint(), {
+      method: "POST",
+      headers: postHeaders({ origin }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "resources/read", params: { uri } }),
+    });
+    expect(response.status, uri).toBe(200);
+    const body = (await response.json()) as {
+      result?: { contents?: { text?: string }[] };
+    };
+    // **`toContain` ではなく `===`。** HTTP の JSON 化で1文字も欠けていないこと。
+    expect(body.result?.contents?.[0]?.text, uri).toBe(constant);
+  }
+});
+
+test("V17-M0-T01b: prompts は HTTP 越しでも1つも公開していない(-32601)", async () => {
+  await fetch(endpoint(), {
+    method: "POST",
+    headers: postHeaders({ origin }),
+    body: JSON.stringify(INITIALIZE),
+  });
+  const response = await fetch(endpoint(), {
+    method: "POST",
+    headers: postHeaders({ origin }),
+    body: JSON.stringify({ jsonrpc: "2.0", id: 4, method: "prompts/list" }),
+  });
+  const body = (await response.json()) as { error?: { code?: number; message?: string } };
+  expect(body.error?.code).toBe(-32601);
 });

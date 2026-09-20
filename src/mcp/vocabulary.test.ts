@@ -9,6 +9,8 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { Role } from "../auth/types.ts";
 import { DIFF_OPS, FIELD_TYPES, RESOURCE_KINDS } from "../kernel/index.ts";
 // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G9a`。判定値 = 廃止】旧(逐語)**:
@@ -42,12 +44,15 @@ import {
   UNDELETABLE_FIELD,
 } from "../server/owner-scope.ts";
 import { SYSTEM_TABLE_IDS } from "../shared/system-tables.ts";
+import { createMcpServer } from "./server.ts";
 import {
   APPLY_DIFF_OP_EXAMPLES,
   CANNOT_DO,
   CANNOT_DO_INDEX,
   CHANGE_FIELD_ACCEPTED_KEYS,
   CHANGE_TABLE_ACCEPTED_KEYS,
+  DELETE_APP_SHOW_CONTENTS_FIRST,
+  DELETE_RECORD_SHOW_TARGET_FIRST,
   DESIGN_ADJECTIVE_AXES,
   DESIGN_ADJECTIVE_PHRASES,
   DESIGN_ADJECTIVE_TABLE,
@@ -59,9 +64,42 @@ import {
   SKILL_POINTER,
   UPDATE_VIEW_ACCEPTED_KEYS,
   VOCABULARY_ENTRY_POINT,
+  VOCABULARY_RESOURCE_POINTER,
+  VOCABULARY_RESOURCE_URIS,
   VOCABULARY_SCOPE,
   WORKFLOW_HISTORY_TABLE_TEMPLATE,
 } from "./vocabulary.ts";
+
+/**
+ * **`V17-M0-T01e`**: `resources/read` の戻りを URI で引ける表にして返す。
+ *
+ * **`describeTool(…, { withFullVocabulary: true })` に届いているかを測っていた検査を、
+ * 「`resources/read` の戻りに届いているか」を測る形へ移すための台である** ——
+ * **測る対象が移っただけで、測るのはやめていない。**
+ */
+async function readVocabularyResources(): Promise<Map<string, string>> {
+  const server = createMcpServer({ dataRoot: "data", previewBaseUrl: "http://127.0.0.1:3000" });
+  const client = new Client({ name: "vocabulary-resource-test-client", version: "0.0.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+  try {
+    const { resources } = await client.listResources();
+    const textOf = new Map<string, string>();
+    for (const resource of resources) {
+      const read = await client.readResource({ uri: resource.uri });
+      const [first] = read.contents;
+      // **`contents` は `text` か `blob` かの和である**(型の上で `.text` を直に読めない)。
+      textOf.set(
+        resource.uri,
+        typeof first === "object" && first !== null && "text" in first ? String(first.text) : "",
+      );
+    }
+    return textOf;
+  } finally {
+    await client.close();
+    await server.close();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // **【`V9-M11-T02` / 台帳 `X-G28` / `D-V9-21`】`docs/` を読む 11 test は、この
@@ -870,14 +908,32 @@ test("describeTool は既定でツール固有の説明に入口と短い誘導�
   expect(description).not.toContain(OUT_OF_SCOPE_BEHAVIOR);
 });
 
-test("describeTool は withFullVocabulary を渡したときだけ3定数の全文を追記する", () => {
+test("describeTool は withFullVocabulary を渡したときだけ3定数の全文を追記する", async () => {
   // **`H-G12` の限定2 の到達性**: 説明書(skill)を読めないクライアントのために、
   // `tools/list` の中に全文が必ず1本は在る状態を作る。その入口がこの引数である。
+  //
+  // **【`V17-M0-T01e`(`ADR-0413`)。上の2行もテスト名も1バイトも書き換えていない】**
+  // **「3定数の全文を追記する」は 2026-09-07 から偽である。** 全文は `tools/list` から
+  // 外れ、MCP の resource へ移った。**この分岐が今日追記するのは
+  // `VOCABULARY_RESOURCE_POINTER`(3本の URI を名指しした短い案内)である。**
+  //
+  // **【測るのをやめていない。行き先を測る】** —— **旧: 「`apply_diff` の description に
+  // 3定数が届いているか」/ 新: 「`resources/read` の戻りに3定数が届いているか」。**
+  // **`H-G12` 限定2 の目的(全文がどこにも無い状態を作らない)は今日も守っている** ——
+  // **置き場所が変わっただけで、resource は MCP の標準なので skill を開けない
+  // クライアントからも取りに行ける。**
+  // **【それでも失うもの】** **`resources/read` を1度も呼ばないクライアントには届かない。**
   const description = describeTool("テスト用のツール説明。", { withFullVocabulary: true });
   expect(description).toContain("テスト用のツール説明。");
-  expect(description).toContain(VOCABULARY_SCOPE);
-  expect(description).toContain(CANNOT_DO);
-  expect(description).toContain(OUT_OF_SCOPE_BEHAVIOR);
+  expect(description).toContain(VOCABULARY_RESOURCE_POINTER);
+  expect(description).not.toContain(VOCABULARY_SCOPE);
+  expect(description).not.toContain(CANNOT_DO);
+  expect(description).not.toContain(OUT_OF_SCOPE_BEHAVIOR);
+  // **行き先で逐語一致(`===`)を見る。** 1文字でも欠けたら赤くなる。
+  const textOf = await readVocabularyResources();
+  expect(textOf.get(VOCABULARY_RESOURCE_URIS.scope)).toBe(VOCABULARY_SCOPE);
+  expect(textOf.get(VOCABULARY_RESOURCE_URIS.cannotDo)).toBe(CANNOT_DO);
+  expect(textOf.get(VOCABULARY_RESOURCE_URIS.outOfScope)).toBe(OUT_OF_SCOPE_BEHAVIOR);
   // 誘導は全文を貼る側にも載せる(説明書の存在は、全文を読んだ AI にも伝えたい)。
   expect(description).toContain(SKILL_GUIDE);
   // **`V10-M21-T01`(`FU-G14`)で足した**: 全文分岐は短い誘導(`SKILL_POINTER`)を貼らない。
@@ -5117,14 +5173,22 @@ test("V6-M6-T01: VOCABULARY_SCOPE が reference_pickers(画面ごとの上書き
   }
 });
 
-test("V6-M6-T01: 3つの宣言の説明が apply_diff に届いている(貼り先を測る)", () => {
+test("V6-M6-T01: 3つの宣言の説明が apply_diff に届いている(貼り先を測る)", async () => {
   // **`V6-M12` が作った構造を壊していないことの実測** —— **語彙境界の全文は
   // `apply_diff` 1本にだけ載り、残る22ツールには入口の一文と誘導だけが載る。**
   // **本タスクが足した散文が22ツールへ漏れていないこと**を、実際に貼る関数で測る。
+  //
+  // **【`V17-M0-T01e`(`ADR-0413`)。上の3行もテスト名も1バイトも書き換えていない】**
+  // **「apply_diff に届いている」は 2026-09-07 から偽である** —— この散文は
+  // `VOCABULARY_SCOPE` の中に在り、その定数は `resources/read` の
+  // `vocabulary://scope` へ移った。**届き先をそちらで測る。測るのをやめていない。**
   const shared = describeTool("");
   const full = describeTool("", { withFullVocabulary: true });
   expect(shared).not.toContain("reference_pickers は入力画面");
-  expect(full).toContain(
+  // **全文分岐にも今日は載らない**(`tools/list` から本当に外れたこと)。
+  expect(full).not.toContain("reference_pickers は入力画面");
+  const scope = (await readVocabularyResources()).get(VOCABULARY_RESOURCE_URIS.scope) ?? "";
+  expect(scope).toContain(
     "**reference_pickers は入力画面(form)ごとの、参照項目の選び方の上書きです**",
   );
   // `APPLY_DIFF_OP_EXAMPLES` は `apply_diff` のツール固有説明として貼られる
@@ -5328,12 +5392,19 @@ test("V7-M6-T04 (g) 総括の禁止: 書いてはならない言い回しが1つ
   expect(CANNOT_DO).toContain("MCP / ローカル操作そのものに権限制御は無く");
 });
 
-test("V7-M6-T04 (h) 足した散文は apply_diff にだけ届き、残る22ツールには1文字も漏れていない", () => {
+test("V7-M6-T04 (h) 足した散文は apply_diff にだけ届き、残る22ツールには1文字も漏れていない", async () => {
   // **`V6-M12` が作った構造を壊していないことの実測**(`V6-M6-T01` と同じ形)。
+  //
+  // **【`V17-M0-T01e`(`ADR-0413`)。上の行もテスト名も1バイトも書き換えていない】**
+  // **「apply_diff にだけ届く」は 2026-09-07 から偽である** —— この散文は `CANNOT_DO`
+  // の中に在り、その定数は `resources/read` の `vocabulary://cannot-do` へ移った。
+  // **届き先をそちらで測る。測るのをやめていない。**
   const shared = describeTool("");
   const full = describeTool("", { withFullVocabulary: true });
   expect(shared).not.toContain("**権限名は最大8個まで宣言でき");
-  expect(full).toContain("**権限名は最大8個まで宣言でき");
+  expect(full).not.toContain("**権限名は最大8個まで宣言でき");
+  const cannotDo = (await readVocabularyResources()).get(VOCABULARY_RESOURCE_URIS.cannotDo) ?? "";
+  expect(cannotDo).toContain("**権限名は最大8個まで宣言でき");
   // **見出し(`【…】`)を1つも増やしていない** —— **増やすと `instructions` 側
   // (`CANNOT_DO_INDEX`)が黙って伸びる。**
   expect((CANNOT_DO.match(/【[^】]+】/g) ?? []).length).toBe(2);
@@ -5548,4 +5619,585 @@ test("V14-M3-T01: VOCABULARY_SCOPE は、ボタンが行ごとの付与でも出
   expect(VOCABULARY_SCOPE).toContain(
     "**規則が1本も無いボタンは既定で閉じ、対象 action に read を書いた役割にだけ出ます**",
   );
+});
+
+// =====================================================================================
+// **`V17-M0-T01c`**: 全文分岐が3定数そのものではなく、resource への案内を貼る
+// (`docs/plan/v17/01-v17-m0-plan.md` §4-1 の 2 / §6 の `V17-M0-T01c`)
+// =====================================================================================
+
+/** 案内の上限。**一覧に載る案内であって本文ではない**ので、短いことを機械で固定する。 */
+const VOCABULARY_RESOURCE_POINTER_MAX = 400;
+
+test("V17-M0-T01c: 案内は3本の URI をすべて名指しし、短い(上限以内)", () => {
+  expect(
+    VOCABULARY_RESOURCE_POINTER.length,
+    `案内 ${VOCABULARY_RESOURCE_POINTER.length}文字が上限 ${VOCABULARY_RESOURCE_POINTER_MAX} を超えた`,
+  ).toBeLessThanOrEqual(VOCABULARY_RESOURCE_POINTER_MAX);
+  for (const uri of Object.values(VOCABULARY_RESOURCE_URIS)) {
+    expect(VOCABULARY_RESOURCE_POINTER, uri).toContain(uri);
+  }
+  // **取りに行く方法そのものを名指ししていること**(URI だけでは何をすればよいか分からない)。
+  expect(VOCABULARY_RESOURCE_POINTER).toContain("resources/read");
+});
+
+test("V17-M0-T01c: 案内は数値リテラル(本数・文字数)を1つも焼き込んでいない", () => {
+  // **`ADR-0250` §Decision 3 の 3。** 数を書けば、定数が伸び縮みした日に
+  // **この文だけが古い数を主張する**(`SKILL_POINTER` が同じ理由で数を持たない)。
+  expect(VOCABULARY_RESOURCE_POINTER).not.toMatch(/[0-9０-９]/);
+  for (const forbidden of ["三", "一本", "二本", "本文の長さ"]) {
+    expect(VOCABULARY_RESOURCE_POINTER, forbidden).not.toContain(forbidden);
+  }
+});
+
+test("V17-M0-T01c: 全文分岐は3定数を1つも貼らず、案内を貼る", () => {
+  const full = describeTool("テスト用のツール説明。", { withFullVocabulary: true });
+  // **`tools/list` の側から本当に外れたことを見る** —— ここが緩むと本段の目的が消える。
+  expect(full).not.toContain(VOCABULARY_SCOPE);
+  expect(full).not.toContain(CANNOT_DO);
+  expect(full).not.toContain(OUT_OF_SCOPE_BEHAVIOR);
+  // **外した代わりに何が在るか**を、定数そのもので照合する(R12)。
+  expect(full).toContain(VOCABULARY_RESOURCE_POINTER);
+  // **入口と誘導は今日どおり載る**(全文分岐は `SKILL_GUIDE` の側である)。
+  expect(full).toContain(VOCABULARY_ENTRY_POINT);
+  expect(full).toContain(SKILL_GUIDE);
+  expect(full).not.toContain(SKILL_POINTER);
+});
+
+test("V17-M0-T01c: 既定分岐は案内を貼らない(貼る先を1本も増やしていない)", () => {
+  // **既定の25本は1バイトも変わっていない**(`ADR-0287` `H-G11` 限定2 の「貼る先を減らさない」の裏)。
+  // **案内を25本へ広げれば `PR-G1`(却下済み)と同じ複写になる。** ここで止める。
+  const shared = describeTool("テスト用のツール説明。");
+  expect(shared).not.toContain(VOCABULARY_RESOURCE_POINTER);
+  expect(shared).toContain(SKILL_POINTER);
+});
+
+// =====================================================================================
+// **`V17-M0-T01d` / `V17-M0-T01c2`**: 嘘になる文を、旧文を1バイトも消さずに訂正した
+// (`docs/plan/v17/01-v17-m0-plan.md` §4-1 の 3 / §10-1 / §10-7 の 13)
+// =====================================================================================
+//
+// **測っているのは字面だけである** —— **訂正を読んだ AI が実際に `resources/read` を
+// 呼ぶかどうかは1ミリも測っていない。**
+
+test("V17-M0-T01d: CANNOT_DO_INDEX は旧文を1バイトも消さず、resource を名指しする訂正を持つ", () => {
+  // **削除0**(`ADR-0316` 限定1)。着手前の逐語がそのまま残っていること。
+  expect(CANNOT_DO_INDEX).toContain(
+    "全文は apply_diff のツール説明に、要点は説明書(skill)の reference/cannot-do.md にあります。",
+  );
+  // **訂正が足されていること。**
+  expect(CANNOT_DO_INDEX).toContain(VOCABULARY_RESOURCE_URIS.cannotDo);
+  expect(CANNOT_DO_INDEX).toContain("直前の一文を1バイトも消していません");
+});
+
+test("V17-M0-T01d: SKILL_GUIDE は旧文を1バイトも消さず、3本の URI を名指しする訂正を持つ", () => {
+  expect(SKILL_GUIDE).toContain(
+    "**説明書を開けない環境では、apply_diff のツール説明に語彙境界の全文",
+  );
+  expect(SKILL_GUIDE).toContain(
+    "(扱える語彙の全範囲 / できないことの具体例 / 範囲外の要求への対応)がそのまま載っています。**",
+  );
+  for (const uri of Object.values(VOCABULARY_RESOURCE_URIS)) {
+    expect(SKILL_GUIDE, uri).toContain(uri);
+  }
+});
+
+test("V17-M0-T01c2: VOCABULARY_SCOPE の「下の【できないこと・具体例】」に行き先の訂正が付いた", () => {
+  // **`Δ5`(`ADR-0007:194`)の履行。** **旧文は1バイトも消していない** ——
+  // **3定数を別々の resource に割ったので、「下の」では辿れなくなった。**
+  expect(VOCABULARY_SCOPE).toContain("全文は下の【できないこと・具体例】に在ります。");
+  expect(VOCABULARY_SCOPE).toContain("直前の「下の」は今日は辿れません");
+  expect(VOCABULARY_SCOPE).toContain(VOCABULARY_RESOURCE_URIS.cannotDo);
+});
+
+test("V17-M0-T01c2: 訂正を足したのは VOCABULARY_SCOPE だけである(他の2定数は1バイトも触らない)", () => {
+  // **実測(計画 §10-1)**: 束の外を指す「下の【」は `VOCABULARY_SCOPE` に1件だけで、
+  // `CANNOT_DO` / `OUT_OF_SCOPE_BEHAVIOR` には0件。**割っても壊れないので触らない。**
+  expect(CANNOT_DO.split("下の【").length - 1).toBe(0);
+  expect(OUT_OF_SCOPE_BEHAVIOR.split("下の【").length - 1).toBe(0);
+  expect(CANNOT_DO).not.toContain("vocabulary://");
+  expect(OUT_OF_SCOPE_BEHAVIOR).not.toContain("vocabulary://");
+});
+
+// --- `V17-M2-T04a`(`AC-G7a` / `AC-G8` / `ADR-0411`): 4本の入口にも作成の関門が掛かった ----
+//
+// **`V8-M22 (J-G35)(a)` と同じ形である** —— **旧文が逐語で残っていることを先に固定し、
+// その**後ろ**に訂正が続くことを固定する。** **旧文を1バイトも消さない作法
+// (`ADR-0316` 限定1)を、機械で撃つのはこの4本だけである。**
+//
+// **【測っていないもの。先に書く】** —— **測るのは字面だけである。**
+// **AI が実際にそう振る舞うかも、散文が読んで分かるかも1ミリも測っていない**
+// (`V8-M22 (J-G35)` の doc が先に書いた限界と同型)。
+
+/** **`V17-M2-T04a` が訂正した `VOCABULARY_SCOPE` の旧文(逐語。2箇所に同一で在る)。** */
+const V17_M2_T04A_SCOPE_OLD =
+  "作れるかの側は画面と HTTP の作成と親の付け替えに効き、この道具・受信口・自動処理・島は素通りします。)";
+
+/** **`V17-M2-T04a` が足した訂正の頭(逐語)。** */
+const V17_M2_T04A_SCOPE_FIX =
+  "訂正します(2026-09-07)。直前の1文のうち「この道具・受信口・自動処理・島は素通りします」は今日は偽です";
+
+test("V17-M2-T04a (a): VOCABULARY_SCOPE の旧文2箇所が逐語で残り、どちらの直後にも訂正が続く", () => {
+  // **2箇所は逐語で同一である**(計画 §3-3 の #1 / #2)——
+  // **素朴な文字列置換は両方に当たるので、**件数**を先に固定する。**
+  const occurrences = VOCABULARY_SCOPE.split(V17_M2_T04A_SCOPE_OLD).length - 1;
+  expect(occurrences).toBe(2);
+  // **どちらの直後にも訂正が続くこと**(片方だけ直すと、もう片方が今日も嘘をつく)。
+  let at = VOCABULARY_SCOPE.indexOf(V17_M2_T04A_SCOPE_OLD);
+  for (let i = 0; i < 2; i += 1) {
+    const after = VOCABULARY_SCOPE.slice(at + V17_M2_T04A_SCOPE_OLD.length);
+    expect(after, `${i + 1}箇所目の直後に訂正が無い`).toContain(V17_M2_T04A_SCOPE_FIX);
+    at = VOCABULARY_SCOPE.indexOf(V17_M2_T04A_SCOPE_OLD, at + 1);
+  }
+});
+
+test("V17-M2-T04a (b): VOCABULARY_SCOPE の訂正は双方向で、逃げ道が無いことも述べている", () => {
+  // **効くようになった側だけを書くと逆向きの嘘になる**(`ADR-0300` の双方向の作法)。
+  expect(VOCABULARY_SCOPE).toContain(
+    "行を作る側は、今日からこの道具・受信口・自動処理・島にも効きます",
+  );
+  // **今日も素通りする側** —— **時刻起動(`ADR-0411` 限定1)と、4本の入口の**更新**(同 限定4)。**
+  expect(VOCABULARY_SCOPE).toContain("素通りするのは、決まった時刻に動く処理(schedule)1本だけです");
+  expect(VOCABULARY_SCOPE).toContain("この道具・受信口・自動処理・島の更新は今日も素通りします");
+  // **受信口の逃げ道が今日1つも無いこと**(`ADR-0411` §限界1。`AC-G7b` は**保留**)。
+  expect(VOCABULARY_SCOPE).toContain(
+    "受信口が止まったとき、誰の権限で動かすかを書く場所は今日ありません",
+  );
+  // **【禁止】「安全になった」「塞いだ」と書かない。**
+  expect(VOCABULARY_SCOPE).not.toContain("安全になりました");
+});
+
+test("V17-M2-T04a (c): CANNOT_DO の旧文が逐語で残り、その直後に訂正が続く", () => {
+  const old =
+    "(効くのは画面と HTTP の作成と親の付け替え(単件・まとめ書き)、この道具・受信口・自動処理・島は素通りします)。";
+  expect(CANNOT_DO).toContain(old);
+  const at = CANNOT_DO.indexOf(old);
+  const after = CANNOT_DO.slice(at + old.length);
+  expect(after).toContain("訂正します(2026-09-07)。直前の( )の中は今日は偽です");
+  expect(after).toContain("素通りは時刻起動1本だけです");
+  expect(after).toContain("親の付け替えは今日も画面と HTTP だけです");
+  // **見出し(`【…】`)を1つも増やしていない** —— **増やすと `CANNOT_DO_INDEX` が黙って伸びる。**
+  expect((CANNOT_DO.match(/【[^】]+】/g) ?? []).length).toBe(2);
+});
+
+test("V17-M2-T04a (d): APPLY_DIFF_OP_EXAMPLES の旧文が逐語で残り、その後ろに訂正が続く", () => {
+  // **旧文は源では2行に割れているが、連結後は1本の文字列である**(計画 §3-3 の #4)。
+  const old =
+    "**作れるかの側が効くのは画面と HTTP の作成と親の付け替え(単件・まとめ書き)、この道具(MCP)・受信口・自動処理・島は素通りする。";
+  expect(APPLY_DIFF_OP_EXAMPLES).toContain(old);
+  const at = APPLY_DIFF_OP_EXAMPLES.indexOf(old);
+  const after = APPLY_DIFF_OP_EXAMPLES.slice(at + old.length);
+  expect(after).toContain(
+    "訂正。2026-09-07。作れるかの側は、今日からこの道具(MCP)・受信口・自動処理・島にも効く",
+  );
+  expect(after).toContain("素通りするのは時刻起動(schedule)1本だけである");
+  expect(after).toContain("親の付け替え(更新)は今日も画面と HTTP だけであり");
+  expect(after).toContain("受信口が止まったとき、誰の権限で動かすかを書く場所は今日無い");
+});
+
+// --- `V17-M3-T04d`(`AC-G14` / `ADR-0416`): ボタン起動の `act_as` の関門を、AI へ配る文が述べている ---
+//
+// **先例は `V17-M2-T04a`(この直上の4本)である。** **同じ形で置く** ——
+// **旧文が逐語で残っていることを先に固定し、その**直後**に訂正が続くことを固定する。**
+//
+// **なぜ要るか**: `V17-M3-T04c` は `VOCABULARY_SCOPE` に訂正を 250 文字足したが、
+// **それを撃つ検査を1本も置かなかった**(記録 `docs/plan/v17/records/v17-m3.md` §11-4 の 1)。
+// **置かないと、この文は明日消しても、どの検査も赤くならない。** **本4本がその穴を埋める。**
+//
+// **【測っていないもの。先に書く】** —— **測るのは字面だけである。**
+// **AI が実際にそう振る舞うか(見えない相手を `act_as` に指さなくなるか)は1ミリも測っていない**
+// (`V17-M2-T04a` の先例と同型。記録 §11-4 の 3)。
+
+/** **`V17-M3-T04c` が訂正した `act_as` の失敗条件の1文(逐語。訂正の**前**に在る)。** */
+const V17_M3_T04D_SCOPE_OLD_BEFORE =
+  "**参照が空 / 参照先の行が無い / 参照先に st_owner が無い / 行を選ばない schedule では、" +
+  "今日どおり1行も書けません**(開いたのは「導出できるとき」だけです)。";
+
+/** **`V17-M3-T04c` が足した訂正の全文(逐語。250文字)。** */
+const V17_M3_T04D_SCOPE_FIX =
+  "**訂正します(2026-09-07)。直前の1文は今日は不完全です** —— " +
+  "**ボタンから起こす自動処理で act_as を書いたときは、その参照が指す行を、" +
+  "ボタンを押した人自身が読めなければ、その発火は失敗します。** " +
+  "**失敗したときは、その自動処理は1行も書きません**(途中まで書いて止まることはありません)。 " +
+  "**行の作成・更新をきっかけに動く自動処理と、決まった時刻に動く処理には、この関門は掛かっていません** —— " +
+  "そちらでは今日も、押した人が読めない行の持ち主としても書けます。";
+
+/** **訂正の**後ろ**に在る旧文(逐語)。挿入で押し出されただけで、1バイトも消えていない。** */
+const V17_M3_T04D_SCOPE_OLD_AFTER =
+  "**これは「誰として書くか」であって「持ち主を書き換えること」ではありません** —— " +
+  "st_owner の付け替えは今日どおり失敗します。";
+
+/** **`a` が `b` の部分列か**(順序を保った飛び飛びの一致。**連続は要求しない**)。 */
+const isSubsequenceOf = (a: string, b: string): boolean => {
+  let at = 0;
+  for (const ch of a) {
+    const found = b.indexOf(ch, at);
+    if (found < 0) return false;
+    at = found + ch.length;
+  }
+  return true;
+};
+
+test("V17-M3-T04d (a): act_as の失敗条件の旧文が逐語で1箇所残り、その直後に訂正が続く", () => {
+  // **件数を先に固定する**(`V17-M2-T04a (a)` と同じ作法。素朴な置換が別の箇所に当たっていないこと)。
+  expect(VOCABULARY_SCOPE.split(V17_M3_T04D_SCOPE_OLD_BEFORE).length - 1).toBe(1);
+  const at = VOCABULARY_SCOPE.indexOf(V17_M3_T04D_SCOPE_OLD_BEFORE);
+  const after = VOCABULARY_SCOPE.slice(at + V17_M3_T04D_SCOPE_OLD_BEFORE.length);
+  // **旧文の**直後**に訂正が来ること** —— **離れた場所に足すと、読む側が旧文だけを読んで終わる。**
+  expect(after.startsWith(V17_M3_T04D_SCOPE_FIX)).toBe(true);
+  expect(VOCABULARY_SCOPE.split(V17_M3_T04D_SCOPE_FIX).length - 1).toBe(1);
+});
+
+test("V17-M3-T04d (b): 訂正は純粋な挿入であり、前後の旧文が1バイトも消えていない", () => {
+  // **前の旧文 → 訂正 → 後ろの旧文** が、この順で**すきま無く**並んでいること。
+  // **これで「訂正が旧文を1文字も置き換えていない」ことが機械で言える**(`ADR-0316` 限定1)。
+  expect(VOCABULARY_SCOPE).toContain(
+    V17_M3_T04D_SCOPE_OLD_BEFORE + V17_M3_T04D_SCOPE_FIX + V17_M3_T04D_SCOPE_OLD_AFTER,
+  );
+});
+
+test("V17-M3-T04d (c): 訂正を足す前の逐語が、今日の文の部分列として残っている", () => {
+  // **`V17-M3-T04c` が挿入する前、この2文は隣り合っていた**(記録 §11-3 の 1 の実測)。
+  // **その連結が今日も**部分列**として残っていることを撃つ** —— **旧文の側が1文字でも
+  // 消えるか順序が入れ替われば、ここが落ちる。**
+  const beforeTheFix = V17_M3_T04D_SCOPE_OLD_BEFORE + V17_M3_T04D_SCOPE_OLD_AFTER;
+  expect(isSubsequenceOf(beforeTheFix, VOCABULARY_SCOPE)).toBe(true);
+  // **部分列の判定そのものが壊れていないこと**(足した訂正の文は、旧文だけの連結には含まれない)。
+  expect(isSubsequenceOf(V17_M3_T04D_SCOPE_FIX, beforeTheFix)).toBe(false);
+});
+
+test("V17-M3-T04d (d): 訂正は双方向で、掛かっていない側も同じ段落で述べている", () => {
+  // **効くようになった側だけを書くと逆向きの嘘になる**(`ADR-0300` の双方向の作法)。
+  expect(VOCABULARY_SCOPE).toContain(
+    "ボタンから起こす自動処理で act_as を書いたときは、その参照が指す行を、" +
+      "ボタンを押した人自身が読めなければ、その発火は失敗します",
+  );
+  // **今日も素通りする側** —— **`on_create` / `on_update`(`ADR-0416` §限界2)と時刻起動(同 §限界3)。**
+  expect(VOCABULARY_SCOPE).toContain(
+    "行の作成・更新をきっかけに動く自動処理と、決まった時刻に動く処理には、この関門は掛かっていません",
+  );
+  // **途中まで書いて止まらないこと**(`ADR-0416` の「1行も書かない」)。
+  expect(VOCABULARY_SCOPE).toContain("その自動処理は1行も書きません");
+  // **【禁止】「安全になった」「なりすましを止めた」と書かない**(止めたのは
+  // 「押した人から見えない相手へのなりすまし」だけである。`ADR-0416` §限界1)。
+  expect(VOCABULARY_SCOPE).not.toContain("安全になりました");
+  expect(VOCABULARY_SCOPE).not.toContain("なりすましを止め");
+});
+
+// --- V17-M7-T01(台帳 `AC-G4b`。門外なので個別 ADR は無い)-----------------------------
+//
+// **もう1本の経路**: `tools/docs/grant-strength-docs.test.ts` は4箇所を**ファイルの本文**として
+// 読む(注釈も本文も同じ文字列として見える)。 **こちらは出荷される定数そのものを撃つ** ——
+// **注釈にだけ書いて出荷を忘れる**型を、あちら側だけでは捕まえられないためである。
+
+// **【`V17-M10B-T08a`(2026-09-10)。上の注と下の3本を1バイトも消していない】**
+// **下の3本は `toContain` だけで組まれているので、`V17-M10B-T06` が上限を判定に配線した
+// 日にも1本も赤くならなかった** —— **旧文が残っているかぎり緑のままである。**
+// **テスト名だけが嘘になる型である**(この製品で3度出ている)。 **そこで、旧文を1バイトも
+// 消さずに、`(a2)` /(b2)/(c) に「訂正が旧文の後ろに在ること」を足した。**
+// **【この足しが保証しないもの】** **AI がその訂正を読むかどうかは1件も測っていない。**
+
+test("V17-M7-T01 (a): CANNOT_DO は、複数の付与が重なったときに強い側が勝つことを述べている", () => {
+  // **実装の真は `src/server/owner-scope.ts` の合成である** —— **読む・書く・消すのそれぞれについて、
+  // 1件でも真を与える付与があれば真にする**(裁定は `V7-M3-T01`)。
+  // **【`V17-M10B-T08a` 注。上の2行と下の2本の式を1バイトも消していない】**
+  // **上の2行は今日は言い足りない** —— **上限の符号を持つ付与が効いている行では、
+  // 答えはその上限までである。** **旧文の在ることは今日も撃つ**(消していないことの証明)。
+  expect(CANNOT_DO).toContain("強い側が勝ちます");
+  expect(CANNOT_DO).toContain("1件でも許す付与があれば通ります");
+});
+
+test("V17-M10B-T08a (a2): CANNOT_DO は、上限で答えがその上限まで絞られることも述べている", () => {
+  // **旧文(a)の逐語が残っているだけでは今日は不足である** —— **訂正が同じ定数に在ること。**
+  expect(CANNOT_DO).toContain("答えはその上限までしか出ません");
+  expect(CANNOT_DO).toContain("引き継ぎ元(親)から降りてきた付与にも効きます");
+  // **迂回できることを同じ定数に書く**(「狭められる」だけを書かない)。
+  expect(CANNOT_DO).toContain("付与を作ってよいかの判定に、上限は1つも掛かっていません");
+});
+
+test("V17-M7-T01 (b): CANNOT_DO は、弱い付与で範囲を狭める手段が今日1つも無いことを述べている", () => {
+  // **無い側を書かないと、AI は「弱い付与を足せば狭められる」と読む。**
+  // **今日その手段は1つも無く、狭めたいときは付与そのものを消すしかない。**
+  // **【`V17-M10B-T08a` 注。上の2行と下の式を1バイトも消していない】**
+  // **上の2行は今日は偽である** —— **狭める手段は今日1つ在る**(上限の符号)。
+  // **旧文の在ることは今日も撃つ。訂正の側は (b2) が撃つ。**
+  expect(CANNOT_DO).toContain("狭める手段は、今日1つもありません");
+});
+
+test("V17-M10B-T08a (b2): CANNOT_DO は、狭める手段が今日は1つあることも述べている", () => {
+  expect(CANNOT_DO).toContain("弱い付与を足して範囲を狭める手段が、今日は1つあります");
+  // **旧文を消していないこと**(訂正だけを残して旧文を消す直し方をしていない)。
+  expect(CANNOT_DO).toContain("狭める手段は、今日1つもありません");
+});
+
+test("V17-M7-T01 (c): 足した2文は、面と点の合成を述べた旧文の後ろに在る(旧文を割っていない)", () => {
+  // **`V8-M22 (J-G35)(e)` と同じ形** —— **`indexOf` + `slice` で順序を見る。**
+  // **旧文と旧文のあいだに割り込ませると、ここが落ちる。**
+  const old = "**閉じるには、面と点の両方で閉じる必要があります。**";
+  expect(CANNOT_DO).toContain(old);
+  const after = CANNOT_DO.slice(CANNOT_DO.indexOf(old) + old.length);
+  expect(after).toContain("強い側が勝ちます");
+  expect(after).toContain("狭める手段は、今日1つもありません");
+  // **【禁止】これを「安全になった」と読まない** —— **本段は挙動を1バイトも変えていない。**
+  expect(CANNOT_DO).not.toContain("安全になりました");
+  // **【`V17-M10B-T08a`(2026-09-10)。上の4行を1バイトも消していない】**
+  // **上の注「本段は挙動を1バイトも変えていない」は `V17-M7-T01` の段についての記述である** ——
+  // **`V17-M10B-T06` は挙動を変えた。** **訂正が旧文の**後ろ**に在ることを、同じ形で撃つ。**
+  const corrected = "**弱い付与を足して範囲を狭める手段は、今日1つもありません**";
+  expect(CANNOT_DO).toContain(corrected);
+  const afterCorrected = CANNOT_DO.slice(CANNOT_DO.indexOf(corrected) + corrected.length);
+  expect(afterCorrected).toContain("弱い付与を足して範囲を狭める手段が、今日は1つあります");
+  // **「安全になった」と書いていないことは、訂正を足した今日も撃つ。**
+  expect(CANNOT_DO).not.toContain("安全になり");
+});
+
+// --- V17-M7-T05(台帳 `AC-G32`。門A・限定採用。`ADR-0427`)-----------------------------
+//
+// **もう1本の経路**: `tools/docs/or-scope-write-wall-docs.test.ts` は4箇所を**ファイルの本文**
+// として読む。 **こちらは出荷される定数そのもの(`VOCABULARY_SCOPE`)を撃つ** ——
+// **注釈にだけ書いて出荷を忘れる**型を、あちら側だけでは捕まえられないためである。
+//
+// **実装の真**: `src/server/owner-scope.ts` の `isRoleActionWriteAllowed`
+// (末尾の逐語 `return walled ? allowed : true;`)。 **表を書き先とする識別子つきの操作起点が
+// 1本でもあれば、その相手がどれか1本を `read` できるときだけ作成・更新を許す。**
+// **`GET` と `DELETE` には1バイトも掛からない。**
+
+test("V17-M7-T05 (a): VOCABULARY_SCOPE は、面と点の OR が読むときの話であることを述べている", () => {
+  // **読取の側**(双方向の片側)。**これを書かないと、AI は書込にもそのまま効くと読む。**
+  expect(VOCABULARY_SCOPE).toContain("読むときの話です");
+});
+
+test("V17-M7-T05 (b): VOCABULARY_SCOPE は、点で配られていても書込が 403 になりうることを述べている", () => {
+  // **書込の側**(双方向のもう片側)。**壁が立つ条件を正確に書く** ——
+  // **識別子を書いていない操作起点は名指しできないので壁の材料にならない。**
+  expect(VOCABULARY_SCOPE).toContain("名前つきのボタンが1本でもある");
+  expect(VOCABULARY_SCOPE).toContain("作成・更新が 403 になります");
+});
+
+test("V17-M7-T05 (c): VOCABULARY_SCOPE は、壁が立たない側と掛からない操作も同じ場所に書いている", () => {
+  // **片側だけ書くと逆向きの嘘になる**(`V8-M22 (J-G35)(e)` と同じ作法)。
+  expect(VOCABULARY_SCOPE).toContain("名前つきのボタンが1本も無い表");
+  expect(VOCABULARY_SCOPE).toContain("削除");
+  expect(VOCABULARY_SCOPE).toContain("読むことには、この壁は1文字も掛かりません");
+});
+
+test("V17-M7-T05 (d): 足した射程は、面と点の OR を述べた旧文の後ろに在る(旧文を割っていない)", () => {
+  // **`V8-M22 (J-G35)(e)` と同じ形** —— **`indexOf` + `slice` で順序を見る。**
+  // **旧文と旧文のあいだに割り込ませると、ここが落ちる。**
+  const old = "**閉じたいときは、面と点の両方で閉じてください。**";
+  expect(VOCABULARY_SCOPE).toContain(old);
+  const after = VOCABULARY_SCOPE.slice(VOCABULARY_SCOPE.indexOf(old) + old.length);
+  expect(after).toContain("読むときの話です");
+  expect(after).toContain("名前つきのボタンが1本でもある");
+  // **【禁止】これを「塞いだ」「安全になった」と読まない** —— **本段は挙動を1バイトも変えていない。**
+  expect(VOCABULARY_SCOPE).not.toContain("安全になりました");
+});
+
+// =====================================================================================
+// **`V18-M4-T04`(2026-09-12)。台帳 `PM-G10` / `ADR-0435` / 授権 `ADR-0441`。**
+// **出荷文の訂正**(`Δ5`)—— **旧文を1バイトも消さず、直後に訂正を足した**ことを固定する。
+// =====================================================================================
+//
+// **測っているのは字面だけである** —— **訂正を読んだ AI が実際に画面の規則を書くかは
+// 1ミリも測っていない**(`V17-M0-T01d` の同じ位置の自認と同じ形)。
+
+test("V18-M4-T04 (a): CANNOT_DO は (b) の旧文を1バイトも消さず、その後ろに訂正を持つ", () => {
+  // **削除0** —— 着手前の (b) の逐語がそのまま残っていること
+  //   (`ADR-0441` 授権の表 行33 が、この逐語を書き換えないことを既定としている)。
+  const old = "(b)**画面を名乗らずにテーブルの URL を直接叩いた要求は、今日どおり通ります**";
+  expect(CANNOT_DO).toContain(old);
+  // **訂正は旧文より**後ろ**に在る**(`V17-M7-T05 (d)` と同じ `indexOf` + `slice` の形)。
+  const after = CANNOT_DO.slice(CANNOT_DO.indexOf(old) + old.length);
+  expect(after).toContain("画面名を名乗らない読取にも、画面の規則の壁が立つようになりました");
+  expect(after).toContain("1本でも読める画面があれば今日どおり通り、1本も読めなければ止まります");
+  // **止まり方を口ごとに書いている**(一覧は0件 / 単票は「その行はありません」)。
+  expect(after).toContain("一覧は応答から落ちて0件になり");
+  expect(after).toContain("「その行はありません」と同じ答えになります");
+  // **壁が立たない側も同じ段落に在る**(片方だけ書くと逆向きの嘘になる)。
+  expect(after).toContain("その形の画面が1本も無いときは今日どおり通ります");
+  expect(after).toContain("作成・更新・削除の答えは1ビットも変わっていません");
+  // **AI の口**(画面名を渡す手段が無いので、つねに「名乗らない一覧」として判定される)。
+  expect(after).toContain("つねに「名乗らない一覧」として判定されます");
+});
+
+test("V18-M4-T04 (b): 訂正は射程を書いており、「安全になった」とも「隠した」とも書いていない", () => {
+  // **完了条件 (c)** —— **隠れたのは行であって、画面の定義ではない。**
+  expect(CANNOT_DO).toContain("画面の定義そのものは1ミリも隠れていません");
+  expect(CANNOT_DO).toContain("「見せない」と決めた画面の定義もそのまま返ります");
+  expect(CANNOT_DO).toContain("返らなくなったのは行であって、画面の定義ではありません");
+  // **【禁止】誇張しない**(`ADR-0435` の「隠した」禁止)。
+  expect(CANNOT_DO).not.toContain("安全になりました");
+  expect(CANNOT_DO).not.toContain("画面の定義を隠しました");
+});
+
+test("V18-M4-T04 (c): app.ts の注記は旧文を1バイトも消さず、今日どおりでないことを訂正で示す", () => {
+  const source = readSrc("src", "server", "app.ts");
+  // **完了条件 (d)** —— **旧文がそのまま在ること。**
+  const old = "// - **`?view=` の名指しの経路(`rejectNamedView`)を1バイトも触っていない。**";
+  expect(source).toContain(old);
+  // **その直後に訂正が在ること**(順序で見る。前に置くと旧文が訂正の後ろになってしまう)。
+  const after = source.slice(source.indexOf(old) + old.length);
+  expect(after).toContain("直上の逐語");
+  expect(after).toContain("今日は偽である");
+  // **集計表の口の答えが1ビットも変わっていないことを、同じ場所に書いている。**
+  expect(after).toContain("集計表の口の応答は、`V17-M4-T01` の時点から1バイトも変わっていない");
+});
+
+test("V18-M4-T04 (d): 説明書の写しは、引用を1バイトも消さずに引用の外へ訂正を持つ", () => {
+  const doc = readSrc("plugins", "smailtalk", "skills", "view-shape", "reference", "cannot-do.md");
+  // **引用ブロック(`>` で始まる行)は着手前のまま** —— 逐語が残っていること。
+  expect(doc).toContain("画面を名乗らずにテーブルの URL を直接叩いた要求は、今日どおり通ります");
+  // **訂正は引用の**外**に在る**(`>` で始まらない行である)。
+  const correction = "**画面名を名乗らない読取にも、画面の規則の壁が立つ。**";
+  expect(doc).toContain(correction);
+  for (const line of doc.split("\n")) {
+    if (line.includes(correction)) {
+      expect(line.startsWith(">")).toBe(false);
+    }
+  }
+  // **説明書に内部の記号を1文字も書いていない**(`scripts/public-docs-internal-symbols.test.ts`
+  // の (記号7) と同じ向き。ここでは本段の記号だけを撃つ)。
+  expect(doc).not.toContain("PM-G10");
+  expect(doc).not.toContain("ADR-0435");
+  expect(doc).not.toContain("V18-M4");
+});
+
+// --- `V18-M6-T03`(`PM-G1` / `PM-G2` / `ADR-0443`): 出荷文と配る説明書の訂正 -----------------
+//
+// **先例は `V17-M2-T04a`(この上にある4本)である。** **同じ形で置く** ——
+// **旧文が逐語で残っていることを先に固定し、その**直後**に訂正が続くことを固定する。**
+// **旧の `toContain` を1本も消していない**(旧文は残るので今日も真である)。
+//
+// **測っているのは字面だけである** —— **AI がそう振る舞うことも、読んで分かることも
+// 1ミリも測っていない**(`V8-M22` の doc が先に書いた限界と同型)。
+
+/** `V18-M6-T03` が4塊すべてに入れた訂正の、共通の逐語(乙 = AI の口に掛かったこと)。 */
+const V18_M6_T03_OTSU = "update_record";
+
+test("V18-M6-T03 (a): VOCABULARY_SCOPE の旧文が逐語で残り、その直後に 2026-09-13 の訂正が続く", () => {
+  // **旧文**(2026-09-07 の訂正の帯。`V18-M6` が偽にした側)。
+  const old = "**ただし親の付け替え(更新)が効くのは今日も画面と HTTP だけで、";
+  // **2塊(本体と島向けの写し)とも残っている。**
+  expect(VOCABULARY_SCOPE.split(old).length - 1).toBe(2);
+  // **どちらの旧文の後ろにも訂正が続く。**
+  for (const after of VOCABULARY_SCOPE.split(old).slice(1)) {
+    expect(after).toContain("訂正します(2026-09-13)");
+    expect(after).toContain(V18_M6_T03_OTSU);
+    expect(after).toContain("write_records");
+    // **塞いだ口と素通りする口を併記している。**
+    expect(after).toContain("掛かる口は、画面・HTTP・AI の口です");
+    expect(after).toContain("素通りする口は、受信口・自動処理・コードの島の3本です");
+    expect(after).toContain("決まった時刻に動く処理も、今日どおり素通りします");
+    // **甲(移す前の親に要求する権限が上がったこと)も同じ帯に在る。**
+    expect(after).toContain("移す前の親に要求する権限が「書ける」から「消せる」へ上がりました");
+    expect(after).toContain("移した先の親に要求するのは今日どおり書込です");
+  }
+  // **【禁止】を守っている** —— **一般化した安心を1文字も書いていない。**
+  expect(VOCABULARY_SCOPE).not.toContain("安全になりました");
+  expect(VOCABULARY_SCOPE).not.toContain("塞ぎました");
+});
+
+test("V18-M6-T03 (b): CANNOT_DO の旧文が逐語で残り、その直後に訂正が続く(見出しは2つのまま)", () => {
+  const old = "**親の付け替えは今日も画面と HTTP だけです。** ";
+  expect(CANNOT_DO).toContain(old);
+  const after = CANNOT_DO.slice(CANNOT_DO.indexOf(old) + old.length);
+  expect(after).toContain("訂正します(2026-09-13)");
+  expect(after).toContain(V18_M6_T03_OTSU);
+  expect(after).toContain(
+    "掛かる口は画面・HTTP・AI の口で、素通りする口は受信口・自動処理・コードの島の3本です",
+  );
+  expect(after).toContain("移す前の親に要求する権限は「書ける」から「消せる」へ上がりました");
+  // **見出し(`【…】`)を1つも増やしていない**(上の2本と同じ数を、同じ式で撃つ)。
+  expect((CANNOT_DO.match(/【[^】]+】/g) ?? []).length).toBe(2);
+});
+
+test("V18-M6-T03 (c): APPLY_DIFF_OP_EXAMPLES の旧文が逐語で残り、その後ろに訂正が続く", () => {
+  const old =
+    "親の付け替え(更新)は今日も画面と HTTP だけであり、この4本の入口の更新は今日も素通りする。";
+  expect(APPLY_DIFF_OP_EXAMPLES).toContain(old);
+  const after = APPLY_DIFF_OP_EXAMPLES.slice(APPLY_DIFF_OP_EXAMPLES.indexOf(old) + old.length);
+  expect(after).toContain(
+    "訂正。2026-09-13。親の付け替え(更新)は、今日から AI の口(この道具)にも効く",
+  );
+  expect(after).toContain(V18_M6_T03_OTSU);
+  expect(after).toContain(
+    "効く口は画面・HTTP・この道具であり、素通りする口は受信口・自動処理・島の3本である",
+  );
+  expect(after).toContain("移す前の親に要求する動詞は write から delete へ上がった");
+});
+
+test("V18-M6-T03 (d): 配る説明書4本の5箇所に、旧文を消さずに訂正が足されている", () => {
+  // **着手前、この5箇所を撃つ検査は1本も無かった** —— **赤くならないので、
+  // 直さなければ嘘のまま出荷される。** **その穴をここで埋める。**
+  const docs: readonly (readonly string[])[] = [
+    ["plugins", "smailtalk", "skills", "app-build", "SKILL.md"],
+    ["plugins", "smailtalk", "skills", "diff-shape", "SKILL.md"],
+    ["plugins", "smailtalk", "skills", "diff-shape", "reference", "op-required-keys.md"],
+    ["plugins", "smailtalk", "skills", "view-shape", "SKILL.md"],
+  ];
+  const old =
+    "親の付け替え(既存の行の参照を別の親へ変える**更新**)が効くのは今日も画面と HTTP だけで、";
+  for (const parts of docs) {
+    const doc = readSrc(...parts);
+    // **旧文は1バイトも消していない。**
+    expect(doc).toContain(old);
+    // **その後ろに 2026-09-13 の訂正が続く。**
+    const after = doc.slice(doc.indexOf(old) + old.length);
+    expect(after).toContain("【2026-09-13 訂正。直前の1文を1バイトも消していない】");
+    expect(after).toContain("`update_record`");
+    expect(after).toContain("`write_records`");
+    expect(after).toContain("素通りする口は、受信口・自動処理・コードの島の3本である");
+    // **内部の記号を1文字も書いていない**(`scripts/public-docs-internal-symbols.test.ts`
+    // の(記号4)/(記号7)が数として見張っている側を、本段の記号で名指しでも撃つ)。
+    expect(doc).not.toContain("PM-G1");
+    expect(doc).not.toContain("PM-G2");
+    expect(doc).not.toContain("ADR-0443");
+    expect(doc).not.toContain("V18-M6");
+  }
+  // **甲(古い親に要求する権限)の訂正は `app-build` の1箇所だけである。**
+  const appBuild = readSrc("plugins", "smailtalk", "skills", "app-build", "SKILL.md");
+  const oldKou = "古い親と新しい親の\n両方に書込を要求する";
+  expect(appBuild).toContain(oldKou);
+  const afterKou = appBuild.slice(appBuild.indexOf(oldKou) + oldKou.length);
+  expect(afterKou).toContain(
+    "古い親(移す前の親)に要求する権限は、今日は書込ではなく**削除**である",
+  );
+  expect(afterKou).toContain("新しい親(移した先)に要求するのは今日どおり書込である");
+  expect(afterKou).toContain("参照を**空にする**更新は今日も `200` で通り");
+});
+
+test("V18-M7-T04: 出荷文と配る説明書に、旧文を消さずに訂正が足されている", () => {
+  // **旧文は今日も真である**(同意のフラグは1本も無い。足したのは件数の印である)——
+  const old = "同意はこの提示によって取るものです。confirm のような引数はありません";
+  const afterOf = (text: string): string => text.slice(text.indexOf(old) + old.length);
+  for (const text of [DELETE_RECORD_SHOW_TARGET_FIRST, DELETE_APP_SHOW_CONTENTS_FIRST]) {
+    expect(text).toContain(old); // **旧文は1バイトも消していない。**
+    expect(afterOf(text)).toContain("補足します(2026-09-14)。直前の1文は今日も真です");
+    expect(afterOf(text)).toContain("if_match_children");
+    expect(afterOf(text)).toContain("同意のフラグ");
+  }
+  // **1件ずつの削除の側だけが持つ4点**(2回目・下の段まで・見分け方・止めている範囲)。
+  const afterRecord = afterOf(DELETE_RECORD_SHOW_TARGET_FIRST);
+  expect(afterRecord).toContain("1回目の呼び出しは必ず拒否され");
+  expect(afterRecord).toContain("下の段までまとめて消えます");
+  expect(afterRecord).toContain("どれも HTTP としては 200 で返り");
+  expect(afterRecord).toContain("一度断って利用者に選ばせるところまでです");
+  // **配る説明書2本にも、旧文を消さずに訂正が足されている。**
+  const appBuild = readSrc("plugins", "smailtalk", "skills", "app-build", "SKILL.md");
+  const oldWall = "削除(`DELETE`)にはこの壁が今日も1文字も掛かっていない";
+  expect(appBuild).toContain(oldWall);
+  const afterWall = appBuild.slice(appBuild.indexOf(oldWall));
+  expect(afterWall).toContain("ただし削除には、今日から**別の関門**が1つ立った");
+  const parts = ["plugins", "smailtalk", "skills", "view-shape", "reference", "cannot-do.md"];
+  const cannotDo = readSrc(...parts);
+  const oldField = "ただし項目に書いた規則とボタンの壁は、今日も DELETE に1ミリも掛かりません";
+  expect(cannotDo).toContain(oldField);
+  expect(cannotDo.slice(cannotDo.indexOf(oldField))).toContain(
+    "削除に掛かる関門は今日これだけではない",
+  );
+  for (const doc of [appBuild, cannotDo]) {
+    expect(doc).toContain("関門が掛かる口は、画面・HTTP・AI");
+    expect(doc).toContain("受信口・自動処理・コードの島・決まった時刻に動く処理の");
+    expect(doc).not.toContain("ADR-0444");
+  }
 });

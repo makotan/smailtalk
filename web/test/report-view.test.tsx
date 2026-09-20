@@ -174,6 +174,23 @@ function sortButton(target: "group_by" | "aggregate", index: number): HTMLElemen
   return button;
 }
 
+/**
+ * **並べ替えボタンが現れるまで待ってから**指す(`sortButton` の非同期版)。
+ *
+ * **`waitForRequest` は「その条件で要求が飛んだ」ことだけを待ち、応答による描き直しの完了を
+ * 1ミリも待たない。** **描き直している間、画面は `loading` の早期 return に入って骨組み
+ * (`Skeleton`)だけを出しており、`report-sort` のボタンは `DOM` に1つも無い。**
+ * そのため `waitForRequest` の直後に同期の `sortButton` を打つと、遅い台では空振りする
+ * (実CI で時々落ちていたのはこの形である)。**待ってから指すことで、確かめている中身は
+ * 1バイトも変えずに、待ち方の非対称だけを解消する。**
+ */
+async function findSortButton(
+  target: "group_by" | "aggregate",
+  index: number,
+): Promise<HTMLElement> {
+  return await waitFor(() => sortButton(target, index));
+}
+
 function headerTexts(): string[] {
   return screen.getAllByRole("columnheader").map((cell) => cell.textContent ?? "");
 }
@@ -241,7 +258,7 @@ test("(T06-3) 同じ列をもう一度押すと向きが反転する(asc → des
   await findReportTable();
   fireEvent.click(sortButton("group_by", 0));
   await waitForRequest("sort_order=asc");
-  fireEvent.click(sortButton("group_by", 0));
+  fireEvent.click(await findSortButton("group_by", 0));
   await waitForRequest("sort_order=desc");
   expect(lastReportRequest()).toContain("sort_target=group_by");
   expect(lastReportRequest()).toContain("sort_index=0");
@@ -252,17 +269,17 @@ test("(T06-4) 集計列を押すと sort_target=aggregate になり、別の列�
   await findReportTable();
   fireEvent.click(sortButton("group_by", 0));
   await waitForRequest("sort_order=asc");
-  fireEvent.click(sortButton("group_by", 0));
+  fireEvent.click(await findSortButton("group_by", 0));
   await waitForRequest("sort_order=desc");
 
   // **別の列(集計値の1本目)を押すと、向きは昇順に戻る。**
-  fireEvent.click(sortButton("aggregate", 0));
+  fireEvent.click(await findSortButton("aggregate", 0));
   await waitForRequest("sort_target=aggregate");
   expect(lastReportRequest()).toContain("sort_index=0");
   expect(lastReportRequest()).toContain("sort_order=asc");
 
   // **件数の列(集計値の2本目)は添字が 1 である。**
-  fireEvent.click(sortButton("aggregate", 1));
+  fireEvent.click(await findSortButton("aggregate", 1));
   await waitForRequest("sort_index=1");
   expect(lastReportRequest()).toContain("sort_target=aggregate");
 });
@@ -299,7 +316,7 @@ test("(T06-5) 既定では先頭100群を読み、「次へ」で offset が 100
   await waitForRequest("offset=100");
   expect(lastReportRequest()).toContain("limit=100");
 
-  fireEvent.click(screen.getByTestId("report-prev"));
+  fireEvent.click(await screen.findByTestId("report-prev"));
   await waitFor(() => expect(lastReportRequest()).not.toContain("offset="));
 });
 
@@ -309,7 +326,7 @@ test("(T06-5) 並べ替えを打ち直すと先頭ページへ戻る(2ページ�
   await findReportTable();
   fireEvent.click(screen.getByTestId("report-next"));
   await waitForRequest("offset=100");
-  fireEvent.click(sortButton("group_by", 0));
+  fireEvent.click(await findSortButton("group_by", 0));
   await waitForRequest("sort_target=group_by");
   expect(lastReportRequest()).not.toContain("offset=");
 });
@@ -466,7 +483,7 @@ test("(T06-10) 並べ替えの状態もページ位置も URL・localStorage・s
   await findReportTable();
   fireEvent.click(sortButton("aggregate", 0));
   await waitForRequest("sort_target=aggregate");
-  fireEvent.click(screen.getByTestId("report-next"));
+  fireEvent.click(await screen.findByTestId("report-next"));
   await waitForRequest("offset=100");
 
   // **ブラウザの URL は1バイトも変わっていない。**
@@ -482,7 +499,7 @@ test("(T06-10) リロード相当(描き直し)で、並べ替えもページ位
   await findReportTable();
   fireEvent.click(sortButton("aggregate", 0));
   await waitForRequest("sort_target=aggregate");
-  fireEvent.click(screen.getByTestId("report-next"));
+  fireEvent.click(await screen.findByTestId("report-next"));
   await waitForRequest("offset=100");
 
   cleanup();

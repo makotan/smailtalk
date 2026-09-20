@@ -79,6 +79,12 @@ function manifest(): Manifest {
             enabled: true,
             permissions: [...PERMISSIONS],
             creator_permission: "keeper",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+            // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+            // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+            // **本ファイルが測っている断り(名簿に居ない人への 400 とその文面)より
+            // **手前**で 403 が返り、5本が巻き込まれていた。**
+            creatable_by_roles: ["owner"],
             grant: {
               table: "ticket_grant",
               target: "ticket",

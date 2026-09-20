@@ -164,6 +164,13 @@ const HTTP_ENTRY_POINTS: readonly string[] = [
   "GET /api/apps/:app_id/requirements",
   "GET /api/apps/:app_id/tables/:table_id/records",
   "GET /api/apps/:app_id/tables/:table_id/records/:record_id",
+  // **53本目**(`V17-M6-T04` / 台帳 `AC-G24` = 門外(`Δ7`)/ 限定採用)。
+  // **「どの付与行が効いて読み書きができるのか」を返す読取専用の口である** ——
+  // **同じパスに `POST` / `PATCH` / `DELETE` は1本も無い**(実測は
+  // `src/server/record-access-sources.test.ts` の (S-2))。
+  // **単件 `GET` より1段深いパスに置いた** —— **今日 `records/:record_id` より深い経路は
+  // 他に1本も無いので、ルート照合がぶつからない。**
+  "GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources",
   // **46本目**(`V7-M5-T02` / `Z-G19`)。**読取専用の運営用の口である** ——
   // **同じパスに `POST` / `PATCH` / `DELETE` は1本も無い**(上の並びを見れば分かる形で
   // あることが、この表を「名称の全量」で突き合わせている理由でもある)。
@@ -339,7 +346,12 @@ test("ADR-0176 限定1: HTTP の口は49本ちょうどで、名称の全量が�
   // **テスト名は1バイトも書き換えていない**(このリポジトリの作法。訂正は追記)——
   //   **名前の「49本ちょうど」は 2026-08-14 から字面として偽である。**
   // **【禁止】これを「口は増えていない」と書かない** —— **増えた。1本ちょうどである。**
-  expect(HTTP_ENTRY_POINTS).toHaveLength(52);
+  // **【2026-09-08。`V17-M6-T04`。台帳 `AC-G24` = 門外(`Δ7`)/ 限定採用】期待値を 52 → 53 へ
+  //   書き換えた。****旧行の逐語**: `expect(HTTP_ENTRY_POINTS).toHaveLength(52);`
+  //   **足したのは `GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources`
+  //   (どの付与行が効いて読み書きができるのかを返す読取専用の口)1本ちょうどである。**
+  // **【禁止】これを「口は増えていない」と書かない** —— **増えた。1本ちょうどである。**
+  expect(HTTP_ENTRY_POINTS).toHaveLength(53);
 });
 
 // **【2026-08-15。`V8-M13-T02`。台帳 `Q-G28` = 限定採用(門A)。テスト名は1バイトも
@@ -436,6 +448,15 @@ const JUDGE_HOME = "judgeRecordAccess(";
 const JUDGE_RESOLVER = "resolveRecordAccess(";
 /** 面(役割に束ねた権限)と点(行ごとの付与)を `OR` で重ねる側。 */
 const JUDGE_COMBINER = "resolveCombinedRecordAccess(";
+/**
+ * **付与の出どころを返す口が通る側**(`V17-M6-T04` / `AC-G24`)。
+ *
+ * **【緩めていない。増やした綴りが本当に判定であることを書く】** —— **この述語は
+ * `owner-scope.ts` の中で {@link JUDGE_COMBINER} を呼んで要求者と相手の判定を出し、
+ * さらに {@link JUDGE_HOME} を付与行1本ずつに絞って呼び直す。** **新しい判定式は1行も無い。**
+ * **したがって「判定を受けている」の意味は、他の12経路と1ミリも違わない。**
+ */
+const JUDGE_SOURCES = "resolveRecordAccessSources(";
 
 /** 登録行の正規表現(`app.get("…"` / `app.post("…"` …)。**登録順に返す。** */
 const ROUTE_PATTERN = /\bapp\.(get|post|patch|delete|put|all|options|head)\(\s*"([^"]+)"/g;
@@ -464,8 +485,79 @@ function bodyOf(source: string, registrations: Registration[], key: string): str
   return source.slice(start, end);
 }
 
-function judgedIn(body: string): boolean {
-  return body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME);
+// =====================================================================================
+// **`V17-M7-T03`(台帳 `AC-G28` = 門A(`Δ5`)/ 限定採用)が足した「判定の種類」**
+// =====================================================================================
+//
+// **【なぜ種類が要るか】** —— **`judgedIn()` が真偽値1つを返す限り、「面と点も個人所有も
+// 通っているが、引き継ぎ元の親に書けるかは1度も見ていない」書込点を、
+// **全部通っている口と1文字も区別できない**。**
+// **`ADR-0007` §8 の `AC-G28` が名指ししているのはこの欠落である。**
+//
+// **【新しい判定を1つも作っていない】** —— **下の16綴りは、どれも今日の実物に在る関数の
+// 名前である**(`src/server/owner-scope.ts` / `src/kernel/workflow-runner.ts` /
+// `src/kernel/ai-dispatcher.ts` / `src/server/inbound-route.ts` / `src/server/app.ts`)。
+// **走査する側の分類であって、判定そのものは1バイトも書き換えていない**
+// (`CP-V17` 条件7: **本段は `src/kernel/` と `schemas/` に1行も差分を持たない**)。
+//
+// **【誇張しない】** **種類を数えられるようにしただけであり、欠けている判定を
+// 1つも掛けていない。** **【禁止】これを「塞いだ」と書かない。**
+
+/** **入口の本文に在りうる判定の種類**(`V17-M7-T03`)。 */
+type JudgmentKind = "faceAndPoint" | "ownerScope" | "parentGate";
+
+/** **種類の全量**(この並びが、下の `judgedIn()` が返す並びでもある)。 */
+const JUDGMENT_KINDS: readonly JudgmentKind[] = ["faceAndPoint", "ownerScope", "parentGate"];
+
+/**
+ * **種類ごとの綴り**(**直後の `(` まで含む完全一致**。既存の `JUDGE_*` /
+ * `AUTOMATION_JUDGE_SPELLINGS` と同じ数え方である)。
+ *
+ * - **`faceAndPoint`** = **役割の規則(面)と行ごとの付与(点)**
+ * - **`ownerScope`** = **持ち主ごとの分離(`st_owner`)**
+ * - **`parentGate`** = **引き継ぎ元の親に書けるか(作成の関門)**
+ */
+const JUDGMENT_KIND_SPELLINGS: Readonly<Record<JudgmentKind, readonly string[]>> = {
+  faceAndPoint: [
+    JUDGE_PIPE,
+    JUDGE_HOME,
+    JUDGE_RESOLVER,
+    JUDGE_COMBINER,
+    JUDGE_SOURCES,
+    "judgeAutomationWrite(",
+    "judgeOutputTableReplace(",
+    "inboundAccessDenied(",
+    "judgeRoleAccess(",
+    "judgeWriteBack(",
+  ],
+  ownerScope: ["judgeOwnerScopedOp(", "judgeOwnerUpdateWithDisplay(", "judgeWriteBackOwner("],
+  parentGate: ["judgeCreateParentAccess(", "judgeRootCreatableRoles(", "creatorGrantPlan("],
+};
+
+/** **3種の綴りをまとめたもの**(`app.ts` の外の書込点の `judge` に渡す)。 */
+const ALL_JUDGMENT_SPELLINGS: readonly string[] = JUDGMENT_KINDS.flatMap(
+  (kind) => JUDGMENT_KIND_SPELLINGS[kind],
+);
+
+function judgedIn(body: string): readonly JudgmentKind[] {
+  // **【`V17-M6-T04` による更新。旧の式を1バイトも消していない】**
+  // **旧: `return body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME);`**
+  // **付与の出どころを返す口は、配管(`recordAccessJudge`)を1度も呼ばない** ——
+  // **`owner-scope.ts` の述語1本を呼び、その中で合成判定と `judgeRecordAccess` が走る。**
+  // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧の式を1バイトも消していない】**
+  // **旧の戻り値の型(逐語)**: `function judgedIn(body: string): boolean {`
+  // **旧の式(逐語)**:
+  //   `return body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME) || body.includes(JUDGE_SOURCES);`
+  // **真偽値1つでは「面と点も個人所有も通っているが、親の関門だけが欠けている」を
+  //   1文字も書けない** —— **書き戻し2本が、全部持っている一覧 `GET` と区別できなかった。**
+  // **そこで**種類の配列**を返す形に開いた。** **空配列 = 1つも通らない。**
+  // **【緩めていない】** —— **旧の3綴りは1つも消しておらず、どれも `faceAndPoint` に入っている。**
+  //   **旧の式が真だった本文は、新しい式では必ず `faceAndPoint` を含む。**
+  //   **`app.ts` の9行について旧の式そのものを今日も打っているのが下の `(D-4)` である。**
+  // **【呼び出し側】** —— **真偽値が要る場所は `judgedIn(body).length > 0` で読む。**
+  return JUDGMENT_KINDS.filter((kind) =>
+    JUDGMENT_KIND_SPELLINGS[kind].some((spelling) => body.includes(spelling)),
+  );
 }
 
 /**
@@ -489,6 +581,10 @@ const REGISTERED_ROUTES: readonly string[] = [
   "GET /api/apps/:app_id/public",
   "GET /api/apps/:app_id/tables/:table_id/records",
   "GET /api/apps/:app_id/tables/:table_id/records/:record_id",
+  // **【`V17-M6-T04`(`AC-G24`)が足した1本。旧の一覧から1行も消していない】**
+  // **「どの付与行が効いて読み書きができるのか」を返す読取専用の口である。**
+  // **登録の順序は単件 `GET` の直後である**(この一覧は登録順で突き合わせる)。
+  "GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources",
   // **【`V7-M5-T02`(`Z-G19`)が足した1本。旧の一覧から1行も消していない】**
   // **「誰にも見えない行」を見つける運営専用の口である**(**読取専用**。
   // **同じパスに `POST` / `PATCH` / `DELETE` を1本も生やしていない**ことは
@@ -576,6 +672,17 @@ const ROUTES: readonly {
   readonly wiredBy: string;
   /** **`app.ts` 以外に在る入口**(`V8-M21`)。**省略なら `app.ts` の登録行から切り出す。** */
   readonly source?: RouteSource;
+  /**
+   * **その入口の本文に**無い**判定の種類**(`V17-M7-T03` / 台帳 `AC-G28`)。
+   *
+   * **書いた行は、その種類が本文に無いことを完全一致で撃たれる**(**多くても少なくても赤**。
+   * 下の `(D-3)`)。 **省略した行は、この検査の対象にならない** ——
+   * **`missingKinds` を書いていないことは「欠落が無い」の主張ではない。**
+   *
+   * **`expected: "wired" | "pending"` とは別の軸である** —— **`wired` の行にも書ける**
+   * (「通ってはいるが、この種類は欠けている」)。
+   */
+  readonly missingKinds?: readonly JudgmentKind[];
 }[] = [
   {
     no: 1,
@@ -826,6 +933,107 @@ const ROUTES: readonly {
       judge: [JUDGE_PIPE, JUDGE_HOME],
     },
   },
+  // **【`V17-M6-T04`(台帳 `AC-G24` = 門外(`Δ7`)/ 限定採用)が足した1行。旧の表から
+  //   1行も消していない】** —— **付与の出どころを返す読取専用の口である。**
+  //
+  // **【なぜ判定の全量表に載せるか。`GET /api/apps/:app_id/public` との違いを書く】** ——
+  // **あちらは行を1件も返さないので載せていない。** **こちらは行の中身を1つも返さないが、
+  // **行の存在を 404 と 200 で区別する** —— **存在を伏せる判定を受けているので載せる。**
+  //
+  // **【`app.ts` の中に在るので `source` を持たない】** —— **判定の綴りは
+  //   {@link JUDGE_SOURCES} であり、ハンドラの本文にそのまま在る。**
+  {
+    no: 16,
+    name: "付与の出どころ GET",
+    /** **きっかけ**(同じファイルの内側でも判定の有無が割れる軸)。 */
+    trigger: "http",
+    key: "GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources",
+    expected: "wired",
+    wiredBy: "V17-M6-T04(台帳 AC-G24)",
+  },
+  // ===================================================================================
+  // **【`V17-M7-T03`(台帳 `AC-G28` = 門A(`Δ5`)/ 限定採用)が足した3行。
+  //   旧の16行は1バイトも書き換えていない】**
+  //
+  // **足したのは「行を書く点」であって、新しい口ではない。** —— **`app.ts` の登録は
+  //   16本のままであり、`HTTP_ENTRY_POINTS`(53)も `MCP_ENTRY_POINTS`(26)も1つも
+  //   動かしていない。** **`src/kernel/` は1バイトも書き換えていない**(`CP-V17` 条件7)。
+  //
+  // **【なぜ3本とも `on_create/on_update` か】** —— **どれも「登録・更新をきっかけに
+  //   動く処理の中の書込点」だからである。** **新しい `EntryTrigger` の値を作らない**
+  //   (型を増やすと `J-G26` の突合が2本目の表になる)。
+  //   **`http` / `manual` / `inbound` を選ぶと `httpRows` の 11 が動く** —— 事実にも合わない。
+  //
+  // **【数えられていなかった期間を名指しする】** —— **この3本は着手前まで `ROUTES` に
+  //   1行も無く、「未配線」としてすら数えられていなかった**(`no: 15` の注記と同じ型)。
+  // ===================================================================================
+  {
+    no: 17,
+    name: "発火元の行への書き戻し(write_back)",
+    /** **きっかけ**(同じファイルの内側でも判定の有無が割れる軸)。 */
+    trigger: "on_create/on_update",
+    key: "workflow-runner: writeBackToTriggerRecord",
+    // **【`wired` である。素通りではない】** —— **前段 `V17-M3-T02b`(`ADR-0415`)が
+    //   面と点(`judgeAutomationWrite`)と個人所有(`judgeOwnerScopedOp`)を配線した。**
+    //   **本段が配線したものは1つも無い。**
+    // **【ただし親の関門は今日も1つも無い】** —— **下の `missingKinds` がそれである。**
+    //   **`ADR-0338:80` の「素通りは `schedule` と `write_back` の2種である」は
+    //   今日は偽であり、そのことは `workflow-runner.ts` の注釈自身が既に書いている。**
+    expected: "wired",
+    wiredBy: "V17-M3-T02b(ADR-0415)",
+    missingKinds: ["parentGate"],
+    source: {
+      file: join(SRC, "kernel", "workflow-runner.ts"),
+      from: "function writeBackToTriggerRecord(",
+      judge: ALL_JUDGMENT_SPELLINGS,
+    },
+  },
+  {
+    no: 18,
+    name: "AI の書き戻し(ai_transform)",
+    /** **きっかけ**(同じファイルの内側でも判定の有無が割れる軸)。 */
+    trigger: "on_create/on_update",
+    key: "ai-dispatcher: writeBack",
+    // **【`wired` である。素通りではない】** —— **前段 `V17-M3-T03b` / `T03c`(`ADR-0415`)が
+    //   面と点(`judgeWriteBack`)と個人所有(`judgeWriteBackOwner`)を配線した。**
+    // **【ただし条件つきである。丸めない】** —— **`writeBackJudgmentApplies()` が真のときだけ
+    //   当たる。** **時刻起動から積まれたジョブと、ジョブが積まれた後にワークフローが
+    //   消えていた場合は通らない**(実測は `src/kernel/ai-writeback-access-control.test.ts` の
+    //   `(AC-G13-7)` / `(AC-G13-8)`)。 **この表は1経路1行なので、その割れを表せない。**
+    // **【`ADR-0317:240` の「素通りは2本(AI と時刻起動)」は今日は偽である】**
+    //   —— **AI の書き戻しは面と点も個人所有も通る。**
+    expected: "wired",
+    wiredBy: "V17-M3-T03b / T03c(ADR-0415)",
+    missingKinds: ["parentGate"],
+    source: {
+      file: join(SRC, "kernel", "ai-dispatcher.ts"),
+      from: "function writeBack(",
+      judge: ALL_JUDGMENT_SPELLINGS,
+    },
+  },
+  {
+    no: 19,
+    name: "自動処理の履歴を書く",
+    /** **きっかけ**(同じファイルの内側でも判定の有無が割れる軸)。 */
+    trigger: "on_create/on_update",
+    key: "workflow-runner: writeHistoryRow",
+    // **【素通し。塞いでいない】** —— **`createRecord` を直接呼び、判定の綴りを1つも持たない。**
+    //   **`runWorkflows` の入口で `isHistoryTable()` が意図的に短絡しており、
+    //   履歴表への書込は深度も抑止も1つも消費しない。**
+    // **【本段が見つけたものではない。手柄にしない】** —— **前段 `V17-M2` が既に実測している**
+    //   (`docs/plan/v17/records/v17-m2.md` の §8 の 14 / 独立点検の指摘13)。
+    //   **着手前からの形であり、本段は1バイトも動かしていない。**
+    // **【本段がしたこと】** —— **表に載せて数えられるようにしただけである。**
+    //   **【禁止】これを「塞いだ」と書かない。**
+    expected: "pending",
+    wiredBy: "(素通し。isHistoryTable の短絡。V17-M2 が実測済み)",
+    missingKinds: ["faceAndPoint", "ownerScope", "parentGate"],
+    source: {
+      file: join(SRC, "kernel", "workflow-runner.ts"),
+      from: "function writeHistoryRow(",
+      judge: ALL_JUDGMENT_SPELLINGS,
+    },
+  },
 ];
 
 /**
@@ -851,8 +1059,12 @@ async function bodyForRoute(
 
 /** **その行が判定を受けているか。** **`app.ts` 以外の行は自分の綴りで数える。** */
 function judgedForRoute(route: (typeof ROUTES)[number], body: string): boolean {
+  // **【`V17-M7-T03` による更新。旧の式を1バイトも消していない】**
+  // **旧(逐語)**: `? judgedIn(body)`
+  // **`judgedIn()` が真偽値ではなく**種類の配列**を返す形になったので、
+  //   ここは「1種類でも在るか」に読み替える。** **判定の中身は1ミリも変えていない。**
   return route.source === undefined
-    ? judgedIn(body)
+    ? judgedIn(body).length > 0
     : route.source.judge.some((spelling) => body.includes(spelling));
 }
 
@@ -876,7 +1088,14 @@ describe("V7-M3-T02 (A): app.ts の経路の全列挙", () => {
     // **【2026-08-14。`V8-M8`。台帳 `Q-G1`】期待値を 14 → 15 へ書き換えた。**
     // **旧行の逐語**: `expect(keys.length).toBe(14);`
     // **足したのは集計表の読取の口1本だけである**(`app.ts` に登録した `GET` 1本)。
-    expect(keys.length).toBe(15);
+    // **【2026-09-08。`V17-M6-T04`。台帳 `AC-G24`】期待値を 15 → 16 へ書き換えた。**
+    // **旧行の逐語**: `expect(keys.length).toBe(15);`
+    // **足したのは付与の出どころを返す読取の口1本だけである**(`app.ts` に登録した `GET` 1本)。
+    // **【この口は `app.use` も1本使う。数え方の違いを名指しで書く】** —— **`app.use` は
+    //   `app.get` ではないので、この一覧にも `HTTP_ENTRY_POINTS` にも1行も現れない。**
+    //   **一方 `src/server/runner-profile.test.ts` は Hono の `app.routes` を数えるので、
+    //   あちらでは `app.use` の1本も数に入る**(**65 → 67**。あちらのコメントに書いた)。
+    expect(keys.length).toBe(16);
   });
 
   // **【`V8-M21`(台帳 `J-G21` / `J-G22a` / `J-G23` / `J-G22b` / `D-V8-18` / `D-V8-20` /
@@ -913,9 +1132,20 @@ describe("V7-M3-T02 (A): app.ts の経路の全列挙", () => {
     //   **`inAppTs` は「`source` を持たない行」なので、その1行がこちらから外れた。**
     // **【緩めていない】** **`ROUTES.length` は 15 のままであり、集計表 `GET` は今日も
     //   (B-1) の側で `judged: true` を要求されている**(見る場所が変わっただけである)。
-    expect(inAppTs.length).toBe(8);
+    // **【`V17-M6-T04`(台帳 `AC-G24`)による更新。旧文を1バイトも消していない】**
+    // **旧の期待値(逐語)**: `expect(inAppTs.length).toBe(8);` / `expect(ROUTES.length).toBe(15);`
+    // **理由は「実物が変わった」側である** —— **`app.ts` の中に在って判定を受ける経路が
+    //   1本増えた**(付与の出どころ `GET`)。 **`source` を持たない行なので `inAppTs` に入る。**
+    // **【緩めていない】** **足した行も (B-1) で `judged: true` を要求されている。**
+    expect(inAppTs.length).toBe(9);
     // **表は1本のままである**(`ADR-0176` 限定6 の「表を2つに分けない」)。
-    expect(ROUTES.length).toBe(15);
+    // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧文を1バイトも消していない】**
+    // **旧の期待値(逐語)**: `expect(ROUTES.length).toBe(16);`
+    // **理由は「数え方が古かった」側である** —— **書込点3本(発火元の行への書き戻し /
+    //   AI の書き戻し / 自動処理の履歴)が、表に1行も無かった。**
+    // **【緩めていない】** **`inAppTs.length` は 9 のままである**(足した3行はどれも
+    //   `app.ts` の外に在るので `source` を持つ)。 **(A-1) も1バイトも動かしていない。**
+    expect(ROUTES.length).toBe(19);
   });
 
   test("(A-3) app.ts の外の6経路は、名指ししたファイルにその入口が実在する", async () => {
@@ -927,7 +1157,13 @@ describe("V7-M3-T02 (A): app.ts の経路の全列挙", () => {
     //   **名前は1バイトも書き換えていない**(このリポジトリの作法。訂正は追記)。
     // **【緩めていない】** **下の for は「名指ししたファイルにその入口が実在する」ことを
     //   7行すべてに掛けており、条件を1つも外していない。**
-    expect(outside).toHaveLength(7);
+    // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧文を1バイトも消していない】**
+    // **旧の期待値(逐語)**: `expect(outside).toHaveLength(7);`
+    // **足した3行はどれも `app.ts` の外に在る** —— **2本が
+    //   `src/kernel/workflow-runner.ts`、1本が `src/kernel/ai-dispatcher.ts` である。**
+    // **【緩めていない】** **下の for は「名指ししたファイルにその入口が実在する」ことを
+    //   10行すべてに掛けており、条件を1つも外していない。**
+    expect(outside).toHaveLength(10);
     for (const route of outside) {
       const text = await Bun.file((route.source as RouteSource).file).text();
       expect({
@@ -980,6 +1216,19 @@ describe("V7-M3-T02 (B): 入口が判定を受けているかを1本ずつ数え
       //   入っていなかった** —— **`ROUTES` にその行が無かったからである**
       //   (**「未配線」としてすら数えられていなかった**。上の `no: 15` の注記)。
       { no: 15, name: "集計表 GET", judged: true },
+      // **【`V17-M6-T04` が足した1行。旧文を1バイトも消していない】**
+      // **旧の期待値は14行で、`{ no: 16, name: "付与の出どころ GET", judged: true }` が
+      //   入っていなかった** —— **`ROUTES` にその行が無かったからである。**
+      { no: 16, name: "付与の出どころ GET", judged: true },
+      // **【`V17-M7-T03` が足した2行。旧文を1バイトも消していない】**
+      // **旧の期待値は15行で、下の `no: 17` / `no: 18` が入っていなかった** ——
+      //   **`ROUTES` にその2行が無かったからである**(**「未配線」としてすら
+      //   数えられていなかった**。上の `no: 15` の注記と同じ型である)。
+      // **配線したのは前段 `V17-M3`(`ADR-0415`)であり、本段ではない。**
+      // **【誇張しない】** **`judged: true` は「1種類でも判定を通る」の意味である** ——
+      //   **どちらも親の関門を1つも持たない**(下の `(D-3)` がそれを字面で固定する)。
+      { no: 17, name: "発火元の行への書き戻し(write_back)", judged: true },
+      { no: 18, name: "AI の書き戻し(ai_transform)", judged: true },
     ]);
   });
 
@@ -1033,11 +1282,34 @@ describe("V7-M3-T02 (B): 入口が判定を受けているかを1本ずつ数え
     //   `D-V8-33` / `J-G22b` = 保留 / `U-3` によって今日も塞いでいない。**
     // **この検査は消していない** —— **`no: 13` を捕まえ続け、10本目の経路を `"pending"` で
     //   足した人も同じように捕まえる。**
+    // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧文を1バイトも消していない】**
+    // **旧の期待値(逐語)**:
+    // ```
+    // expect(measured).toEqual([
+    //   {
+    //     no: 13,
+    //     name: "決まった時刻に動く処理",
+    //     wiredBy: "(素通し。D-V8-33 / J-G22b = 保留 / U-3)",
+    //     judged: false,
+    //   },
+    // ]);
+    // ```
+    // **【禁止】これを「素通りが増えた」と読まない** —— **増えたのは**数えた対象**であって、
+    //   **今日の挙動は着手前と1バイトも変わっていない。** **【禁止】「塞いだ」と書かない。**
+    // **足した1行(`no: 19`)は自動処理の履歴を書く1本であり、`isHistoryTable` が
+    //   意図的に短絡している**(**着手前からの形。前段 `V17-M2` が既に実測している**)。
+    // **【素通りは今日 2本である。1本でも0本でもない】** —— **時刻起動と、履歴を書く1本。**
     expect(measured).toEqual([
       {
         no: 13,
         name: "決まった時刻に動く処理",
         wiredBy: "(素通し。D-V8-33 / J-G22b = 保留 / U-3)",
+        judged: false,
+      },
+      {
+        no: 19,
+        name: "自動処理の履歴を書く",
+        wiredBy: "(素通し。isHistoryTable の短絡。V17-M2 が実測済み)",
         judged: false,
       },
     ]);
@@ -1111,7 +1383,17 @@ describe("V7-M3-T02 (B): 入口が判定を受けているかを1本ずつ数え
     //   1件増えた**(7 → 8)。**一覧とまったく同じ2行を書いた**(綴りを1つも足していない)。
     // **【緩めていない】** **`pipeCalls === pipeInHandlers` は今日も成り立つ** ——
     //   **増えた1件はハンドラの中に在り、`ROUTES` の `no: 15` として宣言してある。**
-    expect({ pipeCalls, pipeInHandlers }).toEqual({ pipeCalls: 8, pipeInHandlers: 8 });
+    // **【`V18-M7-T02`(台帳 `PM-G5` / `ADR-0444` 授権の表 行8)による更新。旧文を1バイトも
+    //   消していない】**
+    // **旧: `expect({ pipeCalls, pipeInHandlers }).toEqual({ pipeCalls: 8, pipeInHandlers: 8 });`**
+    //   (その前は 7 / 7、その前は 8 / 8、その前は 7 / 7、さらにその前は 6 / 6)。
+    // **理由は「実物が変わった」側である** —— **`DELETE` に、親を消すと残る行の連鎖の関門が
+    //   1本増え、その中で子の表ごとに配管を組む呼び出しが1件増えた**(8 → 9)。
+    // **【緩めていない】** **この検査が守っているのは「`app.ts` の中の配管の呼び出しは、すべて
+    //   宣言した経路の中にある」ことであり、`pipeCalls === pipeInHandlers` は今日も成り立つ** ——
+    //   **増えた1件は `DELETE` のハンドラの中に在る**(判定の残りは `cascadeChildDeleteJudge`
+    //   に在るが、**配管を組む呼び出しだけはハンドラの中に残してある**)。
+    expect({ pipeCalls, pipeInHandlers }).toEqual({ pipeCalls: 9, pipeInHandlers: 9 });
 
     // **判定そのものの呼び出し**: 配管の中に1件 + `POST` に1件 + バッチの create op に1件。
     const homeDefinition = countIn(source, `export function ${JUDGE_HOME}`);
@@ -1151,7 +1433,14 @@ test("J-G26: 判定の全量表の HTTP の行は、上の入口の全量表に�
   //   1件のずれも許さずに今日も全行に掛かっており、足した1行も `HTTP_ENTRY_POINTS`
   //   (`:173`)に既に載っている** —— **`V8-M8` は入口の全量表には足していたのに、
   //   判定の全量表には足していなかった。** **今日その差が消えた。**
-  expect(httpRows.length).toBe(10);
+  // **【`V17-M6-T04`(台帳 `AC-G24`)による更新。旧文を1バイトも消していない】**
+  // **旧の期待値(逐語)**: `expect(httpRows.length).toBe(10);`
+  // **理由は「実物が変わった」側である** —— **判定の全量表に、付与の出どころを返す
+  //   `GET` を1行足した。**
+  // **【緩めていない】** **下の突き合わせ(`HTTP_ENTRY_POINTS` に必ず載っている)は
+  //   1件のずれも許さずに今日も全行に掛かっており、足した1行も `HTTP_ENTRY_POINTS`
+  //   に既に載っている。**
+  expect(httpRows.length).toBe(11);
   for (const route of httpRows) {
     expect({ no: route.no, listed: HTTP_ENTRY_POINTS.includes(route.key) }).toEqual({
       no: route.no,
@@ -1166,12 +1455,32 @@ test("J-G26: きっかけで割れる経路が機械で表せている(同じフ
   const inRunner = ROUTES.filter(
     (route) => route.source?.file === join(SRC, "kernel", "workflow-runner.ts"),
   );
+  // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧文を1バイトも消していない】**
+  // **旧の期待値(逐語)は4要素で、下の2要素が入っていなかった**:
+  // ```
+  // expect(inRunner.map((route) => ({ trigger: route.trigger, expected: route.expected }))).toEqual([
+  //   { trigger: "on_create/on_update", expected: "wired" },
+  //   { trigger: "on_create/on_update", expected: "wired" },
+  //   { trigger: "on_create/on_update", expected: "wired" },
+  //   // **【素通し。塞いでいない】** **同じファイルの中で、きっかけだけが違う。**
+  //   { trigger: "schedule", expected: "pending" },
+  // ]);
+  // ```
+  // **足した2要素は `no: 17`(発火元の行への書き戻し)と `no: 19`(履歴を書く1本)である** ——
+  //   **どちらも `src/kernel/workflow-runner.ts` に在る。**
+  //   **`no: 18`(AI の書き戻し)は `src/kernel/ai-dispatcher.ts` なのでここには入らない。**
+  // **【この2要素が、きっかけでは割れないことを示している】** —— **`no: 17` と `no: 19` は
+  //   きっかけが同じ(`on_create/on_update`)なのに結果が割れる。**
+  //   **ファイル名でもきっかけでも区別できず、区別するのは書込点そのものである。**
   expect(inRunner.map((route) => ({ trigger: route.trigger, expected: route.expected }))).toEqual([
     { trigger: "on_create/on_update", expected: "wired" },
     { trigger: "on_create/on_update", expected: "wired" },
     { trigger: "on_create/on_update", expected: "wired" },
     // **【素通し。塞いでいない】** **同じファイルの中で、きっかけだけが違う。**
     { trigger: "schedule", expected: "pending" },
+    { trigger: "on_create/on_update", expected: "wired" },
+    // **【素通し。塞いでいない】** **同じきっかけでも、書込点によって結果が違う。**
+    { trigger: "on_create/on_update", expected: "pending" },
   ]);
   // **素通りするきっかけは2つちょうどである**(時刻起動と AI)。
   // **【`V8-M31-T07` による更新。旧文を1バイトも消していない】**
@@ -1182,11 +1491,18 @@ test("J-G26: きっかけで割れる経路が機械で表せている(同じフ
   //   あり、`D-V8-33`(時刻で動く処理だけは今日どおり素通し)/ `J-G22b` = 保留 /
   //   受け皿 `docs/plan/undecided.md` の `U-3` によって、今日も塞いでいない。**
   // **【禁止】これを「全部の入口で権限が効く」と読み替えないこと。**
+  // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧文を1バイトも消していない】**
+  // **旧(逐語)**: `).toEqual(["schedule"]);`(**素通りは1つ**)。
+  // **「素通りは今日1本である」と書いた上の注釈は1バイトも消していない** ——
+  //   **履歴を書く1本を数え直して2つになった。挙動は1ミリも動いていない。**
+  // **【禁止】これを「素通りが増えた」と書かない** —— **増えたのは**数えた対象**である。**
+  // **【禁止】「塞いだ」と書かない** —— **`isHistoryTable` の短絡は1バイトも動かしていない。**
+  // **並びは `sort()` 済みである**(`"on_create/on_update"` < `"schedule"`)。
   expect(
     ROUTES.filter((route) => route.expected === "pending")
       .map((route) => route.trigger)
       .sort(),
-  ).toEqual(["schedule"]);
+  ).toEqual(["on_create/on_update", "schedule"]);
 });
 
 test("J-G26: 判定の家の綴りは1本に閉じている(配管が呼ぶのは合成の1本である)", async () => {
@@ -1194,4 +1510,204 @@ test("J-G26: 判定の家の綴りは1本に閉じている(配管が呼ぶの�
   const source = readFileSync(APP_PATH, "utf-8");
   expect(source.includes(JUDGE_COMBINER)).toBe(true);
   expect(source.includes(JUDGE_RESOLVER)).toBe(false);
+});
+
+// =====================================================================================
+// **`V17-M0-T01g`**: resource 3本は、この表の**外**に在る(`ADR-0176` 限定6 / `ADR-0413`)
+// =====================================================================================
+//
+// **2026-09-07 に、語彙境界の全文3定数が `tools/list` から MCP の resource へ移った**
+// (`vocabulary://scope` / `vocabulary://cannot-do` / `vocabulary://out-of-scope`)。
+//
+// **この表が数える「口」の定義**: **`server.registerTool(` で登録された MCP の**道具**である。**
+// **`scanTools()` の正規表現がその定義そのものであり、resource は `server.registerResource(`
+// で登録されるので1本も数えない。** **したがって `MCP_ENTRY_POINTS` は 26 のままである。**
+//
+// **【表を2つに割らない】**(`ADR-0176` 限定6) —— **resource 用の全量表を新設しない。**
+// **理由**: 表が2つになると、片方だけが更新される状態が生まれる。
+// **resource の全量(3本ちょうど・URI・本文の逐語一致)は `src/mcp/server.test.ts` の
+// `V17-M0-T01b` が撃っており、そちらが唯一の分母である。**
+//
+// **【この判断が持つ限界。丸めない】** **「口」を道具に限ったので、この表は
+// 「AI から叩ける MCP の呼び出し口の全量」ではない。** **`resources/read` は今日、
+// この表のどこにも現れない呼び出し口である。** **`ADR-0176` §Context 2 の帰属先申告
+// (起動系の口を MCP に足さない)は resource でも破っていない** —— **resource は
+// 読み取り専用で、カーネルを1バイトも書き換えないからである。**
+
+test("V17-M0-T01g: 表が数える「口」は道具であり、resource は1本も数えない", () => {
+  // **`scanTools()` は `server.registerTool(` だけを走査する** —— この式が定義である。
+  const self = readFileSync(join(import.meta.dir, "entry-point-inventory.test.ts"), "utf-8");
+  expect(self).toContain("server\\.registerTool\\(");
+  // **resource を足しても道具は増えていない。**
+  expect(scanTools()).toEqual([...MCP_ENTRY_POINTS]);
+  // **【本数を字面で書かない】** —— `src/mcp/vocabulary.test.ts` の `V10-M34-T01 (4c)`
+  // (`ADR-0379` 限定8)が、**このファイルの中で本数を字面で凍結する式の出現を
+  // 「ちょうど1回」に固定している。** 2本目を書くと、道具を1本も増やしていないのに
+  // その検査が赤くなる(実測した)。**コメントに書くだけでも数に入る。**
+  // **だから本数は上の表の長さで見る。**
+  expect(scanTools().length).toBe(MCP_ENTRY_POINTS.length);
+});
+
+test("V17-M0-T01g: resource 3本がこの表の外に在ることが、このファイルに書いてある", () => {
+  const self = readFileSync(join(import.meta.dir, "entry-point-inventory.test.ts"), "utf-8");
+  // **【この test 自身の字面で緑にならない形にする】** —— 下の配列も同じファイルの中に在るので、
+  // **`toContain` だけだと「説明を消しても緑のまま」になる**(生まれた時点で真の検査になる)。
+  // **説明の側に1件、この配列に1件で、合わせて2件以上**であることを見る。
+  for (const uri of ["vocabulary://scope", "vocabulary://cannot-do", "vocabulary://out-of-scope"]) {
+    expect(self.split(uri).length - 1, uri).toBeGreaterThanOrEqual(2);
+  }
+  // **表を2つに割っていないこと**(`ADR-0176` 限定6)。
+  // **今日の全量表は `HTTP_ENTRY_POINTS` と `MCP_ENTRY_POINTS` の2本ちょうどで、
+  // resource 用の3本目を新設していない。**
+  // **【自己参照で壊れない形にしてある】** —— 下の正規表現の字面は
+  // `string\[\]` を含み、宣言側の字面(`string[]`)とは違うので、**この式自身は数に入らない。**
+  expect((self.match(/_ENTRY_POINTS: readonly string\[\] = \[/g) ?? []).length).toBe(2);
+  // **`MCP_ENTRY_POINTS` にも紛れ込んでいないこと。**
+  for (const name of MCP_ENTRY_POINTS) {
+    expect(name, name).not.toContain("vocabulary");
+  }
+});
+
+// =====================================================================================
+// **`V17-M7-T03`**: 判定の種類ごとの欠落を数える(台帳 `AC-G28` = 門A(`Δ5`)/ 限定採用)
+// =====================================================================================
+//
+// **【この節が撃っているもの】** —— **書込点で権限の判定を1つも通らないものを、
+// この表が1本も落とさずに数えられること。**
+//
+// **着手前は3本が表に載っていなかった** —— **発火元の行への書き戻し(`write_back`)/
+// AI の書き戻し(`ai_transform`)/ 自動処理の履歴を書く1本。**
+// **`ROUTES` に載っていない口は、「未配線」としてすら数えられない**
+// (`no: 15` の注記に書かれている、集計表の口が数えられていなかった期間と同じ型である)。
+//
+// **【手柄にしない】** **履歴表への書込が関門を1つも通らないことは、前段 `V17-M2` が
+// 既に実測している**(`docs/plan/v17/records/v17-m2.md` の §8 の 14 / 独立点検の指摘13。
+// **`isHistoryTable` が意図的に短絡している**)。 **本段が見つけたものではない。**
+//
+// **【誇張しない】** **本段は数えられるようにしただけであり、判定を1つも掛けていない。**
+// **【禁止】これを「全部の入口で権限が効くようになった」と書かない** ——
+// **権限を1つも通らない書込点は今日も2本ある**(下の `(D-5)`)。
+
+describe("V17-M7-T03 (D): 判定の種類ごとの欠落(AC-G28)", () => {
+  test("(D-1) 判定の全量表は19行である(書込点3本を数え直した)", () => {
+    // **【表を2本に割っていない】**(`ADR-0176` 限定6) —— **足したのは同じ `ROUTES` の行である。**
+    expect(ROUTES.length).toBe(19);
+  });
+
+  test("(D-2) judgedIn() は、本文に在る判定の種類を返す(真偽値1つでは書けない欠落を書ける)", async () => {
+    const runner = await Bun.file(join(SRC, "kernel", "workflow-runner.ts")).text();
+    const dispatcher = await Bun.file(join(SRC, "kernel", "ai-dispatcher.ts")).text();
+    const cut = (text: string, from: string): string => {
+      const at = text.indexOf(from);
+      expect({ from, found: at >= 0 }).toEqual({ from, found: true });
+      const end = text.indexOf("\n}\n", at);
+      return text.slice(at, end < 0 ? text.length : end);
+    };
+    // **発火元の行への書き戻し** —— **面と点も個人所有も通るが、親の関門は1つも無い。**
+    expect(judgedIn(cut(runner, "function writeBackToTriggerRecord("))).toEqual([
+      "faceAndPoint",
+      "ownerScope",
+    ]);
+    // **AI の書き戻し** —— **同じ形である**(`V17-M3-T03b` / `T03c` が配線した。`ADR-0415`)。
+    expect(judgedIn(cut(dispatcher, "function writeBack("))).toEqual([
+      "faceAndPoint",
+      "ownerScope",
+    ]);
+    // **自動処理の履歴を書く1本** —— **3種とも1つも無い**(`createRecord` を直接呼ぶ)。
+    expect(judgedIn(cut(runner, "function writeHistoryRow("))).toEqual([]);
+  });
+
+  test("(D-3) 種類ごとの欠落を宣言した行は、実物とちょうど一致する(多くても少なくても赤)", async () => {
+    const source = await Bun.file(APP_PATH).text();
+    const registrations = registrationsOf(source);
+    const declared = ROUTES.filter((route) => route.missingKinds !== undefined);
+    expect(declared.map((route) => route.no)).toEqual([17, 18, 19]);
+    const measured = await Promise.all(
+      declared.map(async (route) => {
+        const body = await bodyForRoute(route, source, registrations);
+        const found = judgedIn(body);
+        return {
+          no: route.no,
+          declared: [...(route.missingKinds ?? [])],
+          measured: JUDGMENT_KINDS.filter((kind) => !found.includes(kind)),
+        };
+      }),
+    );
+    // **宣言と実物がずれたら赤い**(**書き忘れも書きすぎも捕まる**)。
+    for (const row of measured) {
+      expect({ no: row.no, missing: row.measured }).toEqual({ no: row.no, missing: row.declared });
+    }
+    // **中身も字面で固定する** —— **「宣言と実物が一致する」だけだと、両方を同時に
+    //   書き換えれば緑のまま嘘になる。**
+    expect(measured).toEqual([
+      { no: 17, declared: ["parentGate"], measured: ["parentGate"] },
+      { no: 18, declared: ["parentGate"], measured: ["parentGate"] },
+      {
+        no: 19,
+        declared: ["faceAndPoint", "ownerScope", "parentGate"],
+        measured: ["faceAndPoint", "ownerScope", "parentGate"],
+      },
+    ]);
+  });
+
+  test("(D-4) judgedIn() を種類ごとに開いても、app.ts の行の判定は1つも緩んでいない", async () => {
+    // **【この検査は書いた時点で緑である。見張りとして置いている】** ——
+    // **`judgedIn()` の綴りが増えたことで `app.ts` の行が「通っている」側へ倒れたのでは
+    //   ないことを、**旧の式そのもの**で今日も打つ。**
+    // **旧の式(逐語)**:
+    //   `body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME) || body.includes(JUDGE_SOURCES)`
+    const source = await Bun.file(APP_PATH).text();
+    const registrations = registrationsOf(source);
+    const measured = ROUTES.filter((route) => route.source === undefined).map((route) => {
+      const body = bodyOf(source, registrations, route.key);
+      return {
+        no: route.no,
+        old: body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME) || body.includes(JUDGE_SOURCES),
+      };
+    });
+    for (const row of measured) {
+      expect(row).toEqual({ no: row.no, old: true });
+    }
+    expect(measured.length).toBe(9);
+  });
+
+  test("(D-5) 権限を1つも通らない書込点は今日2本である(0本ではない。塞いでいない)", async () => {
+    const source = await Bun.file(APP_PATH).text();
+    const registrations = registrationsOf(source);
+    const measured = await Promise.all(
+      ROUTES.map(async (route) => ({
+        no: route.no,
+        name: route.name,
+        kinds: judgedIn(await bodyForRoute(route, source, registrations)),
+      })),
+    );
+    // **【禁止】これを「素通りが増えた」と読まない** —— **増えたのは数えた対象であって、
+    //   今日の挙動は着手前と1バイトも変わっていない。**
+    // **時刻起動は `D-V8-33` / `J-G22b` = 保留 / `U-3`。**
+    // **履歴表は `isHistoryTable` の短絡であり、`V17-M2` が既に実測している。**
+    expect(measured.filter((row) => row.kinds.length === 0).map((row) => row.name)).toEqual([
+      "決まった時刻に動く処理",
+      "自動処理の履歴を書く",
+    ]);
+  });
+
+  test("(D-6) 判定の綴りは、実物に在る関数の名前だけである(新しい判定を1つも作っていない)", async () => {
+    // **`src/` のどこかに `function <綴り>` が実在することを、16綴りすべてについて打つ。**
+    const files = [
+      join(SRC, "server", "owner-scope.ts"),
+      join(SRC, "server", "app.ts"),
+      join(SRC, "server", "inbound-route.ts"),
+      join(SRC, "kernel", "workflow-runner.ts"),
+      join(SRC, "kernel", "ai-dispatcher.ts"),
+    ];
+    const sources = await Promise.all(files.map(async (file) => await Bun.file(file).text()));
+    for (const spelling of ALL_JUDGMENT_SPELLINGS) {
+      expect({
+        spelling,
+        defined: sources.some((text) => text.includes(`function ${spelling}`)),
+      }).toEqual({ spelling, defined: true });
+    }
+    // **綴りが3種のあいだで重複していないこと**(1つの綴りは1つの種類にだけ属する)。
+    expect(new Set(ALL_JUDGMENT_SPELLINGS).size).toBe(ALL_JUDGMENT_SPELLINGS.length);
+  });
 });

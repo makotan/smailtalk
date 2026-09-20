@@ -65,14 +65,33 @@ import { effectiveRolesOnDb, ensureAuthActivitySchema, recordActivity } from "..
 // **既存の述語**である(新しい判定式を1つも作らない)。**import の向きは新規に作っていない**
 // —— **すぐ上の `judgeOwnerScopedOp` が同じファイルから既に来ている**(限定の逐語
 // 「判定の家は同上(`:59` で既に import 済み)」)。
+// **【`V17-M2-T03c`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2 の 3】**
+// **この import に1語(`judgeCreateParentAccess`)足した。** **`ADR-0404` 限定8(逐語
+// 「**`src/kernel/` に1バイトも差分を出さない**」)を正面から破るが、`ADR-0411` がその
+// 限定を引き直している。** **`src/kernel/` の公開エクスポートは1本も増えていない** ——
+// **足したのは import する名前1語だけであり、判定の家は今日も `owner-scope.ts` の1本である。**
+// **【`V17-M3-T04b`(2026-09-07)/ `AC-G14` / `ADR-0416`】**
+// **この import に2語(`isOwnerVisible` / `roleReadCrossesOwnerScope`)足した**
+// (先例 `V17-M2-T03c`)。
+// **`src/kernel/` の公開エクスポートは1本も増えていない** —— **足したのは import する
+// 名前2語だけであり、判定の家は今日も `owner-scope.ts` の1本である。**
+//
+// **【2語目が要る理由。実測で分かった。隠さない】** —— **計画 §3-4 の対応表は
+// 「面と点」と「個人所有」の2本だけを写すと書いていたが、その2本だけでは
+// 単件 `GET` の答えと食い違う組み合わせが実在した**(実測: `automation-access-control.test.ts`
+// の `(AC-G14-3)` の4つ目の形)。 **単件 `GET` は、面がその表の**読取**を管轄して
+// 許すとき、個人所有の壁を**越えて** 200 を返す。** **その越え方を持つのが3語目である。**
 import {
   type ActorRoles,
   combineRoleAndCreatorGrant,
   creatorGrantPlan,
+  isOwnerVisible,
+  judgeCreateParentAccess,
   judgeOwnerScopedOp,
   judgeRoleAccess,
   recordAccessSourceTables,
   resolveCombinedRecordAccess,
+  roleReadCrossesOwnerScope,
 } from "../server/owner-scope.ts";
 import { AiCapabilityStore } from "./ai-capability-store.ts";
 import { AI_MAX_CHAIN_DEPTH, aiUsageDate, checkAiLimit, currentAiChainDepth } from "./ai-limits.ts";
@@ -760,6 +779,131 @@ export function runScheduledWorkflow(
 }
 
 /**
+ * **ボタン起動の `act_as` が指した行を、押した人が読めるか**
+ * (`V17-M3-T04b` / 台帳 `AC-G14` / `ADR-0416`)。
+ *
+ * ## 塞ぐ穴(**着手前の実測**)
+ *
+ * **`act_as` の宛先は、押した人が参照欄に入れた値で決まる。** **その参照先の行を
+ * 押した人が1件も読めなくても(単件 `GET` が 404 でも)、その行の持ち主として
+ * 自動処理が走っていた** —— **押した人は「自分に見えない誰か」になれた。**
+ *
+ * ## 掛ける範囲(**狭い側に倒す**)
+ *
+ * - **ボタン起動(`manual`)だけである。** **`on_create` / `on_update` / 時刻起動には
+ *   1バイトも掛からない**(この関数はボタン起動の経路からしか呼ばれない)。
+ *   **【正直に】したがって、`on_create` / `on_update` から `act_as` で他人になりすます
+ *   経路は本段の後も開いたままである。**
+ * - **`act_as` を宣言していないワークフローは1ミリも変わらない**(最初の `if` で返る)。
+ * - **参照が空・参照でない項目・押した人が居ない呼び出しも今日どおりである** ——
+ *   **今日の fail-closed(主体が空文字になり、書込側の判定が落とす)をこの関門が
+ *   横取りしない。**
+ *
+ * ## 判定は既存の述語だけを呼ぶ(**式を1行も書かない**)
+ *
+ * **単件 `GET` の門のうち、行の値を見る2つ**を、既存の述語2本でそのまま問う ——
+ * **個人所有は {@link isOwnerVisible}、面と点は {@link resolveCombinedRecordAccess}。**
+ * **新しい述語も新しい判定式も1つも作っていない。**
+ *
+ * ## **【述語が3本ある理由。計画は2本と書いていた。実測が覆した】**
+ *
+ * **計画 §3-4 の対応表は、単件 `GET` の門のうち「面と点」と「個人所有」の2本だけを
+ * 写すと書いていた。** **その2本だけで問うと、単件 `GET` が 200 を返す行を本関門が
+ * 断る組み合わせが実在した**(実測。`automation-access-control.test.ts` の
+ * `(AC-G14-3)` の4つ目の形)——
+ * **単件 `GET` は、面がその表の**読取**を管轄して許すとき、個人所有の壁を越えて 200 を
+ * 返すからである。** **その越え方を写す3本目({@link roleReadCrossesOwnerScope})を足して、
+ * 単件 `GET` とちょうど同じ答えにそろえた。**
+ * **3本とも既存の述語である** —— **新しい判定式を1行も書いていない。**
+ * **経緯は `docs/plan/v17/records/v17-m3.md` §3 に書いた。**
+ *
+ * ## **【この関門が塞がないもの。丸めない】**
+ *
+ * - **`act_as` の**書き手としての強さ**は1ミリも変えていない** —— **押した人に見える行で
+ *   ありさえすれば、今日どおりその行の持ち主として書かれる**(`ADR-0175` §6-3)。
+ * - **`on_create` / `on_update` からのなりすましは開いたままである。**
+ */
+function judgeManualActAsTarget(
+  db: Database,
+  manifest: Manifest,
+  workflow: Workflow,
+  record: RecordRow,
+  pressedBy?: string,
+): string | undefined {
+  const declared = workflow.act_as;
+  if (typeof declared !== "string" || !declared.startsWith(ACT_AS_PREFIX)) {
+    return undefined;
+  }
+  if (pressedBy === undefined || pressedBy === "") {
+    return undefined;
+  }
+  const fieldId = declared.slice(ACT_AS_PREFIX.length);
+  // **辿り方は `resolveWorkflowActor` と同じ形にそろえる**(あちらの本体は1バイトも
+  // 触っていない)—— **同じ項目から同じ表へ1ホップだけ辿る。**
+  const declaringTable = manifest.app.tables.find((table) =>
+    table.fields.some((field) => field.id === fieldId),
+  );
+  const field = declaringTable?.fields.find((candidate) => candidate.id === fieldId);
+  if (field === undefined || field.type !== "reference") {
+    return undefined;
+  }
+  const targetId = record[fieldId];
+  if (typeof targetId !== "string" || targetId === "") {
+    return undefined;
+  }
+  const tableId = field.reference_table;
+  // **存在も可否も、同じ1つの文面で伏せる**(単件 `GET` の 404 と同じ向き)——
+  // **「他人のものだから駄目」とは書かない。**
+  const hidden =
+    `の act_as が指すレコード(テーブル "${tableId}" の "${targetId}")は見つかりません` +
+    `(1行も書いていません)。`;
+  const found = getRecord(db, manifest, tableId, targetId);
+  if (!found.ok || found.value === null) {
+    return hidden;
+  }
+  const targetRow = found.value as unknown as Record<string, unknown>;
+  const roles = automationActorRoles(db, pressedBy);
+  // **個人所有の壁。** **面(役割の規則)がその表の**読取**を管轄して許すときは越える** ——
+  // **単件 `GET` とまったく同じ2本の合成である**(`app.ts` の個人スコープの枝)。
+  // **どちらも既存の述語であり、条件式をここに1行も書いていない。**
+  if (
+    !isOwnerVisible(targetRow[OWNER_STAMP_COLUMN], pressedBy) &&
+    !roleReadCrossesOwnerScope({
+      manifest,
+      roles,
+      table: tableId,
+      row: targetRow,
+      subject: pressedBy,
+    })
+  ) {
+    return hidden;
+  }
+  const resolved = resolveCombinedRecordAccess({
+    manifest,
+    tableId,
+    row: targetRow,
+    actorId: pressedBy,
+    roles,
+    sources: recordAccessSourceTables(manifest, tableId),
+    readRows: (id) => accessSourceRows(db, manifest, id),
+    readRow: (id, recordId) => {
+      const row = getRecord(db, manifest, id, recordId);
+      return row.ok && row.value !== null
+        ? (row.value as unknown as Record<string, unknown>)
+        : undefined;
+    },
+  });
+  if (resolved.kind === "limit_exceeded") {
+    // **上限に当たったことを「見えない」に丸めない**(`Z-G17` の作法)。
+    return (
+      `の act_as が指すレコードのアクセス権を解けませんでした` +
+      `(引き継ぎの上限に当たりました: ${resolved.limit})。1行も書いていません。`
+    );
+  }
+  return resolved.verdict.read ? undefined : hidden;
+}
+
+/**
  * **画面のボタンから名指しで起こされた1本**を実行する
  * (`V5-M25-T01` / `L-G8` / [`ADR-0174`](../../docs/adr/0174-manual-workflow-trigger.md))。
  *
@@ -852,7 +996,16 @@ export function runManualWorkflow(
   }
   depth += 1;
   try {
-    const outcome = runActions(db, manifest, workflow, record, pressedBy);
+    // **【`V17-M3-T04b`】`act_as` の宛先の関門**(`AC-G14` / `ADR-0416`)。
+    // **`workflow.actions` のループに入る**前**に置く** —— **`runActions` は前が失敗しても
+    // 後続を実行し、各アクションはその場で書くので、ループの中では「1行も書かずに」を
+    // 満たせない。** **断ったら `runActions` を1度も呼ばない。**
+    // **履歴は今日どおり書く**(黙って止めない。憲法6)—— **失敗が1行残る。**
+    const actAsDenial = judgeManualActAsTarget(db, manifest, workflow, record, pressedBy);
+    const outcome =
+      actAsDenial === undefined
+        ? runActions(db, manifest, workflow, record, pressedBy)
+        : { failures: [actAsDenial], skips: [] };
     writeHistory(db, manifest, workflow, "manual", outcome.failures, outcome.skips);
     return outcome.failures.map((text) => `ワークフロー "${workflow.id}" ${text}`);
   } finally {
@@ -1092,6 +1245,12 @@ function runAction(
         tableId: action.table,
         verb: "write",
         actor: actorOnce,
+        // **【`V17-M2-T03b`】前提の関門に渡す、これから作る行の値**(`AC-G7a`)。
+        // **この呼び出しは、すぐ上の素通しの述語の内側にある** —— **時刻起動には
+        // 1バイトも掛からない**(`ADR-0411` 限定1)。 **述語の綴りをここに書かない** ——
+        // **`src/server/user-creation-paths.test.ts:188` がその綴りの出現を **7** で
+        // 固定しており、コメントに書くだけで 8 になって赤くなる**(実測)。
+        values: values.value as unknown as Record<string, unknown>,
       });
       if (denied !== undefined) {
         return denied;
@@ -1103,7 +1262,8 @@ function runAction(
       stampAutomationOwner(manifest, action.table, values.value, actorOnce());
     }
     const result = createRecord(db, manifest, action.table, values.value);
-    return result.ok ? undefined : formatErrors(result.errors);
+    // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
+    return result.ok ? undefined : formatErrorsWithoutValues(result.errors);
   }
 
   // `target` は**更新対象の `_id` を与える文字列**である(ADR-0013 §7d / EC-G13 / ADR-0040)。
@@ -1126,7 +1286,10 @@ function runAction(
     return `target: ${target.message}`;
   }
   if (typeof target.value !== "string" || target.value === "") {
-    return `target が更新対象の _id になりませんでした(解決結果: ${JSON.stringify(target.value)})。`;
+    // **【`V17-M3-T07b` / `AC-G27a`】解決結果そのものを履歴に載せない** ——
+    // **`target` は `$record.<参照フィールド>` を解決した値であり、
+    //   トリガー元の行(= 履歴の読み手にとっては他人の行)の中身だからである。**
+    return `target を更新対象の _id に解決できませんでした(解決結果は履歴に残していません)。`;
   }
   // **【`V8-M21` / `J-G22a`】書込アクションの直前1箇所**(**時刻起動は素通し**)。
   // **対象行を読んでから判定する** —— **行が読めないときは判定を掛けない**
@@ -1139,16 +1302,59 @@ function runAction(
         ? (existing.value as unknown as Record<string, unknown>)
         : undefined;
     if (targetRow !== undefined) {
+      // **【`V17-M3-T01b`】主体を1度だけ解いて、下の2つの判定で使い回す**(`create_record`
+      // の枝と同じ作法。台帳 `F-G4`)。 **`automationActorId` を2度呼ぶと、この人として
+      // 動くの宣言がある発火で参照先の行を2回読むことになる** —— 答えは1バイトも変わらない。
+      let resolvedActor: string | null | undefined;
+      const actorOnce = (): string | null => {
+        if (resolvedActor === undefined) {
+          resolvedActor = automationActorId(db, manifest, workflow, record, manualActor);
+        }
+        return resolvedActor;
+      };
       const denied = judgeAutomationWrite({
         db,
         manifest,
         tableId: action.table,
         row: targetRow,
         verb: "write",
-        actor: () => automationActorId(db, manifest, workflow, record, manualActor),
+        actor: actorOnce,
       });
       if (denied !== undefined) {
         return denied;
+      }
+      // **【`V17-M3-T01b`】個人所有(`st_owner`)の判定**(`AC-G12` / `ADR-0414`)。
+      // **すぐ上の面と点の判定は `st_owner` を1つも問わない** —— **画面からは
+      // 「その行は存在しません」と断られる相手が、ボタン1つで同じ行を書き換えられた。**
+      //
+      // **判定は `src/server/owner-scope.ts` の `judgeOwnerScopedOp` 1本であり、
+      // HTTP のバッチ経路・島の更新操作と同じ関数である。** **ここは答えをこの経路の
+      // 断りの文面へ翻訳するだけで、`st_owner` の規約を1つも再実装しない。**
+      //
+      // **`op.op` は `"update"` で固定する** —— **`create` 枝は `values` の持ち主を
+      // 破壊的に上書きするので、更新の判定に混ぜてはならない。**
+      // **対象行はすぐ上で読んだ1件を渡す**(同じ行を2度読まない)。
+      const ownerVerdict = judgeOwnerScopedOp({
+        table: resolveTable(manifest, action.table),
+        op: {
+          op: "update",
+          table: action.table,
+          target: target.value,
+          values: values.value as unknown as Record<string, unknown>,
+        },
+        actorId: actorOnce(),
+        readRow: () => targetRow,
+      });
+      if (ownerVerdict.kind === "invisible") {
+        // **存在そのものを伏せる**(単件 `GET` の 404 と同じ向き)。
+        // **「他人のものだから駄目」とは書かない。**
+        return `更新対象のレコード(テーブル "${ownerVerdict.tableId}" の "${ownerVerdict.target}")は見つかりません(1バイトも書いていません)。`;
+      }
+      if (ownerVerdict.kind === "forbidden") {
+        return `この更新はレコードの所有者を付け替えようとしています(1バイトも書いていません)。`;
+      }
+      if (ownerVerdict.kind === "no_actor") {
+        return `この更新は個人所有のテーブルが相手ですが、この発火には所有者を決められるレコードがありません(1バイトも書いていません)。`;
       }
     }
   }
@@ -1157,7 +1363,8 @@ function runAction(
   // これは同一アプリ内の自動化であって「後発ユーザの黙殺」ではない。楽観ロック(CAS)の
   // 必須化は配線層(HTTP If-Match / MCP if_match)だけで行い、内部の自動更新には課さない。
   const result = updateRecord(db, manifest, action.table, target.value, values.value);
-  return result.ok ? undefined : formatErrors(result.errors);
+  // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
+  return result.ok ? undefined : formatErrorsWithoutValues(result.errors);
 }
 
 /**
@@ -1507,7 +1714,14 @@ function runRunFunction(
     hostFunctions,
   });
   if (result.status === "failure") {
-    return `関数 "${fn.id}" の実行に失敗しました(${result.reason}): ${result.error}`;
+    // **【`V17-M3-T07b` / `AC-G27a`】島が投げた本文を履歴に載せない。**
+    // **島の JS は `throw new Error(JSON.stringify(rows))` と書けるので、
+    //   `result.error` にはアクセス権で絞られていない行が丸ごと入りうる**
+    //   (`island-runner.ts` の `message()` は `e.message` をそのまま返し、
+    //    切り詰めも伏せ字も1つも挟まっていない。実測)。
+    // **残すのは**種別**だけである**(`timeout` / `memory` / `error` /
+    //   `input_too_large` / `output_too_large`。**5値。`island-runner.ts` の型そのまま**)。
+    return `関数 "${fn.id}" の実行に失敗しました(${result.reason})。詳細は履歴に残していません。`;
   }
 
   // 5a. **第3のモード(op 配列。D-G15 / ADR-0067)。** 島の出力を「更新操作の配列」として
@@ -1542,7 +1756,10 @@ function runRunFunction(
   //     (1行)をトリガー元レコード自身のフィールドへ書き戻す(output_table 全置換とは排他。
   //     schema の then 分岐が排他を担保)。検証を通った後にだけ書く。
   if (action.write_back !== undefined) {
-    return writeBackToTriggerRecord(db, manifest, workflow, fn, record, validated.value);
+    // **【`V17-M3-T02b`】書き手を1段下ろす**(`AC-G13` / `ADR-0415`)——
+    // **すぐ上(3.)で既に解けている1つを渡すだけである。** **新しい主体の決め方を
+    // 1つも作っていない**(`resolveWorkflowActor` を2度呼ばない)。
+    return writeBackToTriggerRecord(db, manifest, workflow, fn, record, validated.value, actor);
   }
 
   // 6b. output_table へ全置換(再計算)。既存行を全削除 → 検証済み行を挿入(ADR-0024 §Decision)。
@@ -1562,6 +1779,9 @@ function runRunFunction(
       manifest,
       outputTable,
       actor: () => (actor === "" ? null : actor),
+      // **【`V17-M2-T03b`】検証済みの行を1段下ろす**(`AC-G7a`)—— **全置換は
+      // これらの行を `createRecord` で**作る**ので、前提の関門の射程内である。**
+      rows: validated.value as unknown as readonly Record<string, unknown>[],
     });
     if (denied !== undefined) {
       return denied;
@@ -1575,7 +1795,8 @@ function runRunFunction(
   validated.value.forEach((row, index) => {
     const created = createRecord(db, manifest, outputTable, row);
     if (!created.ok) {
-      writeFailures.push(`出力${index + 1}行目: ${formatErrors(created.errors)}`);
+      // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
+      writeFailures.push(`出力${index + 1}行目: ${formatErrorsWithoutValues(created.errors)}`);
     }
   });
   if (writeFailures.length > 0) {
@@ -1618,6 +1839,15 @@ function writeBackToTriggerRecord(
   fn: FunctionDef,
   record: RecordRow | undefined,
   rows: RecordInput[],
+  /**
+   * **この発火の書き手**(`V17-M3-T02b` / `AC-G13` / `ADR-0415`)。
+   *
+   * **呼び出し元(`runRunFunction` の 3.)が既に解いている1つをそのまま受け取る** ——
+   * **`resolveWorkflowActor` をこの関数がもう一度呼ぶことはしない**(答えは1バイトも
+   * 変わらないうえ、`act_as` の1ホップ読取が2度走る)。
+   * **空文字は「書き手を特定できない」であり、既存の作法どおり `null` に倒す。**
+   */
+  actor: string,
 ): string | undefined {
   // 1. トリガー元レコードを要する(書き戻し先がそのレコード。schedule では fail-closed)。
   if (record === undefined || workflow.trigger.type === "schedule") {
@@ -1646,12 +1876,71 @@ function writeBackToTriggerRecord(
     }
   }
 
+  // 3a. **【`V17-M3-T02b`】この書き戻しにアクセス権を当てる**(`AC-G13` / `ADR-0415`)。
+  //
+  //     **着手前、この関数の本体には判定の綴りが1つも無かった** —— **面(役割)も
+  //     点(行ごとの付与)も個人所有(`st_owner`)も1度も問われないまま、
+  //     トリガー元の行の**本文**と**持ち主**が書き換わっていた。**
+  //
+  //     **【なぜ「この発火に判定を掛けるか」を問う述語をここで呼ばないか。実測して確かめた】**
+  //     —— **この関数は自分の先頭(上の 1.)で時刻起動を fail-closed している。**
+  //     **したがって時刻起動はここへ構造的に到達しない** —— **無条件に当てても、
+  //     時刻で動く処理の素通りは1ミリも動かない**(`D-V8-33` / `U-3` を1バイトも覆さない)。
+  //     **その述語の呼び出しを1件も増やさないことが、同時に限定の履行でもある。**
+  //
+  //     **判定は既存の2本だけを呼ぶ。** **判定の式を1行も写していない** ——
+  //     ここにあるのは「呼んで、答えをこの経路の断りの形へ翻訳する」ことだけである。
+  const actorId = actor === "" ? null : actor;
+  const triggerRow = record as unknown as Record<string, unknown>;
+  // (1) 面と点。**`update_record` の枝とまったく同じ述語・同じ動詞である。**
+  const denied = judgeAutomationWrite({
+    db,
+    manifest,
+    tableId: targetTable,
+    row: triggerRow,
+    verb: "write",
+    actor: () => actorId,
+  });
+  if (denied !== undefined) {
+    return `関数 "${fn.id}" の write_back を実行できません: ${denied}`;
+  }
+  // (2) 個人所有(`st_owner`)。**すぐ上の面と点は `st_owner` を1つも問わない** ——
+  //     **書き戻し先の持ち主の列は `table.fields` に在る普通の項目なので、
+  //     上の 3.(実在フィールドかだけを見る)も素通りする。**
+  //     **`op.op` は `"update"` で固定する**(`create` 枝は値の持ち主を破壊的に上書きする)。
+  //     **対象行はもう読まない** —— 呼び出し元から渡ってきた1件をそのまま返す。
+  const ownerVerdict = judgeOwnerScopedOp({
+    table: resolveTable(manifest, targetTable),
+    op: {
+      op: "update",
+      table: targetTable,
+      target: record._id,
+      values: row as unknown as Record<string, unknown>,
+    },
+    actorId,
+    readRow: () => triggerRow,
+  });
+  if (ownerVerdict.kind === "invisible") {
+    // **存在そのものを伏せる**(単件 `GET` の 404 と同じ向き)。
+    // **「他人のものだから駄目」とは書かない。**
+    return `関数 "${fn.id}" の write_back 先のレコード(テーブル "${ownerVerdict.tableId}" の "${ownerVerdict.target}")は見つかりません(1バイトも書いていません)。`;
+  }
+  if (ownerVerdict.kind === "forbidden") {
+    return `関数 "${fn.id}" の write_back はレコードの所有者を付け替えようとしています(1バイトも書いていません)。`;
+  }
+  if (ownerVerdict.kind === "no_actor") {
+    return `関数 "${fn.id}" の write_back は個人所有のテーブルが相手ですが、この発火には所有者を決められるレコードがありません(1バイトも書いていません)。`;
+  }
+
   // 4. トリガー元レコードへ書き戻す。**既存の updateRecord を通す**(records.ts の唯一の関門)。
   //    版(expectedVersion)は渡さない = 内部の自動更新に CAS を課さない(runAction の update_record と同型)。
   const result = updateRecord(db, manifest, targetTable, record._id, row);
+  // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
+  // **`record._id` は残す** —— **行の識別子であって中身ではなく、
+  //   落とすと「どの行で失敗したか」が履歴から読めなくなる。**
   return result.ok
     ? undefined
-    : `関数 "${fn.id}" の出力をトリガー元レコード "${record._id}" に書き戻せませんでした: ${formatErrors(result.errors)}`;
+    : `関数 "${fn.id}" の出力をトリガー元レコード "${record._id}" に書き戻せませんでした: ${formatErrorsWithoutValues(result.errors)}`;
 }
 
 /**
@@ -1806,6 +2095,16 @@ function applyIslandWriteOps(
           ? (existing.value as unknown as Record<string, unknown>)
           : undefined;
       if (op.op !== "update" || targetRow !== undefined) {
+        // **【`V17-M2-T03b`】前提の関門に渡す、これから作る行の値**(`AC-G7a`)。
+        // **`create` op のときだけ渡す** —— **`delete` op も `targetRow` を持たないので
+        // 同じ枝へ落ちるが、値を渡さないので関門は1度も発火しない**(`ADR-0411` 限定4)。
+        const createValues =
+          op.op === "create" &&
+          typeof op.values === "object" &&
+          op.values !== null &&
+          !Array.isArray(op.values)
+            ? (op.values as Record<string, unknown>)
+            : undefined;
         const denied = judgeAutomationWrite({
           db,
           manifest,
@@ -1813,6 +2112,7 @@ function applyIslandWriteOps(
           row: targetRow,
           verb: "write",
           actor: () => actorId,
+          values: createValues,
         });
         if (denied !== undefined) {
           return `関数 "${fn.id}" の更新操作 ${index + 1} 件目: ${denied}`;
@@ -1863,9 +2163,10 @@ function applyIslandWriteOps(
           },
         },
   );
+  // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
   return written.ok
     ? undefined
-    : `関数 "${fn.id}" の更新操作を適用できませんでした(1バイトも書いていません): ${formatErrors(written.errors)}`;
+    : `関数 "${fn.id}" の更新操作を適用できませんでした(1バイトも書いていません): ${formatErrorsWithoutValues(written.errors)}`;
 }
 
 // --- 自動処理・島の書込に、行ごとのアクセス権を当てる(`V8-M21`)-------------------------
@@ -1919,6 +2220,27 @@ function applyIslandWriteOps(
  * **数え方**: **同ファイル全体で「判定を掛けるか」を問う式は 7箇所であり、その7箇所は
  * すべて書き戻しの関数の外に在る。**
  *
+ * =====================================================================================
+ * **【2026-09-07 訂正(`V17-M3-T02b` / `T02c`。台帳 `AC-G13`。`ADR-0415`)。**
+ * **上の訂正も、その上の1文も、1バイトも書き換えていない】**
+ * =====================================================================================
+ *
+ * **上の表の 2(発火元の行への書き戻し)は、今日は偽である。**
+ * **その関数の本体に、面と点の判定と個人所有(`st_owner`)の判定が1本ずつ入った**
+ * (`writeBackToTriggerRecord` の 3a)。 **したがって残っているのは表の 1 だけである。**
+ *
+ * **【この訂正が言っていないこと。丸めない】**
+ *
+ * - **「判定を掛けるか」を問う式を1件も足していない** —— **書き戻しの関数は自分の先頭で
+ *   時刻起動を fail-closed しており、時刻起動はそこへ構造的に到達しない。**
+ *   **上の「数え方」の 7 は今日も 7 である**(`V17-M3-T02b` が実測して確かめた)。
+ * - **時刻起動の素通りは1ミリも動いていない** —— **`U-3` は今日も保留である。**
+ * - **「全部の書込点に判定が立った」とは書かない** —— **`output_table` の全置換は今日も
+ *   個人所有を1つも見ないし、AI の書き戻しは別の葉(`AC-G13` の後半)の担当である。**
+ *
+ * **【注釈の書き方の限定は上の訂正と同じである】** **この訂正文にも、判定の綴りを
+ * 1文字も書き写していない**(書くと `grep -c` の数が動き、限定表の式が訂正を数え始める)。
+ *
  * **【この訂正が言っていないこと。丸めない】**
  *
  * - **軸1 がこの2つ目を塞いだとも、塞がなかったとも書かない** —— **軸1 は書き戻しに
@@ -1942,7 +2264,7 @@ function applyIslandWriteOps(
  * **実測は `src/kernel/automation-writer-passthrough.test.ts` の (e) / (e-2) が持つ。**
  * **【禁止】「全部の入口に効く」と書かない。**
  */
-function accessJudgmentApplies(workflow: Workflow): boolean {
+export function accessJudgmentApplies(workflow: Workflow): boolean {
   return workflow.trigger.type !== "schedule";
 }
 
@@ -2101,6 +2423,27 @@ function onceActor(actor: () => string | null): () => string | null {
  *  3. **更新・削除**: **{@link resolveCombinedRecordAccess}**(面と点を `OR` で重ねる側)。
  *     **その中で `resolveRecordAccess` が呼ばれ、各段で判定の家が呼ばれる。**
  *
+ * ## **【`V17-M2-T03b` による訂正(2026-09-07)。上の3行を1バイトも消していない】**
+ *
+ * **「今日の形(3行で全部である)」は今日は偽である。** **今日は **4行**であり、
+ * 2 の**手前**に前提の関門が1つ入る** —— **`AC-G7a` / `ADR-0411` §Decision の 2。**
+ *
+ *  0. **作成で、かつ `values` を渡されたとき**: **その表が引き継ぎ元を宣言していれば、
+ *     指された元の行に書けるかを {@link judgeCreateParentAccess}(`owner-scope.ts` の
+ *     既存の述語1本)に問う。** **判定の式を1行も写していない。**
+ *
+ * **【この 0 が「3行で全部」を崩さない場合を、丸めずに書く】**
+ *  - **引き継ぎ元を1本も宣言していない表では、述語が「掛からない」を返す** ——
+ *    **答えは着手前と1バイトも変わらない**(`ADR-0411` 限定7)。
+ *  - **`values` を渡さない呼び出し(削除 op / 全置換の「書く権限」の1度目)では、
+ *    関門は1度も発火しない**(限定4)—— **`delete` op も `row === undefined` の枝へ
+ *    落ちることに依存しているので、この区別は**実行する検査**でしか測れない**
+ *    (`src/server/automation-access-control.test.ts` の `(AC-G7a-11)`)。
+ *  - **更新には1バイトも掛かっていない** —— **島の `write_ops` の `update` op も
+ *    `write_back` も、親を別の親へ書き換えられる**(`(AC-G7a-12)`)。
+ *  - **時刻起動には1バイトも掛かっていない**(限定1)—— **呼び出し側が素通しの述語の
+ *    内側でだけ呼ぶ形は1ミリも動いていない**(`(AC-G7a-13)`)。
+ *
  * **合成の規則を1つも書いていない** —— **`OR` を決めているのは `owner-scope.ts` の
  * 既存1本である。** **`V8-M19` がブラウザの経路に入れたものと同じ関数であり、
  * 入口ごとに振る舞いが割れない**(`ADR-0003` §7)。
@@ -2153,7 +2496,7 @@ function onceActor(actor: () => string | null): () => string | null {
  *
  * **実測は `src/kernel/automation-writer-passthrough.test.ts` の (f) / (f-3) が持つ。**
  */
-function judgeAutomationWrite(params: {
+export function judgeAutomationWrite(params: {
   db: Database;
   manifest: Manifest;
   tableId: ResourceId;
@@ -2162,8 +2505,23 @@ function judgeAutomationWrite(params: {
   verb: "write" | "delete";
   /** **書き手を解く。** **どちらの層も管轄外なら1度も呼ばれない**(無駄な1ホップ読取を作らない)。 */
   actor: () => string | null;
+  /**
+   * **これから作る行の値**(`V17-M2-T03b` / `AC-G7a` / `ADR-0411`)。
+   * **「作る」op だけが渡す。**
+   *
+   * **渡したときだけ、前提の関門({@link judgeCreateParentAccess})が1度呼ばれる** ——
+   * **その表が引き継ぎ元を宣言していれば、指された元の行に書けるかを問う。**
+   *
+   * **【なぜ `row === undefined` を作成の合図に使わないか。ここが本段でいちばん壊れやすい】**
+   * —— **{@link applyIslandWriteOps} は `op.op !== "update"` のとき対象行を渡さないので、
+   * **`delete` op も `row === undefined` の枝へ落ちる**。** **`row === undefined` を合図に
+   * すると、削除にも関門が掛かる** —— **`ADR-0411` 限定4 の逐語「本単位が触るのは
+   * 「作る」だけである」に反する。** **したがって合図は**この引数の有無**である。**
+   * **渡さなければ着手前と1バイトも変わらない。**
+   */
+  values?: Record<string, unknown> | undefined;
 }): string | undefined {
-  const { db, manifest, tableId, row, verb } = params;
+  const { db, manifest, tableId, row, verb, values } = params;
   const sources = recordAccessSourceTables(manifest, tableId);
   const actorId = params.actor();
   if (actorId === null && sources === undefined) {
@@ -2173,6 +2531,62 @@ function judgeAutomationWrite(params: {
   const roles = automationActorRoles(db, actorId);
   const who = actorId === null ? "この発火では書き手を特定できません" : `"${actorId}"`;
   if (row === undefined) {
+    // **【`V17-M2-T03b`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2 の 2】**
+    // **前提の関門。** **`creatorGrantPlan` の直前に置く**(HTTP の単件 `POST` と同じ並び)。
+    //
+    // **判定の式を1行も写していない** —— **呼ぶのは `owner-scope.ts` の既存の述語1本だけで
+    // あり、ここにあるのは「答えを、この経路が今日持っている断りの形(日本語の理由文字列)へ
+    // 翻訳する」ことだけである**(`ADR-0411` 限定2 / 限定5)。
+    // **断り文の**種類**を1本も増やしていない** —— **`app.ts` の `createParentDenial` は
+    // 非 export なので、写さずにこの経路の形へ載せている。**
+    //
+    // **【この `if` が限定4 の履行そのものである】** —— **`values` を渡すのは「作る」op
+    // だけなので、`delete` op(同じ枝へ落ちる)にも更新にも1度も発火しない。**
+    // **実行で撃つ検査は `src/server/automation-access-control.test.ts` の
+    // `(AC-G7a-11)` / `(AC-G7a-12)` である**(源の走査では作成と削除を区別できない)。
+    if (values !== undefined) {
+      const parent = judgeCreateParentAccess({
+        manifest,
+        tableId,
+        values,
+        actorId,
+        readRows: (id) => accessSourceRows(db, manifest, id),
+        readRow: (id, recordId) => {
+          const found = getRecord(db, manifest, id, recordId);
+          return found.ok && found.value !== null
+            ? (found.value as unknown as Record<string, unknown>)
+            : undefined;
+        },
+      });
+      if (parent.kind === "limit_exceeded") {
+        // **上限に当たったことを「権限が無い」に丸めない**(`Z-G17` の作法。すぐ下の
+        // 更新側の枝と同じ形である)。
+        return (
+          `テーブル "${tableId}" の元になる行のアクセス権を解けませんでした` +
+          `(引き継ぎの上限に当たりました: ${parent.limit})。1バイトも書いていません。`
+        );
+      }
+      if (parent.kind === "ungoverned_parent") {
+        return (
+          `テーブル "${tableId}" の行は、元になる行の側で「誰が何をできるか」が` +
+          `決められていないため、今は誰も作れません(1バイトも書いていません)。`
+        );
+      }
+      if (parent.kind === "missing_named_permission") {
+        return (
+          `テーブル "${tableId}" の行は、元になる行に対してアプリが決めた種類の権限を持つ人だけが` +
+          `作れます。この自動処理の書き手(${who})は元になる行を書き換えられますが、` +
+          `その種類の権限を持っていません(1バイトも書いていません)。`
+        );
+      }
+      if (parent.kind !== "allowed") {
+        return (
+          `テーブル "${tableId}" の行は、元になる行に書き込める人だけが作れます。` +
+          `この自動処理の書き手(${who})には、指定された元の行を書き換える権限が` +
+          `ありません(1バイトも書いていません)。`
+        );
+      }
+    }
     // **作成。** **面は「役割 × 表 × 書込」を、点は「作った本人に何が渡るか」を答える。**
     const combined = combineRoleAndCreatorGrant({
       role: judgeRoleAccess({
@@ -2248,6 +2662,17 @@ function judgeAutomationWrite(params: {
  *  3. **既存行が0件なら、消す権限は1つも問わない** —— **消すものが無いからである。**
  *     **書く権限は今日も問う。**
  *
+ * **【`V17-M2-T03b` による訂正(2026-09-07)。上の3項を1バイトも消していない】** ——
+ * **「次の形を採った」の項は今日は **4つ**である。** **1 と 2 のあいだに、
+ * **これから書き直す行ごとに前提の関門を問う**段が入る**(`AC-G7a` / `ADR-0411`)。
+ * **置いたのは**消し始める前**であり、1行でも断られたら1行も消さない** ——
+ * **3(既存行が0件なら消す権限を問わない)は今日も真だが、書く行が親を指していれば、
+ * 既存行が0件でも関門は問う。**
+ * **関門は {@link judgeAutomationWrite} を通して呼んでいる** —— **前提の関門の呼び出しを
+ * このファイルに2件目として書いていない**(`ADR-0411` 限定12)。
+ * **【綴りをこの散文にも書かない】** —— **限定12 の式は源を走査して数えるので、
+ * 散文に書くだけで本数が1つ増えて赤くなる**(実測)。
+ *
  * **【この判断が意味すること。丸めない】** **出力先に行ごとのアクセス権を宣言した
  * アプリでは、その表の行を全部消せる主体でなければ再計算が止まる。** **止まったことは
  * 履歴に理由つきで残る**(黙って古い集計が残る形にはしない)。
@@ -2259,6 +2684,19 @@ function judgeOutputTableReplace(params: {
   manifest: Manifest;
   outputTable: ResourceId;
   actor: () => string | null;
+  /**
+   * **これから書き直す行**(`V17-M2-T03b` / `AC-G7a` / `ADR-0411`)。
+   *
+   * **【なぜ足したか。計画の初版はここに関門を掛けないと書いていた】** ——
+   * **全置換は「既存行を全部消してから書き直す」であり、書き直す側は
+   * {@link runRunFunction} が `createRecord` で**作っている**。**
+   * **掛けないと、島の既定の書込先が丸ごと素通りしたまま残る** ——
+   * **`D-V16-4` の逐語「全部の入口に立てる」に反する。**
+   *
+   * **関門は {@link judgeAutomationWrite} を通して呼ぶ** —— **前提の関門の呼び出しを
+   * このファイルに2件目として書かない**(`ADR-0411` 限定12 が総数7を固定している)。
+   */
+  rows?: readonly Record<string, unknown>[] | undefined;
 }): string | undefined {
   const { db, manifest, outputTable } = params;
   // **【`V8-M26`】書き手は1回だけ解く**({@link onceActor})—— **下の繰り返しで解き直さない。**
@@ -2279,6 +2717,27 @@ function judgeOutputTableReplace(params: {
   const write = judgeAutomationWrite({ db, manifest, tableId: outputTable, verb: "write", actor });
   if (write !== undefined) {
     return `出力先テーブル "${outputTable}" を作り直せません: ${write}`;
+  }
+  // **【`V17-M2-T03b`(2026-09-07)/ `AC-G7a` / `ADR-0411`】前提の関門を、書き直す行ごとに
+  // 問う。** **消し始める**前**に置く** —— **1行でも断られたら1行も消さない**(この関数の
+  // 既存の作法と同じで、途中まで消えた出力先を作らない)。
+  // **`values` を渡すことだけが関門の合図であり、上の1行(書く権限の判定)は渡していないので
+  // 今日と1バイトも変わらない。**
+  for (const [index, row] of (params.rows ?? []).entries()) {
+    const deniedCreate = judgeAutomationWrite({
+      db,
+      manifest,
+      tableId: outputTable,
+      verb: "write",
+      actor,
+      values: row,
+    });
+    if (deniedCreate !== undefined) {
+      return (
+        `出力先テーブル "${outputTable}" を作り直せません` +
+        `(出力${index + 1}行目。1行も消していません): ${deniedCreate}`
+      );
+    }
   }
   const existing = accessSourceRows(db, manifest, outputTable);
   for (const row of existing) {
@@ -2592,7 +3051,8 @@ function validateFunctionOutput(fn: FunctionDef, output: unknown): Resolved<Reco
   if (errors.length > 0) {
     return {
       ok: false,
-      message: `関数の出力がスキーマ検証に失敗しました: ${formatErrors(errors)}`,
+      // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
+      message: `関数の出力がスキーマ検証に失敗しました: ${formatErrorsWithoutValues(errors)}`,
     };
   }
   return { ok: true, value: rows };
@@ -2776,7 +3236,18 @@ function writeHistory(
   // **失敗もスキップも無いときの `error` は `null` を明示的に書く**(従来どおり。後方互換)。
   // キーごと落とすと、`error` 列が欠けた履歴テーブルが**成功している間だけ**検出されず、
   // 最初の失敗が起きた瞬間に初めて履歴が消える —— **最も知りたい1行だけが落ちる**壊れ方になる。
-  const errorParts = [...failures, ...skips];
+  // **【`V17-M3-T11`(2026-09-07)/ `AC-G27a` の8つ目の流入口】**
+  // **判定の断り文に載る**書き手の ID** を、**履歴へ書くときだけ**落とす。**
+  //
+  // **`act_as` を宣言した発火では、この ID は「参照先の行の `st_owner`」である** ——
+  // **`b1` の再現が名指しした3値(`title` / `memo` / `st_owner`)のうちの1つが、
+  //   履歴の読み手が読めない行の値のまま `error` 列へ入っていた。**
+  //
+  // **【要求した本人への応答は1バイトも変えていない】** —— **落とすのはここだけである。**
+  // **`failures` の配列そのものは1文字も書き換えず、履歴へ渡す1本の文字列を組むときに
+  //   だけ通す** —— **呼び出し元(`records.ts` の `workflowFailureError`)が読む
+  //   `failures` は着手前と同じ値のままである。**
+  const errorParts = [...failures, ...skips].map(redactAutomationActorId);
   const input: RecordInput = {
     // **時刻源から採る**(V1-M2-T08 単位1。既定は実時刻)。形式は UTC の ISO8601 のまま
     // 変えない —— T02 が書いた既存の履歴行と形式が混ざるのを避ける。**「その TZ での今日」は
@@ -2846,9 +3317,86 @@ function writeHistoryRow(
   }
 }
 
+/**
+ * **判定の断り文から、書き手の ID を落とす**(`V17-M3-T11` / `AC-G27a` の8つ目の流入口)。
+ *
+ * **当たるのは {@link judgeAutomationWrite} が組む4本の断り文だけである** ——
+ * どれも `この自動処理の書き手("<id>")` という同じ1つの形を持つ。
+ * **`この発火では書き手を特定できません` の側は ID を1文字も含まないので当たらない。**
+ *
+ * **【この関数が守らないこと。誇張しない】** **失敗の頭に付く
+ * `レコード "<record._id>": ` の `_id` は落とさない**(`_id` を残す決着の帰結。§9-2b)。
+ * **断り文の外に ID が現れる経路が将来足されたら、この式は1文字も当たらない。**
+ */
+function redactAutomationActorId(text: string): string {
+  return text.replace(
+    /この自動処理の書き手\("[^"]*"\)/g,
+    "この自動処理の書き手(履歴には残していません)",
+  );
+}
+
 /** `ValidationError` の配列を人間可読な1つの文字列に畳む。 */
 function formatErrors(errors: ValidationError[]): string {
   return errors
     .map((error) => (error.path === "" ? error.message : `${error.path} ${error.message}`))
     .join(" / ");
+}
+
+/**
+ * **`formatErrors` の「値を1バイトも含まない」版**(`V17-M3-T07b` / `AC-G27a`)。
+ *
+ * **なぜ要るか**(計画 §3-7 / `b1` の再現) —— **実行履歴の `error` 列は、そのアプリの
+ * 履歴表を読める人なら誰でも読める。** **ところが検証エラーの `message` は
+ * `records.ts` の「受け取った値: …」など、**書こうとした値そのもの**を本文に載せる。**
+ * **島の入力はアクセス権で絞らずに読まれるので、そこから来た**他人の行の値**が
+ * `message` を経由して履歴に到達する** —— **無関係な `user3` が履歴を開くと他人の
+ * `title` / `memo` / `st_owner` が丸ごと並ぶ、というのが実測された姿である**
+ * (`docs/plan/v16/records/investigation-b1-unmeasured-writes.md:258`-`:311`)。
+ *
+ * **【`records.ts` の本文は1バイトも触っていない】** —— **あちらの文面は
+ * HTTP の 400 応答にも使われ、**要求した本人**には見せてよい。**
+ * **落とすのは「履歴へ書く経路で組む文字列」だけである。**
+ *
+ * **残すもの / 落とすもの**:
+ *
+ * - **残す**: `path`(RFC 6901 JSON Pointer)。**`/count` や `/ops/0/op` のような
+ *   **構造**の位置であって、行の中身ではない。**
+ * - **残す**: `allowed_values`。**スキーマが宣言した許可値の一覧であって行の中身ではない**
+ *   (`errors.ts` の型が「許可される値の一覧」と定めている)。
+ * - **落とす**: `message` と `hint` の本文。**値を載せているのはこの2つだけである。**
+ *
+ * **【`path` が空文字の失敗だけは本文を残す。理由を実測で列挙した】** ——
+ * **`path: ""` は「この行のどこか1つの項目」ではなく**行の書込そのもの**が
+ * 成立しなかった失敗であり、`records.ts` でその形を作っているのは**次の5つだけである**
+ * (`LC_ALL=C /usr/bin/grep -n 'path: ""' src/kernel/records.ts` → `:162` / `:190` /
+ *  `:346` / `:363` / `:1599`。**実測**):
+ *
+ *  1. `:162` **発火したワークフローのアクションが失敗して書込が巻き戻った**
+ *     —— **本文に入っているのは、その内側のアクションの失敗の説明である。**
+ *     **内側もこの経路を通っているので、既に値が落ちている。**
+ *     **ここを落とすと「連鎖が深度上限で止まった」が履歴から丸ごと読めなくなる。**
+ *  2. `:190` 版の衝突(`_id` だけ)。 3. `:346` テーブルが無い。
+ *  4. `:363` システムテーブルは書けない。 5. `:1599` レコードが無い(`_id` だけ)。
+ *
+ * **この5つはどれも行の**値**を1つも載せていない**(載っているのは `_id` と
+ * テーブル id だけである。**`_id` は残すと決めた** —— 計画 §3-7 の決着5-2)。
+ * **値を載せる失敗は例外なく項目の `path` を持つ**(`:454` の「受け取った値」・
+ * `:527` / `:541` の選択肢・`:790` の一意違反。**実測**)。
+ *
+ * **【正直に。これは情報の損失である】** —— **項目の失敗については「型が違う」
+ * 「必須が空」といった**理由**が履歴から読めなくなる。**
+ * **理由を残すには `message` を形ごとに切り分ける必要があり、1つでも見落とすと
+ * 同じ穴が名前を変えて残る。**
+ * **`ValidationError` は今日、機械で読める失敗の種別(コード)を1つも持っていない。**
+ */
+function formatErrorsWithoutValues(errors: ValidationError[]): string {
+  const places = errors.map((error) => {
+    if (error.path === "") {
+      return error.message;
+    }
+    return error.allowed_values === undefined
+      ? error.path
+      : `${error.path}(許可される値: ${error.allowed_values.join(" / ")})`;
+  });
+  return `検証に失敗した箇所 ${errors.length} 件(${places.join(" / ")})。項目の値は履歴に残していません。`;
 }

@@ -15,6 +15,8 @@ import {
   createFilesTableSql,
   FILES_PK,
   FILES_TABLE_ID,
+  FILES_UPLOADED_BY,
+  FILES_UPLOADED_BY_COLUMN_DDL,
 } from "../shared/files-table.ts";
 
 /** `_files` の1行(API が返す形と一致)。 */
@@ -32,6 +34,18 @@ export type FileRecord = {
   mime: string;
   size: number;
   filename: string | null;
+  /**
+   * **上げた人**(`V17-M4-T03b` / `AC-G21`。ユーザ決定 `D4` / `D2`)。
+   *
+   * **`null` は「上げた人が分からない」**(列を足す前に上げた行)。
+   * **まだどのレコードにも載っていないファイルは、この人にだけ配る** ——
+   * **`null` なら誰にも配らない。運営者も例外にしない。**
+   *
+   * **【上の「API が返す形と一致」は、この列については偽である。旧文を1バイトも消していない】**
+   * **アップロードの応答本文に `uploaded_by` を1文字も足していない**
+   * (`POST /api/apps/:app_id/files` の 201 の形は着手前と1バイトも同じである)。
+   */
+  uploaded_by: string | null;
 };
 
 /**
@@ -40,9 +54,42 @@ export type FileRecord = {
  * 新規アプリは `create-app.ts` が作成時に流すが、**本機能導入前に作られた既存アプリ**には
  * `_files` が無い。アップロードのたびに INSERT の前へ流すことで遅延マイグレーションになる
  * (`ensureAuthActivitySchema` が `_auth_activity` を遅延生成するのと同型)。冪等。
+ *
+ * **【`V17-M4-T03b`(`AC-G21`)による訂正。上の1行を1バイトも消していない】**
+ *
+ * **「新規アプリは `create-app.ts` が作成時に流す」は今日すでに偽である。**
+ * **`src/kernel/create-app.ts` は `_files` も `files-table.ts` も1文字も参照していない**
+ * (実測: 当たりは **0** 件)。 **`_files` を作るのは、この関数の1本だけである** ——
+ * **新規アプリでも、最初のアップロードのときにここで初めて作られる。**
  */
 export function ensureFilesTable(db: Database): void {
   db.exec(createFilesTableSql());
+  // --- 【`V17-M4-T03b` / `AC-G21`】**既存の `_files` に7本目の列を足す** ------------------
+  //
+  // **`CREATE TABLE IF NOT EXISTS` は既存テーブルに列を1本も足さない。**
+  // **これが無いと、着手前に一度でもファイルを上げたアプリで INSERT が
+  // `no such column: uploaded_by` で落ちる**(= **そのアプリは1件も上げられなくなる**)。
+  //
+  // **形は `src/auth/store.ts` の `migrateActivityChanges` と同じである**
+  // (`PRAGMA table_info` で見てから足す)。**冪等。**
+  //
+  // **【新規のアプリもここを通る】** **`createFilesTableSql()` は6列のままである** ——
+  // **7本目を足すのはこの `ALTER TABLE` **1本だけ**であり、`_files` を作る経路は
+  // この関数ただ1つなので、ディスク上の `_files` はどれも7列になる。**
+  // **`CREATE TABLE` の側に書かないのは、`src/kernel/create-app.test.ts` が
+  // その列の一覧を逐語で凍結しており、本段は `src/kernel/` に1バイトも差分を
+  // 出せないからである**(理由の全文は `src/shared/files-table.ts` の doc)。
+  //
+  // **`RUNNER_BUILD_VERSION` は1文字も上げていない** —— **上げると `user_version = 0` の
+  // ボリューム(今日の全部)が起動しなくなる**(`scripts/migrate-volume.ts`)。
+  // **遅延 `ALTER TABLE` が、版を上げずに列を足せる唯一の道である。**
+  const columns = db
+    .query<{ name: string }, []>(`PRAGMA table_info("${FILES_TABLE_ID}")`)
+    .all()
+    .map((row) => row.name);
+  if (!columns.includes(FILES_UPLOADED_BY)) {
+    db.exec(`ALTER TABLE "${FILES_TABLE_ID}" ADD COLUMN ${FILES_UPLOADED_BY_COLUMN_DDL};`);
+  }
 }
 
 /**
@@ -53,11 +100,28 @@ export function ensureFilesTable(db: Database): void {
  */
 export function insertFileRecord(db: Database, record: FileRecord): void {
   const now = new Date().toISOString();
+  // --- 【`V17-M4-T03b` / `AC-G21`】**7本目の列を1本足した。旧文を1バイトも消していない** ---
+  //
+  // **旧(逐語)**:
+  //
+  //     db.query(
+  //       `INSERT INTO "${FILES_TABLE_ID}" ` +
+  //         `("${FILES_PK}", "sha256", "mime", "size", "filename", "created_at") ` +
+  //         `VALUES (?, ?, ?, ?, ?, ?)`,
+  //     ).run(record.file_id, record.sha256, record.mime, record.size, record.filename, now);
   db.query(
     `INSERT INTO "${FILES_TABLE_ID}" ` +
-      `("${FILES_PK}", "sha256", "mime", "size", "filename", "created_at") ` +
-      `VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(record.file_id, record.sha256, record.mime, record.size, record.filename, now);
+      `("${FILES_PK}", "sha256", "mime", "size", "filename", "created_at", "${FILES_UPLOADED_BY}") ` +
+      `VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    record.file_id,
+    record.sha256,
+    record.mime,
+    record.size,
+    record.filename,
+    now,
+    record.uploaded_by,
+  );
 }
 
 /**
@@ -67,7 +131,25 @@ export function insertFileRecord(db: Database, record: FileRecord): void {
  * `Content-Disposition: attachment; filename=...` に要る。**`mime` は残してあるが、
  * 配信の `Content-Type` はこれではなく実体の先頭バイトから決まる。**
  */
-export type FileDeliveryMeta = { sha256: string; mime: string; filename: string | null };
+// --- 【`V17-M4-T03c` / `AC-G21`】**列を1本足した。旧文を1バイトも消していない** ---
+//
+// **旧(逐語)**:
+//
+//     export type FileDeliveryMeta = { sha256: string; mime: string; filename: string | null };
+export type FileDeliveryMeta = {
+  sha256: string;
+  mime: string;
+  filename: string | null;
+  /**
+   * **上げた人**(`V17-M4-T03b` / `AC-G21`)。**配布判定が使う。**
+   *
+   * **列がまだ無い `_files`(着手前から在るアプリで、まだ1件も上げていない)では `null` になる** ——
+   * **配布は `ensureFilesTable` を呼ばない**(読み取り専用で、テーブルを勝手に作らない・
+   * 勝手に列を足さない)ので、**列の有無を見てから引く。**
+   * **`null` は「上げた人が分からない」であり、未参照ファイルは誰にも配らない**(`D2`)。
+   */
+  uploaded_by: string | null;
+};
 
 /**
  * `_files` から file_id のメタ(sha256 / mime)を引く。配信 API が blob 実体の場所(sha256)と
@@ -84,9 +166,27 @@ export function getFileMeta(db: Database, fileId: string): FileDeliveryMeta | nu
   if (tableRow === null) {
     return null; // `_files` 未生成(画像未アップロードのアプリ)
   }
+  // --- 【`V17-M4-T03c` / `AC-G21`】**引く列を1本足した。旧文を1バイトも消していない** ---
+  //
+  // **旧(逐語)**:
+  //
+  //     const row = db
+  //       .query(
+  //         `SELECT "sha256" AS sha256, "mime" AS mime, "filename" AS filename ` +
+  //           `FROM "${FILES_TABLE_ID}" WHERE "${FILES_PK}" = ?`,
+  //       )
+  //       .get(fileId) as FileDeliveryMeta | null;
+  //
+  // **【`V17-M4-T03b` / `AC-G21`】列がまだ無い `_files` でも落ちないように、先に列を見る。**
+  // **ここでは足さない**(配布は読み取り専用である。足すのはアップロードの側だけ)。
+  const hasUploadedBy = db
+    .query<{ name: string }, []>(`PRAGMA table_info("${FILES_TABLE_ID}")`)
+    .all()
+    .some((column) => column.name === FILES_UPLOADED_BY);
   const row = db
     .query(
-      `SELECT "sha256" AS sha256, "mime" AS mime, "filename" AS filename ` +
+      `SELECT "sha256" AS sha256, "mime" AS mime, "filename" AS filename, ` +
+        `${hasUploadedBy ? `"${FILES_UPLOADED_BY}"` : "NULL"} AS uploaded_by ` +
         `FROM "${FILES_TABLE_ID}" WHERE "${FILES_PK}" = ?`,
     )
     .get(fileId) as FileDeliveryMeta | null;

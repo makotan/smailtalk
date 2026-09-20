@@ -176,10 +176,26 @@ function seededManifest(): Manifest {
       when: { field: OWNER_FIELD, equals_current_user: true },
     },
   ];
+  // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+  //
+  // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+  // 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+  // (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+  // 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+  //
+  // **この題材は `catalog-list`(`list_view`。表 `product`)を宣言しながら、`customer` と
+  // `anonymous` にはその画面の規則を1本も書いていなかった** —— **今日の正から見て
+  // 設計図が不完全だった。** **本ファイルの主題は項目(`field`)の規則が応答から値を
+  // 落とすことであって画面の規則ではないので、主張(`expect`)は1バイトも
+  // 書き換えていない。**
+  customer.rules = [...customer.rules, { target: "view", view: "catalog-list", can: ["read"] }];
   m.app.roles.push({
     id: "anonymous",
     name: "未ログイン",
-    rules: [{ target: "table", table: "product", can: ["read"] }],
+    rules: [
+      { target: "table", table: "product", can: ["read"] },
+      { target: "view", view: "catalog-list", can: ["read"] },
+    ],
   });
   return withDefaultRoleRules(m) as unknown as Manifest;
 }

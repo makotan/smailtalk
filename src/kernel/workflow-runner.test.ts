@@ -558,8 +558,20 @@ describe("完了条件2: 履歴に成功も失敗も残る", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe("failure");
     // **実際の失敗内容**が読めること。「失敗しました」だけの定型文にしない(憲法6)。
+    //
+    // 【`V17-M3-T07b` / `AC-G27a` で期待値を1つ差し替えた。**旧の1行を逐語で残す**】
+    //
+    //     expect(String(rows[0]?.error)).toContain("必須");
+    //
+    // **履歴の `error` に「項目の値」を1バイトも載せなくなったので、
+    //   `records.ts` が組む理由の本文(「…は必須です。値を指定してください。」)は
+    //   もう履歴に届かない。** **届くのは**どの項目で落ちたか**(`path`)である。**
+    // **【正直に】これは情報の損失である** —— **「型が違う」のか「必須が空」なのかは
+    //   履歴からは読めなくなった。** **`ValidationError` は機械で読める失敗の種別を
+    //   1つも持っておらず、理由だけを値と切り分けて残す手が今日は無い。**
     expect(String(rows[0]?.error)).toContain("must");
-    expect(String(rows[0]?.error)).toContain("必須");
+    expect(String(rows[0]?.error)).toContain("/must");
+    expect(String(rows[0]?.error)).toContain("値は履歴に残していません");
   });
 
   test("複数アクションのうち1つでも失敗すれば failure。error は失敗した全件を畳む", () => {

@@ -1137,3 +1137,29 @@ comment-store.ts:CommentStore
 # **`RESOURCE_KINDS`=8 / `FIELD_TYPES`=9 / `DIFF_OPS`=17 は1つも動いていない。**
 # **`schemas/` を1バイトも触っていない**(限定5)。
 meta-store.ts:CommentVisibility
+#
+# 更新: `V17-M3-T03b`(2026-09-07)。**2件増え、0件減った。** 増分は v17 の
+# 「判定を通らない書込点に判定を配線する」段のうち **`AC-G13`(AI の書き戻し)の実装**である。
+#   workflow-runner.ts  2件(accessJudgmentApplies = この発火に判定を掛けるかを問う述語 /
+#                       judgeAutomationWrite = 自動処理の書込1件に面と点を当てる述語)。
+# **どちらも既に在った関数であり、`export` を1語ずつ足しただけである** ——
+# **新しい述語も新しい判定の式も1つも作っていない**(判定の家を増やさないための選択)。
+# **`src/kernel/ai-dispatcher.ts` の `writeBack` が、この2本を import して1度だけ呼ぶ。**
+# **配送器は `runAction` の外側(別プロセスの周期タイマー)で走るので、時刻起動の素通りを
+# 保つには `job.workflowId` からワークフロー定義を引き直して1本目の述語に渡すしかない。**
+#
+# **【門】この2件を通す門は `ADR-0007` §1b の `Δ8` である。**
+# **台帳 `docs/adr/0007-vocabulary-governance.md:1839`(`AC-G13` の行)は、逐語で
+# 「**A**(catch-all。**`Δ8` 未確定**)」と書いていた** —— **本審査(`V17-M0`)は `Δ8` を
+# 未確定のまま門A に倒しており、確定させたのは本段(`V17-M3-T03b`)である。**
+#
+# **【正直に書く】この時点で `AC-G13` の個別 ADR はまだ書かれていない。**
+# **これから `V17-M3-T08a` が書く**(`AC-G12` / `AC-G13` / `AC-G14` / `AC-G27a` /
+# `AC-G16` の応答射影の5本)。**その ADR が、増えたこの2つの識別子を名指しし、
+# 限定表に「これ以上増やさない」を1行置く。**
+# **【禁止】「門A を通した」と過去形で書かない** —— **本ファイルの更新は、`Δ8` の確定と
+# 増分の名指しが済んだ時点のものであり、個別 ADR の成立より前である。**
+# **実測は `src/kernel/ai-writeback-access-control.test.ts` の `(AC-G13-4)` 〜 `(AC-G13-8)`
+# が持つ**(本命の口とフォールバックの口の両方を、本物の推論を1度も呼ばずに撃っている)。
+workflow-runner.ts:accessJudgmentApplies
+workflow-runner.ts:judgeAutomationWrite

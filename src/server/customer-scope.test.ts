@@ -187,6 +187,20 @@ function seededManifest(): Manifest {
           when: { field: OWNER_FIELD, equals_current_user: true },
         },
         { target: "table", table: "products", can: ["read", "write", "delete"] },
+        // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を1本足した。**
+        //
+        // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+        // 一覧系の画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件に
+        // なる(単票は 404)。** **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を
+        // 役割の規則に1行も書いていない場合も止まる。**
+        //
+        // **この題材は `order-list`(`list_view`。表 `orders`)を宣言しながら、その画面の
+        // 規則を1本も書いていなかった** —— **今日の正から見て設計図が不完全だった。**
+        // **本ファイルの主題は予約規約(`st_owner` / `st_public`)の層であって画面の規則では
+        // ないので、主張(`expect`)は1バイトも書き換えていない。**
+        // **足すのは `orders` の一覧を客に見せる1本だけである**(`products` と
+        // `admin_orders` を指す画面は題材に1本も無いので、壁はそもそも立たない)。
+        { target: "view", view: "order-list", can: ["read"] },
       ],
     },
     {

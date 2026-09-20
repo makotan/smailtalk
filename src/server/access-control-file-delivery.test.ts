@@ -303,9 +303,21 @@ describe("V7-M3-T07 (B): 宣言していない表と未参照 file は着手前�
     expect(await deliver(fileNote, reader.cookie)).toBe(200);
   });
 
-  test("(B-2) どのレコードからも参照されない file も、予約3ロールに今日どおり 200", async () => {
+  // **【`V17-M4-T03d` / `AC-G21`。テスト名ごと引き直した。旧名と旧の期待値を逐語で残す】**
+  // **旧名**: `test("(B-2) どのレコードからも参照されない file も、予約3ロールに今日どおり 200")`
+  // **旧の期待値(逐語)**:
+  //
+  //     expect(await deliver(fileOrphan, admin.cookie)).toBe(200);
+  //     expect(await deliver(fileOrphan, none.cookie)).toBe(200);
+  //
+  // **根拠**: **ユーザ決定 2026-09-08 の `D4`(「上げた本人だけ」)。**
+  // **`fileOrphan` を上げたのは `admin`(`owner`)である**(`upload(admin.cookie, …)`)——
+  // **`admin` の行は 200 のままで、上げていない `none`(`editor`)の行だけが 404 になった。**
+  // **`ADR-0296` 限定10(「宣言していない表の file 配信を1バイトも変えない」)を
+  // 引き直した先が、この1行である。**
+  test("(B-2) どのレコードからも参照されない file は、上げた本人だけが 200(他は 404)", async () => {
     expect(await deliver(fileOrphan, admin.cookie)).toBe(200);
-    expect(await deliver(fileOrphan, none.cookie)).toBe(200);
+    expect(await deliver(fileOrphan, none.cookie)).toBe(404);
   });
 
   test("(B-3) 宣言していない表の image は、customer / 匿名に今日どおり 404", async () => {

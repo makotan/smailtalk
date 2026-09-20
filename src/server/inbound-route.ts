@@ -54,6 +54,10 @@ import type { AuthEnv } from "./auth-context.ts";
 import {
   combineRoleAndCreatorGrant,
   creatorGrantPlan,
+  // **【`V17-M2-T02b`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2】**
+  // **判定の家は既存の述語1本のままである** —— **判定の式を1行も写さず、この経路は
+  // 「呼んで、答えを今日持っている断りの形(`ValidationError` 1件)へ翻訳する」だけである。**
+  judgeCreateParentAccess,
   judgeOwnerScopedOp,
   judgeRoleAccess,
   recordAccessSourceTables,
@@ -251,6 +255,13 @@ function inboundAccessDenied(
   db: Database,
   manifest: Manifest,
   tableId: ResourceId,
+  /**
+   * **これから作る行の値**(`V17-M2-T02b` / `AC-G7a` / `ADR-0411`)。
+   *
+   * **前提の関門(引き継ぎ元の行に書けるか)は、行の中身(元の行を指す参照の値)を見る。**
+   * **`payload` は1フレーム上に在るので、引数で1段下ろしている。**
+   */
+  values: Record<string, unknown>,
 ): ValidationError | undefined {
   const sources = recordAccessSourceTables(manifest, tableId);
   const role = judgeRoleAccess({
@@ -273,6 +284,78 @@ function inboundAccessDenied(
           const rows = listRecords(db, manifest, sources.memberTable, {});
           return rows.ok ? (rows.value as unknown as Record<string, unknown>[]) : [];
         })();
+  // **【`V17-M2-T02b`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2 の 2】**
+  // **前提の関門。** **`creatorGrantPlan` の直前に置く**(HTTP の単件 `POST` と同じ並び)。
+  //
+  // **判定の式を1行も写していない** —— **呼ぶのは `owner-scope.ts` の既存の述語1本だけで
+  // あり、ここにあるのは「答えを、この経路が今日持っている断りの形(`ValidationError` 1件)へ
+  // 翻訳する」ことだけである**(`ADR-0411` 限定2 / 限定5)。
+  // **断り文の**種類**を1本も増やしていない** —— **`app.ts` の `createParentDenial` は
+  // 非 export なので写せず、写していない。**
+  //
+  // **【`hint` を、この場面だけ別の文にした理由。丸めない】** —— **この関数が今日返している
+  // `hint`(逐語「参加者の表に "system:inbound" の行を1件作ると、この受信口は今までどおり
+  // 書き込めます」)は、**親の関門で止まった場合には偽**である** —— **名簿に行を足しても
+  // 元になる行への書込権限は生えない。** **応答の形(`ValidationError` 1件・403)は
+  // 1ミリも変えていない。**
+  //
+  // **【逃げ道が今日1本も無いことを、応答そのものに書く】**(`ADR-0411` §限界1)——
+  // **受信の書込主体は固定の `system:inbound` であり、その主体が元の行に権限を持つのは
+  // 人が付与を手で作ったときだけである。** **「この人として受信する」を宣言する語彙は
+  // 今日1つも無い**(`AC-G7b` の判定値は保留)。 **【禁止】これを「運用で付与すればよい」と
+  // 丸めない** —— **元の行が増えるたびに付与が要り、恒久的に累積する。**
+  const readAll = (id: string): Record<string, unknown>[] => {
+    const listed = listRecords(db, manifest, id as ResourceId, {});
+    return listed.ok ? (listed.value as unknown as Record<string, unknown>[]) : [];
+  };
+  const parent = judgeCreateParentAccess({
+    manifest,
+    tableId,
+    values,
+    actorId: SYSTEM_INBOUND_ACTOR.userId,
+    readRows: readAll,
+    readRow: (id, recordId) => readAll(id).find((candidate) => String(candidate._id) === recordId),
+  });
+  if (parent.kind !== "allowed") {
+    // **上限に当たったことを「権限が無い」に丸めない**(`Z-G17` の作法)——
+    // **文面だけを分けている。** **応答コードは今日の 403 のままである。**
+    // **【`V17-M2` の独立点検による追記(2026-09-07)。上の2行を1バイトも消していない】** ——
+    // **上の2行は真だが、**他の経路と食い違っていること**を書いていなかった。** **書く** ——
+    // **この受信口は `limit_exceeded`(引き継ぎの段数・行数の上限)でも 403 を返す。**
+    // **HTTP の4経路は同じ答えを 400 で返す**(`app.ts` の `createParentDenial` の
+    // `limit_exceeded` の枝)。 **AI(MCP)の作成経路も、同じ答えを
+    // `recordAccessLimitError`(HTTP なら 400 に当たる形)で返す**(`mcp/tools/write.ts`)。
+    // **つまり「上限に当たった」の応答コードは、受信口だけが 403 である。**
+    // **これは承知のうえで直していない** —— **`ADR-0411` 限定5 が、この経路の断りの形
+    // (`ValidationError` 1件・403)を1ミリも変えないことを課している**(`AC-G7a`)。
+    // **【禁止】この食い違いを「上限も権限の問題である」と読み替えて丸めない** ——
+    // **文面は今日も別であり、区別できるのは本文だけである。**
+    const message =
+      parent.kind === "limit_exceeded"
+        ? `この受信口の書込先の、元になる行のアクセス権を解けませんでした(引き継ぎの上限に当たりました: ${parent.limit})。` +
+          "受信を遮断しました(1バイトも書き込んでいません)。"
+        : parent.kind === "ungoverned_parent"
+          ? "この受信口の書込先の行は、元になる行の側で「誰が何をできるか」が決められていないため、今は誰も作れません。" +
+            "受信を遮断しました(1バイトも書き込んでいません)。"
+          : parent.kind === "missing_named_permission"
+            ? "この受信口の書込先の行は、元になる行に対してアプリが決めた種類の権限を持つ人だけが作れます。" +
+              `受信の主体("${SYSTEM_INBOUND_ACTOR.userId}")は元になる行を書き換えられますが、その種類の権限を持っていません。` +
+              "受信を遮断しました(1バイトも書き込んでいません)。"
+            : "この受信口の書込先の行は、元になる行に書き込める人だけが作れます。" +
+              `受信の主体("${SYSTEM_INBOUND_ACTOR.userId}")には、指定された元の行を書き換える権限がありません。` +
+              "受信を遮断しました(1バイトも書き込んでいません)。";
+    return {
+      path: "",
+      message,
+      hint:
+        `参加者の表に "${SYSTEM_INBOUND_ACTOR.userId}" の行を足しても、この断りは変わりません` +
+        "(名簿に載ることと、元になる行を書き換えられることは別だからです)。" +
+        `元になる行の権限を持っている人に、"${SYSTEM_INBOUND_ACTOR.userId}" へその行の書き込みの権限を渡してもらってください` +
+        "(役割を変えても受け取れるようにはなりません)。" +
+        "この受信口を別の人の権限で動かす方法は、今日1つもありません" +
+        "(元になる行が増えるたびに、その行の権限を渡す必要があります)。",
+    };
+  }
   const combined = combineRoleAndCreatorGrant({
     role,
     plan:
@@ -473,7 +556,14 @@ export function registerInboundRoute(app: Hono<AuthEnv>, deps: InboundRouteDeps)
       // **【`V8-M21` / 台帳 `J-G21`】作成直前1箇所**(**`createInboundRow` の呼び出しの直前**)。
       // **署名(401)とは別の関門である** —— **署名が正しくても、主体が参加者の表に
       // 行を持たなければ 403 で止まる。**
-      const denied = inboundAccessDenied(db, manifest, endpoint.targetTable);
+      // **【`V17-M2-T02b`】前提の関門に渡す、これから作る行の値**(`AC-G7a`)——
+      // **`payload` は上の `stripInboundReservedFields` を通ったあとの姿である。**
+      const denied = inboundAccessDenied(
+        db,
+        manifest,
+        endpoint.targetTable,
+        payload as Record<string, unknown>,
+      );
       if (denied !== undefined) {
         return c.json(errorBody([denied]), 403);
       }

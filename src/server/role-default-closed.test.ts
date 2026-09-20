@@ -129,6 +129,16 @@ function manifest(roles: unknown[] | undefined): Manifest {
           enabled: true,
           permissions: PERMISSIONS,
           creator_permission: "keeper",
+          // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+          // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+          // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+          // **前準備の `create(owner.cookie, "shared", …)` が 403 になり、7本が
+          // 巻き込まれていた。** **`shared` に行を作るのは `owner` だけである。**
+          // **`roles` が `undefined` のときは足さない** —— **9キー目の要素は
+          // `app.roles[].id` に実在しなければならず(適用時検査 `referential-integrity.ts`
+          // の項目11)、役割を1つも宣言していない (f) の再適用が invalid になるからである。**
+          // **(f) は再適用より後に `shared` へ行を1件も作らないので、これで足りる。**
+          ...(roles === undefined ? {} : { creatable_by_roles: ["owner"] }),
           grant: {
             table: "shared_grant",
             target: "item",

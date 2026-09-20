@@ -233,10 +233,22 @@ function roles(): Any[] {
     { id: "viewer", name: "通りすがり", rules: viewRules },
     { id: "customer", name: "客", rules: viewRules },
     // **未ログインが一覧で公開行を読めることの対照**((A-6) が使う)。
+    // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+    //
+    // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+    // 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+    // (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+    // 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+    //
+    // **`anonymous` にだけ画面の規則が1本も無かった** —— **(A-6) の対照
+    // (「一覧のほうは今日も匿名に開いている」)が `total: 6` → `0` になっていた。**
+    // **本ファイルの主題は集計表の可視性であって画面の規則ではないので、
+    // 主張(`expect`)は1バイトも書き換えていない。**
+    // **配るのは他の役割と同じ `viewRules`(全画面 × 読取)である。**
     {
       id: "anonymous",
       name: "未ログイン",
-      rules: [{ target: "table", table: "t_public", can: ["read"] }],
+      rules: [{ target: "table", table: "t_public", can: ["read"] }, ...viewRules],
     },
   ];
 }

@@ -239,10 +239,39 @@ function applied(sumFields: Record<string, string>): Manifest {
     // (G)(H) はどちらも HTTP を使わずカーネル層で直接行を作るので、面の規則は不要)。
     skipTables: ["docket", "folder"],
   }) as unknown as { app: { roles: Record<string, unknown>[] } };
+  // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+  //
+  // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+  // 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+  // (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+  // 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+  //
+  // **直上の「画面には1本も足さない(`skipAllViews`)—— 本ファイルは `?view=` を1度も
+  // 名乗らないので、画面の規則は主題に1ミリも関わらない」は、今日は偽である
+  // (1バイトも消していない)** —— **`?view=` を名乗らない読取こそが壁の当たり先である。**
+  //
+  // **`skipAllViews: true` はそのまま残し、要る画面の読取だけを手で書く** ——
+  // **`withDefaultRoleRules` を素で通すとボタン(`action`)の規則まで配ってしまうためである。**
+  // **(A)〜(F) が測っているのは合計の母集団であって画面の規則ではないので、
+  // 主張(`expect`)は1バイトも書き換えていない。**
+  const LIST_VIEWS = ["ticket-list", "note-list", "item-list", "open-list"] as const;
+  for (const role of manifest.app.roles as { id?: unknown; rules?: unknown[] }[]) {
+    if (role.id !== "owner" && role.id !== "editor" && role.id !== "viewer") {
+      continue;
+    }
+    role.rules = [
+      ...(role.rules ?? []),
+      ...LIST_VIEWS.map((view) => ({ target: "view", view, can: ["read"] })),
+    ];
+  }
   manifest.app.roles.push({
     id: "anonymous",
     name: "未ログイン",
-    rules: [{ target: "table", table: "item", can: ["read"] }],
+    rules: [
+      { target: "table", table: "item", can: ["read"] },
+      // **(B) の主題「匿名の合計は `st_public` な行だけを足す」を測るのに要る1本。**
+      { target: "view", view: "item-list", can: ["read"] },
+    ],
   });
   return manifest as unknown as Manifest;
 }

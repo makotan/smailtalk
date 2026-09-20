@@ -378,12 +378,37 @@ test("(C-2) preview_undo は「宣言のあとに入った行が消える」こ�
   // AI が `undo` を呼ぶ経路では読まれないことがある。**
 });
 
-test("(C-3) preview_undo は未認証でも通る(集計表の宣言が丸ごと本文に出る)", async () => {
+// =====================================================================================
+// **【`V17-M4-T02` による引き直し。台帳 `AC-G20`】**
+// =====================================================================================
+//
+// **旧のテスト名(逐語。1バイトも書き換えていない)**:
+//   `"(C-3) preview_undo は未認証でも通る(集計表の宣言が丸ごと本文に出る)"`
+// **旧の本体(逐語)**:
+//   `const { status, preview } = await previewUndoOverHttp(false);`
+//   `expect(status).toBe(200);`
+//   `// **`GET /undo/preview` は今日も未認証で通る**(`src/server/change-routes.ts:192` の逐語)。`
+//   `// **集計表の宣言(束ねるキー・集計の種類・絞り込み)がそのまま読める。**`
+//   `const firstOp = (preview.operations as Any[])[0] as Any;`
+//   `expect((firstOp.view as Any).report).toEqual(BASE_REPORT);`
+//
+// **期待値を書き換えたのではない。挙動が変わったので名前ごと引き直した** ——
+// **未認証は 401 になり、本文に `operations` が1バイトも出なくなった。**
+// **ログイン済みには今日どおり宣言が丸ごと出る**(下の後半が撃つ。**そこは1ミリも変わっていない**)。
+test("(C-3) preview_undo は未認証では 401 になり、ログイン済みには集計表の宣言が丸ごと本文に出る", async () => {
   await seedUpToReportPlusOneRow();
-  const { status, preview } = await previewUndoOverHttp(false);
+
+  // **未認証**: 401。**本文は認証境界のエラーだけで、`preview` は載らない。**
+  const anon = await req("GET", `/api/apps/${APP_ID}/undo/preview`, undefined, false);
+  expect(anon.status).toBe(401);
+  const anonBody = (await anon.json()) as { preview?: unknown; errors?: { message?: string }[] };
+  expect(anonBody.preview).toBeUndefined();
+  expect(anonBody.errors?.[0]?.message).toBe("認証が必要です。ログインしてください。");
+
+  // **ログイン済み**: 今日どおり 200 で、集計表の宣言(束ねるキー・集計の種類・絞り込み)が
+  // そのまま読める。**この行は旧のテストから1バイトも変えていない。**
+  const { status, preview } = await previewUndoOverHttp();
   expect(status).toBe(200);
-  // **`GET /undo/preview` は今日も未認証で通る**(`src/server/change-routes.ts:192` の逐語)。
-  // **集計表の宣言(束ねるキー・集計の種類・絞り込み)がそのまま読める。**
   const firstOp = (preview.operations as Any[])[0] as Any;
   expect((firstOp.view as Any).report).toEqual(BASE_REPORT);
 });

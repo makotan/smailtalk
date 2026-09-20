@@ -211,7 +211,10 @@ test.describe("V3-M6-T04 テーマの取り込み(chromium 実測)", () => {
     expect(stored?.origin).toBeUndefined();
 
     // (5) **既存の履歴機構がそのまま効く** —— 専用の差分操作も専用の取り消し経路も無い。
-    const changelog = await request.get(`/api/apps/${app.appId}/changelog`);
+    // **【`V17-M4-T02`】`GET /changelog` にログインが要るようになったので cookie を渡す。**
+    const changelog = await request.get(`/api/apps/${app.appId}/changelog`, {
+      headers: app.authHeaders,
+    });
     expect(changelog.status(), await changelog.text()).toBe(200);
     const entries = (await changelog.json()) as {
       changelog: { diff_id: string; intent: string }[];

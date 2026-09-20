@@ -234,11 +234,26 @@ test("owner は全 file(公開/非公開/運営/scoped/未参照)を 200 で配�
   }
 });
 
-test("editor も全 file を 200 で配信できる", async () => {
+// **【`V17-M4-T03d` / `AC-G21`。テスト名ごと引き直した。旧名と旧の期待値を逐語で残す】**
+// **旧名**: `test("editor も全 file を 200 で配信できる")`
+// **旧の期待値(逐語)**:
+//
+//     for (const id of [filePrivate, fileAdmin, fileScopedC1, fileOrphan]) {
+//       expect((await deliver(id, editor)).status).toBe(200);
+//     }
+//
+// **根拠**: **ユーザ決定 2026-09-08 の `D4`(逐語「上げた本人だけ」。**運営者も例外にしない**)。**
+// **`fileOrphan` を上げたのは `owner` である**(`uploadAsOwner`。cookie は `ownerCookie`)——
+// **`editor` は上げた本人ではないので、まだどのレコードにも載っていないこのファイルを
+// 受け取れなくなった。** **【正直に書く】これは狭まりである。**
+// **行に載っている3本(`filePrivate` / `fileAdmin` / `fileScopedC1`)の応答は
+// 1バイトも変わっていない** —— **`editor` は既定の規則でどの表も読めるからである。**
+test("editor は行に載っている file を 200 で配信できる(未参照 file は上げた本人ではないので 404)", async () => {
   const editor = seedSession(dataRoot, APP, { role: "editor" }).cookie;
-  for (const id of [filePrivate, fileAdmin, fileScopedC1, fileOrphan]) {
+  for (const id of [filePrivate, fileAdmin, fileScopedC1]) {
     expect((await deliver(id, editor)).status).toBe(200);
   }
+  expect((await deliver(fileOrphan, editor)).status).toBe(404);
 });
 
 test("owner でも存在しない file_id は 404", async () => {
@@ -293,8 +308,18 @@ test("別の customer の scoped 行の image も 200(条件なしの read を�
 // 受け取れる** —— **上げた直後(まだどの行にも保存していない)のプレビューを、
 // アップロードの口が開いた相手に見せられなくなるためである。**
 // **未認証は今日も 404 である**(匿名の検査群が測っている)。
-test("customer も未参照 file は 200(旧: 404。上げた直後のプレビューのため)", async () => {
-  expect((await deliver(fileOrphan, customer1.cookie)).status).toBe(200);
+// **【`V17-M4-T03d` / `AC-G21`。もう一度反転させた。旧名と旧の期待値を逐語で残す】**
+// **旧名**: `test("customer も未参照 file は 200(旧: 404。上げた直後のプレビューのため)")`
+// **旧の期待値(逐語)**: `expect((await deliver(fileOrphan, customer1.cookie)).status).toBe(200);`
+// **その前の名**(上のコメントが残している): `test("customer は未参照 file は 404")`
+//
+// **根拠**: **ユーザ決定 2026-09-08 の `D4`。** **「上げた直後のプレビュー」という
+// 上の理由づけは、今日は「**上げた本人の**プレビュー」に絞られた** ——
+// **`fileOrphan` を上げたのは `owner` であって `customer1` ではない。**
+// **上げた本人が自分の未参照ファイルを 200 で受け取れることは、
+// `src/server/file-delivery-uploader.test.ts` の (あ-1) が撃っている。**
+test("customer は他人が上げた未参照 file を受け取れない(404。上げた本人だけ)", async () => {
+  expect((await deliver(fileOrphan, customer1.cookie)).status).toBe(404);
 });
 
 // --- read-only の構造保証: 配信は GET のみ ------------------------------------------

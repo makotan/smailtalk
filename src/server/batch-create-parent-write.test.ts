@@ -68,6 +68,18 @@
  * **`update` op を撃つ検査は今日も本ファイルに1本も無い** —— **それを測っているのは
  * `create-parent-write.test.ts` の `(j-2)` / `(j-3)` / `(j-4)` である。**
  * **2 / 3 / 4 / 5 は今日も真である**(**`(b-3)` の穴は今日も開いている**)。
+ *
+ * **【`V17-M2-T04c` による訂正(2026-09-07)。上の5項も、`V15-M8` の訂正も
+ *    1バイトも消していない】** —— **2 の後半(逐語「**その4経路は今日も素通りする**」)は
+ *    今日は偽である。** **`V17-M2`(台帳 `AC-G7a` / `ADR-0411`)が、行を**作る**側の関門を
+ *    MCP・受信口・ワークフロー・島の4本の入口にも配線した。**
+ *    **ただし本ファイルは今日もその4経路を1度も通していない** —— **測っているのは
+ *    まとめ書き(`POST /batch`)だけであり、4本の入口を撃つのは
+ *    `src/mcp/actor-authz.test.ts` / `src/server/inbound-access-control.test.ts` /
+ *    `src/server/automation-access-control.test.ts` である。**
+ *    **双方向に書く** —— **素通りするのは決まった時刻に動く処理(`schedule`)1本だけで
+ *    (`ADR-0411` 限定1)、この4本の入口の**更新**は今日も素通りする**(同 限定4)。
+ *    **1 の後半(`delete` op)と 3 / 4 / 5 は今日も真である。**
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -127,6 +139,12 @@ function declaration(target: string, extra: Record<string, unknown> = {}): Recor
     creator_permission: "writer",
     grant: { table: "ac_grant", target, member: "member", permission: "permission" },
     members: { table: "ac_member", account: "account" },
+    // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+    // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの既定が
+    // 「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、**`inherit_from` を
+    // 持たない `solo` などへのまとめ書きが、測りたい答えの手前で 403 になっていた。**
+    // **`inherit_from` を持つ側には足さない**(適用時検査が拒否し、根の表でもない)。
+    ...("inherit_from" in extra ? {} : { creatable_by_roles: ["owner", "editor"] }),
     ...extra,
   };
 }
@@ -226,6 +244,9 @@ function manifest(): Manifest {
               { id: "nobody", name: "何もできない", read: false, write: false, delete: false },
             ],
             creator_permission: "nobody",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】上の {@link declaration} と同じ理由で
+            // 1行足した**(`deadend` は `inherit_from` を1本も持たない根の表である)。
+            creatable_by_roles: ["owner", "editor"],
             grant: {
               table: "ac_grant",
               target: "deadend",
@@ -810,5 +831,224 @@ describe("V15-M3 (q): 同じ題材なら、単件 `POST` とまとめ書きが�
       { name: "作った本人に何も渡らない表", single: "400", batch: "400" },
       { name: "権限の宣言を持たない表", single: "ok", batch: "ok" },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (k) **まとめ書きの `update` op でも、古い親の側に書けなければ付け替えられない**
+//     (`V17-M2-T06` / `AC-G8` / `ADR-0411` §Decision の 3)
+// ---------------------------------------------------------------------------
+//
+// **【本ファイルに `update` op を撃つ検査が初めて入る】** —— **上の doc の逐語
+// 「**`update` op を撃つ検査は今日も本ファイルに1本も無い**」は、この (k) で偽になる。**
+// **旧文は1バイトも消していない**(この節の追記だけである)。
+//
+// | # | 何を撃つか | 着手前の実測(2026-09-07) |
+// | --- | --- | --- |
+// | `(k-1)` | 古い親に `read` しか持たない人の `update` op で行を移す | **200**(**穴**)→ **403** |
+// | `(k-2)` | 参照を**空にする** `update` op | **200** —— **今日どおり通る**(限定10) |
+//
+// **【誇張しない】** **本 (k) は `create` op を1度も叩かない。** **`delete` op には
+// 今日も1バイトも掛かっていない**(`ADR-0408` §6 の 2)。
+
+describe("V17-M2 (k): まとめ書きの `update` op でも、古い親の側に書けなければ付け替えられない", () => {
+  /** **`update` op 1件だけのまとめ書き**(単件の `PATCH` と1対1で並べるための形)。 */
+  const batchUpdate = async (
+    table: string,
+    recordId: string,
+    cookie: string,
+    values: Record<string, unknown>,
+  ): Promise<{ status: number; body: string }> =>
+    batch(cookie, [{ op: "update", table, target: recordId, values }]);
+
+  /** **ディスクの上で親が入っているか**(応答だけを見て済ませない)。 */
+  const storedParent = (table: string, recordId: string): string | null =>
+    withDb(
+      (db) =>
+        (
+          db.query(`SELECT project FROM ${table} WHERE _id = ?`).get(recordId) as {
+            project: string | null;
+          }
+        ).project,
+    );
+
+  /** **付け替えの題材**(`create-parent-write.test.ts` の (k) とまったく同じ組み立てである)。 */
+  const seedReparent = (): { other: string; movable: string; orphanable: string } => {
+    const loaded = manifest();
+    return withDb((db) => {
+      const id = (result: unknown): string => (result as { value: { _id: string } }).value._id;
+      const memberOf = (userId: string): string =>
+        (db.query(`SELECT _id FROM ac_member WHERE account = ?`).get(userId) as { _id: string })
+          ._id;
+      const grant = (values: Record<string, unknown>): void => {
+        expect(createRecord(db, loaded, "ac_grant", values).ok).toBe(true);
+      };
+      const issueWithParent = (title: string, member: string): string => {
+        const rowId = id(createRecord(db, loaded, "issues", { title, project: projectId }));
+        grant({ issue: rowId, member, permission: "writer" });
+        return rowId;
+      };
+      const other = id(createRecord(db, loaded, "projects", { title: "移す先" }));
+      grant({ project: other, member: memberOf(reader.userId), permission: "writer" });
+      return {
+        other,
+        movable: issueWithParent("移す対象", memberOf(reader.userId)),
+        orphanable: issueWithParent("空にする対象", memberOf(stranger.userId)),
+      };
+    });
+  };
+
+  test("(k-1) 古い親に `read` しか持たない人の `update` op は 403(着手前は 200 で通っていた)", async () => {
+    const seeded = seedReparent();
+    const out = await batchUpdate("issues", seeded.movable, reader.cookie, {
+      project: seeded.other,
+    });
+    expect(out.status).toBe(403);
+    // **ディスクの上でも動いていない**(部分適用が1件も起きていない)。
+    expect(storedParent("issues", seeded.movable)).toBe(projectId);
+  });
+
+  test("(k-2) 参照を空にする `update` op は今日どおり通る(200)【限定10。塞いでいない】", async () => {
+    const seeded = seedReparent();
+    const out = await batchUpdate("issues", seeded.orphanable, stranger.cookie, { project: null });
+    expect(out.status).toBe(200);
+    expect(storedParent("issues", seeded.orphanable)).toBe(null);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// **(m)** **まとめ書きの `update` op でも、`write` と `delete` を区別する**
+//   (`V18-M6-T01` / `PM-G1` / `ADR-0443` 授権の表 行11)
+// ---------------------------------------------------------------------------
+//
+// **【この節を足す理由。丸めない】** —— **上の (k) は「古い親に `read` しか持たない人」
+// しか撃っていない。** **`write` は持つが `delete` は持たない人**をまとめ書きから撃つ検査は
+// **本ファイルに1本も無かった**(`ADR-0443` 授権の表 行11 の逐語「今日 **0本**」)。
+// **したがって (k) の緑からは「まとめ書きでも動詞が上がった」を読み取れない。**
+//
+// | # | 何を撃つか | 着手前の実測 | 着手後 |
+// | --- | --- | --- | --- |
+// | `(m-1)` | 古い親に `write` **だけ**を持つ人の `update` op | **200** | **403** |
+// | `(m-2)` | 古い親に `read` しか持たない人の `update` op | **403** | **403**(変わらず) |
+// | `(m-3)` | 古い親に `delete` を持つ人の `update` op | **200** | **200**(変わらず) |
+// | `(m-4)` | 同じ値の送り直し / 参照を空にする `update` op | **200** | **200**(変わらず) |
+
+describe("V18-M6 (m): まとめ書きの `update` op も、古い親に `delete` を要求する", () => {
+  /** **`update` op 1件だけのまとめ書き**((k) とまったく同じ形)。 */
+  const batchUpdate = async (
+    table: string,
+    recordId: string,
+    cookie: string,
+    values: Record<string, unknown>,
+  ): Promise<{ status: number; body: string }> =>
+    batch(cookie, [{ op: "update", table, target: recordId, values }]);
+
+  /** **ディスクの上で親が入っているか**(応答だけを見て済ませない)。 */
+  const storedParent = (table: string, recordId: string): string | null =>
+    withDb(
+      (db) =>
+        (
+          db.query(`SELECT project FROM ${table} WHERE _id = ?`).get(recordId) as {
+            project: string | null;
+          }
+        ).project,
+    );
+
+  /**
+   * **動詞の差だけを残した題材。**
+   *
+   * **古い親(`projectId`)の付与は `beforeEach` が配っている** —— **`writer` は
+   * `writer`(`write` は在るが `delete` は無い)、`reader` は `reader`(`read` だけ)、
+   * `keeper` は `keeper`(`read` + `write` + `delete`)である。**
+   * **新しい親(`destination`)には**3人とも `write` を持たせる** —— **止まる理由を
+   * 「新しい親に書けない」と取り違えないためである。**
+   */
+  const seedVerbs = (): {
+    destination: string;
+    writerRow: string;
+    writerResend: string;
+    writerOrphanable: string;
+    readerRow: string;
+    keeperRow: string;
+  } => {
+    const loaded = manifest();
+    return withDb((db) => {
+      const id = (result: unknown): string => (result as { value: { _id: string } }).value._id;
+      const memberOf = (userId: string): string =>
+        (db.query(`SELECT _id FROM ac_member WHERE account = ?`).get(userId) as { _id: string })
+          ._id;
+      const grant = (values: Record<string, unknown>): void => {
+        expect(createRecord(db, loaded, "ac_grant", values).ok).toBe(true);
+      };
+      const issueWithParent = (title: string, member: string, permission: string): string => {
+        const rowId = id(createRecord(db, loaded, "issues", { title, project: projectId }));
+        grant({ issue: rowId, member, permission });
+        return rowId;
+      };
+
+      const destination = id(createRecord(db, loaded, "projects", { title: "移す先" }));
+      grant({ project: destination, member: memberOf(writer.userId), permission: "writer" });
+      grant({ project: destination, member: memberOf(reader.userId), permission: "writer" });
+      grant({ project: destination, member: memberOf(keeper.userId), permission: "keeper" });
+
+      return {
+        destination,
+        writerRow: issueWithParent("write だけの人が移す", memberOf(writer.userId), "writer"),
+        writerResend: issueWithParent("送り直す対象", memberOf(writer.userId), "writer"),
+        writerOrphanable: issueWithParent("空にする対象", memberOf(writer.userId), "writer"),
+        readerRow: issueWithParent("read だけの人が移す", memberOf(reader.userId), "writer"),
+        keeperRow: issueWithParent("delete を持つ人が移す", memberOf(keeper.userId), "keeper"),
+      };
+    });
+  };
+
+  test("(m-1) 古い親に `write` だけを持つ人の `update` op は 403(着手前は 200 で通っていた)", async () => {
+    const seeded = seedVerbs();
+    const out = await batchUpdate("issues", seeded.writerRow, writer.cookie, {
+      project: seeded.destination,
+    });
+    expect(out.status).toBe(403);
+    // **ディスクの上でも動いていない**(部分適用が1件も起きていない)。
+    expect(storedParent("issues", seeded.writerRow)).toBe(projectId);
+  });
+
+  test("(m-2) 古い親に `read` しか持たない人の `update` op は今日どおり 403", async () => {
+    // **【(m-1) と別々に撃つ理由】** —— **「`delete` を持たない」だけでは
+    // 「`write` だけを持つ人」を1度も測っていない。**
+    const seeded = seedVerbs();
+    const out = await batchUpdate("issues", seeded.readerRow, reader.cookie, {
+      project: seeded.destination,
+    });
+    expect(out.status).toBe(403);
+    expect(storedParent("issues", seeded.readerRow)).toBe(projectId);
+  });
+
+  test("(m-3) 古い親に `delete` を持つ人の `update` op は今日どおり通る(200)【退行の担保】", async () => {
+    const seeded = seedVerbs();
+    const out = await batchUpdate("issues", seeded.keeperRow, keeper.cookie, {
+      project: seeded.destination,
+    });
+    expect(out.status).toBe(200);
+    expect(storedParent("issues", seeded.keeperRow)).toBe(seeded.destination);
+  });
+
+  test("(m-4) 送り直しと「空にする」は、`write` しか持たない人からも今日どおり通る(200)", async () => {
+    const seeded = seedVerbs();
+    // **(1) 親の項目に**同じ値**を送る `update` op**(**最もきわどい形**)——
+    // **撃っている `writer` は古い親に `write` しか持たない。**
+    const resent = await batchUpdate("issues", seeded.writerResend, writer.cookie, {
+      title: "送り直す",
+      project: projectId,
+    });
+    // **(2) 参照を**空にする** `update` op** —— **今日どおり通る**(限定10。**塞いでいない**)。
+    const emptied = await batchUpdate("issues", seeded.writerOrphanable, writer.cookie, {
+      project: null,
+    });
+    expect({ resent: resent.status, emptied: emptied.status }).toEqual({
+      resent: 200,
+      emptied: 200,
+    });
+    expect(storedParent("issues", seeded.writerResend)).toBe(projectId);
+    expect(storedParent("issues", seeded.writerOrphanable)).toBe(null);
   });
 });

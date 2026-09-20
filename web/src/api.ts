@@ -177,6 +177,55 @@ export function isWriteConflict(error: unknown): boolean {
 }
 
 /**
+ * **ぶら下がっている行があるための断り**(`V18-M7-T05` / `PM-G5` / `ADR-0444` §Decision 3)。
+ * **`children_forbidden` は ③(中に、この人には消せない行がある。**件数も表のIDも1文字も載らない**)、
+ * `children_confirmation` は ④ / ⑤(件数の印が無い / 合わない。`total` は次に送るべき印の値)。**
+ * **`message` / `hint` はサーバの文面そのままで、件数と表のIDはその**文の中**にしか無い**(同
+ * §Decision 5 の 行30。応答の鍵は4本のまま)。
+ */
+export type CascadeDeleteDenial =
+  | { kind: "children_forbidden"; message: string; hint: string }
+  | { kind: "children_confirmation"; total: number; message: string; hint: string };
+
+/** ③ / ④ / ⑤ に共通の語 / ③ だけが持つ語 / ④ ⑤ から「今の件数」を取り出す形。 */
+const CASCADE_CHILDREN_MARKER = "ぶら下がっている行";
+const CASCADE_FORBIDDEN_MARKER = "あなたには消せないものがあります";
+const CASCADE_TOTAL_PATTERNS = [/ぶら下がっている行が (\d+) 件あります/, /今は (\d+) 件です/];
+
+/**
+ * **ぶら下がっている行の断りを読み、③ と ④ / ⑤ を見分ける**(`V18-M7-T05`)。 **呼び出し側はこの
+ * 1本を先に読み、`null` のときだけ今までの分岐に落とすこと。**
+ * **【新しい 409 が版不一致に吸われないこと】** **`isWriteConflict` は `409` かつ本文に
+ * `VERSION_CONFLICT_MARKER` を含むものだけを掴み、サーバの断り文2本にはその語が1度も無い**
+ * (`ADR-0444` 限定10。`app.ts` を綴りで走査して 0 件)—— **`isApplyInProgress` にも入らない。**
+ * **【誇張しない】文面で見分けている** —— **機械可読な種別コードは今日も無く(鍵は4本)、増やすことは
+ * 同 限定13 が禁じている。** **ずれたら静かに `null` を返し、赤にするのは (D-5) だけである。**
+ */
+export function readCascadeDeleteDenial(error: unknown): CascadeDeleteDenial | null {
+  if (!(error instanceof ApiError) || (error.status !== 403 && error.status !== 409)) {
+    return null;
+  }
+  const entry = error.errors.find((row) => row.message.includes(CASCADE_CHILDREN_MARKER));
+  if (entry === undefined) {
+    return null;
+  }
+  const hint = entry.hint ?? "";
+  if (error.status === 403) {
+    return entry.message.includes(CASCADE_FORBIDDEN_MARKER)
+      ? { kind: "children_forbidden", message: entry.message, hint }
+      : null;
+  }
+  for (const pattern of CASCADE_TOTAL_PATTERNS) {
+    const digits = entry.message.match(pattern)?.[1];
+    if (digits !== undefined) {
+      const total = Number.parseInt(digits, 10);
+      return { kind: "children_confirmation", total, message: entry.message, hint };
+    }
+  }
+  return null;
+}
+
+/**
  * セッション失効(保護 API の 401)を **アプリ単位で** 扱うための共通ハンドラ。
  *
  * 認証はアプリ単位(ADR-0014 改訂 / per-app)なので、失効も「どのアプリが切れたか」で
@@ -511,6 +560,19 @@ export async function fetchRecords(
  *
  * **【禁止】`grant_write: true` を「押せば必ず作れる」と読まない** —— **真が意味するのは
  * 「関門 (1)(2) で止まらない」ことだけである**(`ADR-0402` §Decision 5)。
+ *
+ * **【2026-09-16 訂正(`V18-M8-T02b` / `D-V18-33` / `ADR-0445` §Decision 4・§Decision 5・§Decision 6)。
+ * 直前の2行を1バイトも消していない】**
+ * **直前の逐語「真が意味するのは「関門 (1)(2) で止まらない」ことだけである」は、今日の正ではない。**
+ * **今日の真が意味するのは「関門 (1)(2) と所属の穴で止まらず、**かつ**表示の時点で決まる断りにも
+ * 掛からない」ことである** —— **付与表への面の書込 / 直接作成の遮断 / ボタンの規則 /
+ * 必ず送る欄の項目規則 / 付与表そのものの宣言が掛ける関門を、サーバの `rowGrantWriteJudge` が写す。**
+ * **【禁止】それでも「押せば必ず作れる」と読まない** —— **(3) 相手が自分 / (4) 相手が解決できない /
+ * (5) 相手が親を読めない と、持ち主の偽装・条件つきの規則は、今日も1つも写していない**
+ * (`ADR-0402` 限定17 の後半 / `ADR-0445` §Decision 4 の表)。
+ * **真と出た行を押しても断られる人は、今日も居る。**
+ * **`?member=` で他人について問うた答えだけは、面を1つも掛けない**(同 §Decision 6)——
+ * **キーの名前は同じでも、一覧・単票の値とは見ている断りの数が違う。**
  *
  * **宣言していない表では、この値がそもそも返ってこない**(限定4)。**そのとき画面は
  * 着手前と1バイトも同じ見え方をする。**
@@ -873,16 +935,26 @@ export async function updateRecord(
  * **楽観ロック(M9-T02)**: `expectedVersion`(削除前に読んだ対象レコードの
  * `_updated_at`)を `If-Match` ヘッダに載せて送る(サーバは必須。無いと 400)。
  * 版不一致は 409(`isWriteConflict`)、適用中は 409(`isApplyInProgress`)。
+ *
+ * **件数の印(`V18-M7-T05` / `ADR-0444` §Decision 4)**: `childrenSeal` を渡すと
+ * `If-Match-Children`(10進の整数)に載る。**省けば今日と1バイトも同じ要求で、子が0件の行はこの印
+ * を1度も要らない。** **版の印(`If-Match`)の載せ方は1ビットも変えていない。** **断り(403 / 409)
+ * は `readCascadeDeleteDenial` で見分けること。**
  */
 export async function deleteRecord(
   appId: string,
   tableId: string,
   recordId: string,
   expectedVersion: string,
+  childrenSeal?: number,
 ): Promise<void> {
   const response = await fetch(recordPath(appId, tableId, recordId), {
     method: "DELETE",
-    headers: { accept: "application/json", "if-match": expectedVersion },
+    headers: {
+      accept: "application/json",
+      "if-match": expectedVersion,
+      ...(childrenSeal === undefined ? {} : { "if-match-children": String(childrenSeal) }),
+    },
     credentials: "include",
   });
   if (!response.ok) {
@@ -1206,10 +1278,142 @@ export async function deleteOwnAccount(appId: string): Promise<void> {
 // 400(不正 role)は `ApiError` の `status` で呼び出し側が判別する(`isForbidden` /
 // `isLastOwnerConflict`)。
 
-/** GET /api/apps/:app_id/auth/users — ユーザ + ロール一覧(owner のみ)。 */
-export async function listAppUsers(appId: string): Promise<AppUser[]> {
-  const body = await getJson<{ users: AppUser[] }>(authPath(appId, "users"), { appId });
-  return body.users;
+/**
+ * **一覧の応答が載せる招待の1件**(`V19-M3-T01` / 台帳 `SV-G2`)。
+ *
+ * **サーバの `invitationView`(`src/server/auth-routes.ts`)が返す**7つのキーちょうど**である。**
+ * **コードを1バイトも持たない** —— **載せるのは発行の応答だけである。**
+ * **【禁止の履行】`IssuedInvitation`(コードを持つ型)を一覧の受け皿に流用していない。**
+ *
+ * **`state` の3値を導出するのはサーバの1関数だけである**(`src/auth/invitations.ts` の
+ * `invitationState`)—— **画面はこの値を読むだけで、`usedAt` から組み立て直さない。**
+ */
+export type AppInvitation = {
+  username: string;
+  role: Role;
+  expiresAt: string;
+  issuedBy: string;
+  issuedAt: string;
+  usedAt: string | null;
+  /** 未使用 / 使用済み / 取り消し済み。 */
+  state: "unused" | "used" | "revoked";
+};
+
+/**
+ * **`GET /auth/users` の応答**(`V19-M3-T01`)。
+ *
+ * **`invitations` はキーごと落ちうる** —— **サーバは `owner` を実効ロールに持つ人にだけ
+ * 載せる**(`auth-routes.ts` の `canReadInvitations`)。
+ * **落ちたときに空配列へ均さない** —— **「1件も無い」と「読ませてもらえない」は別の状態で
+ * あり、混ぜると画面が嘘をつく。**
+ */
+export type AppUserList = {
+  users: AppUser[];
+  /**
+   * **`| undefined` を明示的に書いている** —— このリポジトリは
+   * `exactOptionalPropertyTypes` を有効にしているので、これが無いと
+   * 「キーが落ちた応答をそのまま渡す」ことが型で書けない。
+   */
+  invitations?: readonly AppInvitation[] | undefined;
+};
+
+/**
+ * GET /api/apps/:app_id/auth/users — ユーザ + ロール + **招待**の一覧(owner のみ)。
+ *
+ * **【`V19-M3-T01` で受け取る形を広げた】** **旧(逐語)**:
+ *
+ *     export async function listAppUsers(appId: string): Promise<AppUser[]> {
+ *       const body = await getJson<{ users: AppUser[] }>(authPath(appId, "users"), { appId });
+ *       return body.users;
+ *     }
+ *
+ * **サーバは着手前から招待を載せていた** —— **捨てていたのはこの関数である。**
+ * **サーバ側を1バイトも直していない。**
+ */
+export async function listAppUsers(appId: string): Promise<AppUserList> {
+  const body = await getJson<AppUserList>(authPath(appId, "users"), { appId });
+  return { users: body.users, invitations: body.invitations };
+}
+
+/**
+ * **発行した招待の表現**(`V19-M3-T00` / 台帳 `SV-G1`)。
+ *
+ * **サーバがコードを載せるのは発行の応答の1箇所だけである**(`issuedInvitationView`)——
+ * **一覧の応答はコードを1バイトも持たない。** **【禁止】この型を一覧の受け皿に流用しない。**
+ */
+export type IssuedInvitation = {
+  username: string;
+  role: Role;
+  expiresAt: string;
+  issuedBy: string;
+  issuedAt: string;
+  usedAt: string | null;
+  /** 未使用 / 使用済み / 取り消し済み(導出するのはサーバの1関数だけである)。 */
+  state: "unused" | "used" | "revoked";
+  /** **発行の応答だけが載せる。** */
+  code: string;
+};
+
+/**
+ * 発行の応答。
+ *
+ * **登録リンクは、サーバが期待 origin から組み立てられたときだけ載る** ——
+ * 組み立てられなければキーごと落ちる(**黙って壊れたリンクを返さない**)。
+ */
+export type IssuedInvitationResult = {
+  invitation: IssuedInvitation;
+  signupUrl?: string;
+};
+
+/**
+ * POST /api/apps/:app_id/auth/invitations — 招待を1件発行する(owner のみ)。
+ *
+ * **この口は着手前から在る。足したのは画面から呼ぶ経路だけである**(`SV-G1` の個別限定①)。
+ *
+ * **送れるキーは `username` / `role` / `revoke` の3つだけで、有効期限は24時間で固定である**
+ * —— **未知のキーはサーバが 400 で拒む。** **本関数は期限のキーを1つも組み立てない**
+ * (「期限を指定したつもりの招待」を黙って作らないため)。
+ */
+export async function issueInvitation(
+  appId: string,
+  username: string,
+  role: Role,
+): Promise<IssuedInvitationResult> {
+  return await sendJson<IssuedInvitationResult>(
+    authPath(appId, "invitations"),
+    "POST",
+    { username, role },
+    { appId },
+  );
+}
+
+/**
+ * POST /api/apps/:app_id/auth/invitations — **その相手の招待を取り消す**(owner のみ)。
+ * (`V19-M3-T02` / 台帳 `SV-G4`)
+ *
+ * **叩く口は {@link issueInvitation} と同じ1本である**(個別限定・取り消し①)——
+ * **`DELETE` のルートを1本も足していない。** **取り消しは `revoke: true` という引数で表す。**
+ * **サーバは行を1行も消さない**(同 ②)—— **消えるのではなく `used_at` に
+ * `revoked:` + ISO8601 が入り、一覧には「取り消し済み」として出続ける**(`ADR-0336` 限定16)。
+ *
+ * **応答本文は読み捨てる** —— **サーバは取り消しの応答にコードを1バイトも載せない。**
+ * **【禁止の履行】ここで {@link IssuedInvitationResult} を受け取る形にしない** ——
+ * **受け取る形にすると「取り消したのにコードが返る」という読み方を画面に持ち込む。**
+ *
+ * ## 【正直に書く】この関数が防いでいないこと
+ *
+ * - **既に使用済み / 取り消し済みの招待に撃つと、サーバは `200` を返すのに何も書かない**
+ *   (`H-V19-5`)。 **この関数はそれを見分けられない。** **画面の側が、未使用の行にだけ
+ *   このボタンを出すことで踏まないようにしている**(`UserAdmin.tsx` の `InvitationActions`)。
+ *   **サーバ側の穴は1バイトも塞がっていない。**
+ */
+export async function revokeInvitation(appId: string, username: string): Promise<void> {
+  await sendJson<unknown>(
+    authPath(appId, "invitations"),
+    "POST",
+    { username, revoke: true },
+    { appId },
+  );
 }
 
 /**
@@ -1350,6 +1554,20 @@ export type RequirementsDocResponse = {
  * **毎回サーバから取得する。** 生成物は保存されず(ADR-0025 限定12)、呼ぶたびに
  * その時点のマニフェストと変更履歴から作り直される。`fetchManifest` と同じく
  * **非保護 API** なので、401 の失効ハンドラには繋がない(認可は changelog と同列。§10-1)。
+ *
+ * **【`V17-M4-T02` による訂正。上の3行は1バイトも消していない】** **台帳 `AC-G20`** ——
+ * **この口はもう非保護ではない。** **`GET /manifest` と同じ関門が掛かり、未ログインは
+ * 401 である**(認可が changelog と同列であることだけは今日も真で、その changelog も
+ * 一緒にログインが要るようになった)。
+ *
+ * **したがって `appId` を渡す** —— **渡さないと、セッションが切れた人が要件定義書を開いた
+ * ときに画面で何も起きない**(`toApiError` は `extras.appId !== undefined` のときだけ
+ * 失効ハンドラを撃つ)。 **旧の逐語(1バイトも消していない)**:
+ *   ``  \`/api/apps/${encodeURIComponent(appId)}/requirements?${query.toString()}\`,``
+ *
+ * **【`fetchManifest` は本段では触っていない】** —— **同関数は今日も `appId` を渡さない。**
+ * **`GET /manifest` は `V8-M21` から 401 を返すので、そこにも同じ穴が在る** ——
+ * **本段が作った穴ではないので直していない**(記録の穴の一覧に書いた)。
  */
 export async function fetchRequirementsDoc(
   appId: string,
@@ -1361,6 +1579,7 @@ export async function fetchRequirementsDoc(
   }
   const body = await getJson<{ requirements: RequirementsDocResponse }>(
     `/api/apps/${encodeURIComponent(appId)}/requirements?${query.toString()}`,
+    { appId },
   );
   return body.requirements;
 }

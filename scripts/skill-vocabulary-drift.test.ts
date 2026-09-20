@@ -179,6 +179,15 @@ const VOCABULARY_SETS: Record<string, readonly string[]> = {
   "manifest:access_control.permission.properties": propertyNames(
     itemsOf(ACCESS_CONTROL?.properties?.permissions),
   ),
+  // **【2026-09-10。`V17-M10-T04`。台帳 `AC-G4a` / `ADR-0429`】6キー目 `restrictive` が
+  // 入って `properties`(6)と `required`(5)の件数が割れたので、`required` 側の集合を足した。**
+  // **足す前は1行の `count` が「{n}キーで、{n}キーとも必須である」の両方に同じ件数を当てており、
+  // 6キー目が入った時点でその文そのものが偽になる**(`ADR-0429` 限定2 は `required` を
+  // 5キーのまま据え置く)。**`grant` / `members` が既に `.properties` と `.required` を
+  // 別々に持っているのと同じ形に揃えた。**
+  "manifest:access_control.permission.required": requiredNames(
+    itemsOf(ACCESS_CONTROL?.properties?.permissions),
+  ),
   "manifest:view_action.properties": propertyNames(manifestDefs.view_action),
   "manifest:filter_leaf.properties": propertyNames(manifestDefs.filter_leaf),
   "manifest:role.properties": propertyNames(ROLE_ITEM),

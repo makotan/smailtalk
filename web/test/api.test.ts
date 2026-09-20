@@ -34,7 +34,7 @@ import {
   isWriteConflict,
   updateRecord,
 } from "../src/api.ts";
-import { ADMIN_ROLES, grantRules, tableCan } from "./role-rules.ts";
+import { ADMIN_ROLES, grantRules, tableCan, viewRead } from "./role-rules.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -467,7 +467,23 @@ function demoManifest(): Manifest {
   // 「api.ts が組み立てた要求が実サーバを通ること」なので、通すのに要る最小限
   // (表 `things` の読取・書込・削除)だけを足す。画面・ボタン・項目の規則は1本も足さない**
   // (**画面の規則を足すとレコード取得 URL に `?view=` が載り、URL 完全一致の検査を壊すため**)。
-  return grantRules(manifest, ADMIN_ROLES, [tableCan("things", "read", "write", "delete")]);
+  // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を1本足した。**
+  //
+  // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+  // 一覧系の画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる。**
+  // **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を役割の規則に1行も
+  // 書いていない場合も止まる。** **この題材は `thing-list` を宣言しながら、その画面の
+  // 規則を1本も書いていなかった。**
+  //
+  // **直上の「画面・ボタン・項目の規則は1本も足さない」は今日は偽である(1バイトも
+  // 消していない)** —— **足さないと `GET .../records` が `{"records":[],"total":0}` になる。**
+  // **【実測】足しても URL 完全一致の検査は1本も落ちない** —— **`?view=` を載せるのは
+  // 呼び出し側が `view` を渡したときだけであり、規則の有無を1ミリも見ていない。**
+  // **主張(`expect`)は1バイトも書き換えていない。**
+  return grantRules(manifest, ADMIN_ROLES, [
+    tableCan("things", "read", "write", "delete"),
+    viewRead("thing-list"),
+  ]);
 }
 
 describe("実サーバ(createServerApp)との突き合わせ", () => {
@@ -680,15 +696,38 @@ describe("fetchRequirementsDoc の実サーバ突き合わせ", () => {
     const server = createServerApp({ dataRoot });
     // **cookie を1つも載せない。** 要件定義書は changelog / manifest と同列の
     // 無認証(ローカル専用)なので、認証なしで通ることがここで実物と突き合う(§10-1)。
-    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
-      server.request(new URL(String(input), "http://localhost").toString(), init)) as typeof fetch;
+    //
+    // =====================================================================================
+    // **【`V17-M4-T02` による改訂。上の2行は1バイトも書き換えていない】** **台帳 `AC-G20`**
+    // =====================================================================================
+    //
+    // **要件定義書はもう「無認証(ローカル専用)」ではない** —— **`GET /manifest` と同じ
+    // 関門が掛かり、未認証は 401 である。** **旧の逐語**:
+    //   `globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>`
+    //   `  server.request(new URL(String(input), "http://localhost").toString(), init)) as typeof fetch;`
+    // **上の `demo` 用のセッションを仕込む形(このファイルの別の describe が既に採っている
+    // 形)へ揃えただけで、期待値は1つも書き換えていない。**
+    const { cookie } = seedSession(dataRoot, "demo");
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      headers.set("cookie", cookie);
+      if (!headers.has("origin")) {
+        headers.set("origin", TEST_ORIGIN);
+      }
+      return server.request(new URL(String(input), "http://localhost").toString(), {
+        ...init,
+        headers,
+      });
+    }) as typeof fetch;
   });
 
   afterEach(async () => {
     await rm(dataRoot, { recursive: true, force: true });
   });
 
-  test("認証なしで取得でき、全記述に出典が付く", async () => {
+  // **【`V17-M4-T02`】旧のテスト名(逐語)**: `"認証なしで取得でき、全記述に出典が付く"`。
+  // **名前ごと引き直した** —— **期待値を書き換えたのではなく、認証の要否が変わったからである。**
+  test("ログイン済みで取得でき、全記述に出典が付く", async () => {
     const doc = await fetchRequirementsDoc("demo");
     expect(doc.app_id).toBe("demo");
     expect(doc.statements.length).toBeGreaterThan(0);

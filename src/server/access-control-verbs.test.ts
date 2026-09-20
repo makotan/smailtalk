@@ -112,6 +112,13 @@ function manifest(): Manifest {
             enabled: true,
             permissions: [...PERMISSIONS],
             creator_permission: "keeper",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+            // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+            // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+            // **「配線していない経路は今日どおり素通りする」を測る (D) の `POST` が
+            // 403 になっていた。** **本ファイルで `books` へ `POST` するのは
+            // `editor` の1箇所だけである。**
+            creatable_by_roles: ["editor"],
             grant: {
               table: "book_grant",
               target: "book",
@@ -989,10 +996,23 @@ describe("V7-M3-T01 (F): グループ経由の解決(固定3段)", () => {
     ).toEqual({ read: true, write: true, delete: true });
   });
 
-  test("1件の付与行に相手とグループの両方が書いてあれば、どちらか一致で効く(OR)", () => {
+  // **【`V17-M1-T01` / `ADR-0410`(`AC-G1`)がテスト名と期待値を反転した。旧名を1バイトも
+  //   消していない】**
+  //   旧題名(逐語): `test("1件の付与行に相手とグループの両方が書いてあれば、どちらか一致で効く(OR)", …)`
+  //   旧期待値(逐語): `user-b`(グループだけ一致)と `user-d`(相手だけ一致)の**両方**が
+  //     `{ read: true, write: true, delete: false }` であった。
+  //   **今日の正**: **両欄がともに埋まっている付与行は、その人がそのグループに居るときだけ
+  //     効く(AND)。** **出どころはユーザ決定 `D-V16-2`(逐語「**両方書いたら「その人が
+  //     そのチームに居るとき」に限る**」)であり、条文は `ADR-0410` §Decision の 2 である。**
+  //   **片欄だけの行の意味は1ミリも変えていない**(`ADR-0410` 限定2)—— **本 (F) 群で
+  //     期待値を書き換えたのはこの1本だけである。**
+  test("1件の付与行に相手とグループの両方が書いてあれば、その人がそのグループに居るときだけ効く(AND)", () => {
     const grantRows = [
       { _id: "g-1", book: "row-1", member: "m-d", team: "t-1", permission: "writer" },
     ];
+    // **どちらか一方しか一致しない人は、AND では1ミリも届かない** ——
+    // **`user-b` はグループ `t-1` に居るが `m-d` ではなく、`user-d` は `m-d` だが
+    // どのグループにも属さない。**
     for (const actorId of ["user-b", "user-d"]) {
       expect(
         judgeRecordAccess({
@@ -1003,8 +1023,26 @@ describe("V7-M3-T01 (F): グループ経由の解決(固定3段)", () => {
           grantRows,
           memberRows,
         }),
-      ).toEqual({ read: true, write: true, delete: false });
+      ).toEqual({ read: false, write: false, delete: false });
     }
+    // **両方に一致する人が居れば、今日どおり効く(AND の成立側を撃つ)。**
+    // **共有のフィクスチャ `memberRows` は1バイトも書き換えない** —— **`m-d` が `t-1` に
+    // 属している写しを、この検査の中だけで組む**(共有側を触ると (F) 群の他の13本が動く)。
+    const memberRowsWithBoth = [
+      { _id: "m-b", account: "user-b", team: "t-1" },
+      { _id: "m-c", account: "user-c", team: "t-2" },
+      { _id: "m-d", account: "user-d", team: "t-1" },
+    ];
+    expect(
+      judgeRecordAccess({
+        manifest: base,
+        tableId: "books",
+        row,
+        actorId: "user-d",
+        grantRows,
+        memberRows: memberRowsWithBoth,
+      }),
+    ).toEqual({ read: true, write: true, delete: false });
   });
 
   test("グループを1度も辿らない宣言(members.group が無い)では、グループ付与は効かない", () => {
@@ -1022,6 +1060,36 @@ describe("V7-M3-T01 (F): グループ経由の解決(固定3段)", () => {
         memberRows,
       }),
     ).toEqual({ read: false, write: false, delete: false });
+  });
+  // **【`V17-M1-T01g` / `ADR-0410` の `AC-G26`(限定22「本体と生成物の答えを割らない」)】**
+  // **直上の検査は「グループ**だけ**を指した付与は、グループを辿れない宣言では効かない」
+  // ことを測る。** **本検査はその裏である** —— **両欄がともに埋まった付与行**が、
+  // **グループを1度も辿れない宣言(`members.group` が無い)でも、相手の列で今日どおり
+  // 効く**ことを測る。**
+  // **`AND` はグループを辿れる宣言でだけ成り立つ規則である** —— **辿れない宣言で `AND` を
+  // 課すと、誰1人グループ側に届かないので、両欄が埋まった付与行が**永久に死ぬ**
+  // (相手の列まで丸ごと巻き添えになる)。**
+  // **適用時検査(`src/kernel/referential-integrity.ts`)は `grant.group` の宣言に対して
+  // `groups` しか要求せず、`members.group` を1度も要求しない** —— **したがって
+  // 「`grant.member` + `grant.group` + `groups` が在り `members.group` が無い」宣言は
+  // 今日も適用できる。** **その宣言を撃つのが本検査である。**
+  test("グループを1度も辿らない宣言(members.group が無い)でも、両欄が埋まった付与は相手の列で効く", () => {
+    const noGroup = manifest();
+    const declaration = (tableOf(noGroup, "books") as unknown as Record<string, unknown>)
+      .access_control as Record<string, unknown>;
+    declaration.members = { table: "book_member", account: "account" };
+    expect(
+      judgeRecordAccess({
+        manifest: noGroup,
+        tableId: "books",
+        row,
+        actorId: "user-d",
+        grantRows: [
+          { _id: "g-1", book: "row-1", member: "m-d", team: "t-1", permission: "writer" },
+        ],
+        memberRows,
+      }),
+    ).toEqual({ read: true, write: true, delete: false });
   });
 
   test("相手の列を宣言せずグループだけを宣言した表でも、グループ経由で効く", () => {

@@ -82,6 +82,13 @@ function manifest(): Manifest {
             enabled: true,
             permissions: [...PERMISSIONS],
             creator_permission: "keeper",
+            // **【`V18-M5-T02b` / `PM-G2` / `ADR-0442`】題材に1行足した(主張は1バイトも
+            // 書き換えていない)。** **根の表に「行を作れる立場」を一行も書かないときの
+            // 既定が「誰も作れない」へ反転したので**(`ADR-0432` §Decision)、
+            // **前準備の `POST /tables/books/records`(`owner` の `admin`)が 403 になり、
+            // 本ファイルの33本が丸ごと巻き込まれていた。** **本ファイルで `books` に
+            // 行を作るのは `admin` の1箇所だけである**(`:497`)。
+            creatable_by_roles: ["owner"],
             grant: {
               table: "book_grant",
               target: "book",
@@ -741,7 +748,29 @@ describe("V7-M3-T05 (E): 守った線", () => {
     expect(at).toBeGreaterThan(0);
     const body = OWNER_SCOPE_SOURCE.slice(at, OWNER_SCOPE_SOURCE.indexOf("\n}\n", at));
     // **判定は1度だけ呼ばれ、その `grantRows` は整えを通した1本だけである。**
-    expect(body.split("judgeRecordAccess(").length - 1).toBe(1);
+    //
+    // **【`V17-M10B-T06`(`ADR-0430` (δ))による更新。旧の assert を1バイトも消していない】**
+    // **旧(逐語)**: `expect(body.split("judgeRecordAccess(").length - 1).toBe(1);`
+    // **旧は「段の判定を `judgeRecordAccess(` という綴りで1度だけ呼ぶこと」を撃っていた。**
+    // **今日 `resolveRecordAccess` が段ごとに呼ぶのは `recordAccessStages(` である** ——
+    // **上限(`permissions[].restrictive`)を段どうしでまたいで重ねるために、
+    // 混ぜる前の2段(∪ すべての付与 / ∩ 符号を持つ付与)のまま受け取る必要が出たからである。**
+    // **判定の家は今日も1本である** —— **`judgeRecordAccess` 自身がその
+    // `recordAccessStages(` を通る**(下の2本目の assert がそれを撃つ)。
+    // **【差で失われた入力の例(1つ)】** —— **`resolveRecordAccess` が
+    // `recordAccessStages(` を1度だけ呼びながら、その答えを捨てて別の綴りの第2の判定
+    // (たとえば `looseRecordAccess(`)の答えを返す実装。** **旧の assert は
+    // `judgeRecordAccess(` が0件になるので落としたが、今日の assert は通してしまう。**
+    // **【禁止】これを「不要になった」と書かない。**
+    expect(body.split("recordAccessStages(").length - 1).toBe(1);
+    // **判定の家が1本であること** —— **公開の判定も、同じ `recordAccessStages(` を通る。**
+    const judgeAt = OWNER_SCOPE_SOURCE.indexOf("export function judgeRecordAccess(params: {");
+    expect(judgeAt).toBeGreaterThan(0);
+    const judgeBody = OWNER_SCOPE_SOURCE.slice(
+      judgeAt,
+      OWNER_SCOPE_SOURCE.indexOf("\n}\n", judgeAt),
+    );
+    expect(judgeBody.split("recordAccessStages(").length - 1).toBe(1);
     expect(body.split("grantsWithExistingGroups({").length - 1).toBe(1);
     const grantLines = body
       .split("\n")

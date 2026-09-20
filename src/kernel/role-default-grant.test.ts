@@ -1082,7 +1082,33 @@ test("(o-10) 表(`table`)以外の対象には1つも補わない(画面・ボ�
   }
 });
 
-test("(o-11) 同じ差分で `set_roles` を `add_table` より先に並べると補われない(順序に依る。隠さない)", () => {
+// --- 【`V17-M5-T05` / 台帳 `AC-G33`(`:1862`)/ `ADR-0423`。期待値を反転させた。旧を逐語で残す】 ---
+//
+// **旧のテスト名(逐語)**:
+//   `(o-11) 同じ差分で set_roles を add_table より先に並べると補われない(順序に依る。隠さない)`
+//
+// **【`V17-M5` 独立点検の指摘 低1 による訂正(2026-09-08)。上の2行は1バイトも消していない】**
+// **上の1行は「逐語」と銘打っているが、バイト列としては旧名と一致しない** ——
+//   **旧名は `set_roles` と `add_table` をバッククォートで囲んでいた。**
+// **バッククォートを付けた逐語(こちらが `git show 64260839:` の実物と一致する)**:
+//   ``(o-11) 同じ差分で `set_roles` を `add_table` より先に並べると補われない(順序に依る。隠さない)``
+//   測り方: `git show 64260839:apps/smailtalk/src/kernel/role-default-grant.test.ts | LC_ALL=C /usr/bin/grep -n "(o-11) 同じ差分で"`
+// **旧の本体3行のほうは逐語で一致している**(独立点検が `grep -cF` で3行とも `1` を確認した)。
+//
+// **旧の本体の末尾3行(逐語)**:
+//   ```
+//   // **`set_roles` を畳み込んだ時点で `seed` はまだ `st_owner` を持っていない。**
+//   // **後から同じ差分で足しても、遡って補いはしない。**
+//   expect(whenFor(manifest, "reviewer", "seed")).toBeUndefined();
+//   ```
+//
+// **根拠**: **台帳 `AC-G33` は、この順序依存を穴として名指ししていた**
+// (`apply-diff.ts` の `supplyOwnerScopeConditions` の doc の「**順序に依る**」の項)。
+// **`V17-M5-T05` は補完の呼び出しを `foldOperations` の出口へ移し、すべての op を
+// 畳み終えた後の姿を見るようにした** —— **したがって並び順は答えを1つも変えなくなった。**
+// **【誇張しない】補う条件も、補う対象(`when` を書いていない表の規則)も1バイトも
+// 変わっていない** —— **変わったのは「いつ見るか」だけである。**
+test("(o-11) 同じ差分で `set_roles` を `add_table` より先に並べても補われる(順序に依らない。旧: 補われない)", () => {
   boot();
   const manifest = apply({
     diff_id: "d-set-roles-before-table",
@@ -1106,7 +1132,12 @@ test("(o-11) 同じ差分で `set_roles` を `add_table` より先に並べる�
       },
     ],
   } as unknown as Diff);
-  // **`set_roles` を畳み込んだ時点で `seed` はまだ `st_owner` を持っていない。**
-  // **後から同じ差分で足しても、遡って補いはしない。**
-  expect(whenFor(manifest, "reviewer", "seed")).toBeUndefined();
+  // **`set_roles` を畳み込んだ時点で `seed` はまだ `st_owner` を持っていない** ——
+  // **が、補完は畳み終えた後に1度だけ走るので、最後の姿(`st_owner` を持つ)を見る。**
+  expect(whenFor(manifest, "reviewer", "seed")).toEqual({
+    or: [
+      { field: "st_owner", equals_current_user: true },
+      { field: "st_owner", is_empty: true },
+    ],
+  });
 });

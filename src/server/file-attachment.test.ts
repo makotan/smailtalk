@@ -420,10 +420,22 @@ test("T04(反転): customer も、面が条件なしで read を許した表の�
   expect((await deliver(theirs)).status).toBe(404);
 });
 
-test("T04(反転): どのレコードからも参照されない file は、ログイン済みの全員に 200(未認証は 404)", async () => {
+// **【`V17-M4-T03d` / `AC-G21`。テスト名ごと引き直した。旧名と旧の期待値を逐語で残す】**
+// **旧名**: `test("T04(反転): どのレコードからも参照されない file は、ログイン済みの全員に 200(未認証は 404)")`
+// **旧の期待値(逐語)**:
+//
+//     expect((await deliver(orphan, c1.cookie)).status).toBe(200);
+//     expect((await deliver(orphan, ownerCookie)).status).toBe(200);
+//     expect((await deliver(orphan)).status).toBe(404);
+//
+// **根拠**: **ユーザ決定 2026-09-08 の `D4`(「上げた本人だけ」。**運営者も例外にしない**)。**
+// **`orphan` を上げたのは `ownerCookie` である**(`uploadFileId` の既定の cookie)——
+// **`owner` の行は 200 のまま(上げた本人)で、`c1`(customer)の行だけが 404 になった。**
+// **未認証の1行は1バイトも変わっていない。**
+test("T04(再反転): どのレコードからも参照されない file は、上げた本人だけに 200(他のログイン済みと未認証は 404)", async () => {
   const c1 = seedSession(dataRoot, APP, { role: "customer" });
   const orphan = await uploadFileId("%PDF-1.4\norphan\n", "orphan.pdf");
-  expect((await deliver(orphan, c1.cookie)).status).toBe(200);
+  expect((await deliver(orphan, c1.cookie)).status).toBe(404);
   expect((await deliver(orphan, ownerCookie)).status).toBe(200);
   // **未認証は今日も 404 である**(この1行は新しく足した歯止め)。
   expect((await deliver(orphan)).status).toBe(404);

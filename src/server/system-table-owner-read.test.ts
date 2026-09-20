@@ -381,6 +381,17 @@ test("(f) システムの表と同じ綴りのアプリの表は作れない(判
  *
  * **本検査はその2本(`_apps` / `_changelog`)を実 HTTP で当てる。**
  */
+/**
+ * **【`V17-M4-T01` / 台帳 `AC-G19`】(g) が足す集計表3枚の「画面の読取」。**
+ *
+ * **本段の判定は画面しか見ない** —— **表の規則も、システムの表かどうかも1文字も見ない。**
+ */
+const REPORT_VIEW_READS = ["rep_apps", "rep_chg", "rep_ledger"].map((view) => ({
+  target: "view",
+  view,
+  can: ["read"],
+}));
+
 test("(g) システムの表を対象にした集計表は持ち主だけが読める(非 owner は 403)", async () => {
   await boot();
   const applied = applyDiff(dataRoot as string, APP_ID, {
@@ -421,6 +432,58 @@ test("(g) システムの表を対象にした集計表は持ち主だけが読�
           name: "台帳の集計",
           report: { group_by: [{ field: "kind" }], aggregates: [{ type: "count" }] },
         },
+      },
+      /*
+       * **【`V17-M4-T01` / 台帳 `AC-G19` による追記。上の宣言も下の期待値も1バイトも変えていない】**
+       *
+       * **本段が集計表の口に「その画面を閲覧してよいか」の判定を1本置いた。**
+       * **`add_view` の畳み込みは既定3役割(`owner` / `editor` / `viewer`)にしか
+       * 画面の規則を生やさないので、`customer` だけが画面の関門で 403 になり、
+       * `(g-3)`(アプリの表の集計は今日どおり 200)を測れなくなる。**
+       *
+       * **そこで4役割**全部**に、同じ3枚の画面の読取を明示的に配る** ——
+       * **表の規則は1行も変えていない**(上の `roles` と同じ内容をそのまま書き戻している)。
+       * **`(g-2)` が測るのは「システムの表の集計は持ち主だけ」であって
+       * 「画面を開けない人が 403 になる」ことではない** —— **画面の関門を全員に通した上で、
+       * 非 owner が **持ち主** の文面で 403 になることを見る形にした。**
+       * **既存アプリの役割は `set_roles` に今の全部を書き戻さないと直らない**
+       * (この作法は `V8-M35` の `F-G10` が実測している)。
+       */
+      {
+        op: "set_roles",
+        roles: [
+          {
+            id: "owner",
+            name: "持ち主",
+            rules: [
+              { target: "app", can: ["write"] },
+              { target: "role", can: ["write"] },
+              { target: "table", table: "ledger", can: ["read", "write", "delete"] },
+              ...REPORT_VIEW_READS,
+            ],
+          },
+          {
+            id: "editor",
+            name: "編集者",
+            rules: [
+              { target: "table", table: "ledger", can: ["read", "write"] },
+              ...REPORT_VIEW_READS,
+            ],
+          },
+          {
+            id: "viewer",
+            name: "閲覧者",
+            rules: [{ target: "table", table: "ledger", can: ["read"] }, ...REPORT_VIEW_READS],
+          },
+          {
+            id: "customer",
+            name: "一般利用者",
+            rules: [
+              { target: "table", table: "ledger", can: ["read", "write"] },
+              ...REPORT_VIEW_READS,
+            ],
+          },
+        ],
       },
     ],
   });

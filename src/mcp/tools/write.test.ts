@@ -1678,8 +1678,15 @@ test("完了条件4: update_record / delete_record は confirm 等のフラグ�
     expect(Object.keys(update?.inputSchema.properties ?? {}).sort()).toEqual(
       ["app_id", "table_id", "record_id", "changes", "if_match"].sort(),
     );
+    // **【`V18-M7-T03`(2026-09-14)/ `PM-G5` / `ADR-0444` 授権の表 行26】**
+    // **件数の印 `if_match_children` を足した。** **これは同意のフラグではない** ——
+    // **型は `number` であり、値は「ぶら下がっている行の件数」そのものである。**
+    // **したがってこのテストの題名(「`confirm` 等のフラグ引数を取らない」)は今日も真であり、
+    // 改名していない**(`ADR-0053` 限定4 の手続き (b) を使う理由が無い)。
+    // **下の「boolean 型の引数が1つも無い」検査は1バイトも触っていない** —— **それが
+    // `ADR-0444` 限定4 の実効部分である。**
     expect(Object.keys(remove?.inputSchema.properties ?? {}).sort()).toEqual(
-      ["app_id", "table_id", "record_id", "if_match"].sort(),
+      ["app_id", "table_id", "record_id", "if_match", "if_match_children"].sort(),
     );
 
     // 名前を問わず「同意フラグ」に読める boolean 引数が無いこと。
@@ -3338,4 +3345,170 @@ test("(CV-11) 器が投げたときも統一形式(structuredContent + path + hi
   expect(
     okData(await callTool("set_comment_visibility", { app_id: CV_APP_ID, comment_read: true })),
   ).toEqual({ app_id: CV_APP_ID, comment_visibility: { write: false, read: true } });
+});
+
+// ---------------------------------------------------------------------------
+// **【`V17-M6-T02a'` / 台帳 `AC-G23`】巻き戻しと、設定を触る他の道具の関係を今日の形で固定する**
+// ---------------------------------------------------------------------------
+//
+// **この群は「穴が開いたままであることを固定するもの」である。** **直したことを1つも撃っていない。**
+//
+// **`AC-G23`(巻き戻しを誰に許すか)は **利用者決定 `D2`(2026-09-08)** により
+// 「**今までどおり、アプリの設定を変更できる人なら誰でも巻き戻せる**」と決まった** ——
+// **実装は 0バイトであり、`src/mcp/tools/write.ts` の差分は空である。**
+//
+// **【禁止】この群を根拠に「これでよい」「安全である」「塞いだ」と書かない。**
+// **【禁止】逆に「危険である」とも書かない** —— **代償を読んだうえでの利用者決定である。**
+//
+// **今日の形(この群が固定するもの)**:
+//
+// - **設定に触る道具は9本あり、9本とも `denyAppSettingWrite` という**同じ述語1本**を通る。**
+//   **その述語が見るのは `{ target: "app", can: ["write"] }` だけである** ——
+//   **巻き戻し(`undo` / `redo`)と、残る7本(`apply_diff` / `delete_app` /
+//   `request_connection` / `request_ai_capability` / `request_inbound_endpoint` /
+//   `request_custom_css` / `set_comment_visibility`)の間に、今日は区別が1つも無い。**
+// - **HTTP の `POST /api/apps/:app_id/undo` 側は
+//   `src/server/app-change-vs-undo.test.ts` が別に撃つ。**
+//
+// **この群が測っていないこと(誇張しない)**: **7本それぞれの本体の挙動を1度も撃っていない**
+// (測っているのは「同じ壁を通ること」だけである)。**巻き戻しで他人の行が消えるところも
+// 1度も撃っていない。**
+
+/** 巻き戻しの担い手を測る題材のアプリ。 */
+const ACG23_APP_ID = "acg23-app";
+/** `app` × `write` を**それだけ**持つ非運営(`customer`)。 */
+const ACG23_STAFF = "acg23-staff";
+
+/** `customer` に `app` × `write` を1本だけ配ったアプリを1つ用意する。 */
+async function setUpAcG23App(): Promise<void> {
+  const store = KernelMetaStore.open(dataRoot);
+  try {
+    createApp(store, "巻き戻しの担い手", { app_id: ACG23_APP_ID });
+  } finally {
+    store.close();
+  }
+  seedActor(ACG23_APP_ID);
+  seedSession(dataRoot, ACG23_APP_ID, { role: "customer", username: ACG23_STAFF });
+  const applied = await callTool("apply_diff", {
+    app_id: ACG23_APP_ID,
+    diff: {
+      diff_id: "d-acg23-setup",
+      intent: "一般利用者にもアプリの設定を変えられるようにする",
+      operations: [
+        {
+          op: "add_table",
+          table: {
+            id: "acg23_notes",
+            name: "メモ",
+            fields: [{ id: "title", name: "題名", type: "text", required: true }],
+          },
+        },
+        {
+          op: "set_roles",
+          roles: [
+            {
+              id: "owner",
+              name: "持ち主",
+              rules: [
+                { target: "app", can: ["write"] },
+                { target: "role", can: ["write"] },
+                { target: "table", table: "acg23_notes", can: ["read", "write"] },
+              ],
+            },
+            { id: "editor", name: "編集者" },
+            { id: "viewer", name: "閲覧者" },
+            // **表にも画面にも1本も書かない。持っているのは「設定を変更できる」だけである。**
+            { id: "customer", name: "一般利用者", rules: [{ target: "app", can: ["write"] }] },
+          ],
+        },
+      ],
+    },
+  });
+  expect(applied.isError).toBeFalsy();
+  // **巻き戻しの題材を1本足す** —— **これが無いと `undo` が上の差分(権限を配った差分そのもの)に
+  // 当たり、その場で `app` × `write` が消えて `redo` が断られる。**
+  // **その「自分に権限を与えた差分そのものを巻き戻せる」ことは
+  // `src/server/app-change-vs-undo.test.ts` の `(AC-G23-1b)` が別に撃つ。**
+  const trivial = await callTool("apply_diff", {
+    app_id: ACG23_APP_ID,
+    diff: {
+      diff_id: "d-acg23-trivial",
+      intent: "メモに並び順の欄を足したい",
+      operations: [
+        {
+          op: "add_field",
+          table: "acg23_notes",
+          field: { id: "sort_key", name: "並び順", type: "number" },
+        },
+      ],
+    },
+  });
+  expect(trivial.isError).toBeFalsy();
+}
+
+/** そのログイン名の実効ロール集合を、`seedSession` の返り値から採る(同名なら同じ集合)。 */
+function rolesOf(appId: string, username: string): ReturnType<typeof seedSession>["roles"] {
+  return seedSession(dataRoot, appId, { role: "customer", username: `${username}-probe` }).roles;
+}
+
+test("(AC-G23-6a) 設定に触る壁は述語1本であり、見ているのは app × write だけである", async () => {
+  await setUpAcG23App();
+  // **`app` × `write` を持つ役割 —— 壁は通す(`null` を返す)。**
+  expect(denyAppSettingWrite(dataRoot, ACG23_APP_ID, ["customer"])).toBeNull();
+  // **持たない役割 —— 壁は断る。**
+  const denied = denyAppSettingWrite(dataRoot, ACG23_APP_ID, ["editor"]);
+  expect(denied).not.toBeNull();
+  expect(denied?.[0]?.message).toContain("アプリの作りを変更できるのは");
+  // **実際に seed した利用者の実効ロール集合でも同じ結果になる**(綴りの決め打ちにしない)。
+  expect(
+    denyAppSettingWrite(dataRoot, ACG23_APP_ID, rolesOf(ACG23_APP_ID, ACG23_STAFF)),
+  ).toBeNull();
+});
+
+test("(AC-G23-6b) 今日は、巻き戻し2本と残る7本の間に区別が1つも無い", async () => {
+  await setUpAcG23App();
+  // **巻き戻しの側**: `app` × `write` だけの相手でも通る。
+  const undone = await callToolAs("undo", { app_id: ACG23_APP_ID }, ACG23_STAFF);
+  expect("isError" in undone).toBe(false);
+  const redone = await callToolAs("redo", { app_id: ACG23_APP_ID }, ACG23_STAFF);
+  expect("isError" in redone).toBe(false);
+
+  // **残る7本の側**(代表2本を実際に叩く。**同じ壁を同じ向きに通る**)。
+  const visibility = await callToolAs(
+    "set_comment_visibility",
+    { app_id: ACG23_APP_ID, comment_write: true },
+    ACG23_STAFF,
+  );
+  expect("isError" in visibility).toBe(false);
+  const diffed = await callToolAs(
+    "apply_diff",
+    {
+      app_id: ACG23_APP_ID,
+      diff: {
+        diff_id: "d-acg23-more",
+        intent: "メモに覚え書きを足したい",
+        operations: [
+          {
+            op: "add_field",
+            table: "acg23_notes",
+            field: { id: "memo", name: "覚え書き", type: "text" },
+          },
+        ],
+      },
+    },
+    ACG23_STAFF,
+  );
+  expect("isError" in diffed).toBe(false);
+
+  // **陰性対照**: 壁を通らない相手は、巻き戻しでも残る7本でも同じく断られる。
+  seedSession(dataRoot, ACG23_APP_ID, { role: "editor", username: "acg23-editor" });
+  for (const [name, args] of [
+    ["undo", { app_id: ACG23_APP_ID }],
+    ["redo", { app_id: ACG23_APP_ID }],
+    ["set_comment_visibility", { app_id: ACG23_APP_ID, comment_read: true }],
+  ] as const) {
+    const result = await callToolAs(name, args, "acg23-editor");
+    expect("isError" in result).toBe(true);
+    expect(errorsOf(result)[0]?.message).toContain("アプリの作りを変更できるのは");
+  }
 });

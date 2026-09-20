@@ -181,6 +181,20 @@ function seededManifest(): Manifest {
         when: { field: OWNER_FIELD, equals_current_user: true },
       },
       { target: "table", table: "notices", can: ["read"] },
+      // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を1本足した。**
+      //
+      // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す
+      // 一覧系の画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件に
+      // なる(単票は 404)。** **`D-V18-26` により、画面を宣言しているのに「誰に見せるか」を
+      // 役割の規則に1行も書いていない場合も止まる。**
+      //
+      // **この題材は `visit-list`(`list_view`。表 `visits`)を宣言しながら、その画面の
+      // 規則を1本も書いていなかった。** **(3-c) が測っているのは「宣言された種類の
+      // 認可規則が `customer` と同一であること」であって画面の規則ではないので、
+      // 主張(`expect`)は1バイトも書き換えていない。**
+      // **条件(`when`)つきの表の規則はそのままなので、(3-d)(同じ種類の2人も互いの
+      // 行が見えない)は今日も 0件のままである。**
+      { target: "view", view: "visit-list", can: ["read"] },
     ],
   }));
   return withDefaultRoleRules(m) as unknown as Manifest;

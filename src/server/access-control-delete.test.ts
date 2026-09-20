@@ -386,6 +386,47 @@ describe("V7-M3-T06 (C): 関門の順序 —— (2) 可視性 404 →(3) 「消�
     );
     expect(response.status).toBe(404);
   });
+
+  /*
+   * **【`V18-M7-T02` / `PM-G5` / `ADR-0444` 授権の表 行18 が足した **7本目**】**
+   *
+   * **上の6本(4段)の期待値を1つも触っていない。** **足したのは、その4段の**後ろ**に
+   * 置いた5本目の関門 —— **親を消すと残る子の連鎖** —— の位置である。**
+   *
+   * ## **なぜ位置を綴りで測るのか(振る舞いで測っていないことを隠さない)**
+   *
+   * **本ファイルの題材(`books`)は子を1本も持たない** —— **子を作るには表を1本足すことに
+   * なり、(F-1) が `toEqual(["books"])` で固定している「宣言した表の一覧」が動く。**
+   * **`ADR-0444` 授権の表 行18 が許したのは (C) の組み直しだけであり、(F) は射程外である。**
+   * **したがって本ファイルは**位置**だけを固定し、**振る舞い**は
+   * `src/server/parent-delete-cascade-route.test.ts` の (G) が別の題材で撃つ。**
+   *
+   * ## **この1本が守っているもの**
+   *
+   *  1. **新しい関門が既存の関門より**後ろ**に在ること** —— **前に置くと、見えない行の
+   *     件数を漏らす**(`ADR-0434` §Decision 6 の 5 の「越えてはならない線」)。
+   *  2. **「消せない子が在る」の断りが、「件数の印が無い」の断りより**先**に在ること**
+   *     (`ADR-0444` §Decision 3 の ③ が ④ より先)—— **逆にすると、自分に消せない行の
+   *     件数と表IDを先に返してしまう。**
+   */
+  test("(C-7) 子の連鎖の関門は、既存の関門の後ろ・実際に消す手前に在り、③ が ④ より先である", async () => {
+    const body = await deleteHandlerBody();
+    const cascadeAt = body.indexOf("resolveRecordDeleteCascade(");
+    const grantAt = body.indexOf("grantWriteVerdict(");
+    // **親そのものを消す呼び出しは、このハンドラの中で**いちばん最後**の書込である。**
+    const parentWriteAt = body.lastIndexOf("writeWithAudit(");
+    expect(cascadeAt).toBeGreaterThan(0);
+    expect(grantAt).toBeGreaterThan(0);
+    expect(parentWriteAt).toBeGreaterThan(0);
+    expect(cascadeAt).toBeGreaterThan(grantAt);
+    expect(cascadeAt).toBeLessThan(parentWriteAt);
+    // **③(消せない子が在る)は ④(件数の印)より先に立つ。**
+    const undeletableAt = body.indexOf("hasUndeletableChild");
+    const sealAt = body.indexOf("if-match-children");
+    expect(undeletableAt).toBeGreaterThan(0);
+    expect(sealAt).toBeGreaterThan(0);
+    expect(undeletableAt).toBeLessThan(sealAt);
+  });
 });
 
 // ---------------------------------------------------------------------------

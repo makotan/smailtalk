@@ -30,7 +30,11 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { AuthConfig } from "../auth/config.ts";
 // **【`V8-M3-T02` / 台帳 `I-G20` / `ADR-0337` 限定13】招待の照合は既存の1本を呼ぶ。**
 // **2本目の照合関数をこのファイルに書かない**(`ADR-0337` §3-1 の逐語)。
-import { findUsableInvitation } from "../auth/invitations.ts";
+import {
+  findUsableInvitation,
+  INVITATION_REVOKED_PREFIX,
+  invitationState,
+} from "../auth/invitations.ts";
 import {
   buildAuthenticationOptions,
   buildRegistrationOptions,
@@ -2448,10 +2452,24 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
       // 「この既存の口の応答」の2箇所だけである。** **先例は `J-G3`(既存の口の引数を
       // 広げた)と同型で、こちらは**応答**を広げている。**
       //
+      // **【2026-09-18 訂正(`V19-M2-T02`。単位 `SV-G7a`。`D-V19-6`)。上の3行を1バイトも
+      //   消していない】**
+      // **上の3行のうち「提供先は…2箇所だけである」は今日は偽である** ——
+      // **コードの提供先は「**発行の応答本文**」の**1箇所ちょうど**になった**
+      // (`ADR-0452` 限定⑮)。 **この口の応答には招待は今日どおり全件載るが、
+      // **コードは1バイトも載らない**(`invitationView` が載せない)。**
+      // **「一覧のために新しい HTTP の口を足していない」の側は今日も真である**(口は53本のまま)。
+      //
       // **使用済み・取り消し済み・期限切れの招待も落としていない**(`ADR-0336` 限定16)——
       // **落とすと `I-G12` の「取り消したことを確認できる」が成立しない。**
       // **【正直に書く】この応答は `usedAt` に時刻が入っていることしか示せない** ——
       // **列が7つに閉じているので、「使われた」と「取り消された」を区別できない。**
+      //
+      // **【2026-09-18 訂正(`V19-M2-T00`。単位 `SV-G5`)。上の2行を1バイトも消していない】**
+      // **上の2行は今日は偽である。** **取り消しは同じ列に**素の時刻ではない値**を書くので、
+      // この応答でも2つが分かれる** —— **状態は `state` という**別のキー**で載り、
+      // `usedAt` は今日どおり ISO8601 のまま返る**(印を応答に1バイトも出さない)。
+      // **【正直に書く】この版より前に作られた行は「使用済み」と読む**(復元しない)。
       // **【正直に書く】コードは平文で返る**(`ADR-0336` §3-8)。
       //
       // **【`V8-M2` のメインの裁定 `M2-1`。この口は「役割を配れる人」に開いており
@@ -2674,6 +2692,15 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
   // **ハッシュにしていない。** **見せる先は2箇所だけである** —— **この発行の応答本文と、
   // 既存の `GET /api/apps/:app_id/auth/users` の応答。** **`_auth_activity`(監査記録)には
   // コードを1バイトも書かない**(2つ目の場所を作らない)。
+  //
+  // **【2026-09-18 訂正(`V19-M2-T02`。単位 `SV-G7a`。`D-V19-6`)。上の3行を1バイトも
+  //   消していない】**
+  // **「見せる先は2箇所だけ」は今日は偽である** —— **見せる先は**この発行の応答本文だけ**の
+  // **1箇所ちょうど**になった**(`ADR-0452` 限定⑮ が `ADR-0336` 限定12 を置き直した)。
+  // **「ハッシュにしていない」「監査記録に1バイトも書かない」の2つは今日も真である**
+  // (限定11 の**内容欄**は1バイトも破っていない)。
+  // **【正直に書く】監査記録に現れないことの検査は、今日この表が空であるために
+  // 陽性対照を持てていない**(実測は `invitation-issuance.test.ts` の `(h3)`)。
   // **【禁止】これを「平文でも安全である」と書かない** —— **`app.sqlite` を直接読める人は、
   // そのアプリの未使用の招待コードを全部読める。** **未使用の招待は「まだ登録していない
   // 誰かの、その役割での登録権」そのものである。**
@@ -2692,15 +2719,48 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
   // **ただし画面(`web/`)はまだ招待コードの入力欄を持たない**(`V8-M5` の担当)。
   // **【禁止】これを「招待制ができるようになった」と無条件に書かない。**
 
+  // **【2026-09-18 追記(`V19-M2-T00`。単位 `SV-G5`)。下の1行を1バイトも消していない】**
+  // **状態は `state` という**別のキー**で載せる**(`ADR-0452` 限定⑮ / `T02-1-4` の 5)。
+  // **`usedAt` は今日どおり ISO8601 のまま返す** —— **取り消しの印(素の時刻ではない値)を
+  // 応答に1バイトも出さない。** **読む側に値の形を解釈させない**(`S3` の 8 の払い方 (b))。
+  // **3値の導出は `src/auth/invitations.ts` の1関数だけが行う**(限定⑨)。
+  // **【2026-09-18 訂正(`V19-M2-T02`。単位 `SV-G7a`。`D-V19-6`)。下の1行を1バイトも消して
+  //   いない】**
+  // **下の1行の「**コードを含む**」は今日は偽である** —— **この関数(`invitationView`)は
+  // コードを1バイトも載せない。** **コードの提供先は「**発行の応答本文**」の**1箇所ちょうど**に
+  // 狭めた**(`ADR-0452` 限定⑮。`ADR-0336` 限定12 の置き直し)。
+  // **載せる側は下の `issuedInvitationView` **1本だけ**である。**
+  // **【正直に書く】保管の形は1バイトも変えていない** —— **`app.sqlite` を直接開ける人は、
+  // 未使用のコードを今日も全部読める**(`ADR-0452` の「塞がないもの」5)。
   /** 招待の応答表現(**コードを含む**。owner だけが受け取る)。 */
-  const invitationView = (invitation: Invitation) => ({
-    username: invitation.username,
-    role: invitation.role,
+  const invitationView = (invitation: Invitation) => {
+    const state = invitationState(invitation);
+    const raw = invitation.usedAt;
+    const usedAt =
+      state === "revoked" && raw !== null ? raw.slice(INVITATION_REVOKED_PREFIX.length) : raw;
+    return {
+      username: invitation.username,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+      issuedBy: invitation.issuedBy,
+      issuedAt: invitation.issuedAt,
+      usedAt,
+      state,
+    };
+  };
+
+  /**
+   * **発行の口の応答表現**(`V19-M2-T02`。**コードを載せる唯一の形**)。
+   *
+   * **`ADR-0452` 限定⑮ の「提供先は発行の応答本文の1箇所ちょうど」を、コードを足す箇所を
+   * この1関数に閉じることで構造的に保つ。** **一覧の応答は上の `invitationView` を使い、
+   * コードを1バイトも受け取らない。**
+   * **【禁止】これを「コードが守られるようになった」と書かない** —— **狭めたのは**応答**だけで
+   * あり、保管の形は1バイトも変えていない。**
+   */
+  const issuedInvitationView = (invitation: Invitation) => ({
+    ...invitationView(invitation),
     code: invitation.code,
-    expiresAt: invitation.expiresAt,
-    issuedBy: invitation.issuedBy,
-    issuedAt: invitation.issuedAt,
-    usedAt: invitation.usedAt,
   });
 
   /**
@@ -2826,13 +2886,20 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
               {
                 path: "/username",
                 message: `その相手の招待は在りません: ${validated.value.username}`,
-                hint: "期限が切れた招待は掃除で消えます。取り消したい招待が見当たらないときは、既に切れているか、使われた後に掃除されたと考えられます。",
+                // **【2026-09-18 打ち直し(`V19-M2-T02`。`unfixed-holes.md` `§5` の申し送り5)】**
+                // **旧の文面(逐語)**: 「期限が切れた招待は掃除で消えます。取り消したい招待が
+                // 見当たらないときは、既に切れているか、使われた後に掃除されたと考えられます。」
+                // **偽だったのは「使われた後に掃除された」である** —— **掃除が消すのは
+                // **期限を過ぎた**行だけであり、使われただけの行も、取り消した行も、期限が
+                // 来るまでは消えない**(`purgeExpiredInvitations`)。 **取り消しも使用と同じ列に
+                // 入るので、「見当たらない = 使われた」とは限らない。**
+                hint: "取り消せるのは、期限内で行が残っている招待だけです。見当たらないときは、その相手にまだ発行していないか、期限(発行から24時間)を過ぎて掃除で消えたと考えられます。使われた招待も取り消した招待も、期限が来るまでは行が残り、利用者の一覧に出ます。",
               },
             ]),
             404,
           );
         }
-        return c.json({ invitation: invitationView(revoked) }, 200);
+        return c.json({ invitation: issuedInvitationView(revoked) }, 200);
       }
       // **出し直しは行を差し替える**(行を増やさない。`ADR-0336` 限定18)——
       // **同じ相手に有効な招待が2件同時に存在しないことを、主キーで構造的に保証している。**
@@ -2844,7 +2911,7 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
       const signupUrl = signupUrlFor(appId);
       return c.json(
         {
-          invitation: invitationView(invitation),
+          invitation: issuedInvitationView(invitation),
           ...(signupUrl === undefined ? {} : { signupUrl }),
         },
         200,

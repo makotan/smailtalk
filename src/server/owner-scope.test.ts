@@ -1117,6 +1117,21 @@ const ADMIN_ROLES = [
         can: ["read", "write", "delete"],
         when: { field: OWNER_FIELD, equals_current_user: true },
       },
+      // **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+      //
+      // **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+      // 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+      // (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+      // 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+      //
+      // **`adminvis` は `order-list`(`list_view`。表 `orders`)を宣言しながら、
+      // `customer` にはその画面の規則を1本も書いていなかった。** **この3本
+      // ((V3-M8-T02 a) / (V3-M8-T02 c) / (E-G54 b))が測っているのは `st_owner` の
+      // post-filter と項目の射影であって画面の規則ではないので、主張(`expect`)は
+      // 1バイトも書き換えていない。**
+      // **`owner` / `editor` に足していないのは、実測でその2役割の検査が1本も
+      // 赤くなっていないからである**(この2役割は `orders` の一覧を読む検査を持たない)。
+      { target: "view", view: "order-list", can: ["read"] },
     ],
   },
 ];

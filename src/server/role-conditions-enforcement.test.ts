@@ -71,6 +71,20 @@ const OR_CONDITION = {
 /** 「でない」—— **状態が完了 でない**。 */
 const NOT_CONDITION = { not: { field: "status", equals: "完了" } };
 
+// **【`V18-M4-T02b`。ユーザ決定 `D-V18-26` / `ADR-0441`】画面の規則を足した。**
+//
+// **`V18-M4-T02` が「画面名を名乗らない読取」に壁を立てた** —— **その表を指す一覧系の
+// 画面(`list_view` / `report_view`)を**1本も読めない**相手の一覧は 0件になる
+// (単票の口は `detail_view` / `form` を見て 404 になる)。** **`D-V18-26` により、
+// 画面を宣言しているのに「誰に見せるか」を役割の規則に1行も書いていない場合も止まる。**
+//
+// **題材は `order-list`(`list_view`。表 `orders`)を宣言しながら、その画面の規則を
+// 1本も書いていなかった。** **(A)(D-2) が測っているのは条件(`when`)つきの規則が
+// 行ごとに効くことであって画面の規則ではないので、主張(`expect`)は1バイトも
+// 書き換えていない。** **`tasks` / `memos` / `notices` を指す画面は題材に1本も無いので、
+// そちらには壁がそもそも立たない。**
+const ORDER_LIST_VIEW_RULE = { target: "view", view: "order-list", can: ["read"] };
+
 /**
  * 3つの組み立てを、**別々の表**に書いた役割の一覧。
  *
@@ -89,6 +103,7 @@ const CONDITION_ROLES = [
       { target: "table", table: "orders", can: ["read", "write", "delete"] },
       { target: "table", table: "tasks", can: ["read", "write", "delete"] },
       { target: "table", table: "memos", can: ["read", "write", "delete"] },
+      ORDER_LIST_VIEW_RULE,
     ],
   },
   {
@@ -97,6 +112,7 @@ const CONDITION_ROLES = [
     rules: [
       { target: "table", table: "orders", can: ["read"], when: AND_CONDITION },
       { target: "table", table: "memos", can: ["read"], when: NOT_CONDITION },
+      ORDER_LIST_VIEW_RULE,
     ],
   },
   {
@@ -499,6 +515,8 @@ test("(D-2) その項目が空: 空の行だけが見え、値のある行は見
         { target: "app", can: ["write"] },
         { target: "role", can: ["write"] },
         { target: "table", table: "orders", can: ["read", "write", "delete"] },
+        // **【`V18-M4-T02b` / `D-V18-26`】画面 `order-list` の読取。上のブロックの理由と同じ。**
+        ORDER_LIST_VIEW_RULE,
       ],
     },
     {
@@ -511,6 +529,7 @@ test("(D-2) その項目が空: 空の行だけが見え、値のある行は見
           can: ["read"],
           when: { field: "assignee", is_empty: true },
         },
+        ORDER_LIST_VIEW_RULE,
       ],
     },
     { id: "viewer", name: "閲覧者" },
