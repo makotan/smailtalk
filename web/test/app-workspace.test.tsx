@@ -160,6 +160,22 @@ describe("authenticated(そのアプリにログイン済み)", () => {
 });
 
 describe("セッション失効(records 401)", () => {
+  /**
+   * **【`V22-M1-T06b`】落ち着くまで待つ**(取り直しの応答が返るまで)。待った後もログイン画面が
+   * 残っていることを見る。
+   */
+  async function settleAfterExpiry(): Promise<void> {
+    for (let i = 0; i < 10; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    await waitFor(() => expect(screen.getByTestId("login-page")).toBeDefined());
+  }
+  /** **画面の切替器(`app-switcher`。`/api/apps` を stub していない)の外に出たエラー表示の数。** */
+  function errorsOutsideSwitcher(): number {
+    return screen
+      .queryAllByTestId("errors")
+      .filter((element) => element.closest('[data-testid="app-switcher"]') === null).length;
+  }
   /** 失効を起こすスタブ(マニフェストだけ差し替えられる)。 */
   function stubExpiry(manifest: Manifest): void {
     stub((url) => {
@@ -174,6 +190,12 @@ describe("セッション失効(records 401)", () => {
       if (url === `/api/apps/${APP_ID}/tables/entries/records`) {
         // 保護 API がセッション失効の 401 を返す。
         return jsonResponse({ errors: [{ path: "", message: "認証されていません。" }] }, 401);
+      }
+      // **【`V22-M1-T06b`】失効して未ログインに落ちた後は `GET /public` を取り直す**(`V22-M1`)。
+      // **その応答を足した**(形は `runner-anonymous-entry.test.tsx` と同じ。開いた画面は0枚)。
+      // 無いと 404 でエラー表示に行き着き、途中の一瞬のログイン画面を拾って通っていた。
+      if (url === `/api/apps/${APP_ID}/public`) {
+        return jsonResponse({ app: { id: APP_ID, name: "サンプル" }, views: [] });
       }
       return undefined;
     });
@@ -201,6 +223,12 @@ describe("セッション失効(records 401)", () => {
 
     // records の 401 が per-app 失効ハンドラを発火 → anonymous → ログイン画面へ。
     await waitFor(() => expect(screen.getByTestId("login-page")).toBeDefined());
+    // **【`V22-M1-T06b`】落ちた先がログイン画面で落ち着くこと**(途中の一瞬を拾って通らない)。
+    // **直した後はログアウト・失効で `GET /public` を取り直すので、その応答が無いと最後に
+    // エラー表示へ行き着く。** 少し待ってから、エラー表示(画面の切替器の外の `errors`)が
+    // 無く、ログイン画面が残っていることを見る。
+    await settleAfterExpiry();
+    expect(errorsOutsideSwitcher()).toBe(0);
   });
 
   test("【`V8-M26` で向きがもう一度変わった】規則の無い画面では、失効後にログイン画面へ落ちる", async () => {
@@ -241,6 +269,12 @@ describe("セッション失効(records 401)", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByTestId("login-page")).toBeDefined());
+    // **【`V22-M1-T06b`】落ちた先がログイン画面で落ち着くこと**(途中の一瞬を拾って通らない)。
+    // **直した後はログアウト・失効で `GET /public` を取り直すので、その応答が無いと最後に
+    // エラー表示へ行き着く。** 少し待ってから、エラー表示(画面の切替器の外の `errors`)が
+    // 無く、ログイン画面が残っていることを見る。
+    await settleAfterExpiry();
+    expect(errorsOutsideSwitcher()).toBe(0);
     // **ログイン済みの導線は1つも残らない**(この3つが `null` であることは反転前後で同じ)。
     for (const id of ["logout", "open-account", "current-role"]) {
       expect(screen.queryByTestId(id), id).toBeNull();

@@ -231,8 +231,31 @@ function extractAtRules(body: string): { media: MediaBlock[]; rest: string } {
   return { media, rest };
 }
 
-/** 条件が幅だけであることを確かめる。**列挙の外は例外である。** */
-function assertWidthOnly(condition: string): void {
+/**
+ * **【V20-M10-T02 / ADR-0458 限定5 / 限定6】通す条件の列挙に、配色設定の条件を1つだけ足した。**
+ *
+ * **通す条件は2種の有限の列挙である** —— (1) 上の幅の条件の正規表現に当たる条件 /
+ * (2) 下の定数と空白を除いて**ちょうど**一致する条件1つ(OS の明暗設定が暗い側)。
+ * **(2) は正規表現にしない**(`ADR-0458` 式5 は、このファイルの正規表現リテラルに現れる
+ * メディア特性の和集合を数える。文字列の完全一致で書けば和集合は幅の2つのまま動かない)。
+ * **明るい側・否定・他の条件との組み合わせ・メディア型付きは、列挙の外なので今日どおり例外である。**
+ * **at-rule は `@media` の1種のまま**(上の `ALLOWED_AT_RULE` を1バイトも動かしていない)。
+ */
+const COLOR_SCHEME_DARK_CONDITION = "(prefers-color-scheme:dark)";
+
+/** 条件が配色設定の列挙の1要素(暗い側)ちょうどであるか。空白は数えない。 */
+function isColorSchemeDarkCondition(condition: string): boolean {
+  return condition.replace(/\s+/g, "") === COLOR_SCHEME_DARK_CONDITION;
+}
+
+/**
+ * 条件が列挙の中にあることを確かめる。**列挙の外は例外である。**
+ *
+ * **【V20-M10-T02】旧の名前は `assertWidthOnly` だった**(幅の条件だけを通していた)。
+ * 幅の条件の検査(下の本体)は1バイトも動かしていない。前に配色設定の1条件の早抜けを足しただけである。
+ */
+function assertAllowedCondition(condition: string): void {
+  if (isColorSchemeDarkCondition(condition)) return;
   const parts = condition.split(/\s+and\s+/);
   for (const part of parts) {
     if (!WIDTH_CONDITION_RE.test(part.trim())) {
@@ -272,7 +295,7 @@ function parseRules(css: string): Rule[] {
   const body = stripComments(css);
   const { media, rest } = extractAtRules(body);
   for (const block of media) {
-    assertWidthOnly(block.condition);
+    assertAllowedCondition(block.condition);
   }
   const rules = parseFlatRules(rest);
   for (const block of media) {
@@ -284,6 +307,31 @@ function parseRules(css: string): Rule[] {
 /** `@media` の条件を全部取り出す(**断点を数えるため**。`ADR-0089` 限定3)。 */
 function mediaConditionsOf(css: string): string[] {
   return extractAtRules(stripComments(css)).media.map((block) => block.condition);
+}
+
+/**
+ * **幅の条件だけ**(`V20-M10-T02`)。断点を数えるのは幅の条件だけである —— 配色設定の1条件は
+ * 断点ではない(`ADR-0458` 限定7 は幅の `@media` を2本を超えないと定め、配色設定は限定8 が別に数える)。
+ */
+function widthConditionsOf(css: string): string[] {
+  return mediaConditionsOf(css).filter((condition) => !isColorSchemeDarkCondition(condition));
+}
+
+/**
+ * **`:root` で始まるセレクタか**(`V20-M10-T02`。`@media` の内側の規則は前置した条件を剥がして見る)。
+ *
+ * **(b) の「`:root` の外」を、この述語が偽の規則に**狭めた**(= 検査を緩めた)。** 真になるのは
+ * `:root` そのものに加え、暗い側の既定の2規則(`:root[data-theme="dark"]` と、配色設定の
+ * `@media` の内側の `:root:not([data-theme="light"])`)である。**どのセレクタが真になるかの
+ * 全量は (k) が3つちょうどで固定している**(ここを `startsWith` のまま黙って広げさせない)。
+ */
+function bareSelectorOf(rule: Rule): string {
+  const media = /^@media [^{]*\{ (.*) \}$/.exec(rule.selector);
+  return media === null ? rule.selector : (media[1] ?? "");
+}
+
+function isRootLikeRule(rule: Rule): boolean {
+  return bareSelectorOf(rule).startsWith(":root");
 }
 
 /** `:root` で定義されたカスタムプロパティ(= スロット)。 */
@@ -361,6 +409,27 @@ function readSnapshotLines(path: string): string[] {
 const css = HANDWRITTEN_PATHS.map((path) => readFileSync(path, "utf-8")).join("\n");
 const rules = parseRules(css);
 const nonRootRules = rules.filter((rule) => rule.selector !== ":root");
+
+/**
+ * **部品側(`web/src/tailwind.css` の `@theme inline`)からだけ参照されるスロット**
+ * (`V20-M9-T01` / `ADR-0474` §Decision 1-2 / 1-7。計画 §10 の 7 が「(d) の読み先を広げるか、
+ * 手書きの CSS からも参照させるか」を T01 に委ねた —— **名指しの閉じた一覧で読み先を広げる側を採った**)。
+ *
+ * 4件は主ボタン(`button.tsx` の `emphasis` variant の `bg-primary-fill` / `text-on-primary`)と
+ * 小窓(`--color-popover` / `--color-popover-foreground` の導出)にだけ当たり、手で書く `styles.css` の
+ * 規則には当たり先が無い。**手書きの規則を足して (d) を満たす形は採らなかった** —— 部品側と同じ
+ * 色を手書きの規則にもう1度書くと、当たり先が2箇所に割れる。
+ * **この一覧を増やすのは、(d) の「当たり所の無いスロットを AI に提示しない」の緩和である。**
+ * 下の (d) は4件が本当に `tailwind.css` から `var()` で参照されていること、手書きの規則からは
+ * 参照されていないこと(一覧が実物とずれていないこと)を同時に見る。
+ */
+const TAILWIND_ONLY_SLOTS = [
+  "--color-primary-fill",
+  "--color-on-primary",
+  "--color-overlay-background",
+  "--color-overlay-text",
+];
+const TAILWIND_CSS = readFileSync(join(import.meta.dir, "..", "src", "tailwind.css"), "utf-8");
 
 // ---------------------------------------------------------------------------
 // (a) 計算値の同一性
@@ -566,9 +635,13 @@ function colorLiteralsIn(value: string): string[] {
   return found;
 }
 
+// 【V20-M10-T02。計画 §10 の 3 が名指しした**緩め**】旧行の逐語: `  for (const rule of nonRootRules) {`。
+// **`:root` で始まるセレクタ(暗い側の既定の2規則)を `:root` として数える形に広げた** —— 暗い側の
+// 既定値は `:root` の値の組の入れ替えであり、色のリテラルを持つのはそこだけである。**緩めた分の全量は
+// (k) が3つのセレクタちょうどで固定する。** test の名前は1バイトも変えていない。
 test("(b) 色を表しうるリテラルが :root ブロックの外に1つも無い", () => {
   const offenders: string[] = [];
-  for (const rule of nonRootRules) {
+  for (const rule of rules.filter((candidate) => !isRootLikeRule(candidate))) {
     for (const declaration of rule.declarations) {
       for (const kind of colorLiteralsIn(declaration.value)) {
         offenders.push(
@@ -601,7 +674,9 @@ test("(c) :root で定義された変数名の集合がスナップショット�
   // スロットを増やさないことは T04 が門外(Δ7)である根拠そのものなので、
   // 「赤くなったので更新した」で通すと門外性の根拠が消える。
   expect({ added, removed }).toEqual({ added: [], removed: [] });
-  expect(expected.length).toBe(28);
+  // 【V20-M9 / ADR-0474 §1-2】28 → 32(主ボタンと小窓の4件を足した。門A = ADR-0474 の本審査)。
+  // 旧(逐語): expect(expected.length).toBe(28);
+  expect(expected.length).toBe(32);
 });
 
 // ---------------------------------------------------------------------------
@@ -632,8 +707,18 @@ test("(d) スナップショットに載っているスロットが全て1箇所
   // AI に提示しないため。憲法6)。
   const declared = readSnapshotLines(SLOTS_PATH);
   const referenced = referencedVariables(nonRootRules);
-  const unused = declared.filter((name) => !referenced.has(name));
+  // 【V20-M9 / ADR-0474】部品側からだけ参照される4件(`TAILWIND_ONLY_SLOTS`)を除いて数える。
+  // 旧(逐語): `const unused = declared.filter((name) => !referenced.has(name));`
+  const unused = declared.filter(
+    (name) => !referenced.has(name) && !TAILWIND_ONLY_SLOTS.includes(name),
+  );
   expect(unused).toEqual([]);
+  // 4件はスナップショットに在り、`tailwind.css` から `var()` で参照され、手書きの規則からは参照されていない。
+  for (const name of TAILWIND_ONLY_SLOTS) {
+    expect(declared, name).toContain(name);
+    expect(TAILWIND_CSS.includes(`var(${name})`), name).toBe(true);
+    expect(referenced.has(name), name).toBe(false);
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -693,7 +778,13 @@ const HEADER_COMMENT_LINES = [
   " * **画面ごとの見せ方も同じで、マニフェストのビュー定義の preset_ で始まるキー",
   " * (有限 enum)にある**(ADR-0050 / ADR-0051)。",
   " *",
-  " * **足してよいのは5つだけである。**(i) スロットの定義(:root)と、既存宣言からの",
+  // **【2026-09-25。V20-M10-T05 で改訂した】** 暗い側の既定の2規則(`styles.css` の末尾)が入り、
+  // 旧の2行「" * **足してよいのは5つだけである。**(i) スロットの定義(:root)と、既存宣言からの",」と
+  // 「" * 配色設定・切り替え機構や、マニフェストに現れないレイアウト指定のような",」(と直前の行の末尾)は
+  // 偽になった。**暗い側の2規則は (i) のスロットの定義の2組目である**(値の組の入れ替えだけ。6種目ではない)。
+  // **配色設定・切り替え機構の禁止は、末尾の2規則を除いて残す。** 行数は変えていない(`styles.css` の
+  // 行番号を引く追記 (viii-6) / (ix-7) をずらさないため)。
+  " * **足してよいのは5つだけである。**(i) スロットの定義(:root と、末尾の暗い側の値の組)と、既存宣言からの",
   " * スロットの参照(var(--…))/(ii) アプリ単位テーマのスコープ要素の規則(.app-theme と、",
   " * 継承を開けるための inherit)/(iii) web/src/ 自身が描く UI 要素の「器」の宣言",
   " * (先例は .requirements-copy。.theme-export-copy / .theme-export-css も同型)/",
@@ -704,8 +795,8 @@ const HEADER_COMMENT_LINES = [
   " * 書き、枠の中の見た目は1宣言も持たない(候補の実値は ThemePreviewPanel が",
   " * インラインスタイルで立てる)。候補を何種類に増やしても規則は1つも増えない。",
   " *",
-  " * **引き続き禁じる**: アプリ固有のセレクタ、任意の CSS 規則、そして",
-  " * 配色設定・切り替え機構や、マニフェストに現れないレイアウト指定のような",
+  " * **引き続き禁じる**: アプリ固有のセレクタ、任意の CSS 規則、そして(末尾の暗い側の",
+  " * 既定の2規則を除く)配色設定・切り替え機構や、マニフェストに現れないレイアウト指定のような",
   " * 「マニフェストに現れない表示オプション」。",
   " *",
   // **【2026-07-27。V3-M5-T05 / ADR-0055 で追記した】** V3-M5 で逃げ道(任意 CSS)が入り、
@@ -872,7 +963,9 @@ test("(g) 当たり先が1規則だけのスロットが、明示列挙した9�
   expect(actual).toEqual(expected);
 
   // 検査が実際に数えられていることの確認(全スロットが0件になって「一致」で緑になる壊れ方を防ぐ)。
-  expect(bySlot.size).toBe(declared.length);
+  // 【V20-M9 / ADR-0474】部品側からだけ参照される4件は手書きの規則に当たり先を持たない。
+  // 旧(逐語): expect(bySlot.size).toBe(declared.length);
+  expect(bySlot.size).toBe(declared.length - TAILWIND_ONLY_SLOTS.length);
 });
 
 // ---------------------------------------------------------------------------
@@ -953,9 +1046,20 @@ test("(i) @media 以外の at-rule は今日どおり例外を投げる", () => 
   }
 });
 
-test("(i) @media のうち幅以外のメディア特性は例外を投げる", () => {
+// 【V20-M10-T02】test の名前を「幅以外」から「列挙の外」へ改め、負例の1行目
+// (旧行の逐語: `    "(prefers-color-scheme: dark)",`)を下の正例の test へ移した。
+// **名指しの負例として、明るい側・否定・組み合わせ・メディア型付き・入れ子を足した**
+// (`ADR-0458` 式5 のため、負例はすべて文字列で書き、`toThrow()` は無引数である)。
+test("(i) @media のうち列挙の外のメディア特性は例外を投げる", () => {
   for (const condition of [
-    "(prefers-color-scheme: dark)",
+    "(prefers-color-scheme: light)",
+    "(prefers-color-scheme: no-preference)",
+    "(prefers-color-scheme)",
+    "not (prefers-color-scheme: dark)",
+    "screen and (prefers-color-scheme: dark)",
+    "(prefers-color-scheme: dark) and (min-width: 40rem)",
+    "(min-width: 40rem) and (prefers-color-scheme: dark)",
+    "(prefers-color-scheme: dark), print",
     "(prefers-reduced-motion: reduce)",
     "(prefers-contrast: more)",
     "(orientation: landscape)",
@@ -987,6 +1091,37 @@ test("(i) @media の入れ子は例外を投げる", () => {
   ).toThrow();
 });
 
+// 【V20-M10-T02】配色設定の条件は**暗い側ちょうど1つ**だけ通る(空白の有無は数えない)。
+test("(i) @media の配色設定の条件は暗い側ちょうど1つだけ通り、内側の規則が条件を前置して現れる", () => {
+  for (const condition of [
+    "(prefers-color-scheme: dark)",
+    "(prefers-color-scheme:dark)",
+    "( prefers-color-scheme : dark )",
+  ]) {
+    const parsed = parseRules(`@media ${condition} { .a { --x: 1; } }`);
+    expect(parsed, condition).toEqual([
+      {
+        selector: `@media ${condition.replace(/\s+/g, " ").trim()} { .a }`,
+        declarations: [{ property: "--x", value: "1" }],
+      },
+    ]);
+  }
+});
+
+// 【V20-M10-T02】配色設定の `@media` の中の入れ子も、他の at-rule も今日どおり例外である。
+test("(i) 配色設定の @media の中の入れ子と at-rule は例外を投げる", () => {
+  for (const css of [
+    "@media (prefers-color-scheme: dark) { @media (min-width: 40rem) { .a { color: red; } } }",
+    "@media (min-width: 40rem) { @media (prefers-color-scheme: dark) { .a { color: red; } } }",
+    "@media (prefers-color-scheme: dark) { @supports (display: grid) { .a { color: red; } } }",
+    "@media (prefers-color-scheme: dark) { @container (min-width: 10rem) { .a { color: red; } } }",
+    "@media (prefers-color-scheme: dark) { @layer base { .a { color: red; } } }",
+    "@media (prefers-color-scheme: dark) { @property --x { syntax: '*'; inherits: false; } }",
+  ]) {
+    expect(() => parseRules(css), css).toThrow();
+  }
+});
+
 /**
  * **断点の本数を有限に固定する**(`ADR-0089` 限定3)。
  *
@@ -994,11 +1129,334 @@ test("(i) @media の入れ子は例外を投げる", () => {
  * (`schemas/manifest.schema.json` に1バイトも触っていない)。
  * **アプリごと・画面ごとに断点を増やせない** —— 増やすには本ファイルの数を書き換える
  * ことになり、差分に必ず出る。
+ *
+ * **【`V20-M5-T05b` が 2026-09-24 に追記。上の4行を1バイトも消していない】**
+ *
+ * - **今日から偽になった事実の記述**: 括弧の中の「`schemas/manifest.schema.json` に1バイトも
+ *   触っていない」は今日から偽である。 **`V20-M5` が同ファイルに並べ方の木(`$defs/layout_node` と
+ *   画面の根のキー `layout`)を足した**(`ADR-0462` / `ADR-0471`)。
+ * - **今日も真の条文**: **AI も owner も断点を1つも指定できない**(`ADR-0089` 限定3)。 並べ方の木の
+ *   値は有限の名前(`sm` / `md` / `lg` ほか)だけで、数値・長さ・画面幅の条件を1つも受けない。
+ *   木の幅への追随は親の内側の寸法で折り返す規則(`web/src/views/LayoutTree.tsx` の対応表)であって、
+ *   画面幅の条件ではない。 **下の2行の期待値は本段で1バイトも動いていない**(断点は2本のまま)。
  */
+// 【V20-M10-T02】旧行の逐語: `  const conditions = mediaConditionsOf(css);`。**断点として数えるのは
+// 幅の条件だけである**(配色設定の1条件は断点ではない。`ADR-0458` 限定7 / 限定8)。下の2行の期待値は
+// 1バイトも動かしていない。
 test("(i) 手で書く側の断点が、宣言した本数と完全一致する", () => {
-  const conditions = mediaConditionsOf(css);
+  const conditions = widthConditionsOf(css);
   const widths = [...new Set(conditions.map((c) => c.replace(/\s+/g, "")))].sort();
   // **本数の実数はここに書く。書き換えるときは、増えた分が何かを差分で説明すること。**
   expect(widths).toEqual(["(min-width:40rem)", "(min-width:64rem)"]);
   expect(widths.length).toBe(2);
+});
+
+// 【V20-M9 点検の中1 の処置】小窓の導出(ADR-0474 §Decision 1-2)の2行を固定する。点検の時点では、
+// 2行を入れ替えても(既定のテーマで小窓が黒地に白文字になる)単体は0本、元の導出
+// (page-background / text)に戻しても「どこからも参照されない」の1本だけが赤くなった。
+// 式P19 と同じ中身を宣言の行(注釈の行は数えない)で見る。ブラウザでの計算値は
+// `web/e2e/overlay.e2e.ts` の (vi) が測る。
+test("(j) 小窓の地色・文字色は overlay_background / overlay_text の CSS 名から導く(入れ替え・元への戻しは赤)", () => {
+  const declared = (name: string) =>
+    [...TAILWIND_CSS.matchAll(new RegExp(`^\\s*${name}:\\s*([^;]+);`, "gm"))].map((m) =>
+      m[1]?.trim(),
+    );
+  expect(declared("--color-popover")).toEqual(["var(--color-overlay-background)"]);
+  expect(declared("--color-popover-foreground")).toEqual(["var(--color-overlay-text)"]);
+  // 塗りつぶしの primary variant の導出は動かしていない(式P18 の filled-kept と同じ向き)。
+  expect(declared("--color-primary")).toEqual(["var(--color-text)"]);
+  expect(declared("--color-primary-foreground")).toEqual(["var(--color-page-background)"]);
+});
+
+// ---------------------------------------------------------------------------
+// (k) 暗い側の既定の2規則(V20-M10-T03。計画 §9-3 の 1 / §9-4、ADR-0458 限定7〜9 / 限定12)
+// ---------------------------------------------------------------------------
+
+/**
+ * **暗い側の既定値は、`:root` の色13枠の値の組の入れ替えだけである。**
+ *
+ * - **`:root` で始まる規則は3つちょうど**(`:root` / `:root[data-theme="dark"]` / 配色設定の `@media` の
+ *   内側の `:root:not([data-theme="light"])`)—— (b) が「`:root` の外」から外した規則の全量である。
+ * - **暗い側の2規則の中身は1文字も違わない**(2箇所に住む値が片方だけ古くならないように)。
+ * - **中身は色の13枠のカスタムプロパティだけ**(色以外の14枠と、テーマ対象外の5枠を暗い側で動かさない)。
+ * - **値は計画 §9-4 の表のとおり**(メインが決めた。検査に合わせて黙って動かさない。コントラストの
+ *   実測は `docs/plan/v20/records/v20-m10-t03.md` に在る)。
+ * - **2つ目の素の `:root {` を書かない**(`src/mcp/theme-roundtrip.test.ts` は最初の `:root {` しか読まない)。
+ * - **2規則はファイルの末尾に在る**(途中に入れると行番号の引用がずれる。計画 §10 の 3)。
+ */
+const DARK_DEFAULTS: Record<string, string> = {
+  "--color-text": "#e6e6e6",
+  "--color-text-secondary": "#a3a3a3",
+  "--color-text-label": "#a3a3a3",
+  "--color-text-placeholder": "#a3a3a3",
+  "--color-danger": "#ff7b7b",
+  "--color-page-background": "#121212",
+  "--color-surface-highlight": "#1f1f1f",
+  "--color-border": "#3a3a3a",
+  "--color-primary-fill": "#121212",
+  "--color-on-primary": "#e6e6e6",
+  "--color-overlay-background": "#121212",
+  "--color-overlay-text": "#e6e6e6",
+  "--focus-outline-color": "#6cb6ff",
+};
+
+const DARK_ATTRIBUTE_SELECTOR = ':root[data-theme="dark"]';
+const DARK_MEDIA_SELECTOR =
+  '@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) }';
+
+test("(k) :root で始まる規則は3つちょうど(:root と暗い側の既定の2規則)", () => {
+  const rootLike = rules.filter(isRootLikeRule).map((rule) => rule.selector);
+  expect(rootLike).toEqual([":root", DARK_ATTRIBUTE_SELECTOR, DARK_MEDIA_SELECTOR]);
+  // 2つ目の素の `:root {` が無い。
+  expect(stripComments(css).split(":root {").length - 1).toBe(1);
+});
+
+test("(k) 暗い側の2規則の中身は1文字も違わず、色の13枠のカスタムプロパティだけで、値は §9-4 の表のとおり", () => {
+  const byAttribute = rules.find((rule) => rule.selector === DARK_ATTRIBUTE_SELECTOR);
+  const byMedia = rules.find((rule) => rule.selector === DARK_MEDIA_SELECTOR);
+  if (byAttribute === undefined || byMedia === undefined)
+    throw new Error("暗い側の既定の規則が無い");
+  expect(byMedia.declarations).toEqual(byAttribute.declarations);
+
+  // 色の13枠 = `:root` の枠のうち `--color-` で始まる12件と、フォーカスリングの色1件。
+  const colorSlots = [...rootVariables(rules).keys()].filter(
+    (name) => name.startsWith("--color-") || name === "--focus-outline-color",
+  );
+  expect(colorSlots).toHaveLength(13);
+  expect(byAttribute.declarations.map((declaration) => declaration.property).sort()).toEqual(
+    [...colorSlots].sort(),
+  );
+  expect(Object.keys(DARK_DEFAULTS).sort()).toEqual([...colorSlots].sort());
+  for (const declaration of byAttribute.declarations) {
+    expect(declaration.value, declaration.property).toBe(DARK_DEFAULTS[declaration.property] ?? "");
+  }
+});
+
+test("(k) 暗い側の2規則はファイルの末尾に在る(幅の条件の @media の後)", () => {
+  const body = stripComments(css).trimEnd();
+  const attributeAt = body.indexOf(DARK_ATTRIBUTE_SELECTOR);
+  const lastWidth = body.lastIndexOf("@media (min-width");
+  expect(attributeAt).toBeGreaterThan(lastWidth);
+  expect(lastWidth).toBeGreaterThan(-1);
+  // 最後の規則は配色設定の `@media` のブロックである。
+  expect(body.endsWith("}\n}") || body.endsWith("}}")).toBe(true);
+  expect(body.slice(attributeAt)).toContain("@media (prefers-color-scheme: dark)");
+});
+
+// ---------------------------------------------------------------------------
+// 【V20-M10 点検 中4 の処置】解析器が通す条件の列挙を、振る舞いで機械的に固定する
+// ---------------------------------------------------------------------------
+
+/**
+ * **`ADR-0458` 式5 は正規表現リテラルしか集めない**ので、配色設定の1条件のように**文字列**で
+ * 書いた列挙の要素を数えない(点検の P5: 列挙に負例の一覧の外の特性を文字列で足しても緑だった)。
+ * **ここでは解析器に、メディア特性の一覧(Media Queries Level 5 の特性の名前と、それぞれに当てうる
+ * 値の候補)を総当たりで渡し、通った特性の集合が「幅の2つと配色設定の暗い側」ちょうどであることを見る。**
+ *
+ * - **特性の名前はすべて文字列で書く**(正規表現リテラルに書くと式5 が数えてしまう。式5 の窓を汚さない)。
+ * - **【限界。穴として残す】** 一覧に無い名前・一覧に無い値の形で列挙を足された場合は、この検査も
+ *   気づかない(総当たりの母集合の外である)。式5 の射程の限界そのものは直していない。
+ */
+const MEDIA_FEATURE_CATALOG = [
+  "width",
+  "min-width",
+  "max-width",
+  "height",
+  "min-height",
+  "max-height",
+  "aspect-ratio",
+  "min-aspect-ratio",
+  "max-aspect-ratio",
+  "device-width",
+  "min-device-width",
+  "max-device-width",
+  "device-height",
+  "device-aspect-ratio",
+  "orientation",
+  "resolution",
+  "min-resolution",
+  "max-resolution",
+  "scan",
+  "grid",
+  "update",
+  "overflow-block",
+  "overflow-inline",
+  "color",
+  "min-color",
+  "max-color",
+  "color-index",
+  "min-color-index",
+  "max-color-index",
+  "monochrome",
+  "min-monochrome",
+  "max-monochrome",
+  "color-gamut",
+  "dynamic-range",
+  "video-dynamic-range",
+  "inverted-colors",
+  "pointer",
+  "any-pointer",
+  "hover",
+  "any-hover",
+  "prefers-reduced-motion",
+  "prefers-reduced-transparency",
+  "prefers-reduced-data",
+  "prefers-contrast",
+  "forced-colors",
+  "prefers-color-scheme",
+  "scripting",
+  "environment-blending",
+  "display-mode",
+  "nav-controls",
+  "horizontal-viewport-segments",
+  "vertical-viewport-segments",
+  "device-posture",
+];
+
+/** 値の候補(空 = 値なしの真偽の形)。どの特性にも全部当てる。 */
+const MEDIA_VALUE_CANDIDATES = [
+  "",
+  "0",
+  "1",
+  "40rem",
+  "640px",
+  "2em",
+  "16/9",
+  "2dppx",
+  "dark",
+  "light",
+  "no-preference",
+  "active",
+  "none",
+  "reduce",
+  "more",
+  "less",
+  "custom",
+  "enabled",
+  "initial-only",
+  "fast",
+  "slow",
+  "fine",
+  "coarse",
+  "hover",
+  "landscape",
+  "portrait",
+  "srgb",
+  "p3",
+  "rec2020",
+  "high",
+  "standard",
+  "inverted",
+  "interlace",
+  "progressive",
+  "paged",
+  "scroll",
+  "optional-paged",
+  "browser",
+  "standalone",
+  "fullscreen",
+  "minimal-ui",
+  "back",
+  "continuous",
+  "folded",
+  "opaque",
+  "additive",
+  "subtractive",
+];
+
+function passesAsMediaCondition(condition: string): boolean {
+  try {
+    parseRules(`@media ${condition} { .a { --x: 1; } }`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 通った (特性, 値) の組を、空白の有無の2通りで総当たりして集める。 */
+function passingFeatureValues(): Map<string, Set<string>> {
+  const passing = new Map<string, Set<string>>();
+  for (const feature of MEDIA_FEATURE_CATALOG) {
+    for (const value of MEDIA_VALUE_CANDIDATES) {
+      const forms =
+        value === "" ? [`(${feature})`] : [`(${feature}: ${value})`, `(${feature}:${value})`];
+      for (const form of forms) {
+        if (!passesAsMediaCondition(form)) continue;
+        const values = passing.get(feature) ?? new Set<string>();
+        values.add(value);
+        passing.set(feature, values);
+      }
+    }
+  }
+  return passing;
+}
+
+test("(i) 解析器が通すメディア特性の全量は、幅の2つと配色設定の3特性ちょうど(ADR-0458 限定5。点検 中4)", () => {
+  const passing = passingFeatureValues();
+  expect([...passing.keys()].sort()).toEqual(
+    ["max-width", "min-width", "prefers-color-scheme"].sort(),
+  );
+  // 配色設定は暗い側ちょうど1つ。
+  expect([...(passing.get("prefers-color-scheme") ?? [])]).toEqual(["dark"]);
+  // 幅は長さの値だけ(単位なしの 0 を含む)。
+  for (const width of ["min-width", "max-width"]) {
+    expect([...(passing.get(width) ?? [])].sort(), width).toEqual(
+      ["0", "2em", "40rem", "640px"].sort(),
+    );
+  }
+  // 母集合が縮んでいない(一覧を黙って削って緑にしない)。
+  expect(MEDIA_FEATURE_CATALOG.length).toBe(53);
+  expect(new Set(MEDIA_FEATURE_CATALOG).size).toBe(MEDIA_FEATURE_CATALOG.length);
+});
+
+test("(i) 負例の一覧に無い特性(forced-colors / prefers-reduced-transparency / scripting / update)も、どの値でも例外(点検 中4)", () => {
+  for (const feature of ["forced-colors", "prefers-reduced-transparency", "scripting", "update"]) {
+    expect(MEDIA_FEATURE_CATALOG, feature).toContain(feature);
+    for (const value of MEDIA_VALUE_CANDIDATES) {
+      const condition = value === "" ? `(${feature})` : `(${feature}: ${value})`;
+      expect(() => parseRules(`@media ${condition} { .a { color: red; } }`), condition).toThrow();
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 【V20-M10 点検 軽5 の処置】styles.css の全文(注釈込み)に配色の関数と宣言の綴りが無い
+// ---------------------------------------------------------------------------
+
+/**
+ * **`ADR-0458` 式12 と同じ数え方**(注釈を外さずに全文を読む。`light-dark(` の出現数と、
+ * 英数字とハイフン以外の文字に続く `color-scheme` の直後に空白(0個以上)とコロンが来る形の出現数)。
+ * 計画 §10 の 4 の「注釈にも書かない」を、人の約束から単体の検査にした(式12 は CI で走らないため)。
+ *
+ * - **正規表現は文字列から組み立てる**(正規表現リテラルに書かない。式5 の窓を汚さない)。
+ * - 配色設定の `@media` の条件(`prefers-color-scheme: dark`)は、`color-scheme` の直前がハイフンなので数えない。
+ */
+const COLOR_SCHEME_FUNCTION = `light-${"dark"}(`;
+const COLOR_SCHEME_DECLARATION_RE = new RegExp(`[^A-Za-z0-9-]color-${"scheme"}[ \\t]*:`, "g");
+
+function colorSchemeSpellings(text: string): number {
+  return (
+    text.split(COLOR_SCHEME_FUNCTION).length -
+    1 +
+    [...`\n${text}`.matchAll(COLOR_SCHEME_DECLARATION_RE)].length
+  );
+}
+
+test("(l) styles.css の全文(注釈込み)に light-dark( も color-scheme の宣言の綴りも無い(ADR-0458 式12。点検 軽5)", () => {
+  const whole = readFileSync(join(import.meta.dir, "..", "src", "styles.css"), "utf-8");
+  expect(colorSchemeSpellings(whole)).toBe(0);
+});
+
+test("(l) 陽性対照・陰性対照: 宣言・注釈・関数は数え、配色設定の @media の条件は数えない", () => {
+  // 陽性対照(式12 の pos と同じ1件)。
+  expect(colorSchemeSpellings(".x { color-scheme: dark; }")).toBe(1);
+  // 注釈の中も数える(点検 C6 / C6b)。
+  expect(colorSchemeSpellings("/* color-scheme: dark */")).toBe(1);
+  expect(colorSchemeSpellings("/* light-dark( */")).toBe(1);
+  expect(colorSchemeSpellings(":root { --x: light-dark(#fff, #000); }")).toBe(1);
+  // 行頭でも数える(式12 は先頭に改行を足して読む)。
+  expect(colorSchemeSpellings("color-scheme :dark")).toBe(1);
+  // 陰性対照(式12 の neg と同じ0件)。
+  expect(colorSchemeSpellings("@media (prefers-color-scheme: dark) { }")).toBe(0);
+  expect(colorSchemeSpellings("--my-color-scheme: 1;")).toBe(0);
 });

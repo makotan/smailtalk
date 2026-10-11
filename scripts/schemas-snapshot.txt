@@ -32,8 +32,113 @@ files:diff.schema.json
 files:manifest.schema.json
 
 # --- バイト列(長さと sha256)------------------------------------------------------
-diff.schema.json:bytes:100822
-diff.schema.json:sha256:3a97e9c675067a953f46f0b211999a5438f64ec7e76bd4de5c6eb9391391df6a
+# 【2026-09-24。V20-M3-T01。DS-S3 / ADR-0460 限定2 / ADR-0469(門A・限定採用)】diff.schema.json の
+# 2行を打ち直した(この2行が動くのは本ファイルが出来てから初めてである)。旧値の逐語:
+#   diff.schema.json:bytes:100822
+#   diff.schema.json:sha256:3a97e9c675067a953f46f0b211999a5438f64ec7e76bd4de5c6eb9391391df6a
+# 動かしたのは $defs/view_changes の4行だけである(git diff --numstat = 4 4):
+#   (1) view_changes の description の列挙の中の旧綴り1語を新しい綴りに改めた。
+#   (2) properties のキー field_groups を field_sections に改め、$ref の行き先も同じく改めた。
+#   (3) そのキーの $comment の先頭に改名の注を足した(旧の本文は1バイトも書き換えていない)。
+# view_changes.properties は今日も 27 のまま(15キー目の位置も動いていない)。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M3-T02。DS-S4 / ADR-0460 限定4〜限定7(門A・限定採用)】diff.schema.json の
+# 2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:101194
+#   diff.schema.json:sha256:28882f5c8e8f19ef5217b04ba27ebe1c58871e663c6ce14cf93ecf655866185f
+# 動かしたのは $defs/view_changes だけである:
+#   (1) properties の末尾(flow の後ろ)に field_width を1本足した($ref で manifest 側を指すだけ)。
+#   (2) view_changes の description の末尾に追記を1文足した(旧の本文は1バイトも書き換えていない)。
+# view_changes.properties は 27 → 28。値は wc -c と shasum -a 256 相当を自分で打った。
+# 【2026-09-24。V20-M4-T02。DS-S5 / ADR-0470(ADR-0461 限定1 を引き直した)】diff.schema.json の
+# 2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:103135
+#   diff.schema.json:sha256:81b4f6f1de68f0965f1bd2ea98ac467741adc3ce431a290f8044727d6a3bb233
+# 動かしたのは $defs/view_changes だけである:
+#   (1) properties の末尾(field_width の後ろ)に group_by を1本足した($ref で manifest 側を指す1行だけ。$comment も置いていない)。
+#   (2) view_changes の description の末尾に追記を1文足した(旧の本文は1バイトも書き換えていない)。
+# view_changes.properties は 28 → 29。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M5-T04。DS-S6 / ADR-0462 限定2 / ADR-0471(ADR-0462 限定6 と ADR-0470 限定4 を引き直した)】
+# diff.schema.json の2行を打ち直した(ADR-0471 を書いた後に更新した)。旧値の逐語:
+#   diff.schema.json:bytes:103853
+#   diff.schema.json:sha256:c18063fb0133930cce701cf9ede135d1c5d926643ecc92b9c8d7dba32af6b6fb
+# 動かしたのは $defs/view_changes だけである:
+#   (1) properties の末尾(group_by の後ろ)に layout を1本足した($ref で manifest 側を指す1行だけ。$comment も置いていない)。
+#   (2) view_changes の description の末尾に追記を1文足した(旧の本文は1バイトも書き換えていない)。
+# view_changes.properties は 29 → 30。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-26。V20-M15-T01A。DS-S22 / 門A = ADR-0466 / 綴り・値域 = ADR-0479】
+# diff.schema.json の2行を打ち直した(ADR-0479 を書いた後に更新した)。旧値の逐語:
+#   diff.schema.json:bytes:104615
+#   diff.schema.json:sha256:c6a5fdcec1f97e862ade1fc8076b45eaf05f880d9a9b7b6f8ee178d03250f132
+# 動かしたのは次だけである:
+#   (1) $defs/op_name の enum の末尾に remember_design(18種目)。description の「計17種」を「計18種」に直し、旧文は $comment の末尾に逐語で残した。
+#   (2) $defs/operation.properties の末尾に10キー目 design_memory($comment に ADR-0013 §4c の3問の答え)。$defs/operation の $comment の末尾に【ADR-0479 による改訂】の段。
+#   (3) 既存17分岐の then.properties の末尾に "design_memory": false を1行ずつ(それ以外の false 宣言は1バイトも書き換えていない)。
+#   (4) allOf の末尾に18本目の分岐 remember_design(choice / patterns は manifest 側を $ref)。
+# $defs は 5 のまま。赤を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-27。V20-M16-T07b。メインの授権(diff.schema.json の先頭の description の「計9種」を直す。この2行に限る)】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:113194
+#   diff.schema.json:sha256:9fd2cf5a5b5367c97ac1923bf9a4869bd4c2158ea2c15b1adc7dcf9e4752108c
+# 動かしたのはファイル先頭の description の末尾に訂正を1文足したことだけである(旧文は消していない。git diff --numstat = 1 1)。
+# キー・型・enum・pattern・$comment・$defs の本数は1バイトも動いていない。manifest.schema.json の2行も動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-28。V22-M2-T02。門A = ADR-0486(MN-G1 / MN-G2 = 限定採用)/ 授権 = ADR-0487 行46】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:113370
+#   diff.schema.json:sha256:3cb832591dee9564fc2465fb1b31a49c9dcc93bbbee829198b7480e7f5db2cc6
+# 動かしたのは次だけである:
+#   (1) $defs/op_name の enum の末尾に set_workspace(19種目)。description の「計18種」を「計19種」に直し、旧文は $comment の末尾に逐語で残した。$comment の末尾に【ADR-0486 による改訂】の段。
+#   (2) $defs/operation.properties の末尾に11キー目 workspace($comment に ADR-0013 §4c の3問の答え)。$defs/operation の $comment の末尾に【ADR-0486 による改訂】の段。
+#   (3) 既存18分岐の then.properties の末尾に "workspace": false を1行ずつ(それ以外の false 宣言は1バイトも書き換えていない)。
+#   (4) allOf の末尾に19本目の分岐 set_workspace(器は {} を受けるためその場に書き、navigation は manifest 側を $ref)。
+# $defs は 5 のまま。先頭の description は T03 が直す(本段では触っていない)。赤を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-28。V22-M2-T03。門A = ADR-0486 / 授権 = ADR-0487 行46(と行26 が名指しした先頭の description)】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:120214
+#   diff.schema.json:sha256:ef14170ff4384fcbd3d072ec8b597f9fd08c535e192e1bf4f4018f184d560657
+# 動かしたのは先頭の description の末尾に訂正を1文足したことだけである(「op は今日18種である」は消さず、「op は今日19種である(19種目は set_workspace)」を足した)。
+# git diff --numstat = 1 1(description は1行の JSON 文字列なので、足すと1行の置き換えに見える)。$defs は 5 のまま。赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-28。V22-M3-T02。門A = ADR-0488(MP-G4 = 限定採用)/ 授権 = ADR-0489 行6・行19】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:120437
+#   diff.schema.json:sha256:837dc20e41bbc10fde63f1efdf95a85bc0e55d616d1a7e5a93f20c723f24a0c9
+# 動かしたのは次だけである: set_workspace の分岐の器に minProperties 1 を足し({} を断る)、navigation の値を
+# 「manifest 側への $ref」か null の anyOf にし、2つ目のキー my_page(同じ anyOf)を足した。$defs/operation.properties.workspace の
+# description を直下のキーごとの置き換えに直し、$comment の末尾に【ADR-0488 による改訂】の段を足した(旧文は1バイトも消していない)。
+# 【上の V22-M2-T02 の (4) の「器は {} を受けるためその場に書き」は今日の正ではない】器は {} を断る。その場に書くのは、manifest 側が null を受けないためである。
+# $defs は 5 のまま・分岐は19本のまま・操作の器は11キーのまま。赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-29。V23-M2-T02。門A = ADR-0498(限定1)/ 授権 = ADR-0517 行8】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:121996
+#   diff.schema.json:sha256:5a31578a9e5bf6fada77baa128037d12879277716894a527ab0d9754e1211783
+# 動かしたのは次だけである: $defs/field_changes に13個目のキー unique_message(manifest 側への $ref か null の anyOf。null で外す)を足し、
+# field_changes の $comment の末尾に訂正の段を足した(旧文と description は1バイトも消していない)。$defs は 5 のまま。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の値は写していない)。
+# 【2026-09-29。V23-M2-T11。授権 = ADR-0520 行77 / 決定 D-V23-74(点検の軽1)】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:123960
+#   diff.schema.json:sha256:ed49426a63817ece137e36c0f1b72eac54fee98e1859c70b9860c5825f6c93c1
+# 動かしたのは次だけである: $defs/field_changes の description の末尾に、列挙が今日の全量でない(unique_message を
+# 加えた13キー)という訂正を追記した(旧文は1バイトも消していない)。キー・型・$defs(5)は動いていない。
+# 値は wc -c と shasum -a 256 を自分で打った(赤の出力から写していない)。
+# 【2026-09-30。V23-M5-T02。門A = ADR-0501・ADR-0532(限定1) / 授権 = ADR-0533 行11】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:124202
+#   diff.schema.json:sha256:9ebec83322385b728b558cc81046c2bd550ad4f62443671eeb39762194bd237a
+# 動かしたのは次だけである: set_workspace の分岐の器に3つ目のキー invitations(manifest 側への $ref か null)を足し、
+# $defs/operation の workspace の description の括弧に invitations を足した。$defs(5)は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+# 【2026-10-02。V23-M8-T02。門A = ADR-0504・ADR-0544 / 決定 D-V23-205 / 授権 = ADR-0545 行2〜行4】
+# diff.schema.json の2行を打ち直した。旧値の逐語:
+#   diff.schema.json:bytes:124555
+#   diff.schema.json:sha256:734b2a7b6047b338699e3039e06ddca4593021be51c0a49c2b308d0cd05e4033
+# 動かしたのは次だけである: $defs/table_changes に6キー目 history(manifest 側の $defs/table/properties/history への $ref 1行)、
+# $defs/view_changes に31キー目 history(manifest 側の $defs/view/properties/history への $ref 1行)を末尾に足し、
+# table_changes と view_changes の description の末尾に追記した(旧文は1バイトも消していない)。$defs は 5 のまま。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+diff.schema.json:bytes:125445
+diff.schema.json:sha256:38e338f0616c5b28ce99b8a4a11ccc9c17f10dc9be8071b0991654b1dd25a3e0
 # 【2026-09-06。V15-M1-T05。CR-G2 / ADR-0405(門A・限定採用)】manifest.schema.json の
 # 2行を打ち直した。旧値の逐語:
 #   manifest.schema.json:bytes:370527
@@ -86,8 +191,262 @@ diff.schema.json:sha256:3a97e9c675067a953f46f0b211999a5438f64ec7e76bd4de5c6eb939
 # diff.schema.json の2行は今日も1バイトも動いていない(100822 / 3a97e9c6… が :35 / :36 と一致)。
 # 値は検査の失敗出力から1文字も写していない —— wc -c と shasum -a 256 を自分で打った。
 # V18-M9-T11 が記録に書いた参考値とも一致した。
-manifest.schema.json:bytes:398011
-manifest.schema.json:sha256:afc8921a11d6ed49d9e4d6befdf78b98b5c7bea5859b32fb96c8690e64ac714e
+# 【2026-09-24。V20-M2-T01。DS-S1 / ADR-0459(門A・限定採用)】manifest.schema.json の
+# 2行を6度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:398011
+#   manifest.schema.json:sha256:afc8921a11d6ed49d9e4d6befdf78b98b5c7bea5859b32fb96c8690e64ac714e
+# 動かしたのは2箇所だけである(git diff --numstat = 6 1):
+#   (1) $defs/view_action.properties の末尾に9キー目 action_emphasis(enum 3値。default は書いていない)を足した。
+#   (2) $defs/view.allOf の list_view 分岐の actions に items(properties.action_emphasis: false)を足した。
+# 既存の $comment / description は1バイトも書き換えていない。
+# $defs は今日も 30 のまま・$defs/view.properties は 31 のまま・view_action の additionalProperties は false のまま・
+# oneOf は4枝のまま。$defs/view_actions と $defs/view.properties.actions は JSON として1バイトも動いていない
+# (ADR-0459 式3 のハッシュ bbcfd2da2c0db8f6 / 3f9b91c7614a785f が一致した)。
+# diff.schema.json の2行は今日も1バイトも動いていない(100822 / 3a97e9c6… を wc -c と shasum -a 256 で打った)。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M3-T01。DS-S3 / ADR-0460 限定2 / ADR-0469(門A・限定採用)】manifest.schema.json の
+# 2行を7度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:398700
+#   manifest.schema.json:sha256:4568d656b93b922b1ac9580d9ae1876b501dc0a08672f7755bcd97ddc21b09b6
+# 動かしたのは次だけである(git diff --numstat = 5 6):
+#   (1) $defs/view.properties のキー field_groups を field_sections に改めた(位置は動いていない)。
+#   (2) そのキーの $comment の先頭に改名の注を足し、description の頭を「入力フォームと詳細画面」に改めた
+#       ($comment の旧の本文は1バイトも書き換えていない)。
+#   (3) $defs/view.allOf の list_view 分岐と report_view 分岐の false を新しい綴りに改め、
+#       form 分岐の false(旧綴り)を1行外した。detail_view 分岐は1バイトも動いていない。
+# $defs は今日も 30 のまま・$defs/view.properties は 31 のまま・allOf は5本のまま・値は oneOf の2枝のまま。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M3-T02。DS-S4 / ADR-0460 限定4〜限定7(門A・限定採用)】manifest.schema.json の
+# 2行を8度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:399393
+#   manifest.schema.json:sha256:5cc2f4db6bf1d4db3a189b2b2cba9e1403bd2d0f6a5d00b0bb4af6cedac65c6d
+# 動かしたのは次だけである:
+#   (1) $defs/view.properties の末尾(flow の後ろ)に field_width を1本足した(値域はその場に書いた)。
+#   (2) $defs/view.allOf の list_view / detail_view / report_view 分岐に field_width の false を1行ずつ足した。
+#       form 分岐は1バイトも動いていない。
+# $defs は今日も 30 のまま・$defs/view.properties は 31 → 32・allOf は5本のまま。
+# 値は検査の失敗出力から写していない —— ファイルを読んで長さと sha256 を自分で打った。
+# 【2026-09-24。V20-M4-T02。DS-S5 / ADR-0470(ADR-0461 限定1 を引き直した)/ ADR-0461 限定2〜限定4】
+# manifest.schema.json の2行を9度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:401624
+#   manifest.schema.json:sha256:fc09dae6d1eb278728b53dc6a304f98e0d7729a2680d09d8a815765abc7203b4
+# 動かしたのは次だけである:
+#   (1) $defs/view.properties の末尾(field_width の後ろ)に group_by を1本足した(値はオブジェクト1つ。
+#       field は $defs/resource_id、granularity は $defs/report の束ねるキーの要素の定義を $ref)。
+#   (2) $defs/view.allOf の form / detail_view / report_view 分岐に group_by の false を1行ずつ足した。
+#       list_view 分岐は1バイトも動いていない。$defs/report は1バイトも動いていない(指紋 d3680a4bcdf19b70)。
+# $defs は今日も 30 のまま・$defs/view.properties は 32 → 33・allOf は5本のまま。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M5-T04。DS-S6 / ADR-0462 限定1〜限定5 / ADR-0471】manifest.schema.json の2行を10度目に打ち直した
+# (ADR-0471 を書いた後に更新した)。旧値の逐語:
+#   manifest.schema.json:bytes:404396
+#   manifest.schema.json:sha256:a64c66c370c2922cb56a212f4a69fd65b562469f4d29d1d151e283c6832913b8
+# 動かしたのは次だけである:
+#   (1) $defs の末尾(role_condition の後ろ)に31本目 layout_node を足した(型ごとの oneOf 6枝を discriminator で判別。値は enum だけ)。
+#   (2) $defs/view.properties の末尾(group_by の後ろ)に layout を1本足した($defs/layout_node を $ref)。
+#   (3) $defs/view.allOf の report_view 分岐に layout の false を1行足した。他の3分岐は1バイトも動いていない。
+# $defs は 30 → 31・$defs/view.properties は 33 → 34・allOf は5本のまま。項目の器と表の器は1バイトも動いていない(指紋 2ff31439602b0be7)。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M7-T01。DS-S7 / ADR-0463 §Decision 5(門A・限定採用)】manifest.schema.json の2行を11度目に打ち直した。
+# 旧値の逐語:
+#   manifest.schema.json:bytes:416654
+#   manifest.schema.json:sha256:19e13bde7e8a840366ec5213d7404dbd991006e4ad1cd8288eb5824641110e91
+# 動かしたのは $defs/theme の色スロット9件だけである(git diff --numstat = 45 18):
+#   (1) 9件それぞれで素の pattern(16進)を anyOf の2枝に置き換えた。1枝目は16進の pattern(文字列は1バイトも変えていない)、
+#       2枝目は oklch(L C H) の pattern。9件の anyOf は1バイトも違わない。
+#   (2) 9件の description の「#rgb または #rrggbb。」を2表記を名指しする文に改めた。
+# 影(--surface-shadow)の pattern は1バイトも動いていない。$defs/theme の $comment も動いていない。
+# $defs は 31 のまま・$defs/theme の properties は 25・required は 25・additionalProperties は false のまま。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M7-T02】manifest.schema.json の2行を12度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:420074
+#   manifest.schema.json:sha256:7c37c630b4dcce279a7ea25ee8fea4d16f7fb9cc068b503fd263080c613dd79e
+# 動かしたのは色スロット9件の description の中の例 oklch(0.55 0.2 250) を oklch(0.55 0.15 250) に改めた9箇所だけである
+# (前者は sRGB の色域の外で、例に従うと拒否される。src/kernel/theme-contrast.test.ts の V20-M7-T02 が撃った)。
+# 値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-24。V20-M7 段の最後の確認】manifest.schema.json の2行を13度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:420083
+#   manifest.schema.json:sha256:78b29487c67bd8f4de63202ddfafeec76c93d71412dc2fb90a292b76f4224428
+# 動かしたのは整形だけである(biome format。9箇所の anyOf の2枝目を1行から3行に折った。git diff --numstat = 27 9)。
+# JSON として読んだ値は打ち直す前と同一(python3 の json.load で == を確かめた)。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M7B-T02。ADR-0472(ADR-0463 §Decision 5 限定2 の後半・限定3 の後半を oklch の側で引き直す。門A・限定採用)】
+# manifest.schema.json の2行を14度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:420317
+#   manifest.schema.json:sha256:408e2102158b89df7e71c0c1785df071778022fae7d6b755e0be80cbcddb4c19
+# 動かしたのは $defs/theme の色スロット9件だけである(git diff --numstat = 18 18):
+#   (1) 9件の anyOf の2枝目(oklch の pattern)の H の選言の末尾に |none を足した(L と C は触っていない)。9件の anyOf は1バイトも違わない。
+#   (2) 9件の description の末尾の「sRGB で表せない色は書けない。」を外した。
+# 16進の枝・影(--surface-shadow)の pattern・$defs/theme の $comment は1バイトも動いていない。$defs は 31 のまま。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M8-T01。ADR-0473(門A)/ ユーザ決定 D-V20-26・D-V20-27】manifest.schema.json の2行を15度目に打ち直した。
+# 旧値の逐語:
+#   manifest.schema.json:bytes:419993
+#   manifest.schema.json:sha256:cebb4e67ee6703316e00cb1c6b6107deb3b2ebd804b6b482c742e89ac9eeabfb
+# 動かしたのは $defs/theme だけである(git diff --numstat = 49 47):
+#   (1) properties と required の名前を23件、CSS カスタムプロパティ名から役割名へ置き換えた(並びは1つも動かしていない)。
+#   (2) 名前を残した2件(--detail-label-width / --login-max-width)の property に $comment を1行ずつ足した。
+#   (3) $defs/theme の $comment の「3箇所一致」の一文を、写像(web/src/theme-role-map.ts)を通した一致の形に書き直した。
+# 値域(pattern / anyOf)・description・additionalProperties: false は1バイトも動いていない。propertyNames は足していない。
+# $defs は 31 のまま・$defs/theme の properties は 25・required は 25。
+# 値は検査の失敗出力から写していない —— wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M9-T01 コミット1(狭める側)。ADR-0474 §Decision 1-3(門A・限定採用)/ ユーザ決定 D-V20-12】
+# manifest.schema.json の2行を16度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:420561
+#   manifest.schema.json:sha256:9f10171d6bc9193e32be9313a0165f2cdaf981125c78f9a6687395c0bd2da933
+# 動かしたのは $defs/theme だけである(git diff --numstat = 2 16):
+#   (1) properties と required から --detail-label-width / --login-max-width を同時に外した(ADR-0457 限定1)。
+#       2件の property に V20-M8 が付けた $comment もキーと一緒に消えた(ADR-0457 再審査条件4 の発火。ADR-0474 §2-1 の 3)。
+#   (2) $defs/theme の $comment の末尾に撤去の事実を1文足した(外した綴りを本文に残す。ADR-0457 限定4)。
+# 値域・additionalProperties: false は動いていない。$defs は 31 のまま・$defs/theme の properties は 23・required は 23。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M9-T01 コミット2(広げる側)。ADR-0474 §Decision 1-1 / 1-2(門A・限定採用)/ D-V20-14・D-V20-28】
+# manifest.schema.json の2行を17度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:420326
+#   manifest.schema.json:sha256:efd0dcabe8f53fa86f30be33af0f0327911fd4df9ce78ec1271c181707b95e9e
+# 動かしたのは $defs/theme だけである(コミット1 からの git diff --numstat = 156 29):
+#   (1) properties と required に4件(primary_fill / on_primary / overlay_background / overlay_text)を highlight_surface の直後に同時に足した。
+#   (2) 色の枠9件の anyOf 2枝(16進 / oklch)を、外側の anyOf 2枝 [実値(内側の anyOf にそのまま), 参照 ^\$palette_[a-z0-9_]{1,40}$] に包んだ。
+#   (3) patternProperties を1本(^palette_[a-z0-9_]{1,40}$。値域は (2) と同じ形)足した。additionalProperties: false は動いていない。
+#   (4) $defs/theme の description を書き直し、$comment の末尾に1文足した(旧の本文は1バイトも書き換えていない)。
+# $defs は 31 のまま・$defs/theme の properties は 27・required は 27・patternProperties は1本。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M10-T01。ADR-0458 §Decision 2(門A・限定採用)/ D-V20-31】
+# manifest.schema.json の2行を18度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:427685
+#   manifest.schema.json:sha256:7713bb11af408d9f7eaef4e1ecceb16f90398ab8e40112961681bfdc5ac0a298
+# 動かしたのは $defs/app の theme の properties だけである(git diff --numstat = 5 0):
+#   (1) slots の直後に slots_dark を1キー足した({ $comment, description, $ref: "#/$defs/theme" })。required には入れていない。
+# $defs は 31 のまま・$defs/theme は1バイトも動いていない・app.theme の properties は 2 → 3(ADR-0458 式1 の上限3 ちょうど)。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M11-T01 / T02。ADR-0464 §Decision 2 / 3-1(門A・限定採用)/ D-V20-34・D-V20-35】
+# manifest.schema.json の2行を19度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:429106
+#   manifest.schema.json:sha256:15049074ede1c2bb200542fed51161cd353f0e6edb95828a5600d96478c64b98
+# 動かしたのは $defs/app の roles.items だけである(git diff --numstat = 7 0):
+#   (1) properties の signup の直後に5キー目 density を1キー足した({ $comment, description, enum 2値, type })。required には入れていない。
+#   (2) allOf の anonymous 分岐の then.properties に density: false を1行足した(signup: false の直後)。
+# signup の $comment(4キーで閉じる)は1バイトも消していない。6キー目を止める文は density の $comment に置いた。
+# $defs は 31 のまま・$defs/app.properties は 8 のまま・roles.items.properties は 4 → 5(ADR-0464 式1 の上限5 ちょうど)。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-25。V20-M11 の点検の処置(中2 / 軽4)。ADR-0475 §Decision 4-2】
+# manifest.schema.json の2行を20度目に打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:431892
+#   manifest.schema.json:sha256:e283188cec4b68e284c2983bcdfd3fc18a7dc896f6e13332775d502464aca29d
+# 動かしたのは description の散文2本だけである(git diff --numstat = 2 2):
+#   (1) $defs/view の preset_density の description に、旧文「書かなかった画面は今日と1ピクセルも変わらない。」を消さずに直後へ、役割に詰め具合を書いた場合の句を足した。
+#   (2) roles.items の density の description の末尾に、効かない先(集計表・上端の帯やメニュー・2つ目以降の役割)の1文を足した。
+# キー・型・enum・$comment・$defs の本数は1バイトも動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-26。V20-M15-T01A。DS-S22 / 門A = ADR-0466 / 綴り・値域 = ADR-0479】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:432360
+#   manifest.schema.json:sha256:c71abd6e3ac37bea72bf6db4b1a325e0c6b600f89f60faecaa9b6c564245c104
+# 動かしたのは $defs/app.properties の末尾(roles の後ろ)に9本目 design_memory を1本足したことだけである
+# (中は choices / patterns の2キー。値域はその場に書き、新しい $defs を作っていない)。既存の行は1バイトも書き換えていない(git diff --numstat = 56 0)。
+# $defs は 31 のまま・$defs/app.properties は 8 → 9。赤を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-27。V20-M16-T01。計画 18-v20-m16-plan.md §11-1 の J11(メインの授権。止まる条件5 はこの2行に限る)】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:436415
+#   manifest.schema.json:sha256:4d061c440d1c76384e8007ea8c8b93714f1335d4ef35dc6fa9fcfb4fb89fb6c0
+# 動かしたのは description の散文13本だけである(git diff --numstat = 13 13):
+#   (1) $defs/theme の色の枠9本の description に、生の色への参照 $palette_名前 と例 $palette_brand を足した(足した4枠と同じ文面にそろえた)。
+#   (2) roles の description と roles.items.id の description の末尾に訂正を1文ずつ足した(旧文は消していない)。
+#   (3) field の emphasis の description と、ファイル先頭の description の末尾に訂正を1文ずつ足した(旧文は消していない)。
+# キー・型・enum・pattern・$comment・$defs の本数は1バイトも動いていない。diff.schema.json の2行も動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-27。V21-M2B。AN-G2 / ADR-0482(門A・限定採用)/ 授権 ADR-0483 行25】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:438118
+#   manifest.schema.json:sha256:b4c743bfa4c8cd0978d17c869e23c140779c1b435b9124543295084acd8303b2
+# 動かしたのは roles.items.properties.rules.items.properties に8キー目 hidden_fields を1本足したことと、
+# その書ける場所を閉じる false 宣言5本(対象 field / view / action / app / role の分岐)と、
+# 未ログインの分岐(roles.items.allOf[0])の else 1本だけである。既存の行は1バイトも書き換えていない(git diff --numstat = 22 0)。
+# $defs は 31 のまま・未ログインの分岐の target の3語・can は動いていない。diff.schema.json の2行も動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-28。V22-M2-T02。門A = ADR-0486(MN-G1 / MN-G2 = 限定採用)/ 授権 = ADR-0487 行46】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:440659
+#   manifest.schema.json:sha256:44da3b5ebef739558e004c60bbe7c39592a23b32b26ee78a2db2d4fc56de1936
+# 動かしたのは次だけである: $defs/app.properties の末尾(design_memory の後ろ)に10本目 workspace を1本足した
+# (中は navigation 1キー。値域はその場に書き、新しい $defs を作っていない)。$defs/app/properties/roles の $comment の末尾に
+# 【ADR-0486 による改訂】の段(10キーで閉じる)を足した(旧文は1バイトも消していない。git diff --numstat = 42 1 の1行はこの $comment の行)。
+# $defs は 31 のまま・$defs/app.properties は 9 → 10。赤を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-28。V22-M3-T02。門A = ADR-0488(MP-G1 = 限定採用)/ 授権 = ADR-0489 行6・行19】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:445649
+#   manifest.schema.json:sha256:820298a00f09ad4f3168029bc3ea1198348f31403cbee9c6305f13932e7362ec
+# 動かしたのは次だけである: $defs/app/properties/workspace.properties の末尾(navigation の後ろ)に2つ目のキー my_page を1本足した
+# (open_after_login / tables / views の3キー。値域はその場に書き、新しい $defs を作っていない)。workspace の description を直し、
+# $comment の末尾に【ADR-0488 による改訂】の段を足した(旧文は1バイトも消していない)。
+# $defs は 31 のまま・$defs/app.properties は 10 のまま。赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-28。V22-M4-T01。ADR-0494 §Decision 1 の 9(EN-G1 = 門A・限定採用)/ 授権 = ADR-0495 行5】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:449936
+#   manifest.schema.json:sha256:51b7373e4eda7cada78b76f3e6dd6aca237cf6a177e102b2e079c8357ff1e4c1
+# 動かしたのは次だけである: $defs/view/properties/menu_listed の description と $comment の末尾に、未ログインの入口の選び方に
+# 使うことを1文ずつ足した(旧文は1バイトも消していない。git diff --numstat = 2 2 の2行はこの2つの文字列の行)。
+# 値・型・他のキー・$defs(31)・$defs/view.properties の名前と順序・diff.schema.json の2行は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-29。V23-M1-T02。ADR-0497 限定1(SC-G1 = 門A・限定採用)/ 授権 = ADR-0510 行10】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:451137
+#   manifest.schema.json:sha256:8c8776c3ef006d5e70bbe9df8608e8b1650560115f0bf5e5d0c64e7fcb376577
+# 動かしたのは次だけである: $defs/table の access_control.members に4つ目のキー auto_enroll(roles / name の2キーで閉じる。
+# 値域はその場に書き、新しい $defs を作っていない)を足した。$defs(31)・$defs/view.properties・diff.schema.json の2行は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-29。V23-M2-T02。門A = ADR-0498(限定1・限定3)/ 授権 = ADR-0517 行8】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:453066
+#   manifest.schema.json:sha256:94a6c9da2204aa35300a00a4e648f6e0b62ae92e56435199544213f8e96316d3
+# 動かしたのは次だけである: $defs/field に13本目のキー unique_message(文字列・1〜200)を unique の直後に足した。
+# $defs(31)・$defs/view.properties・他のキーは動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の値は写していない)。
+# 【2026-09-29。V23-M2-T11。授権 = ADR-0520 行77 / 決定 D-V23-74(点検の軽2)】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:454580
+#   manifest.schema.json:sha256:3f2a4dad47b00014df9c97d004535837e33522c28e63ead45a4a9c49dd0f402b
+# 動かしたのは次だけである: $defs/field の unique_message の $comment の末尾に、書込時の文言と 422 は実装済みという追記。
+# $defs(31)・$defs/view.properties・他のキーは動いていない。値は wc -c と shasum -a 256 を自分で打った。
+# 【2026-09-30。V23-M4-T02。門A = ADR-0500(限定3〜7)・ADR-0524 / 授権 = ADR-0525 行32】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:454770
+#   manifest.schema.json:sha256:b3f83c16af629a49b6c8eb172ef51b5610dc70af0dc4bd9076e23324a086f08e
+# 動かしたのは次だけである: $defs/workflow_trigger に5キー目 changed_fields(on_create / manual / schedule の分岐で false)、
+# $defs/workflow_action の values の器を if/then/else の形(新しい5形は then、else は今日の action_value)にして description を直した、
+# $defs/function_input の source の選択肢に actor / previous を足し(description も直した)、その2値の分岐を allOf の末尾に2つ足した。
+# $defs(31)・$defs/action_value・$defs/view.properties・diff.schema.json の2行は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+# 【2026-09-30。V23-M5-T02。門A = ADR-0501・ADR-0532(限定1) / 授権 = ADR-0533 行11】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:457963
+#   manifest.schema.json:sha256:fc58dc4eab56292f88f07c0fba00db39fc07111c08199d4225ec3d3510fa2100
+# 動かしたのは次だけである: $defs/table の access_control に10キー目 invitations(by / grantable / target_roles /
+# expires_days / group_from の5キー。grantable だけ必須)、$defs/app の workspace に3つ目のキー invitations(label 必須)、
+# workspace の description の末尾に3つ目のキーの追記(旧文は1バイトも消していない)。$defs(31)は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+# 【2026-10-01。V23-M6-T02。門A = ADR-0502・ADR-0538(§1-1) / 授権 = ADR-0539 行3】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:464112
+#   manifest.schema.json:sha256:176efbb376a3d23092dded8353e595c08609d340c081c411cd8848345e0e1f12
+# 動かしたのは次だけである: $defs/table の access_control の grant に6キー目 principal_row(column / table / via の3キー。
+# 3つとも必須・閉じる・via は権限名の配列で1つ以上)。$defs(31)・access_control の10キー・diff.schema.json の2行は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+# 【2026-10-01。V23-M7-T02。門A = ADR-0503・ADR-0542(§1-1) / 授権 = ADR-0543 行9】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:465743
+#   manifest.schema.json:sha256:41c8222f344a8dd1ae9572d57a78b0d0ededd5c4ec77dba87a79bf7e68ea657f
+# 動かしたのは次だけである: $defs/table の access_control の permissions の要素に7キー目 create_child(子の表 ID の配列。
+# 1つ以上・重複なし・要素は resource_id。必須ではない)。$defs(31)・access_control の10キー・diff.schema.json の2行は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+# 【2026-10-02。V23-M8-T02。門A = ADR-0504・ADR-0544 / 決定 D-V23-205 / 授権 = ADR-0545 行2〜行4】
+# manifest.schema.json の2行を打ち直した。旧値の逐語:
+#   manifest.schema.json:bytes:466461
+#   manifest.schema.json:sha256:7d81297dff024da1288a4f379baeb79940fe3d4ecfba0c31da00d910bd50fcfb
+# 動かしたのは次だけである: $defs/table に7キー目 history(真偽値。必須ではない)、$defs/view に35キー目 history(真偽値)を末尾に足し、
+# $defs/view の allOf の list_view・form・report_view の3分岐に history: false を1行ずつ足した(detail_view の分岐は触っていない)。$defs(31)は動いていない。
+# 赤(sd2)を見てから打ち直した。値は wc -c と shasum -a 256 を自分で打った(T00b の下書きの値は使っていない)。
+manifest.schema.json:bytes:467270
+manifest.schema.json:sha256:6f10325851aa4671f856dccac89e67095df3991e17786698f1978dcff78468e9
 
 # --- manifest.schema.json の $defs(宣言順)---------------------------------------------
 manifest.schema.json:$defs:resource_id
@@ -120,6 +479,7 @@ manifest.schema.json:$defs:function_output_field
 manifest.schema.json:$defs:function_output
 manifest.schema.json:$defs:function
 manifest.schema.json:$defs:role_condition
+manifest.schema.json:$defs:layout_node
 
 # --- manifest.schema.json の $defs/view.properties(宣言順)-----------------------
 manifest.schema.json:$defs/view.properties:id
@@ -141,7 +501,7 @@ manifest.schema.json:$defs/view.properties:preset_image_size
 manifest.schema.json:$defs/view.properties:preset_text_preview
 manifest.schema.json:$defs/view.properties:custom_css
 manifest.schema.json:$defs/view.properties:menu_listed
-manifest.schema.json:$defs/view.properties:field_groups
+manifest.schema.json:$defs/view.properties:field_sections
 manifest.schema.json:$defs/view.properties:preset_list_shape
 manifest.schema.json:$defs/view.properties:modal
 manifest.schema.json:$defs/view.properties:search_fields
@@ -153,6 +513,10 @@ manifest.schema.json:$defs/view.properties:reference_pickers
 manifest.schema.json:$defs/view.properties:report
 manifest.schema.json:$defs/view.properties:after_delete
 manifest.schema.json:$defs/view.properties:flow
+manifest.schema.json:$defs/view.properties:field_width
+manifest.schema.json:$defs/view.properties:group_by
+manifest.schema.json:$defs/view.properties:layout
+manifest.schema.json:$defs/view.properties:history
 
 # --- diff.schema.json の $defs(宣言順)---------------------------------------------
 diff.schema.json:$defs:op_name
@@ -176,7 +540,7 @@ diff.schema.json:$defs/view_changes.properties:preset_image_size
 diff.schema.json:$defs/view_changes.properties:preset_text_preview
 diff.schema.json:$defs/view_changes.properties:custom_css
 diff.schema.json:$defs/view_changes.properties:menu_listed
-diff.schema.json:$defs/view_changes.properties:field_groups
+diff.schema.json:$defs/view_changes.properties:field_sections
 diff.schema.json:$defs/view_changes.properties:preset_list_shape
 diff.schema.json:$defs/view_changes.properties:modal
 diff.schema.json:$defs/view_changes.properties:search_fields
@@ -189,3 +553,7 @@ diff.schema.json:$defs/view_changes.properties:reference_pickers
 diff.schema.json:$defs/view_changes.properties:report
 diff.schema.json:$defs/view_changes.properties:after_delete
 diff.schema.json:$defs/view_changes.properties:flow
+diff.schema.json:$defs/view_changes.properties:field_width
+diff.schema.json:$defs/view_changes.properties:group_by
+diff.schema.json:$defs/view_changes.properties:layout
+diff.schema.json:$defs/view_changes.properties:history

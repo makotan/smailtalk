@@ -176,7 +176,9 @@ test("T02: 名乗りが無くても起動する —— tools/list は今日ど�
     // 書き換えた。** **旧行の逐語**: `expect(listed.tools.length).toBe(25);`
     // **足したのは `set_comment_visibility`(コメントの出し入れを切り替える更新系)1本
     // だけである。**
-    expect(listed.tools.length).toBe(26);
+    // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行16】期待値を 26 → 27 へ書き換えた。**
+    // **旧行の逐語**: `expect(listed.tools.length).toBe(26);` **足したのは `list_record_history`(参照系)1本だけである。**
+    expect(listed.tools.length).toBe(27);
   } finally {
     await close();
   }

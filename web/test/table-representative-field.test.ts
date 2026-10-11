@@ -61,7 +61,8 @@ test("限定1: $defs/table.properties が 6キーで、4キー目は representat
   // **本 ADR の増分ではない。**
   // **【`V7-M1-T01` / `Z-G2` で 5 → 6 に更新した】** 6キー目 `access_control` が門A を通って
   // 増えた(`V7-M0`。判定 = 限定採用)。**本 ADR の増分ではない。**
-  expect(keys).toHaveLength(6);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行103】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(keys).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(keys).toHaveLength(7);
   expect(keys).toContain("representative_field");
 });
 
@@ -86,7 +87,8 @@ test("限定3 / 限定4: diff.schema.json の table_changes が 5キーで、同
   // **【`V7-M1-T03` / `Z-G37` で 4 → 5 に更新した】** 5つ目のキー `access_control`
   // (定義は同じく manifest 側の `$ref`)が門A を通って加わった。**本 ADR の増分ではない。**
   // **テスト名の「3キー」も同じ機会に「5キー」へ直した**(着手前は名前が3・期待値が4で食い違っていた)。
-  expect(Object.keys(props)).toHaveLength(5);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行104】6キー目 history が末尾に足されて 5 → 6(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(props)).toHaveLength(5);` 新しい値は diff.schema.json の $defs/table_changes.properties を python で読んで数えた。
+  expect(Object.keys(props)).toHaveLength(6);
   expect((props.representative_field as { $ref?: string }).$ref).toBe(
     "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/table/properties/representative_field",
   );
@@ -292,7 +294,8 @@ test("限定7: 本 ADR の増分として予約規約フィールドを1本も�
   // **残る4本(`st_owner` / `st_public` / `st_undeletable` / `st_no_direct_create`)は
   // 1本も消えていない。** **`ADR-0080` の増分は今日も0本である**(減らしたのは `V8-M20`)。
   // **【禁止の履行】これを「語彙が減った」という成果として書かない**(`ADR-0301` 限定10)。
-  expect(declared).toHaveLength(4);
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行5(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(declared).toHaveLength(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で数え直して得た(5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+  expect(declared).toHaveLength(5);
   expect(declared).not.toContain("st_admin_readable");
   expect(declared).not.toContain("st_representative_field");
 });

@@ -137,6 +137,12 @@ export function applyManifest(
    * 受けていないので(ADR-0010 限定1)、**既定は今までどおり additive のみ**である。
    */
   operations?: readonly Operation[],
+  /**
+   * **【`V23-M1-T03`。`ADR-0510` §Decision 1 の1】DDL と同じトランザクションの最後に呼ぶ後段。**
+   * 省略したときの挙動は今日と1バイトも変わらない。 空でない拒否の配列を返したら、DDL ごと
+   * 巻き戻し、`manifest.json` も書き換えずに無効として返す。
+   */
+  afterMigrate?: (db: Database, next: Manifest) => ValidationError[],
 ): ApplyManifestResult {
   // 1. 構造 + 参照整合性。
   const validated = validateManifestFull(next);
@@ -179,11 +185,28 @@ export function applyManifest(
     // (create_app を通っていないアプリに投入しようとしている、ということなので)。
     const db = new Database(appDbPath(dataRoot, appId), { readwrite: true, create: false });
     try {
-      applyMigrationPlan(db, planned.plan);
+      applyMigrationPlan(
+        db,
+        planned.plan,
+        afterMigrate === undefined
+          ? undefined
+          : () => {
+              const refused = afterMigrate(db, nextManifest);
+              if (refused.length > 0) {
+                throw new AfterMigrateRefused(refused);
+              }
+            },
+      );
     } finally {
       db.close();
     }
   } catch (error) {
+    if (error instanceof AfterMigrateRefused) {
+      if (existsSync(tempPath)) {
+        unlinkSync(tempPath);
+      }
+      return { valid: false, errors: error.errors };
+    }
     // DDL が失敗したら一時ファイルを残さない(applyMigrationPlan は
     // 1トランザクションなのでスキーマは適用前のまま)。
     if (existsSync(tempPath)) {
@@ -199,4 +222,11 @@ export function applyManifest(
 /** 例外メッセージに埋め込むためのエラー整形(1件1行)。 */
 function formatErrorsForThrow(errors: ValidationError[]): string {
   return errors.map((e) => `  ${e.path === "" ? "/" : e.path}: ${e.message}`).join("\n");
+}
+
+/** 後段が断ったことを、巻き戻しの外へ運ぶ(非 export。`V23-M1-T03`)。 */
+class AfterMigrateRefused extends Error {
+  constructor(readonly errors: ValidationError[]) {
+    super("適用と同じトランザクションの後段が断りました。");
+  }
 }

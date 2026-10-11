@@ -310,7 +310,10 @@ test.describe("発行直後だけコードが出る(`V19-M3-T04` / `SV-G7b`)", (
     // アプリが出したものではない**(`records/v19-m1.md` の申し送り4)。**報告のためだけに測る。**
     await page.getByTestId("auth-username").fill(invited);
     await page.getByTestId("auth-password").fill("correct-horse-battery-staple");
-    await page.getByTestId("auth-user-kind").selectOption("staff");
+    // **【2026-10-02。`V23-M10-T01c`。`D-V23-291`。授権 `ADR-0554`】旧(逐語)**:
+    //     await page.getByTestId("auth-user-kind").selectOption("staff");
+    // **名乗れるのが `staff` 1つだけになり、立場を選ぶ欄が出ないので選ばない**(落ち先は今日も `staff`)。
+    await expect(page.getByTestId("auth-user-kind")).toHaveCount(0);
     await page.getByTestId("auth-invitation-code").fill(code);
     report(
       "段2 招待コードを入力欄に打った直後(まだ送っていない。**左辺に使わない**)",

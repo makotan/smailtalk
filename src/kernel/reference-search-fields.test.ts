@@ -68,6 +68,8 @@ test("限定1: $defs/table.properties は6キーで、5キー目が reference_se
     "representative_field",
     KEY,
     "access_control",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行81】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `access_control` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
   ]);
 });
 
@@ -77,7 +79,9 @@ test("限定1: $defs/field.properties は14キーで、14キー目が reference_
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行27 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   expect(properties.at(-1)).toBe(KEY);
   expect(properties.at(-2)).toBe("reference_picker");
 });
@@ -120,7 +124,13 @@ test("限定10 / D-V6-20: 画面ごとの上書きを作っていない($defs/vi
   // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
   // 書け、集計表(`report_view`)には書けない**)。
   // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-  expect(Object.keys(manifest.$defs.view.properties)).toHaveLength(31);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(manifest.$defs.view.properties)).toHaveLength(31);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(manifest.$defs.view.properties)).toHaveLength(32);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行82】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(manifest.$defs.view.properties)).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+  expect(Object.keys(manifest.$defs.view.properties)).toHaveLength(35);
   // **【2026-08-14。`V8-M8`。台帳 `Q-G1`。門A 本審査 = `V8-M7`】期待値を 24 → 25 へ書き換えた。**
   // **旧行の逐語**: `expect(Object.keys(diff.$defs.view_changes.properties)).toHaveLength(24);`
   // **書き換えた理由**: この行が固定していたのは「**その決定**が `view_changes.properties` の本数 を増やさなかったこと」であり、
@@ -133,7 +143,13 @@ test("限定10 / D-V6-20: 画面ごとの上書きを作っていない($defs/vi
   // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
   // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
   // **検査は消していない。**
-  expect(Object.keys(diff.$defs.view_changes.properties)).toHaveLength(27);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(diff.$defs.view_changes.properties)).toHaveLength(27);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(diff.$defs.view_changes.properties)).toHaveLength(28);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行187(撃(隠れ))】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(diff.$defs.view_changes.properties)).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+  expect(Object.keys(diff.$defs.view_changes.properties)).toHaveLength(31);
 });
 
 test("限定1: 専用の差分操作もフィールド型も $defs も作っていない", () => {
@@ -153,7 +169,8 @@ test("限定1: 専用の差分操作もフィールド型も $defs も作って�
   // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
   // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
   // **検査は消していない。**
-  expect(Object.keys(manifest.$defs)).toHaveLength(30);
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+  expect(Object.keys(manifest.$defs)).toHaveLength(31);
   expect(Object.keys(manifest.$defs)).toContain("role_condition");
 });
 
@@ -656,11 +673,15 @@ test("限定3 の形は差分の側でも同じである(diff.schema.json は値
     "representative_field",
     KEY,
     "access_control",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行83】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `access_control` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
   ]);
   // **【`V8-M20-T01` / 台帳 `J-G28` / 手続きは `ADR-0301` で 13 → 12 に更新した】** 8個目だった
   // `writable_by` が**廃止された**(判定 = 廃止)。**差し替えは差分操作 `set_roles` の全体差し替え
   // であり、`change_field` に相当する部分更新は面に1つも無い。****旧値の逐語は 13。**
-  expect(Object.keys(diff.$defs.field_changes.properties)).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行27 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(Object.keys(diff.$defs.field_changes.properties)).toHaveLength(13);
 });
 
 test("値域を破った change_table / change_field は validateDiff では通り、適用時に倒れる", () => {

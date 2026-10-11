@@ -7,6 +7,9 @@
  * 1. **`dark:` で始まるクラスを1つも残していない**(`ADR-0087` 限定10 / `D-V4-43`)——
  *    Tailwind の `dark:` は `@media (prefers-color-scheme: dark)` を出力に生む。
  *    **これを機械で止める検査は作っていない**(`D-V4-47`)。守っているのは人の側の約束だけである。
+ *    **【V20-M10-T05 の追記】この製品は今日、暗い表示を持つ**(`web/src/styles.css` の末尾の2規則と
+ *    `web/src/color-scheme.ts`。`ADR-0458`)。**それでも `dark:` は今日も1つも書かない** —— 部品は枠(トークン)の
+ *    値の入れ替えで暗くなるので、部品の側に分岐は要らない。
  * 2. **`radix-ui` の `Slot` を入れていない**(`D-V4-29` が土台を Base UI に固定した)。
  *    `asChild` は `@base-ui-components/react/use-render` の `useRender` で作る。
  * 3. **`bg-primary` / `text-primary-foreground` / `bg-destructive` を1つも使っていない**
@@ -63,6 +66,14 @@ export const buttonVariants = cva(
         // 明度をずらす代わりに枠線の色だけを変える(`bg-primary` は据え置く)。
         primary:
           "border-primary bg-primary text-primary-foreground hover:border-foreground active:border-foreground",
+        // **主ボタン(V20-M9 / ADR-0474 §Decision 1-7)。** 詳細画面で強調を主(`primary`)と
+        // 宣言したボタンだけが使う。地色は役割の枠 `primary_fill`、文字色は `on_primary`、枠線は
+        // `default` と同じ `border_color`。**hover / active で地色と文字色を変えない** —— 変えると
+        // `on_primary` × `highlight_surface` という測っていない組が画面に出る。変えるのは枠線を
+        // 本文の文字色にすることだけ(上の `primary` と同じ作法)。既定値(`#fff` / `#000`)のままなら
+        // 平常時の見た目は今日(`default`)と同じである。
+        emphasis:
+          "border-border bg-primary-fill text-on-primary hover:border-foreground active:border-foreground",
         secondary:
           "border-border bg-secondary text-secondary-foreground hover:bg-accent active:bg-accent",
         destructive:

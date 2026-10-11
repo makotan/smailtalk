@@ -62,7 +62,10 @@ test("限定1: $defs/field.properties の13キー目は reference_picker であ�
   // **【`V8-M20-T01` / 台帳 `J-G27` / `J-G28` / `ADR-0301` で見る位置を2つ手前へ直した】**
   // **8キー目だった `audience` と9キー目だった `writable_by` が廃止されたので、それより後ろの
   // キーの添字が2つずつ繰り上がった。****期待値を緩めていない。**
-  expect(properties[10]).toBe("reference_picker");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行30】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[10]`。**
+  expect(properties[11]).toBe("reference_picker");
   // **同じ名前を2度置いていない。**
   expect(properties.filter((key) => key === "reference_picker")).toHaveLength(1);
 });
@@ -76,7 +79,10 @@ test("限定1: field_changes.properties の12個目は reference_picker で、�
   // **【`V8-M20-T01` / 台帳 `J-G28` / `ADR-0301` で見る位置を1つ手前へ直した】** **8個目だった
   // `writable_by` が廃止されたので、それより後ろのキーの添字が1つずつ繰り上がった。**
   // **期待値を緩めていない。**
-  expect(properties[10]).toBe("reference_picker");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行30】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[10]`。**
+  expect(properties[11]).toBe("reference_picker");
   expect((fieldChanges.properties.reference_picker as Any).$ref).toBe(
     "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/field/properties/reference_picker",
   );

@@ -30,8 +30,17 @@
  * 検証してからでなければ SQL に到達しない。
  */
 import type { Database } from "bun:sqlite";
+import { accessControlOf } from "../server/owner-scope.ts";
+import { appendRecordHistory } from "../server/record-history.ts";
+import { deleteRowInvitationsForRow } from "../server/row-invitations.ts";
+import { deleteRowInviteCodeForRow } from "../server/row-invite-codes.ts";
 import { isSystemTableId } from "../shared/system-tables.ts";
-import { quoteIdentifier, SYSTEM_COLUMN_NAMES, SYSTEM_COLUMNS } from "./ddl.ts";
+import {
+  createAutoEnrollAccountIndexSql,
+  quoteIdentifier,
+  SYSTEM_COLUMN_NAMES,
+  SYSTEM_COLUMNS,
+} from "./ddl.ts";
 import { concurrentWriteBusyErrors, type ValidationError } from "./errors.ts";
 import type {
   Field,
@@ -47,7 +56,7 @@ import { normalizeSort, sortErrorPath } from "./types.ts";
 // 双方が `export function` 宣言(巻き上げられる)なので、モジュール評価順に依らず解決する。
 // ワークフローの発火をカーネルに置くのは ADR-0013 §5a の決定であり、こうすることで
 // HTTP 経路と MCP 経路の発火が**構造的に**一致する(ADR-0003 §7)。
-import { runWorkflows } from "./workflow-runner.ts";
+import { markAppReason, runWorkflows, takeFirstAppReason } from "./workflow-runner.ts";
 
 /** レコードのフィールド値として表現できるもの。 */
 export type RecordValue = string | number | boolean | null;
@@ -663,8 +672,78 @@ function hasDuplicateValue(
  * import しない** —— `src/kernel/` は `src/server/` に依存しない(`ADR-0009`)。
  * **同じ綴りが2箇所にあることは代償である**(`workflow-runner.ts` が `record.st_owner` を
  * 直に読んでいるのと同じ形。隠さない)。
+ *
+ * **【`V23-M1-T13` の訂正。上の文を消していない】** 「`src/kernel/` は `src/server/` に依存しない」は
+ * 今日の正ではない。 `V23-M1-T08` から、このファイルは名簿の一意索引を遅延で張るために
+ * `src/server/owner-scope.ts` の `accessControlOf` を値で import している(`ensureRosterIndex`)。
+ * 依存の向きと範囲は `ADR-0516` §Decision 3 に書いた(この1名だけ)。 この定数は今日も import しない。
  */
 const OWNER_SCOPE_COLUMN = "st_owner";
+
+/**
+ * **【`V23-M4-T05` / `D-V23-98`・`D-V23-91`・`D-V23-105`】更新者(予約規約フィールドの5本目)の綴り。**
+ *
+ * **export しない**(`ADR-0524` 限定1: カーネルの公開の識別子を増やさない)。 サーバ層の
+ * `UPDATED_BY_FIELD`(`src/server/owner-scope.ts`)と同じ綴りの**写し**である(上の
+ * `OWNER_SCOPE_COLUMN` と同じ理由。この定数は import しない)。 **押す場所は、このファイルの
+ * 作成と更新の2つの関数の中の {@link stampUpdatedBy} の1本だけ**(全書込点を1か所で覆う)。
+ */
+const UPDATED_BY_COLUMN = "st_updated_by";
+
+/**
+ * **更新者を押す表か**(`owner-scope.ts` の `stampedUpdatedByField` の3条件の写し:
+ * id が `st_updated_by`・型が text・必須でない)。 満たさなければ、ただの項目(押さない・捨てない)。
+ */
+function hasUpdatedByColumn(table: Table): boolean {
+  return table.fields.some(
+    (field) => field.id === UPDATED_BY_COLUMN && field.type === "text" && field.required !== true,
+  );
+}
+
+/**
+ * **送信内容から更新者の値を捨てた入力を返す**(`D-V23-98`)。 **宣言の無い表では入力をそのまま返す**
+ * (同じオブジェクト。SQL は1バイトも変わらない。`ADR-0500` 限定20)。 捨てるのは検証の**前**である
+ * —— 型の違う値や偽の値を送っても、検証の断りにならずに黙って捨てられる。
+ */
+function withoutUpdatedBy(table: Table, input: RecordInput): RecordInput {
+  if (!hasUpdatedByColumn(table) || !Object.hasOwn(input, UPDATED_BY_COLUMN)) {
+    return input;
+  }
+  const { [UPDATED_BY_COLUMN]: _discarded, ...rest } = input;
+  return rest;
+}
+
+/**
+ * **検証を通った列に、更新者の値を押す**(`D-V23-98`)。 値は起点の操作者の id(`$actor.id` と同じ)。
+ * 起点の無い呼び出し・受信口・時刻起動は空文字(`D-V23-91`。「空」は空文字で保存する。`D-V23-105`)。
+ *
+ * - **宣言の無い表では何もしない**(`columns` を1つも触らない)。
+ * - **実行履歴の行には押さない**(計画 §23-6 の T05): 自動処理の履歴の表(どれかのワークフローの
+ *   `history_table`)に、起点を渡さずに書く行(`writeHistoryRow` と履歴の書き直し)は押さない。
+ *   同じ表でも、画面などから起点つきで書く行には押す。
+ * - **判定には使わない**(`ADR-0500` 限定19)。 この関数は値を読まない。
+ */
+function stampUpdatedBy(
+  manifest: Manifest,
+  table: Table,
+  columns: Map<string, string | number | null>,
+  origin: { readonly id: string; readonly keepUpdatedBy?: true } | undefined,
+): void {
+  if (!hasUpdatedByColumn(table)) {
+    return;
+  }
+  // **【`V23-M9-T04`。`D-V23-253`】主体の分からない AI の書き戻しは、更新者を空で上書きしない**(直前の値のまま)。
+  if (origin?.keepUpdatedBy === true) {
+    return;
+  }
+  if (
+    origin === undefined &&
+    (manifest.app.workflows ?? []).some((workflow) => workflow.history_table === table.id)
+  ) {
+    return;
+  }
+  columns.set(UPDATED_BY_COLUMN, origin?.id ?? "");
+}
 
 /**
  * `unique: "owner"` の照会に使うスコープ値を、入力と既存行から決める。
@@ -782,24 +861,98 @@ function validateInput(
       table.fields.some((candidate) => candidate.id === OWNER_SCOPE_COLUMN);
     const ownerScope = scoped ? ownerScopeOf(columns, existing) : undefined;
     if (hasDuplicateValue(db, table, fieldId, value, excludeId, ownerScope)) {
-      errors.push({
-        path: `/${fieldId}`,
-        message: scoped
-          ? `フィールド "${fieldId}" は持ち主ごとの一意(unique: "owner")制約があり、` +
-            `値 ${JSON.stringify(value)} は同じ持ち主の別のレコードで既に使われています。`
-          : `フィールド "${fieldId}" は一意(unique)制約があり、値 ${JSON.stringify(value)} は` +
-            `テーブル "${table.id}" の別のレコードで既に使われています。`,
-        hint: scoped
-          ? "このフィールドは同じ持ち主(st_owner)の中で値が重複できません。" +
-            "持ち主が違えば同じ値を持てます。別の値を指定するか、" +
-            "その値を持つ既存のレコードを更新してください。"
-          : "このフィールドは同じテーブル内で値が重複できません。別の値を指定するか、" +
-            "その値を持つ既存のレコードを更新してください。",
-      });
+      // **【`V23-M2-T03` / `ADR-0498` / `D-V23-46`】一意違反の文言(`unique_message`)を書いた列は、
+      // 文面だけを宣言の文言に差し替え、アプリの理由の印を付ける**(`unique: true` と `"owner"` の
+      // 両方。`path` は今日のまま、今日の汎用の `hint` は付けない。`D-V23-56`)。 **値を含む整形は
+      // 増やしていない**(文言は宣言の文字列そのもの。`ADR-0498` 歯止め #9)。
+      const uniqueMessage = uniqueMessageOf(field);
+      if (uniqueMessage !== undefined) {
+        errors.push(appUniqueError(fieldId, uniqueMessage));
+        continue;
+      }
+      // **【`V23-M1-T05`】持ち主の無い一意の断りは {@link tableUniqueError} の1本から作る**
+      // (索引に当たった書込の翻訳と、文面を1文字も違えないため)。
+      errors.push(
+        scoped
+          ? {
+              path: `/${fieldId}`,
+              message:
+                `フィールド "${fieldId}" は持ち主ごとの一意(unique: "owner")制約があり、` +
+                `値 ${JSON.stringify(value)} は同じ持ち主の別のレコードで既に使われています。`,
+              hint:
+                "このフィールドは同じ持ち主(st_owner)の中で値が重複できません。" +
+                "持ち主が違えば同じ値を持てます。別の値を指定するか、" +
+                "その値を持つ既存のレコードを更新してください。",
+            }
+          : tableUniqueError(table, fieldId, value),
+      );
     }
   }
 
   return errors.length > 0 ? fail(errors) : ok(columns);
+}
+
+/**
+ * **表全体の一意(`unique: true`)の断り**(`V23-M1-T05` で1本にまとめた。文面は1文字も変えていない)。
+ */
+function tableUniqueError(table: Table, fieldId: string, value: unknown): ValidationError {
+  return {
+    path: `/${fieldId}`,
+    message:
+      `フィールド "${fieldId}" は一意(unique)制約があり、値 ${JSON.stringify(value)} は` +
+      `テーブル "${table.id}" の別のレコードで既に使われています。`,
+    hint:
+      "このフィールドは同じテーブル内で値が重複できません。別の値を指定するか、" +
+      "その値を持つ既存のレコードを更新してください。",
+  };
+}
+
+/**
+ * **一意違反の文言を宣言した列なら、その文言**(`V23-M2-T03`)。 語彙は `unique` を持つ列にだけ
+ * 書けるので(適用時に拒否する。`referential-integrity.ts`)、ここでは有無だけを見る。
+ */
+function uniqueMessageOf(field: Table["fields"][number] | undefined): string | undefined {
+  if (field === undefined || !("unique_message" in field)) {
+    return undefined;
+  }
+  return typeof field.unique_message === "string" ? field.unique_message : undefined;
+}
+
+/**
+ * **宣言の文言で断る一意違反**(`V23-M2-T03`)。 `path` は今日の断りと同じ、`hint` は付けない。
+ * アプリの理由の印を付ける(`workflow-runner.ts` の {@link markAppReason})。
+ */
+function appUniqueError(fieldId: string, message: string): ValidationError {
+  return markAppReason({ path: `/${fieldId}`, message });
+}
+
+/**
+ * **SQLite の一意の例外が、この表の列の一意索引に当たったものなら、書込時検査と同じ断りを返す**
+ * (`V23-M1-T05`)。 カーネルが張る一意索引は、名簿への自動登録を宣言した名簿の `account` 列の
+ * 1種だけである(`ddl.ts`)。 行の ID の主キーの衝突や、書く値の無い列は翻訳しない(`null`)。
+ */
+function uniqueIndexViolation(
+  error: unknown,
+  table: Table,
+  columns: ReadonlyMap<string, string | number | null> | undefined,
+): ValidationError | null {
+  if (columns === undefined || !(error instanceof Error)) {
+    return null;
+  }
+  const match = /UNIQUE constraint failed: ([^\s,]+)\.([^\s,]+)$/.exec(error.message);
+  if (match === null || match[1] !== table.id) {
+    return null;
+  }
+  const fieldId = match[2] as string;
+  if (fieldId === SYSTEM_COLUMNS.id || !columns.has(fieldId)) {
+    return null;
+  }
+  // **【`V23-M2-T03`】文言を宣言した列なら、書込時検査と同じく宣言の文言で断る。**
+  const uniqueMessage = uniqueMessageOf(table.fields.find((field) => field.id === fieldId));
+  if (uniqueMessage !== undefined) {
+    return appUniqueError(fieldId, uniqueMessage);
+  }
+  return tableUniqueError(table, fieldId, columns.get(fieldId));
 }
 
 // --- 読み出し -----------------------------------------------------------------
@@ -885,6 +1038,61 @@ function selectRow(db: Database, table: Table, id: string): RecordRow | null {
 // --- 公開API -------------------------------------------------------------------
 
 /**
+ * **【`V23-M8-T03`】変更履歴の操作者**(`$actor` の3つに、省略できる入口 `entry` を1つ足した形)。
+ * **export しない**(カーネルの公開の識別子を増やさない)。 `entry` は `$actor` としては解かない。
+ */
+type HistoryOrigin = {
+  readonly id: string;
+  readonly login: string;
+  readonly role: string;
+  readonly entry?: "http" | "manual" | "inbound" | "on_create/on_update" | "schedule" | "mcp";
+  /** **【`V23-M9-T04`。`D-V23-253`】主体の分からない AI の書き戻し。** 更新者の列を直前の値のまま残す。 */
+  readonly keepUpdatedBy?: true;
+};
+
+/**
+ * **【`V23-M8-T03`】入口の値の規則**(1つだけ): 自動処理の器の段の積みが空でなければ `on_create/on_update`。
+ * 空なら操作者の `entry`。 操作者に `entry` が無ければ `on_create/on_update`。 **書込の器を開く前に呼ぶ**
+ * (自分の段を数えない)。
+ */
+function historyEntryOf(
+  origin: HistoryOrigin | undefined,
+): "http" | "manual" | "inbound" | "on_create/on_update" | "schedule" | "mcp" {
+  if (workflowTxStack.length > 0) {
+    return "on_create/on_update";
+  }
+  return origin?.entry ?? "on_create/on_update";
+}
+
+/**
+ * **【`V23-M8-T03`】履歴に入れる項目ごとの変更**(値は `toRecordRow` の形のまま)。 システム列と更新者の列
+ * ({@link UPDATED_BY_COLUMN})は入れない。 作成は値の入った全項目(before は null)、削除は全項目
+ * (after は null)、更新は値が変わった項目だけ。
+ */
+function historyChanges(
+  table: Table,
+  before: RecordRow | null,
+  after: RecordRow | null,
+): { field: string; before: RecordValue; after: RecordValue }[] {
+  const out: { field: string; before: RecordValue; after: RecordValue }[] = [];
+  for (const field of table.fields) {
+    if (field.id === UPDATED_BY_COLUMN) {
+      continue;
+    }
+    const b = before === null ? null : (before[field.id] ?? null);
+    const a = after === null ? null : (after[field.id] ?? null);
+    if (before === null && a === null) {
+      continue;
+    }
+    if (before !== null && after !== null && b === a) {
+      continue;
+    }
+    out.push({ field: field.id, before: b, after: a });
+  }
+  return out;
+}
+
+/**
  * レコードを1件作成する。`_id` は `crypto.randomUUID()` で発行し、
  * `_created_at` / `_updated_at` に同じ ISO8601 UTC を入れる。
  * バリデーションに1件でも違反があれば、DBには一切書き込まずに全件のエラーを返す。
@@ -894,6 +1102,20 @@ export function createRecord(
   manifest: Manifest,
   tableId: ResourceId,
   input: RecordInput,
+  /**
+   * **【`V23-M4-T03` / `D-V23-102`】連鎖の起点の操作者**(`$actor`)。 **省略できる**(省略すれば
+   * `$actor` は空)。 発火へ渡すだけで、この関数は読まない。 型は名前を export しない形で書く。
+   * 【`V23-M8-T03`】宣言(`history: true`)のある表では、変更履歴の操作者と入口としても読む。
+   */
+  origin?: HistoryOrigin,
+  /**
+   * **【`V23-M10-T02c-c` / `D-V23-300`】行を書いた直後、作成の自動処理より前に、同じ器の中で呼ぶ**
+   * (作成者への付与を先に書くため。 入口層の最も外の作成だけが渡す)。 省略すれば今日と1バイトも同じ。
+   * 呼ぶ間は自動処理の器の段の積みを外して呼ぶ(中の書込は、作成の後に書いていた今日と同じく
+   * 最も外の書込として扱われる: 履歴の入口・アプリの理由の受け皿・失敗の履歴の書き直し)。
+   * 投げた例外はこの作成ごと巻き戻して呼び手へ伝わる。
+   */
+  beforeWorkflows?: (row: RecordRow) => void,
 ): RecordResult<RecordRow> {
   // L1(最終防衛線)。判定はテーブル解決より**前**に置く(ADR-0006 §8)。
   if (isSystemTableId(tableId)) {
@@ -904,9 +1126,16 @@ export function createRecord(
     return fail([unknownTableError(manifest, tableId)]);
   }
 
-  const validated = validateInput(db, table, input, false);
+  // **【`V23-M4-T05`】更新者の送信内容は検証の前に捨て、検証を通った列に押す**({@link stampUpdatedBy})。
+  const validated = validateInput(db, table, withoutUpdatedBy(table, input), false);
   if (!validated.ok) {
     return fail(validated.errors);
+  }
+  stampUpdatedBy(manifest, table, validated.value, origin);
+  // **【`V23-M1-T08`】名簿の一意索引を、書く前に遅延で張る**({@link ensureRosterIndex})。
+  const rosterIndex = ensureRosterIndex(db, manifest, table);
+  if (rosterIndex !== undefined) {
+    return fail([rosterIndex]);
   }
 
   const id = crypto.randomUUID();
@@ -922,21 +1151,91 @@ export function createRecord(
     `INSERT INTO ${quoteIdentifier(table.id)} (${columns.map(quoteIdentifier).join(", ")}) ` +
     `VALUES (${columns.map(() => "?").join(", ")})`;
 
+  // **【`V23-M8-T03`】入口は器を開く前に読む**(宣言の無い表では `undefined` で、以下は今日の形のまま)。
+  const historyEntry = table.history === true ? historyEntryOf(origin) : undefined;
   // [行の書込 + ワークフローの発火] を1つの deferred tx で包む(ADR-0066 §Decision 1)。
-  return runWithWorkflows(db, table, (rewrites) => {
-    db.query(sql).run(...values);
+  return runWithWorkflows(
+    db,
+    table,
+    (rewrites) => {
+      db.query(sql).run(...values);
 
-    const row = selectRow(db, table, id);
-    if (row === null) {
-      throw new Error(`レコード "${id}" の作成直後の読み出しに失敗しました。`);
+      const row = selectRow(db, table, id);
+      if (row === null) {
+        throw new Error(`レコード "${id}" の作成直後の読み出しに失敗しました。`);
+      }
+      // **【`V23-M8-T03`】変更履歴**(書込と同じ器。 落ちれば作成ごと巻き戻る)。
+      if (historyEntry !== undefined) {
+        appendRecordHistory(db, {
+          tableId: table.id,
+          recordId: id,
+          op: "create",
+          actor: origin,
+          entry: historyEntry,
+          at: now,
+          changes: historyChanges(table, null, row),
+        });
+      }
+      // **【`V23-M10-T02c-c` / `D-V23-300`】作成の自動処理より前に、呼び手の書込を挟む。**
+      if (beforeWorkflows !== undefined) {
+        const held = workflowTxStack.splice(0, workflowTxStack.length);
+        try {
+          beforeWorkflows(row);
+        } finally {
+          workflowTxStack.push(...held);
+        }
+      }
+      // ワークフローの発火(ADR-0013 §5a / V1-M2-T02)。**`selectRow` の後**に置く ——
+      // `$record.<フィールドID>` の解決には全フィールドの確定値が要るため、
+      // INSERT 直後ではなく確定値を読み出した後でなければならない。
+      // `runWorkflows` は例外を投げない(`0013:417` の後段は1バイトも変えていない)が、
+      // **失敗の説明を返す**ようになった(V3-M13-T02)。
+      return {
+        row,
+        failures: runWorkflows(db, manifest, table.id, "on_create", row, rewrites, origin),
+      };
+    },
+    validated.value,
+  );
+}
+
+/**
+ * **名簿への自動登録を宣言した名簿の `account` 列に、一意索引を遅延で張る**(`V23-M1-T08`。
+ * `D-V23-38` / `ADR-0497` 限定6)。
+ *
+ * 索引は差分の適用が張る(`V23-M1-T03`)が、`apply_manifest`(定義の丸ごとの投入)と移行器
+ * (`scripts/migrate-volume.ts`)は後段なしで定義を当てるので張らない。 表の作り直しでも消える。
+ * **移行器の手順を足さず、版(`RUNNER_BUILD_VERSION`)も上げず**、書ける接続で名簿へ作成・更新する
+ * 直前に `CREATE UNIQUE INDEX IF NOT EXISTS` を流す(在れば何もしない)。 読取の経路は張らない。
+ *
+ * **既に同じ利用者の行が複数あって張れないときは、その作成・更新を断る**(1バイトも書かない)。
+ * 削除は断らない(重複を消して直せる)。 宣言の無い表では何もしない。
+ */
+function ensureRosterIndex(
+  db: Database,
+  manifest: Manifest,
+  table: Table,
+): ValidationError | undefined {
+  for (const candidate of manifest.app.tables) {
+    const members = accessControlOf(candidate)?.members;
+    if (members?.table !== table.id || members.auto_enroll === undefined) {
+      continue;
     }
-    // ワークフローの発火(ADR-0013 §5a / V1-M2-T02)。**`selectRow` の後**に置く ——
-    // `$record.<フィールドID>` の解決には全フィールドの確定値が要るため、
-    // INSERT 直後ではなく確定値を読み出した後でなければならない。
-    // `runWorkflows` は例外を投げない(`0013:417` の後段は1バイトも変えていない)が、
-    // **失敗の説明を返す**ようになった(V3-M13-T02)。
-    return { row, failures: runWorkflows(db, manifest, table.id, "on_create", row, rewrites) };
-  });
+    const account = members.account;
+    try {
+      db.exec(createAutoEnrollAccountIndexSql(table.id, account));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed")) {
+        return {
+          path: `/${account}`,
+          message: `名簿 "${table.id}" の列 "${account}" に、同じ利用者の行が複数あります。名簿を守る一意の索引を張れないので、重複を消すまでこの名簿への追加と更新はできません(1バイトも書いていません)。`,
+          hint: "運営者が名簿の一覧で同じ利用者の行を探し、余分な行を消してください。消すことは今もできます。",
+        };
+      }
+      throw error;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -992,16 +1291,28 @@ function runWithWorkflows(
   db: Database,
   table: Table,
   write: (rewrites: (() => void)[]) => { row: RecordRow; failures: string[] },
+  /**
+   * **【`V23-M1-T05`】書く列と値**(検証を通ったもの)。 名簿の `account` 列の一意索引に
+   * 当たった例外を、書込時検査と同じ `ValidationError` に翻訳するときだけ読む。
+   */
+  columns?: ReadonlyMap<string, string | number | null>,
 ): RecordResult<RecordRow> {
   // 巻き戻した後に呼ぶ「失敗の履歴を書き直す」thunk の受け皿。**tx の外の変数**なので、
   // 巻き戻っても中身は残る(巻き戻るのは DB であって JS の値ではない)。
   const rewrites: (() => void)[] = [];
   const parent = workflowTxStack[workflowTxStack.length - 1];
+  if (parent === undefined) {
+    // **【`V23-M2-T03` / `D-V23-52`】最も外の書込の始まりで、アプリの理由の受け皿を空にする。**
+    takeFirstAppReason();
+  }
   workflowTxStack.push(rewrites);
   const tx = db.transaction((): RecordRow => {
     const { row, failures } = write(rewrites);
     if (failures.length > 0) {
       // **全アクションを最後まで実行したうえで**巻き戻す(途中で止めない = 限定3)。
+      // 【2026-09-29。`V23-M2-T04` の訂正。上の行を消していない】島が断ったワークフローは、
+      // 断ったアクションより後を動かさずに止まる(`D-V23-51`。止めるのは `workflow-runner.ts`)。
+      // 他のワークフローと、断り以外の失敗は今日どおり最後まで動く。
       throw new WorkflowActionFailure(failures);
     }
     return row;
@@ -1015,6 +1326,11 @@ function runWithWorkflows(
     return ok(row);
   } catch (error) {
     if (error instanceof WorkflowActionFailure) {
+      // **【`V23-M2-T03` / `D-V23-52`・`D-V23-53`】最も外の器だけが受け皿を読む。** 連鎖の中で
+      // アプリの理由が1件でも起きていれば、最初の1件を `path: ""` と作者の文言そのままの失敗にして
+      // 返す(印を付ける。受信口の冪等の吸収は `path` だけを見るので、空の `path` は吸収されない)。
+      // 読むのは履歴の書き直しより前である(書き直しは受け皿に触れないが、順序を固定しておく)。
+      const appReason = parent === undefined ? takeFirstAppReason() : undefined;
       // ここに来た時点で tx は巻き戻っている(部分適用ゼロ)。
       // **巻き戻しの外で、失敗の記録だけを書き直す**(ADR-0066 限定5)。
       for (const rewrite of rewrites) {
@@ -1023,6 +1339,9 @@ function runWithWorkflows(
       // 書き直した先は**外側の器の内側**でもありうる。外側も巻き戻るなら、そこでもう一度
       // 書き直す必要がある(二重には書かれない —— 外側が巻き戻せば今書いた行は消える)。
       parent?.push(...rewrites);
+      if (appReason !== undefined) {
+        return fail([markAppReason({ path: "", message: appReason })]);
+      }
       return fail([workflowFailureError(table, error.failures)]);
     }
     // **順番待ちの上限を過ぎた書込だけは、業務の言葉に翻訳して返す**
@@ -1032,6 +1351,15 @@ function runWithWorkflows(
     const busy = concurrentWriteBusyErrors(error);
     if (busy !== null) {
       return fail(busy);
+    }
+    // **【`V23-M1-T05`。`ADR-0497` §Decision 1 / `ADR-0510` §Decision 1 の2】名簿の一意索引に
+    // 当たった書込は、書込時検査(一意)と同じ文面・同じ path の断りに翻訳する** —— 全入口が
+    // 同じ形を受け取るので、受信口の冪等の吸収(`unique: true` の列だけ)も今日どおりに働く。
+    // ここに来た時点で tx は巻き戻っている(1バイトも書かれていない)。 SQLite の例外のまま
+    // 入口へ上げない。 新しい文面は作らない。
+    const duplicate = uniqueIndexViolation(error, table, columns);
+    if (duplicate !== null) {
+      return fail([duplicate]);
     }
     // 想定外の例外は握り潰さない —— 静かな部分適用にせず、呼び出し元へ伝播させる
     // (`batch.ts` と同じ作法)。**アクションが投げた例外はここへ来ない** ——
@@ -1581,6 +1909,8 @@ export function updateRecord(
   id: string,
   input: RecordInput,
   expectedVersion?: string,
+  /** **【`V23-M4-T03`】連鎖の起点の操作者**(`createRecord` と同じ。省略すれば `$actor` は空)。 */
+  origin?: HistoryOrigin,
 ): RecordResult<RecordRow> {
   // レコードの存在確認より先に拒否する。存在しないレコードIDへの更新が
   // 「レコードがありません」で返ると、「レコードさえあれば書ける」という
@@ -1602,16 +1932,25 @@ export function updateRecord(
       },
     ]);
   }
+  // **【`V23-M1-T08`】名簿の一意索引を、書く前に遅延で張る**({@link ensureRosterIndex})。
+  {
+    const rosterIndex = ensureRosterIndex(db, manifest, table);
+    if (rosterIndex !== undefined) {
+      return fail([rosterIndex]);
+    }
+  }
 
   // `id` を渡して自分自身の行を unique 照会から除外する(EC-G8 / ADR-0038)——
   // 自分の値のまま(あるいは自分の値へ)更新しても「重複」にはならない。
   // **更新前の行も渡す**(V4-M10-T07 / ADR-0078)—— `unique: "owner"` のスコープ値は、
   // 入力に `st_owner` が無い部分更新では既存行から取るしかない。**新しい読取は増やして
   // いない**(この行は元から `selectRow` で読んでいた存在確認の結果である)。
-  const validated = validateInput(db, table, input, true, id, existingRow);
+  // **【`V23-M4-T05`】更新者の送信内容は検証の前に捨て、検証を通った列に押す**({@link stampUpdatedBy})。
+  const validated = validateInput(db, table, withoutUpdatedBy(table, input), true, id, existingRow);
   if (!validated.ok) {
     return fail(validated.errors);
   }
+  stampUpdatedBy(manifest, table, validated.value, origin);
 
   const assignments = [...validated.value.keys()].map((key) => `${quoteIdentifier(key)} = ?`);
   assignments.push(`${quoteIdentifier(SYSTEM_COLUMNS.updatedAt)} = ?`);
@@ -1632,27 +1971,72 @@ export function updateRecord(
   // 器の外で判定して従来どおり `conflict:true` を返す(ADR-0066 限定13: CAS の意味論を
   // 1バイトも変えない)。
   let versionConflict = false;
+  // **【`V23-M8-T03`】入口は器を開く前に読む**(宣言の無い表では `undefined`)。
+  const historyEntry = table.history === true ? historyEntryOf(origin) : undefined;
 
   // [行の書込 + ワークフローの発火] を1つの deferred tx で包む(ADR-0066 §Decision 1)。
-  const written = runWithWorkflows(db, table, (rewrites) => {
-    const result = db.query(sql).run(...values, ...whereBindings);
-    // 存在確認は上で済んでいる。版指定ありで changes===0 = 版不一致(または L2 の削除競合)= 衝突。
-    if (expectedVersion !== undefined && result.changes === 0) {
-      versionConflict = true;
-      throw new WorkflowActionFailure([]);
-    }
+  const written = runWithWorkflows(
+    db,
+    table,
+    (rewrites) => {
+      const result = db.query(sql).run(...values, ...whereBindings);
+      // 存在確認は上で済んでいる。版指定ありで changes===0 = 版不一致(または L2 の削除競合)= 衝突。
+      if (expectedVersion !== undefined && result.changes === 0) {
+        versionConflict = true;
+        throw new WorkflowActionFailure([]);
+      }
 
-    const row = selectRow(db, table, id);
-    if (row === null) {
-      throw new Error(`レコード "${id}" の更新直後の読み出しに失敗しました。`);
-    }
-    // ワークフローの発火(ADR-0013 §5a / V1-M2-T02)。**`selectRow` の後**に置く ——
-    // 部分更新では `validated.value` が入力に含まれた列しか持たないので、
-    // UPDATE 直後の値では `$record.<フィールドID>` を解決できない。
-    // `runWorkflows` は例外を投げない(`0013:417` の後段は1バイトも変えていない)が、
-    // **失敗の説明を返す**ようになった(V3-M13-T02)。
-    return { row, failures: runWorkflows(db, manifest, table.id, "on_update", row, rewrites) };
-  });
+      const row = selectRow(db, table, id);
+      if (row === null) {
+        throw new Error(`レコード "${id}" の更新直後の読み出しに失敗しました。`);
+      }
+      // **【`V23-M8-T03`】変更履歴**(値が1つも変わらない保存は記録しない)。
+      if (historyEntry !== undefined) {
+        const changes = historyChanges(table, existingRow, row);
+        if (changes.length > 0) {
+          appendRecordHistory(db, {
+            tableId: table.id,
+            recordId: id,
+            op: "update",
+            actor: origin,
+            entry: historyEntry,
+            at: String(row[SYSTEM_COLUMNS.updatedAt]),
+            changes,
+          });
+        }
+      }
+      // ワークフローの発火(ADR-0013 §5a / V1-M2-T02)。**`selectRow` の後**に置く ——
+      // 部分更新では `validated.value` が入力に含まれた列しか持たないので、
+      // UPDATE 直後の値では `$record.<フィールドID>` を解決できない。
+      // `runWorkflows` は例外を投げない(`0013:417` の後段は1バイトも変えていない)が、
+      // **失敗の説明を返す**ようになった(V3-M13-T02)。
+      // **【`V23-M4-T04`】更新前の行(`existingRow`)も渡す**(`$previous.<項目>` と `changed_fields`。
+      // `ADR-0524` 限定15)。**新しい読取は増やしていない**(上の存在確認で読んだ行である)。
+      return {
+        row,
+        failures: runWorkflows(
+          db,
+          manifest,
+          table.id,
+          "on_update",
+          row,
+          rewrites,
+          // **【`V23-M9-T04`。`D-V23-253`】更新者を残す印は、この書込だけのもの。** 連鎖の書込には渡さない
+          // (連鎖の作成・更新は今日どおり起点の操作者を押す。主体が空なら空文字)。
+          origin?.keepUpdatedBy === true
+            ? {
+                id: origin.id,
+                login: origin.login,
+                role: origin.role,
+                ...(origin.entry === undefined ? {} : { entry: origin.entry }),
+              }
+            : origin,
+          existingRow,
+        ),
+      };
+    },
+    validated.value,
+  );
   if (versionConflict) {
     return conflict([versionConflictError(table, id)]);
   }
@@ -1703,6 +2087,11 @@ export function deleteRecord(
   tableId: ResourceId,
   id: string,
   expectedVersion?: string,
+  /**
+   * **【`V23-M8-T03`】操作者**(省略できる)。 宣言(`history: true`)のある表のときだけ、変更履歴の操作者と
+   * 入口として読む。
+   */
+  origin?: HistoryOrigin,
 ): RecordResult<boolean> {
   // L1(最終防衛線)。判定はテーブル解決より**前**に置く(ADR-0006 §8)。
   if (isSystemTableId(tableId)) {
@@ -1713,7 +2102,8 @@ export function deleteRecord(
     return fail([unknownTableError(manifest, tableId)]);
   }
   // 存在確認(M4)。不在は版の有無に依らず bool の false で返す(衝突とは区別)。
-  if (selectRow(db, table, id) === null) {
+  const existing = selectRow(db, table, id);
+  if (existing === null) {
     return ok(false);
   }
   let sql = `DELETE FROM ${quoteIdentifier(table.id)} WHERE ${quoteIdentifier(SYSTEM_COLUMNS.id)} = ?`;
@@ -1722,11 +2112,131 @@ export function deleteRecord(
     sql += ` AND ${quoteIdentifier(SYSTEM_COLUMNS.updatedAt)} = ?`;
     bindings.push(expectedVersion);
   }
-  const result = db.query(sql).run(...bindings);
+  // **【`V23-M8-T03`】宣言(`history: true`)のある表のときだけ、削除と変更履歴を器で包む**(deferred。
+  // 入れ子なら SAVEPOINT)。 宣言の無い表の削除は今日の形のまま。 順番待ちを過ぎた書込は、今日の器と同じ
+  // 業務の言葉に翻訳する。 それ以外の例外は呼び手へ上げる(行は消えていない)。
+  // **【`V23-M12-T02`。`D-V23-354`】その行を対象または相手に持つ付与の行・招待・招待用コード**。
+  // 宣言(付与の表が対象または相手としてこの表を名指し)が無ければ空で、以下は今日の形のまま。
+  // 【`V23-M12-T02`。`D-V23-408`】器は1つ: 履歴の宣言があるか、付属物(付与・招待・コード)があるときだけ開く。
+  const attachments = rowAttachmentsOf(manifest, table.id);
+  let result: { changes: number };
+  if (table.history === true || attachments.length > 0) {
+    try {
+      result = db.transaction(() => {
+        const deleted = db.query(sql).run(...bindings);
+        if (deleted.changes > 0) {
+          if (table.history === true) {
+            appendRecordHistory(db, {
+              tableId: table.id,
+              recordId: id,
+              op: "delete",
+              actor: origin,
+              entry: historyEntryOf(origin),
+              at: new Date().toISOString(),
+              changes: historyChanges(table, existing, null),
+            });
+          }
+          if (attachments.length > 0) {
+            const failed = purgeRowAttachments(db, manifest, attachments, table.id, id, origin);
+            if (failed !== undefined) {
+              throw new RowAttachmentPurgeFailed(failed);
+            }
+          }
+        }
+        return deleted;
+      })();
+    } catch (error) {
+      if (error instanceof RowAttachmentPurgeFailed) {
+        return fail(error.errors);
+      }
+      const busy = concurrentWriteBusyErrors(error);
+      if (busy !== null) {
+        return fail(busy);
+      }
+      throw error;
+    }
+  } else {
+    result = db.query(sql).run(...bindings);
+  }
   if (result.changes > 0) {
     return ok(true);
   }
   // 存在確認は通ったのに消えなかった。版指定あり = 版不一致(または L2 の削除競合)= 衝突。
   // 版を渡さない従来経路では bool 契約を保つため「不在(false)」に落とす(単一ライタ下で稀)。
   return expectedVersion !== undefined ? conflict([versionConflictError(table, id)]) : ok(false);
+}
+
+/** 付与の行を消せなかった(器ごと巻き戻す)。 */
+class RowAttachmentPurgeFailed extends Error {
+  constructor(readonly errors: ValidationError[]) {
+    super("row attachment purge failed");
+  }
+}
+
+/** **【`V23-M12-T02`】この表の行を対象(`grant.target`)または相手(`grant.principal_row`)に持つ付与の表と列。** */
+function rowAttachmentsOf(
+  manifest: Manifest,
+  tableId: ResourceId,
+): { grantTable: string; column: string }[] {
+  const found: { grantTable: string; column: string }[] = [];
+  for (const candidate of manifest.app.tables) {
+    const declared = accessControlOf(candidate);
+    const grant = declared?.grant;
+    if (grant === undefined || typeof grant.table !== "string") {
+      continue;
+    }
+    if (candidate.id === tableId && typeof grant.target === "string") {
+      found.push({ grantTable: grant.table, column: grant.target });
+    }
+    const principal = (grant as { principal_row?: { table?: unknown; column?: unknown } })
+      .principal_row;
+    if (principal?.table === tableId && typeof principal.column === "string") {
+      found.push({ grantTable: grant.table, column: principal.column });
+    }
+    // 【`V23-M12-T02`。`D-V23-405`】名簿の行・グループの行を相手(`grant.member`・`grant.group`)に持つ付与。
+    if (declared?.members?.table === tableId && typeof grant.member === "string") {
+      found.push({ grantTable: grant.table, column: grant.member });
+    }
+    if (declared?.groups?.table === tableId && typeof grant.group === "string") {
+      found.push({ grantTable: grant.table, column: grant.group });
+    }
+  }
+  return found.filter(
+    (item, index) =>
+      found.findIndex(
+        (other) => other.grantTable === item.grantTable && other.column === item.column,
+      ) === index,
+  );
+}
+
+/** **【`V23-M12-T02`】付与の行(1行ずつ `deleteRecord`。履歴の宣言があれば履歴に残る)・招待・コードを消す。** */
+function purgeRowAttachments(
+  db: Database,
+  manifest: Manifest,
+  attachments: readonly { grantTable: string; column: string }[],
+  tableId: ResourceId,
+  id: string,
+  origin?: HistoryOrigin,
+): ValidationError[] | undefined {
+  for (const { grantTable, column } of attachments) {
+    const grant = findTable(manifest, grantTable);
+    if (grant === undefined || grant.fields.find((field) => field.id === column) === undefined) {
+      continue;
+    }
+    const ids = db
+      .query<{ id: string }, [string]>(
+        `SELECT ${quoteIdentifier(SYSTEM_COLUMNS.id)} AS "id" FROM ${quoteIdentifier(grant.id)} WHERE ${quoteIdentifier(column)} = ?`,
+      )
+      .all(id)
+      .map((row) => row.id);
+    for (const grantId of ids) {
+      const removed = deleteRecord(db, manifest, grant.id, grantId, undefined, origin);
+      if (!removed.ok) {
+        return removed.errors;
+      }
+    }
+  }
+  deleteRowInvitationsForRow(db, tableId, id);
+  deleteRowInviteCodeForRow(db, tableId, id);
+  return undefined;
 }

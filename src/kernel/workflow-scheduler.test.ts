@@ -1858,7 +1858,7 @@ describe("V3-M10-T04 完了条件1: 発火済み状態を持たないことの�
     expect(kernelTables()).toEqual(tablesBefore);
   });
 
-  test("`workflow-runner.ts` のモジュールスコープの可変状態は今日も4つのままである(行選択のために1つも足していない)", () => {
+  test("`workflow-runner.ts` のモジュールスコープの可変状態は今日も6つのままである(行選択のために1つも足していない)", () => {
     // **T01 は `workflow-scheduler.ts` だけを走査した。**行ごとの発火を実際に回すのは
     // `runScheduledWorkflow`(= `workflow-runner.ts`)なので、こちらも固定する。
     const runner = codeOnly(kernelSource("src/kernel/workflow-runner.ts"));
@@ -1866,7 +1866,29 @@ describe("V3-M10-T04 完了条件1: 発火済み状態を持たないことの�
       .split("\n")
       .filter((line) => /^(let|var) /.test(line))
       .map((line) => (line.match(/^(?:let|var) (\w+)/) as RegExpMatchArray)[1]);
-    expect(lets).toEqual(["historyFailureHandler", "workflowClock", "depth"]);
+    /*
+     * **【2026-09-29。`V23-M2-T03` / 授権 `ADR-0517` 行39】旧を隠さない。**
+     * **旧**: 期待の配列は `historyFailureHandler`・`workflowClock`・`depth` の3名、題名の数は 4 だった。
+     * **足した1名 `firstAppReason` は、連鎖の中で最初に起きた「アプリの理由」(`unique_message` の差し替え。
+     * `V23-M2-T04` から島の断りも)の文言の受け皿である**(`D-V23-52`。最も外の書込の始まりで空にする)。
+     * **行選択(`ADR-0063`)のためのものではない** —— 本 test の主張(行ごとの発火のために可変状態を
+     * 足していない)は弱まっていない。 題名の数は 4 から 5 にした(数の部分だけ)。
+     */
+    /*
+     * **【2026-09-29。`V23-M2-T04` / 授権 `ADR-0517` 行39】旧を隠さない。**
+     * **旧**: 期待の配列は上の4名(`firstAppReason` まで)、題名の数は 5 だった。
+     * **足した1名 `rejectCount` は、島が `reject` で断った回数である**(`D-V23-51`。`runActions` が
+     * 1アクションの前後で比べ、増えていれば同じワークフローの後のアクションを動かさない)。
+     * **行選択(`ADR-0063`)のためのものではない。** 行39 の上限2名(`firstAppReason` と合わせて2名)の内。
+     * 題名の数は 5 から 6 にした(数の部分だけ。上限 6 の内)。
+     */
+    expect(lets).toEqual([
+      "historyFailureHandler",
+      "workflowClock",
+      "depth",
+      "firstAppReason",
+      "rejectCount",
+    ]);
 
     // 可変のコレクションはひとつだけ(再発火抑止の集合)。
     const collections = runner

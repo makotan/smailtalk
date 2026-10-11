@@ -342,7 +342,7 @@ const contrast = await call("dry_run_diff", {
     operations: [
       {
         op: "set_theme",
-        theme: { slots: { ...(themeSlots ?? {}), "--color-text-placeholder": "#bdb5a8" } },
+        theme: { slots: { ...(themeSlots ?? {}), placeholder_text: "#bdb5a8" } },
       },
     ],
   },

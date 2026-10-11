@@ -360,12 +360,17 @@ describe("V18-M7-T02 (B): 件数の印が無ければ断り、合えばまとめ
     }).toEqual({ projects: 3, issues: 2, comments: 3 });
   });
 
-  test("(B-2) ④ の文面に、いちばん下の段まで数えた件数(5)と、子が居る表のIDが載っている", async () => {
+  // 【V23-M14-T02。授権 ADR-0579 §2-1 の1。D-V23-451・D-V23-465】旧の題は
+  // 「(B-2) ④ の文面に、いちばん下の段まで数えた件数(5)と、子が居る表のIDが載っている」、
+  // 旧の期待は `toContain("issues")`・`toContain("comments")`(表の ID)。 件数5は残し、表の ID を表の表示名に替えた。
+  test("(B-2) D-V23-451・D-V23-465: ④ の文面に、いちばん下の段まで数えた件数(5)と、子が居る表の表示名が載っている(表の ID は載らない)", async () => {
     const response = await del("projects", parent, keeper.cookie);
     expect(response.status).toBe(409);
     expect(response.message).toContain("5");
-    expect(response.message).toContain("issues");
-    expect(response.message).toContain("comments");
+    expect(response.message).toContain("「課題」");
+    expect(response.message).toContain("「コメント」");
+    expect(response.message).not.toContain("issues");
+    expect(response.message).not.toContain("comments");
   });
 
   test("(B-3) ④ の文面は、版の印(If-Match)の断りと1文字も取り違えない", async () => {
@@ -751,5 +756,95 @@ describe("V18-M7-T07b (H): 件数の印は正しいが版の印が古い要求�
       issues: rowCount("issues"),
       comments: rowCount("comments"),
     }).toEqual({ projects: 2, issues: 0, comments: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (M) 【V23-M14-T02】確かめの文を使う人の言葉にする(D-V23-451・D-V23-458・D-V23-465)
+//
+// 行の主語は親の表の表示名、内訳は子の居る表ごとの表示名と件数。 message に表の ID と
+// ヘッダの名(If-Match-Children・If-Match)を1つも書かない。 hint は HTTP の応答に残り、
+// 件数の印の付け方(ヘッダの名と値)を言う。 消せない子の 403・子の無い削除は今日の答えのまま。
+// ---------------------------------------------------------------------------
+
+/** 表の ID とヘッダの名(message に出してはならない綴り)。 */
+const INTERNAL_SPELLINGS = [
+  "projects",
+  "issues",
+  "comments",
+  "attachments",
+  "ac_grant",
+  "If-Match-Children",
+  "If-Match",
+  "if-match",
+] as const;
+
+describe("V23-M14-T02 (M): D-V23-451・D-V23-458・D-V23-465 確かめの文は表の表示名と件数で言う", () => {
+  test("(M-1) D-V23-465: 印なしの 409 の message は、親の表の表示名を主語にし、全部の件数と表ごとの表示名と件数を言う", async () => {
+    const response = await del("projects", parent, keeper.cookie);
+    expect(response.status).toBe(409);
+    expect(response.message).toBe(
+      "この「プロジェクト」を消すと、一緒に消える行が全部で 5 件あります(「課題」2 件、「コメント」3 件)。まとめて消してよければ、件数を確かめたうえで、もう一度削除してください。まだ1行も消していません。",
+    );
+  });
+
+  test("(M-2) D-V23-465: 合わない印の 409 の message も、表の表示名と件数で言い、確かめた件数と今の件数を並べる", async () => {
+    const response = await del("projects", parent, keeper.cookie, { ifMatchChildren: "4" });
+    expect(response.status).toBe(409);
+    expect(response.message).toBe(
+      "この「プロジェクト」と一緒に消える行の件数が、確かめた件数(4 件)から変わりました。今は全部で 5 件です(「課題」2 件、「コメント」3 件)。まだ1行も消していません。",
+    );
+  });
+
+  test("(M-3) D-V23-451・D-V23-458: 印なしと合わない印の message に、表の ID とヘッダの名が1つも無い", async () => {
+    const bare = await del("projects", parent, keeper.cookie);
+    const wrong = await del("projects", parent, keeper.cookie, { ifMatchChildren: "4" });
+    for (const response of [bare, wrong]) {
+      expect(response.status).toBe(409);
+      for (const spelling of INTERNAL_SPELLINGS) {
+        expect(response.message, spelling).not.toContain(spelling);
+      }
+    }
+  });
+
+  test("(M-4) D-V23-451: hint は HTTP の応答に残り、件数の印の付け方(ヘッダの名と今の合計)を言う", async () => {
+    const bare = await del("projects", parent, keeper.cookie);
+    expect(bare.hint).toBe(
+      "まとめて消すには、件数の印として If-Match-Children ヘッダに10進の整数 5 を付けて、同じ削除をもう一度送ってください。版の印(If-Match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。",
+    );
+    const wrong = await del("projects", parent, keeper.cookie, { ifMatchChildren: "4" });
+    expect(wrong.hint).toBe(
+      "件数の印(If-Match-Children)に 5 を指定して、同じ削除をもう一度送ってください。版の印(If-Match)ではありません。一緒に消える行は、数えた後にも増えたり減ったりします。",
+    );
+  });
+
+  test("(M-5) D-V23-465: 孫の段だけに行がある親でも、合計と表ごとの件数を言い、合計の印で消える", async () => {
+    // 子1件(課題)と、その下の孫1件(コメント)だけを持つ親。
+    const lone = makeRecord("projects", { title: "孫まで持つ親" });
+    makeRecord("ac_grant", { project: lone, member: keeperMember, permission: "keeper" });
+    const loneIssue = makeRecord("issues", { title: "課題C", project: lone });
+    makeRecord("comments", { body: "コメント4", issue: loneIssue });
+    const response = await del("projects", lone, keeper.cookie);
+    expect(response.status).toBe(409);
+    expect(response.message).toContain("全部で 2 件");
+    expect(response.message).toContain("(「課題」1 件、「コメント」1 件)");
+    expect((await del("projects", lone, keeper.cookie, { ifMatchChildren: "2" })).status).toBe(204);
+  });
+
+  test("(M-6) 陰性: 子の無い親の削除は、今日どおり印なしで 204", async () => {
+    expect((await del("projects", solo, keeper.cookie)).status).toBe(204);
+  });
+
+  test("(M-7) 陰性: 消せない子が在るときの 403 は、今日の文と hint のまま(件数も表の名も出さない)", async () => {
+    makeRecord("comments", { body: "消せないコメント", issue: issueA, st_undeletable: true });
+    const response = await del("projects", parent, keeper.cookie);
+    expect(response.status).toBe(403);
+    expect(response.message).toBe(
+      "この行にぶら下がっている行の中に、あなたには消せないものがあります。この行は消せません。",
+    );
+    expect(response.hint).toBe(
+      "ぶら下がっている行は、あなたが1件ずつ消せるものだけがまとめて消えます。どの行が消せないかは、この応答では示しません。ぶら下がっている行を消せる人に、先に消してもらうか、この行の削除を依頼してください。",
+    );
+    expect(`${response.message}${response.hint}`).not.toContain("課題");
   });
 });

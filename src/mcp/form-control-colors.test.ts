@@ -45,6 +45,32 @@ function manifestSchema(): {
 }
 
 /**
+ * 役割名 → CSS カスタムプロパティ名(`web/src/theme-role-map.ts` を**文字列として読む**。`V20-M8` / `ADR-0473`)。
+ *
+ * **import しない・テストの側に2つ目の対応表を書かない。** 帯
+ * `export const THEME_ROLE_TO_CSS_PROPERTY: Readonly<Record<string, string>> = Object.freeze({` 〜 `});`
+ * の中の1行1件だけを拾う(形が崩れると0件になり、件数の検査が赤くなる)。
+ */
+function themeRoleMap(): Map<string, string> {
+  const source = readRepo("web", "src", "theme-role-map.ts");
+  const head =
+    "export const THEME_ROLE_TO_CSS_PROPERTY: Readonly<Record<string, string>> = Object.freeze({";
+  const start = source.indexOf(head);
+  const out = new Map<string, string>();
+  if (start < 0) {
+    return out;
+  }
+  const band = source.slice(start + head.length, source.indexOf("\n});", start));
+  for (const line of band.split("\n")) {
+    const match = /^ {2}(?:([a-z][a-z0-9_]*)|"(--[a-z0-9-]+)"): "(--[a-z0-9-]+)",$/.exec(line);
+    if (match !== null) {
+      out.set(String(match[1] ?? match[2]), String(match[3]));
+    }
+  }
+  return out;
+}
+
+/**
  * 部品側の変数 → 25スロットの導出(`web/src/tailwind.css` の `@theme inline`)。
  * **ボタン・入力欄の文字色と地色に実際に効いている分だけを挙げる。**
  */
@@ -134,35 +160,66 @@ test("(M29-7) 記述: 当たらない範囲(シェル)は今日も残ってい�
 test("(M29-8) 実装の真: 色のスロットにボタン専用は1つも無い(25 / 25 のまま)", () => {
   const theme = manifestSchema().$defs.theme;
   const slots = Object.keys(theme.properties);
-  expect(slots).toHaveLength(25);
-  expect(theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(slots).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(slots).toHaveLength(23);
+  expect(slots).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(theme.required).toHaveLength(23);
+  expect(theme.required).toHaveLength(27);
   // **色のスロットは8つで、そのどれもボタン専用・入力欄専用ではない。**
-  const colorSlots = slots.filter((slot) => slot.startsWith("--color-"));
-  expect(colorSlots).toHaveLength(8);
-  for (const slot of colorSlots) {
-    expect(/button|input|control|primary/i.test(slot), slot).toBe(false);
-  }
+  // 【V20-M8 / ADR-0473】旧(逐語): `slots.filter((slot) => slot.startsWith("--color-"))`。
+  // キーが役割名になったので、色の枠は写像の先(CSS 名)が `--color-` で始まるかで判定する。
+  const roleMap = themeRoleMap();
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(roleMap.size).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(roleMap.size).toBe(23);
+  expect(roleMap.size).toBe(27);
+  const colorSlots = slots.filter((slot) => (roleMap.get(slot) ?? "").startsWith("--color-"));
+  // 【V20-M9 / ADR-0474 §1-2 / §4 の ADR-0087 限定11 の行(D-V20-28 が D-V4-104 を覆した)】
+  // 色の枠は 8 → 12。**主ボタン専用の2枠(primary_fill / on_primary)が今日は実在する** —— 見張りが鳴ったのは
+  // 本物の鳴りである。テスト名の「1つも無い」「25 / 25」は引き直しの前の逐語である。旧(逐語):
+  // `expect(colorSlots).toHaveLength(8);` と、全件に `/button|input|control|primary/i` が当たらないこと。
+  expect(colorSlots).toHaveLength(12);
+  const buttonSpecific = colorSlots.filter((slot) => /button|input|control|primary/i.test(slot));
+  expect(buttonSpecific).toEqual(["primary_fill", "on_primary"]);
+  // 入力欄専用の色の枠は今日も1つも無い。
+  expect(colorSlots.filter((slot) => /input|control/i.test(slot))).toEqual([]);
+  // 説明文は主ボタンの2枠を名指しする(「どれもボタン専用ではない」と書くと新しい嘘になる)。
+  expect(VOCABULARY_SCOPE).toContain("primary_fill");
+  expect(CANNOT_DO).toContain("primary_fill");
   // **【正直に書く】フォームコントロール専用のスロットは今日1本だけ実在する** ——
   // 角丸である。**説明文はこれを名指しで書く**(「専用のスロットは1つも無い」と
   // 書くと、それ自体が新しい嘘になる)。
   const controlSpecific = slots.filter((slot) => /control/i.test(slot));
-  expect(controlSpecific).toEqual(["--control-border-radius"]);
-  expect(VOCABULARY_SCOPE).toContain("--control-border-radius");
+  // 【V20-M8】名前(役割名)に control を含むのも角丸の1本だけで、写像の先も同じ CSS 名である。
+  expect(controlSpecific).toEqual(["control_radius"]);
+  expect(roleMap.get("control_radius")).toBe("--control-border-radius");
+  expect(VOCABULARY_SCOPE).toContain("control_radius");
 });
 
 test("(M29-9) 記述: 25スロットの側から書いていることが分かる形になっている", () => {
   // **実装の真**: 導出元は25スロットのうちこの6つである。
   const slots = Object.keys(manifestSchema().$defs.theme.properties);
+  // 【V20-M8 / ADR-0473】旧期待値は CSS 名6件(`--color-page-background` ほか)。説明文は AI が書く名前
+  // (役割名)で書く。**上の CONTROL_DERIVATIONS が `var(...)` で名指す CSS 名と、写像で1対1に対応する。**
+  const roleMap = themeRoleMap();
   const used = [
-    "--color-page-background",
-    "--color-text",
-    "--color-surface-highlight",
-    "--color-danger",
-    "--color-border",
-    "--color-text-placeholder",
+    "page_background",
+    "body_text",
+    "highlight_surface",
+    "danger",
+    "border_color",
+    "placeholder_text",
   ];
   for (const slot of used) {
     expect(slots, slot).toContain(slot);
     expect(VOCABULARY_SCOPE, slot).toContain(slot);
   }
+  // 導出元の CSS 名(`var(--…)` の中身)を写像で引き戻すと、ちょうどこの6つになる。
+  const derivedFrom = new Set(
+    CONTROL_DERIVATIONS.map(([, value]) => /^var\((--[a-z0-9-]+)\)$/.exec(value)?.[1] ?? ""),
+  );
+  const backToRoles = [...roleMap]
+    .filter(([, cssName]) => derivedFrom.has(cssName))
+    .map(([role]) => role);
+  expect(backToRoles.sort()).toEqual([...used].sort());
 });

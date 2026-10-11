@@ -38,12 +38,13 @@
  * **それでも「安全にした」とは書かない** —— `GET /manifest` / `GET /changelog` /
  * `GET /undo/preview` / `GET /requirements` は今日も未認証で通り、MCP 経路は1ミリも守られない。
  *
- * ## 変換規則(恒等写像)は2本目を作っていない
+ * ## 変換規則(写像 `web/src/theme-role-map.ts`)は2本目を作っていない
  *
- * 枠に立てるのは候補のスロットそのままで、名前の変換を1つも挟まない(`AppWorkspace` の
- * `AppThemeScope` と同一の規則)。**規則が2本に割れていないことは
- * `web/test/theme-preview.test.tsx` が機械的に固定している**(枠に立つ名前の集合が
- * `schemas/manifest.schema.json` の `$defs/theme` の properties キー集合と完全一致する)。
+ * 枠に立てるのは候補のスロットを写像 `themeSlotsToCssProperties` に通した CSS 名と値である
+ * (`AppWorkspace` の `AppThemeScope` と同一の写像。V20-M8 / ADR-0473)。**規則が2本に
+ * 割れていないことは `web/test/theme-preview.test.tsx` が機械的に固定している**(枠に立つ名前の
+ * 集合が `schemas/manifest.schema.json` の `$defs/theme` の properties キーを写像に通した集合と
+ * 完全一致する)。
  *
  * ## 【V4-M15-T14】枠の中身に見た目の宣言を1つも足していない(`ADR-0054` 限定2)
  *
@@ -69,6 +70,7 @@ import {
   type ThemeCandidate,
   themeCandidateDiff,
 } from "./theme-candidates.ts";
+import { themeSlotsToCssProperties } from "./theme-role-map.ts";
 import { Button } from "./ui/button.tsx";
 import { Card } from "./ui/surfaces.tsx";
 import { cn } from "./ui/utils.ts";
@@ -187,7 +189,7 @@ export function ThemePreviewPanel({
   );
 }
 
-/** 候補1件ぶんの枠。**スロットはインラインスタイルへそのまま立てる(恒等写像)。** */
+/** 候補1件ぶんの枠。**スロットは写像を通して CSS 名でインラインスタイルへ立てる。** */
 function ThemePreviewFrame({
   appId,
   manifest,
@@ -211,7 +213,7 @@ function ThemePreviewFrame({
       className="app-theme"
       data-testid="theme-preview-frame"
       data-candidate-id={candidate.id}
-      style={{ ...candidate.slots } as CSSProperties}
+      style={themeSlotsToCssProperties(candidate.slots) as CSSProperties}
     >
       <h4>{candidate.name}</h4>
       <p className="theme-preview-note">{candidate.note}</p>

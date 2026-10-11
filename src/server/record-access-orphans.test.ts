@@ -543,22 +543,38 @@ describe("V7-M5-T02 (A): 運営専用の口から、付与が0件の行が取れ
     const response = await raw(DOOR("cases"), actors.owner.cookie);
     expect(response.status).toBe(200);
     const body = JSON.parse(response.body) as ListBody;
-    expect(body.total).toBe(7);
-    expect((body.records ?? []).map((row) => row._id).sort()).toEqual([...orphans].sort());
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の2行を逐語で残す】**
+    //     expect(body.total).toBe(7);
+    //     expect((body.records ?? []).map((row) => row._id).sort()).toEqual([...orphans].sort());
+    // **母集団が「付与0件、または管理者(実在する利用者)0人」に広がった**(`D-V23-16`・`ADR-0497`
+    // 限定12)。 題材で広がるのは2行: 付与の相手が利用者でない行(`grantedToStranger`。相手の口座
+    // `someone-else` は利用者の表に居ない)と、付与の相手の名簿の行が消えた行(`grantedToDeletedMember`)。
+    // **運営自身に管理の権限を渡した行(`grantedToOwner`)は並ばない**(運営は実在する利用者)。
+    // **題名の「付与0件の7行ちょうど」は今日の正ではない**(題名は授権の外なので変えていない)。
+    expect(body.total).toBe(9);
+    expect((body.records ?? []).map((row) => row._id).sort()).toEqual(
+      [...orphans, grantedToStranger, grantedToDeletedMember].sort(),
+    );
     // **応答の形は既存の一覧 `GET` とそろえてある**(`records` と `total` の2キー)。
     expect(Object.keys(body).sort()).toEqual(["records", "total"]);
   });
 
   test("(B-1) 他人に付与された行は1件も並ばない", async () => {
     const listing = await listed(DOOR("cases"), actors.owner.cookie);
-    expect(listing.ids).not.toContain(grantedToStranger);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の1行を逐語で残す】**
+    //     expect(listing.ids).not.toContain(grantedToStranger);
+    // **今日は並ぶ** —— 付与の相手(口座 `someone-else`)は利用者の表に居ないので、この行の管理者は
+    // 0人である(`ADR-0497` §Decision 1 の「実在する利用者」)。 **題名は今日の正ではない**(授権の外)。
+    expect(listing.ids).toContain(grantedToStranger);
   });
 
   test("(B-2) 運営自身に付与された行も並ばない(付与が在るから)", async () => {
     const listing = await listed(DOOR("cases"), actors.owner.cookie);
     expect(listing.ids).not.toContain(grantedToOwner);
     // **運営自身の行が並ばないことは、この口が「自分に見える行の一覧」ではないことの証拠である。**
-    expect(listing.total).toBe(7);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の1行を逐語で残す】** `expect(listing.total).toBe(7);`
+    // (付与0件の7行に、管理者0人の2行が加わった。(A-1) の注記)
+    expect(listing.total).toBe(9);
   });
 });
 
@@ -699,13 +715,18 @@ describe("V7-M5-T02 (E): この口は読取専用である", () => {
 describe("V7-M5-T02 (F): `limit` / `offset` を変えても件数が狂わない", () => {
   test("(F-1) 母集団は付与0件の行の集合(7件)であり、頁を継いでも重複も欠落も無い", async () => {
     const pages: string[] = [];
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の3行を逐語で残す】**
+    //       expect(page.total).toBe(7);
+    //     expect(pages.sort()).toEqual([...orphans].sort());
+    //     expect(new Set(pages).size).toBe(7);
+    // (母集団は9行になった。(A-1) の注記。頁は offset 0 / 3 / 6 の3頁で9行を覆う)
     for (let offset = 0; offset < 9; offset += 3) {
       const page = await listed(`${DOOR("cases")}?limit=3&offset=${offset}`, actors.owner.cookie);
-      expect(page.total).toBe(7);
+      expect(page.total).toBe(9);
       pages.push(...page.ids);
     }
-    expect(pages.sort()).toEqual([...orphans].sort());
-    expect(new Set(pages).size).toBe(7);
+    expect(pages.sort()).toEqual([...orphans, grantedToStranger, grantedToDeletedMember].sort());
+    expect(new Set(pages).size).toBe(9);
   });
 
   test("(F-2) `limit` を変えても `total` は動かない", async () => {
@@ -714,16 +735,24 @@ describe("V7-M5-T02 (F): `limit` / `offset` を変えても件数が狂わない
       const page = await listed(`${DOOR("cases")}?limit=${limit}`, actors.owner.cookie);
       measured.push({ limit, total: page.total, rows: page.ids.length });
     }
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の期待を逐語で残す】**
+    //     { limit: 1, total: 7, rows: 1 }, { limit: 4, total: 7, rows: 4 }, { limit: 100, total: 7, rows: 7 }
     expect(measured).toEqual([
-      { limit: 1, total: 7, rows: 1 },
-      { limit: 4, total: 7, rows: 4 },
-      { limit: 100, total: 7, rows: 7 },
+      { limit: 1, total: 9, rows: 1 },
+      { limit: 4, total: 9, rows: 4 },
+      { limit: 100, total: 9, rows: 9 },
     ]);
   });
 
   test("(F-3) 母集団の外を指す `offset` は空の頁を返す(`total` は動かない)", async () => {
     const page = await listed(`${DOOR("cases")}?limit=3&offset=7`, actors.owner.cookie);
-    expect({ rows: page.ids.length, total: page.total }).toEqual({ rows: 0, total: 7 });
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の1行を逐語で残す】**
+    //     expect({ rows: page.ids.length, total: page.total }).toEqual({ rows: 0, total: 7 });
+    // **母集団が9行になったので、offset 7 は母集団の内側を指す**(残り2行)。
+    expect({ rows: page.ids.length, total: page.total }).toEqual({ rows: 2, total: 9 });
+    // **(追加)題名の主張「母集団の外を指す offset は空の頁」は、母集団の外(offset 9)で撃つ。**
+    const outside = await listed(`${DOOR("cases")}?limit=3&offset=9`, actors.owner.cookie);
+    expect({ rows: outside.ids.length, total: outside.total }).toEqual({ rows: 0, total: 9 });
   });
 });
 
@@ -734,7 +763,9 @@ describe("V7-M5-T02 (F): `limit` / `offset` を変えても件数が狂わない
 describe("V7-M5-T02 (G): この口は `Z-G18` の壁を迂回していない", () => {
   test("(G-1) この口から取れた行を、運営が通常の単件 `GET` で取ろうとすると今日も 404", async () => {
     const listing = await listed(DOOR("cases"), actors.owner.cookie);
-    expect(listing.ids.length).toBe(7);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の1行を逐語で残す】** `expect(listing.ids.length).toBe(7);`
+    // (管理者0人の2行も、運営には単件 `GET` で 404 のまま。下の測り方は変えていない)
+    expect(listing.ids.length).toBe(9);
     const measured: { via: string; status: number }[] = [];
     for (const id of listing.ids) {
       const single = await raw(
@@ -774,8 +805,18 @@ describe("V7-M5-T02 (H): 付与を1件足すと、その行はこの口から消
     expect(before.ids).toContain(target);
     grant("case_grant", { case: target, member: strangerMember, permission: "reader" });
     const after = await listed(DOOR("cases"), actors.owner.cookie);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の期待を逐語で残す】** `{ total: 6, has: false }`
+    // **利用者でない相手への閲覧の付与を1件足しても、その行の管理者は0人のまま**なので並び続ける
+    // (理由が「付与が無い」から「管理者がいない」に替わるだけ)。 **題名は今日の正ではない**(授権の外)。
     expect({ total: after.total, has: after.ids.includes(target) }).toEqual({
-      total: 6,
+      total: 9,
+      has: true,
+    });
+    // **(追加)実在する利用者に管理の権限を渡すと、その行は並ばなくなる(9 → 8)。**
+    grant("case_grant", { case: target, member: members.editor, permission: "writer" });
+    const managed = await listed(DOOR("cases"), actors.owner.cookie);
+    expect({ total: managed.total, has: managed.ids.includes(target) }).toEqual({
+      total: 8,
       has: false,
     });
   });
@@ -828,10 +869,14 @@ describe("V7-M5-T02 (Y): 引き継ぎの親に付与が在る行は、この口�
     const listing = await listed(DOOR("notes"), actors.owner.cookie);
     // **左: その行は viewer から読める(= 誰にも見えない行ではない)。**
     // **右: だからこの口には並ばない。**
+    // **【`V23-M1-T07` / `ADR-0513` 授権の表 行55 / `D-V23-36`。旧の期待を逐語で残す】** `{ viewerSingleGet: 200, listedInDoor: false }`
+    // **今日は並ぶ** —— 親の行(`grantedToStranger`)の付与は、利用者でない相手への管理と `viewer` への
+    // 閲覧だけで、管理者(実在する利用者の `writer`)が引き継ぎのどの段にもいない(`D-V23-30` の字義)。
+    // 管理者のいない行の中身を運営が読める形は `D-V23-16` でユーザが受け入れている。 **題名は今日の正ではない。**
     expect({
       viewerSingleGet: single.status,
       listedInDoor: listing.ids.includes(inheritingNote),
-    }).toEqual({ viewerSingleGet: 200, listedInDoor: false });
+    }).toEqual({ viewerSingleGet: 200, listedInDoor: true });
   });
 
   test("(Y-1b) 運営はその行を通常の単件 `GET` では今日も読めない(壁は動いていない)", async () => {
@@ -848,7 +893,9 @@ describe("V7-M5-T02 (Y): 引き継ぎの親に付与が在る行は、この口�
     // 届く道は今日1本も無い。**
     expect({ owner: asOwner.status, viewer: asViewer.status }).toEqual({ owner: 404, viewer: 200 });
     const listing = await listed(DOOR("notes"), actors.owner.cookie);
-    expect(listing.ids).not.toContain(inheritingNote);
+    // **【`V23-M1-T07` / `ADR-0513` 授権の表 行55 / `D-V23-36`。旧の1行を逐語で残す】** `expect(listing.ids).not.toContain(inheritingNote);`
+    // (この口には並ぶ。(Y-1) の注記。単件 `GET` の 404 は上で今日どおり測っている)
+    expect(listing.ids).toContain(inheritingNote);
   });
 
   test("(Y-2) 3段(祖父 → 親 → 子)でも同じ —— 祖父に付与が在る孫は並ばない", async () => {
@@ -857,16 +904,23 @@ describe("V7-M5-T02 (Y): 引き継ぎの親に付与が在る行は、この口�
       inheriting: listing.ids.includes(inheritingLine),
       orphan: listing.ids.includes(orphanLine),
       total: listing.total,
-    }).toEqual({ inheriting: false, orphan: true, total: 1 });
+      // **【`V23-M1-T07` / `ADR-0513` 授権の表 行55 / `D-V23-36`。旧の期待を逐語で残す】** `{ inheriting: false, orphan: true, total: 1 }`
+      // (祖父の段にも管理者がいないので、孫も並ぶ。(Y-1) の注記)
+    }).toEqual({ inheriting: true, orphan: true, total: 2 });
   });
 
   test("(Y-3) どの段にも付与が無い行は、今日どおり並ぶ(狭めすぎていない)", async () => {
     const notes = await listed(DOOR("notes"), actors.owner.cookie);
     const cases = await listed(DOOR("cases"), actors.owner.cookie);
     expect({
-      notes: { ids: notes.ids, total: notes.total },
+      // **【`V23-M1-T07` / `ADR-0513` 授権の表 行55】2行になったので並びに依らず比べる(旧: `ids: notes.ids`)。**
+      notes: { ids: [...notes.ids].sort(), total: notes.total },
       caseTotal: cases.total,
-    }).toEqual({ notes: { ids: [orphanNote], total: 1 }, caseTotal: 7 });
+      // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16】`caseTotal` だけを 7 → 9 に打ち直した**((A-1) の注記)。
+      // **`notes` の期待は授権の外なので動かしていない**(`ADR-0510` §Decision 7・`ADR-0511` 限界1)。
+      // **【`V23-M1-T07` / `ADR-0513` 授権の表 行55 / `D-V23-36`。旧の `notes` の期待を逐語で残す】** `notes: { ids: [orphanNote], total: 1 }`
+      // (親に管理者のいない `inheritingNote` も並ぶ)
+    }).toEqual({ notes: { ids: [inheritingNote, orphanNote].sort(), total: 2 }, caseTotal: 9 });
   });
 
   test("(Y-4) 循環があってもこの口は応答を返す(訪問済み集合。`Z-G16`)", async () => {
@@ -881,9 +935,12 @@ describe("V7-M5-T02 (Y): 引き継ぎの親に付与が在る行は、この口�
   test("(Y-4b) 環のどこかに付与を1件入れると、環の中の行は並ばなくなる", async () => {
     grant("node_grant", { node: cycA, member: strangerMember, permission: "reader" });
     const listing = await listed(DOOR("nodes"), actors.owner.cookie);
+    // **【`V23-M1-T07` / `ADR-0513` 授権の表 行55 / `D-V23-36`。旧の期待を逐語で残す】** `{ a: false, b: false }`
+    // **利用者でない相手への閲覧の付与1件では、環のどの段にも管理者がいない**ので、2行とも並ぶ
+    // (理由が「付与が無い」から「管理者がいない」に替わる)。 **題名は今日の正ではない。**
     expect({ a: listing.ids.includes(cycA), b: listing.ids.includes(cycB) }).toEqual({
-      a: false,
-      b: false,
+      a: true,
+      b: true,
     });
   });
 
@@ -965,10 +1022,13 @@ describe("V7-M5-T02 (Y): 引き継ぎの親に付与が在る行は、この口�
 describe("V7-M5-T02 (X): この口で解けていないもの(実測)", () => {
   test("(X-2) 付与の相手が消えた行は、この口に1件も並ばない", async () => {
     const listing = await listed(DOOR("cases"), actors.owner.cookie);
-    expect(listing.ids).not.toContain(grantedToDeletedMember);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の1行を逐語で残す】**
+    //     expect(listing.ids).not.toContain(grantedToDeletedMember);
+    // **今日は並ぶ**(`ADR-0497` 表3 の #23 が `ADR-0299` §限界6 を引き直した)。 **題名は今日の正ではない**。
+    expect(listing.ids).toContain(grantedToDeletedMember);
   });
 
-  test("(X-2b) その行は、今日どの道から見つかるか(全部並べて測る)", async () => {
+  test("(X-2b) その行は、今日どの道から見つかるか(全部並べて測る)(D-V23-405: 名簿の行を消すと付与の行も消えるので、付与表の一覧から消える)", async () => {
     const paths = [
       { via: "運営専用の口", ...(await raw(DOOR("cases"), actors.owner.cookie)) },
       {
@@ -998,11 +1058,18 @@ describe("V7-M5-T02 (X): この口で解けていないもの(実測)", () => {
     // **行の中身を返す道は1本も無い。** **付与表の一覧にだけ「その行を指す付与が
     // 在る」ことが残る** —— **中身は取れないが、`_id` は見つけられる。**
     expect(measured).toEqual([
-      { via: "運営専用の口", status: 200, showsTitle: false, showsId: false },
+      // **【`V23-M1-T07` / `ADR-0510` 授権の表 行16。旧の1行を逐語で残す】**
+      //   { via: "運営専用の口", status: 200, showsTitle: false, showsId: false },
+      // **今日は運営専用の口に並ぶ**((X-2) の注記)ので、中身も `_id` も載る。
+      { via: "運営専用の口", status: 200, showsTitle: true, showsId: true },
       { via: "通常の一覧 GET", status: 200, showsTitle: false, showsId: false },
       // **単件 `GET` の 404 は、問い合わせに書いた `_id` を文面に反射する**(中身は出ない)。
       { via: "通常の単件 GET", status: 404, showsTitle: false, showsId: true },
-      { via: "付与表の一覧 GET", status: 200, showsTitle: false, showsId: true },
+      // **【`V23-M12-T02`。`D-V23-405` / `ADR-0575` §Decision 3-1 の7 で打ち直した。旧の1行を逐語で残す】**
+      //   { via: "付与表の一覧 GET", status: 200, showsTitle: false, showsId: true },
+      // 今日の正: 名簿の行を `deleteRecord` で消すと、その行を `grant.member` に持つ付与の行も同じ削除の中で消えるので、
+      // 付与表の一覧にこの行の `_id` は残らない(上の注記の「付与表の一覧にだけ … 残る」は今日の正ではない)。
+      { via: "付与表の一覧 GET", status: 200, showsTitle: false, showsId: false },
     ]);
   });
 });

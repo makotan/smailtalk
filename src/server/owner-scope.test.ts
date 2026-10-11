@@ -55,6 +55,7 @@ import {
   stripInboundReservedFields,
   UNDELETABLE_FIELD,
   UNRESOLVED_OWNER_DISPLAY,
+  UPDATED_BY_FIELD,
   undeletableField,
 } from "./owner-scope.ts";
 import { seedSession, TEST_ORIGIN, withDefaultRoleRules } from "./test-helpers.ts";
@@ -499,8 +500,13 @@ test("stripInboundReservedFields: 落とす対象は予約規約4本から st_ow
   // **旧: 「予約規約5本から st_owner を除いた4本ちょうど」/「`ANON_RESERVED_FIELDS`(5本)」/
   // 「6本目に増えたとき」。** **`expect()` の本体は1バイトも変えていない**(両集合の関係を
   // 見る形なので、本数が変わっても式は同じである)。
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0529` 行1(裁定 `D-V23-110`・`D-V23-111`)】比べる相手を打ち直した。**
+  // 予約規約フィールドの5本目 `st_updated_by` は未ログインに伏せる(`ANON_RESERVED_FIELDS` は5本)が、受信口で捨てる
+  // 一覧には入れない(列を持たない表への受信を今日どおり 400 に保つため。列を持つ表ではカーネルが捨てて空を押す)。
+  // **旧の期待を逐語で残す**: `expect([...INBOUND_STRIPPED_RESERVED_FIELDS].sort()).toEqual(ANON_RESERVED_FIELDS.filter((f) => f !== OWNER_FIELD).sort());`。
+  // 捨てる一覧(3本)と伏せる一覧(5本)の中身は動かしていない。 題名は変えていない。
   expect([...INBOUND_STRIPPED_RESERVED_FIELDS].sort()).toEqual(
-    ANON_RESERVED_FIELDS.filter((f) => f !== OWNER_FIELD).sort(),
+    ANON_RESERVED_FIELDS.filter((f) => f !== OWNER_FIELD && f !== UPDATED_BY_FIELD).sort(),
   );
   expect(INBOUND_STRIPPED_RESERVED_FIELDS).not.toContain(OWNER_FIELD);
 });
@@ -1656,7 +1662,14 @@ test("(V3-M8-T01 k / V4-M4-T04 / V4-M10-T04 / V8-M20) 予約規約フィール�
   // **これは「増えていない」ではなく**減った**方向の更新である。**
   // **【禁止の履行】これを成果として書かない**(`ADR-0301` 限定10)。
   // **5本目(= 今日の4本を超える1本)には、今日も門A の新規審査 + 同格の個別 ADR が要る。**
-  expect(fields).toEqual(["st_owner", "st_public", "st_undeletable", "st_no_direct_create"]);
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行7(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(fields).toEqual(["st_owner", "st_public", "st_undeletable", "st_no_direct_create"]);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に `st_updated_by`)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+  expect(fields).toEqual([
+    "st_owner",
+    "st_public",
+    "st_undeletable",
+    "st_no_direct_create",
+    "st_updated_by",
+  ]);
 });
 
 // --- P5-c: 削除不可規約(st_undeletable)の純粋判定(V4-M4-T04 / ADR-0073)---------------
@@ -2796,11 +2809,13 @@ test("ANON_RESERVED_FIELDS は予約規約フィールド4本ちょうどであ�
   // **旧値は逐語で `[OWNER_FIELD, PUBLIC_FIELD, ADMIN_READABLE_FIELD, UNDELETABLE_FIELD,
   // NO_DIRECT_CREATE_FIELD]`(`st_admin_readable` を3番目に含んでいた)。**
   // **【禁止の履行】減ったことを成果として書かない**(`ADR-0301` 限定10)。
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行14(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect([...ANON_RESERVED_FIELDS]).toEqual([OWNER_FIELD, PUBLIC_FIELD, UNDELETABLE_FIELD, NO_DIRECT_CREATE_FIELD]);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に5本目の定数名)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
   expect([...ANON_RESERVED_FIELDS]).toEqual([
     OWNER_FIELD,
     PUBLIC_FIELD,
     UNDELETABLE_FIELD,
     NO_DIRECT_CREATE_FIELD,
+    UPDATED_BY_FIELD,
   ]);
 });
 

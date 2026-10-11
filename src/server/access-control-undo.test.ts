@@ -349,6 +349,14 @@ async function idsOf(path: string, cookie: string): Promise<string[]> {
   return (body.records ?? []).map((row) => row._id as string);
 }
 
+/** 一覧のうち、その行の並ぶ理由(`_orphan_reason`)。並んでいなければ `undefined`(`V23-M1-T13`)。 */
+async function reasonOf(path: string, cookie: string, id: string): Promise<string | undefined> {
+  const response = await app.request(req(path, { cookie }));
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { records?: { _id?: string; _orphan_reason?: string }[] };
+  return (body.records ?? []).find((row) => row._id === id)?._orphan_reason;
+}
+
 function grantCount(table: "doc_grant" | "memo_grant"): number {
   return withDb(
     (db) => (db.query(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n,
@@ -562,6 +570,11 @@ describe("V7-M5-T04 (B): 付与を消した後に巻き戻すと、復活する"
 
 describe("V7-M5-T04 (B'): 付与が消えた行は `unreachable-records` から見つかる", () => {
   test("(B'-1) 付与を消す → 誰にも 404 → 運営はその道で見つけられる → `undo` でその道から消える", async () => {
+    // **【`V23-M1-T13` / `ADR-0516` 授権の表 行63。題名は1文字も変えていない。今日の姿の訂正】**
+    // `D-V23-36` の後、閲覧の付与だけの `docC` は付与を消す前から並び、`undo` の後も並び続ける。
+    // 題名の「`undo` でその道から消える」は今日の正ではない。 付与を消す・`undo` で戻す移り変わりは、
+    // 一覧の行の並ぶ理由(`_orphan_reason`)が「管理者がいない」→「付与が無い」→「管理者がいない」と
+    // 移ることで測る(下の `reasonOf` の3か所)。
     const created = await grantVia("B'-1 grant", "doc_grant", {
       doc: docC,
       member: memberOf.carol,
@@ -570,8 +583,13 @@ describe("V7-M5-T04 (B'): 付与が消えた行は `unreachable-records` から�
     // **付与が在るうちは、その道に並ばない**(`T02` の (B))。
     const beforeDoor = await get("B'-1 door before", doorPath("docs"), admin.cookie);
     expect(beforeDoor.status).toBe(200);
-    expect(JSON.parse(beforeDoor.body)).toMatchObject({ total: 3 });
-    expect(await idsOf(doorPath("docs"), admin.cookie)).not.toContain(docC);
+    // **【`V23-M1-T07` / `ADR-0513` 授権の表 行56 / `D-V23-36`。旧の2行を逐語で残す】**
+    //     expect(JSON.parse(beforeDoor.body)).toMatchObject({ total: 3 });
+    //     expect(await idsOf(doorPath("docs"), admin.cookie)).not.toContain(docC);
+    // **閲覧の付与だけの `docC` は管理者が0人なので、付与を消す前から並ぶ**(理由は「管理者がいない」)。
+    expect(JSON.parse(beforeDoor.body)).toMatchObject({ total: 4 });
+    expect(await idsOf(doorPath("docs"), admin.cookie)).toContain(docC);
+    expect(await reasonOf(doorPath("docs"), admin.cookie, docC)).toBe("no_admin");
 
     expect((await applyHarmlessDiff("B'-1 apply")).status).toBe(201);
     expect(
@@ -587,10 +605,17 @@ describe("V7-M5-T04 (B'): 付与が消えた行は `unreachable-records` から�
     expect(door.status).toBe(200);
     expect(door.body).toContain(docC);
     expect(await idsOf(doorPath("docs"), admin.cookie)).toContain(docC);
+    expect(await reasonOf(doorPath("docs"), admin.cookie, docC)).toBe("no_grants");
 
     // **`undo` で付与が戻ると、その道からは消える**(付与が0件でなくなるため)。
+    // **【`V23-M1-T13` の訂正。上の1行を消していない】** 今日は消えない(`D-V23-36`)。 付与が0件で
+    // なくなったことは、並ぶ理由が「付与が無い」から「管理者がいない」へ戻ることで測る。
     expect((await undoOnce("B'-1 undo")).status).toBe(200);
-    expect(await idsOf(doorPath("docs"), admin.cookie)).not.toContain(docC);
+    // **【`V23-M1-T07` / `ADR-0513` 授権の表 行56 / `D-V23-36`。旧の1行を逐語で残す】**
+    //     expect(await idsOf(doorPath("docs"), admin.cookie)).not.toContain(docC);
+    // (`undo` で閲覧の付与が戻っても管理者は0人のままなので並び続ける。付与が戻ったことは下の 200 が測る)
+    expect(await idsOf(doorPath("docs"), admin.cookie)).toContain(docC);
+    expect(await reasonOf(doorPath("docs"), admin.cookie, docC)).toBe("no_admin");
     expect((await get("B'-1 carol after", recordPath("docs", docC), carol.cookie)).status).toBe(
       200,
     );

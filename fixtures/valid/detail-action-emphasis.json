@@ -1,0 +1,54 @@
+{
+  "app": {
+    "id": "goods-shop",
+    "name": "商品管理",
+    "tables": [
+      {
+        "id": "goods",
+        "name": "商品",
+        "fields": [
+          { "id": "name", "name": "名前", "type": "text", "required": true },
+          { "id": "sellable", "name": "販売中", "type": "boolean" }
+        ]
+      },
+      {
+        "id": "carts",
+        "name": "カート",
+        "fields": [
+          { "id": "item", "name": "商品", "type": "reference", "reference_table": "goods" }
+        ]
+      }
+    ],
+    "views": [
+      { "id": "cart-form", "type": "form", "table": "carts", "fields": ["item"] },
+      {
+        "id": "goods-detail",
+        "type": "detail_view",
+        "table": "goods",
+        "actions": [
+          {
+            "set": { "field": "sellable", "value": false },
+            "name": "販売を止める",
+            "action_emphasis": "danger"
+          },
+          {
+            "set": { "field": "sellable", "value": true },
+            "name": "販売を始める",
+            "action_emphasis": "primary"
+          },
+          {
+            "form": "cart-form",
+            "prefill": { "field": "item" },
+            "name": "カートに入れる",
+            "action_emphasis": "secondary"
+          },
+          {
+            "form": "cart-form",
+            "prefill": { "field": "item" },
+            "name": "もう1つカートに入れる"
+          }
+        ]
+      }
+    ]
+  }
+}

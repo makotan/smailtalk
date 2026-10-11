@@ -591,6 +591,35 @@ src/server/auth-routes.ts:putEscapeHatchBody
 src/server/authz.test.ts:KernelMetaStore
 src/server/authz.test.ts:applyManifest
 src/server/authz.test.ts:createApp
+# 【2026-09-29。V23-M1-T03。門A = ADR-0497(SC-G1)/ 授権 = ADR-0510 行8】次の7行(埋め戻しの検査)と auto-enroll-backfill.ts の2行を足した。名前は2ファイルの import 文を読んで書いた。
+src/server/auto-enroll-apply.test.ts:KernelMetaStore
+src/server/auto-enroll-apply.test.ts:appDbPath
+src/server/auto-enroll-apply.test.ts:applyDiff
+src/server/auto-enroll-apply.test.ts:applyManifest
+src/server/auto-enroll-apply.test.ts:createApp
+src/server/auto-enroll-apply.test.ts:readCurrentManifest
+src/server/auto-enroll-apply.test.ts:undo
+src/server/auto-enroll-backfill.ts:createRecord
+src/server/auto-enroll-backfill.ts:quoteIdentifier
+# 【2026-09-29。V23-M1-T04。授権 = ADR-0510 行8】次の4行(登録で名簿に入る検査 auto-enroll.test.ts)を足した。名前は import 文を読んで書いた。src/server/auto-enroll.ts は型だけを import するので行は無い。
+src/server/auto-enroll.test.ts:KernelMetaStore
+src/server/auto-enroll.test.ts:appDbPath
+src/server/auto-enroll.test.ts:applyManifest
+src/server/auto-enroll.test.ts:createApp
+# 【2026-09-29。V23-M1-T05。授権 = ADR-0510 行8】次の7行(一意索引の翻訳の検査 auto-enroll-unique.test.ts)を足した。名前は import 文を読んで書いた。
+src/server/auto-enroll-unique.test.ts:InboundStore
+src/server/auto-enroll-unique.test.ts:KernelMetaStore
+src/server/auto-enroll-unique.test.ts:appDbPath
+src/server/auto-enroll-unique.test.ts:applyDiff
+src/server/auto-enroll-unique.test.ts:applyManifest
+src/server/auto-enroll-unique.test.ts:createApp
+src/server/auto-enroll-unique.test.ts:ensureIslandRuntimeReady
+# 【2026-09-29。V23-M1-T06。授権 = ADR-0510 行8】次の5行(退会の連鎖の検査 auto-enroll-withdraw.test.ts の4行と、退会の連鎖を持つ auto-enroll.ts の1行)を足した。名前は import 文を読んで書いた。
+src/server/auto-enroll-withdraw.test.ts:KernelMetaStore
+src/server/auto-enroll-withdraw.test.ts:appDbPath
+src/server/auto-enroll-withdraw.test.ts:applyManifest
+src/server/auto-enroll-withdraw.test.ts:createApp
+src/server/auto-enroll.ts:quoteIdentifier
 src/server/backup-restore.test.ts:KernelMetaStore
 src/server/backup-restore.test.ts:appBlobsDir
 src/server/backup-restore.test.ts:appDbPath
@@ -696,6 +725,16 @@ src/server/index.ts:ensureIslandRuntimeReady
 src/server/index.ts:recover
 src/server/index.ts:resolveTimeZone
 src/server/index.ts:startWorkflowScheduler
+# 【2026-09-29。V23-M1-T07。授権 = ADR-0513 行57】次の9行(最後の管理者の検査 last-row-admin.test.ts)を足した。名前は import 文を読んで書いた。
+src/server/last-row-admin.test.ts:AiCapabilityStore
+src/server/last-row-admin.test.ts:KernelMetaStore
+src/server/last-row-admin.test.ts:appDbPath
+src/server/last-row-admin.test.ts:applyManifest
+src/server/last-row-admin.test.ts:createApp
+src/server/last-row-admin.test.ts:createRecord
+src/server/last-row-admin.test.ts:dispatchAiJobs
+src/server/last-row-admin.test.ts:ensureIslandRuntimeReady
+src/server/last-row-admin.test.ts:runScheduledWorkflow
 src/server/manifest-reflection.test.ts:KernelMetaStore
 src/server/manifest-reflection.test.ts:applyManifest
 src/server/manifest-reflection.test.ts:createApp
@@ -3536,3 +3575,397 @@ src/mcp/tools/parent-delete-cascade-mcp.test.ts:appDbPath
 src/mcp/tools/parent-delete-cascade-mcp.test.ts:applyManifest
 src/mcp/tools/parent-delete-cascade-mcp.test.ts:createApp
 src/mcp/tools/parent-delete-cascade-mcp.test.ts:createRecord
+# --- V20-M4-T02 / T01(一覧の束ねるキーを書いても一覧の読取の応答が変わらないことの実測)----------
+# **3件増え、0件減った。** 増えたのは**新しい検査ファイル1本**(`src/server/list-group-by-read.test.ts`)
+#   からであり、3本とも `src/server/list-view-sum-boundary.test.ts` が既に取っているのと同じ3シンボル
+#   (`createApp` / `KernelMetaStore` / `applyManifest`)である。**新しい層またぎの種類は0本。**
+#   **製品コードの層またぎは0件**(`src/server/app.ts` の差分は0行)。
+# **`ADR-0009` 限定2 の照合**: 3件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **【隠さない】赤いまま走らせた出力の `added` が名指しした3行だけを足した**(記録 `v20-m4-t02.md` §7)。
+src/server/list-group-by-read.test.ts:KernelMetaStore
+src/server/list-group-by-read.test.ts:applyManifest
+src/server/list-group-by-read.test.ts:createApp
+# --- V20-M4-T01(一覧の束ねるキーの読取の並び。メインの裁定 案A)-------------------------------------
+# **7件増え、0件減った。** **製品コードの層またぎが2件** —— `src/server/app.ts` が一覧の読取で
+#   `parseListGroupBy`(読取の引数 `group_by` / `granularity` の値域の検査)と `orderRowsByListGroup`
+#   (母集団を閉じた後の行を群の値で安定ソート)を取る。**丸めは `report.ts` の1本をカーネルの中で呼ぶ
+#   だけで、サーバは丸めを1文字も持たない。** **残る5件は新しい検査ファイル1本
+#   (`src/server/list-group-by-order.test.ts`)のぶん**(`st_owner` が効く題材を作るため、行と付与を
+#   カーネル層で直接作る `appDbPath` / `createRecord` を含む。`record-row-access-response.test.ts` と同じ作法)。
+# **`ADR-0009` 限定2 の照合**: 7件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした7行だけを足した。**
+src/server/app.ts:orderRowsByListGroup
+src/server/app.ts:parseListGroupBy
+src/server/list-group-by-order.test.ts:KernelMetaStore
+src/server/list-group-by-order.test.ts:appDbPath
+src/server/list-group-by-order.test.ts:applyManifest
+src/server/list-group-by-order.test.ts:createApp
+src/server/list-group-by-order.test.ts:createRecord
+# --- V20-M4-T03(一覧の区切りの描画。群の値をサーバが応答に添える)---------------------------------
+# **4件増え、0件減った。** **製品コードの層またぎが1件** —— `src/server/app.ts` が一覧の読取で
+#   `listGroupKey`(1行の群の値。日付は `report.ts` の `truncateToGranularity` を呼ぶだけ)を取り、
+#   束ねるときだけ応答の `group_keys` に添える。**丸めは `report.ts` の1本のまま**(`ADR-0339` 限定7)。
+#   **画面(`web/`)はカーネルから値を1つも取っていない**(丸めた値をサーバから受け取るのはそのためである。
+#   `ADR-0009` 限定2)。 **残る3件は新しい検査ファイル1本(`src/server/list-group-keys.test.ts`)のぶん**で、
+#   `list-view-sum-boundary.test.ts` が既に取っているのと同じ3シンボルである。
+# **`ADR-0009` 限定2 の照合**: 4件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした4行だけを足した**(記録 `docs/plan/v20/records/v20-m4-t03.md`)。
+src/server/app.ts:listGroupKey
+src/server/list-group-keys.test.ts:KernelMetaStore
+src/server/list-group-keys.test.ts:applyManifest
+src/server/list-group-keys.test.ts:createApp
+# --- V20-M4-T04(一覧の区切りの上限と、塞がない穴の実測)------------------------------------------------
+# **3件増え、0件減った。** **製品コードの層またぎは0件** —— 3件とも新しい検査ファイル1本
+#   (`src/server/list-group-limits.test.ts`)のぶんで、`list-group-keys.test.ts` が既に取っているのと同じ3シンボルである。
+# **`ADR-0009` 限定2 の照合**: 3件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした3行だけを足した**(記録 `docs/plan/v20/records/v20-m4-t04.md`)。
+src/server/list-group-limits.test.ts:KernelMetaStore
+src/server/list-group-limits.test.ts:applyManifest
+src/server/list-group-limits.test.ts:createApp
+# --- V20-M12-T01 / T02(画面の作りの点検コマンド `bun run lint:design`)------------------------------------
+# **2件増え、0件減った。** **製品コードの層またぎが2件** —— 新しいコマンド `src/cli/lint-design.ts` が、
+#   検証に `validateManifestFull` を、失敗の人向け出力に `formatValidationErrors` を取る。
+#   **2件とも `src/cli/validate.ts` が既に取っているのと同じシンボルである**(同じ行の組が上に在る)。
+#   **新しい層またぎの種類は0本。** `src/cli/validate.ts` を import しない(読み込むと `process.exit` が走る)ので、
+#   同じ2つを自分で取っている。 **点検の本体 `src/shared/design-notices.ts` はカーネルから型だけを取り、値は0件**
+#   (単体検査 `src/shared/design-notices.test.ts` が変換後の本文で撃つ)。
+# **`ADR-0009` 限定2 の照合**: 2件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+#   **`schemas/` にも `src/kernel/` にも1バイトの差分を出していない。**
+# **赤いまま走らせた出力の `added` が名指しした2行だけを足した**(記録 `docs/plan/v20/records/v20-m12-t02.md`)。
+#   **【隠さない】1回目の赤は `added` が3行だった** —— 3行目 `src/shared/design-notices.test.ts:validateManifestFull` は
+#   検査の陽性対照の文字列(値 import の見本)を採取が本物と数えたもので、見本の綴りを組み立てる形に直して消した(台帳には載せていない)。
+src/cli/lint-design.ts:formatValidationErrors
+src/cli/lint-design.ts:validateManifestFull
+# --- V20-M13-T01 / T02a(下見: 複製を残す口と置き場・`dry_run_diff` の `preview`・写しの整え)---------------------
+# **16件増え、0件減った。** **製品コードの層またぎが6件** —— 置き場 `src/server/preview-store.ts` が本体の
+#   `app.sqlite` の大きさを見るのに `appDbPath` を、写しを作り整える `src/mcp/preview.ts` が `dryRunDiff`(残す指定)・
+#   `appDbPath` / `kernelDbPath` / `appSnapshotsDir`(写しの中の位置)を取る。 **6件とも既存の層またぎと同じ種類の
+#   シンボルである**(`dryRunDiff` は `src/mcp/tools/read.ts`、パスの関数は `src/server/` の多数が既に取っている)。
+#   残り10件は検査の足場(`src/mcp/preview.test.ts` / `src/server/preview-store.test.ts`)。
+# **`ADR-0009` 限定2 の照合**: 16件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+#   **写しから秘密を消す処理はカーネルの外に置いた**(`ADR-0476` 2-6)。`src/kernel/` の差分は `dry-run.ts` の残す指定1つだけ。
+# **赤いまま走らせた出力の `added` が名指しした16行だけを足した**(記録 `docs/plan/v20/records/v20-m13-t01.md`)。
+src/mcp/preview.test.ts:CapabilityStore
+src/mcp/preview.test.ts:CommentStore
+src/mcp/preview.test.ts:KernelMetaStore
+src/mcp/preview.test.ts:appDbPath
+src/mcp/preview.test.ts:appManifestPath
+src/mcp/preview.test.ts:appSnapshotsDir
+src/mcp/preview.test.ts:applyManifest
+src/mcp/preview.test.ts:createApp
+src/mcp/preview.test.ts:createRecord
+src/mcp/preview.test.ts:dryRunDiff
+src/mcp/preview.ts:appDbPath
+src/mcp/preview.ts:appSnapshotsDir
+src/mcp/preview.ts:dryRunDiff
+src/mcp/preview.ts:kernelDbPath
+src/server/preview-store.test.ts:isValidResourceId
+src/server/preview-store.ts:appDbPath
+# --- V20-M13-T03(下見: 見本のモード・見本の行を作る純粋関数)---------------------
+# **【V20-M13-T03(2026-09-26)。見本のモード】16行を末尾に足した(0行減)。**
+#   製品は1件(`src/mcp/preview.ts:APP_SCOPED_KERNEL_TABLES` —— 見本のモードで消す kernel.sqlite の表を、カーネルの単一ソースから許可リストを引いて決める)。
+#   残り15件は検査の足場(`src/mcp/preview-sample.test.ts` / `src/mcp/sample-rows.test.ts`。見本の行をカーネルの `createRecord` の検証に通す)。
+# **`ADR-0009` 限定2 の照合**: 16件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。見本を作る関数は `src/mcp/` に置いた(`src/kernel/` の差分は0行)。
+# **赤いまま走らせた出力の `added` が名指しした16行だけを足した**(記録 `docs/plan/v20/records/v20-m13-t03.md`)。
+src/mcp/preview-sample.test.ts:CapabilityStore
+src/mcp/preview-sample.test.ts:CommentStore
+src/mcp/preview-sample.test.ts:KernelMetaStore
+src/mcp/preview-sample.test.ts:appDbPath
+src/mcp/preview-sample.test.ts:appManifestPath
+src/mcp/preview-sample.test.ts:appSnapshotsDir
+src/mcp/preview-sample.test.ts:applyDiff
+src/mcp/preview-sample.test.ts:applyManifest
+src/mcp/preview-sample.test.ts:createApp
+src/mcp/preview-sample.test.ts:createRecord
+src/mcp/preview-sample.test.ts:dryRunDiff
+src/mcp/preview.ts:APP_SCOPED_KERNEL_TABLES
+src/mcp/sample-rows.test.ts:applyManifestDdl
+src/mcp/sample-rows.test.ts:createRecord
+src/mcp/sample-rows.test.ts:listRecords
+src/mcp/sample-rows.test.ts:validateManifestFull
+# --- V20-M13-T02b(下見の前段: `/api/apps/pv-<16進32桁>/*` を写しへ振り分ける)---------------------
+# **【V20-M13-T02b(2026-09-26)。下見の前段】4行を末尾に足した(0行減)。**
+#   **製品は0件** —— 前段 `src/server/preview-front.ts` は `src/kernel/` を1本も値 import しない。
+#   `app.ts` の「本体に同じ綴りのアプリが実在するか」は、`app.ts` が既に値 import している `appDbPath` で書いた(行は増えない)。
+#   4件とも検査の足場(`src/server/preview-front.test.ts`。題材のアプリを作り、行数を SQL で数える)。
+# **`ADR-0009` 限定2 の照合**: 4件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした4行だけを足した**(記録 `docs/plan/v20/records/v20-m13-t02b.md`)。
+src/server/preview-front.test.ts:KernelMetaStore
+src/server/preview-front.test.ts:appDbPath
+src/server/preview-front.test.ts:applyManifest
+src/server/preview-front.test.ts:createApp
+# --- V20-M13-T02c(下見の画面: 帯・断りの文言・期限切れ・E2E)---------------------
+# **【V20-M13-T02c(2026-09-26)。下見の画面】1行を末尾に足した(0行減)。**
+#   **製品は0件** —— 画面(`web/src/preview.ts` / `web/src/PreviewBanner.tsx`)は `src/kernel/` を型でしか import しない。
+#   1件は E2E の足場(`web/e2e/preview-banner.e2e.ts`。帯の文字と地色の比を、既存のコントラストの検査の関数 `contrastRatio` で測る)。
+# **`ADR-0009` 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした1行だけを足した**(記録 `docs/plan/v20/records/v20-m13-t02c.md`)。
+web/e2e/preview-banner.e2e.ts:contrastRatio
+# --- V20-M13-T05 / T04(下見の後始末の時計・本体に触らないことの5点比較)---------------------
+# **【V20-M13-T05 / T04(2026-09-26)】11行を末尾に足した(0行減)。**
+#   **製品は0件** —— 時計 `src/server/preview-sweeper.ts` と `src/server/index.ts` の配線は `src/kernel/` を1本も値 import しない。
+#   11件とも検査の足場(`src/server/preview-sweeper.test.ts` の3件は期限切れの 410 を撃つ題材のアプリを作る。
+#   `src/server/preview-invariance.test.ts` の8件は題材のアプリを作り、5点を読み、連番を実適用で確かめる)。
+# **`ADR-0009` 限定2 の照合**: 11件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした11行だけを足した**(記録 `docs/plan/v20/records/v20-m13-t05.md`)。
+src/server/preview-invariance.test.ts:KernelMetaStore
+src/server/preview-invariance.test.ts:appDbPath
+src/server/preview-invariance.test.ts:appManifestPath
+src/server/preview-invariance.test.ts:appSnapshotsDir
+src/server/preview-invariance.test.ts:applyDiff
+src/server/preview-invariance.test.ts:applyManifest
+src/server/preview-invariance.test.ts:createApp
+src/server/preview-invariance.test.ts:createRecord
+src/server/preview-sweeper.test.ts:KernelMetaStore
+src/server/preview-sweeper.test.ts:applyManifest
+src/server/preview-sweeper.test.ts:createApp
+# --- V20-M13 点検の処置(`records/v20-m13-fix.md`)---------------------
+# **1件増え、0件減った。製品コードの層またぎは0件。** 検査の足場 `src/mcp/preview.test.ts` が、対象のアプリの
+#   AI の依頼と使用量の行(目印つき)を本体に入れるのに `AiCapabilityStore` を取る(軽1: `real` の写しでも消すことを撃つ)。
+# **`ADR-0009` 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした1行だけを足した。**
+src/mcp/preview.test.ts:AiCapabilityStore
+# --- V20-M15-T01B(下見の写しから選んだ記録を外す)---------------------
+# **【V20-M15-T01B(2026-09-26)】2行を末尾に足した(0行減)。製品コードの層またぎが2件** ——
+#   写しを整える `src/mcp/preview.ts` の `stripDesignChoices` が、写しの `manifest.json` の位置に `appManifestPath` を、
+#   書き直した定義が読む側と同じ検証(保存済みの読み)を通ることを確かめるのに `readCurrentManifest` を取る
+#   (計画 `docs/plan/v20/17-v20-m15-plan.md` §9-3-6「書き直したマニフェストが検証を通ることを同じ関数の中で確かめる」)。
+#   **2件とも既存の層またぎと同じ種類のシンボルである**(`appManifestPath` は検査の足場の多数、`readCurrentManifest` は
+#   `src/mcp/tools/read.ts` が既に取っている)。 **写しから消す処理はカーネルの外に置いた**(`ADR-0476` 2-6)。
+# **`ADR-0009` 限定2 の照合**: 2件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。 `src/kernel/` の差分は0行。
+# **赤いまま走らせた出力の `added` が名指しした2行だけを足した**(記録 `docs/plan/v20/records/v20-m15-t01b.md`)。
+src/mcp/preview.ts:appManifestPath
+src/mcp/preview.ts:readCurrentManifest
+
+# --- V22-M2-T06(`GET /public` にメニューの位置を載せる。`ADR-0486` §Decision 1 の 7 / 授権 `ADR-0487` 行67)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**(製品コードの層またぎは0件。
+# `src/server/app.ts` に足したのは読んだ定義の `workspace.navigation.placement` を写すことだけで、値 import は増えていない)。
+#   src/server/public-workspace-navigation.test.ts: KernelMetaStore / applyManifest / createApp
+#   —— `src/server/anonymous-public-view.test.ts` とまったく同じ3件であり、新しい層またぎの種類は0本である。
+# **`ADR-0009` 限定2 の照合**: 3件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。 `src/kernel/` の差分は0行。
+# **赤いまま走らせた出力の `added` が名指しした3行だけを足した。**
+src/server/public-workspace-navigation.test.ts:KernelMetaStore
+src/server/public-workspace-navigation.test.ts:applyManifest
+src/server/public-workspace-navigation.test.ts:createApp
+
+# --- V22-M3-T04(マイページの読取 `?my_page=1`。`ADR-0488` §Decision 1 の 5 / 授権 `ADR-0489` 行20)---
+# **3件増え、0件減った。** **全件が新しい検査ファイル1本から出ている**(製品コードの層またぎは0件。
+# 足した `src/server/my-page-records.ts` はカーネルを型でだけ読み、`src/server/app.ts` の値 import は増えていない)。
+#   src/server/my-page-records.test.ts: KernelMetaStore / applyManifest / createApp
+#   —— `src/server/public-workspace-navigation.test.ts` とまったく同じ3件であり、新しい層またぎの種類は0本である。
+# **`ADR-0009` 限定2 の照合**: 3件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。 `src/kernel/` の差分は0行。
+# **赤いまま走らせた出力の `added` が名指しした3行だけを足した。**
+src/server/my-page-records.test.ts:KernelMetaStore
+src/server/my-page-records.test.ts:applyManifest
+src/server/my-page-records.test.ts:createApp
+
+# --- V23-M2-T03(`unique_message` を入口ごとに。`ADR-0498` / 授権 `ADR-0517` §Decision 9 の行37)---
+# **製品コードの層またぎは1件**: `src/server/app.ts` がアプリの理由の印を問う `isAppReason`
+# (`workflow-runner.ts` から直接。`src/kernel/index.ts` は触っていない)。 受信口(`inbound-route.ts`)は
+# 値で import せず、`app.ts` の判定の1本を依存として受け取る。
+# **`ADR-0009` 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+# **赤いまま走らせた出力の `added` が名指しした行のうち、行37 の範囲の1行だけを足した。**
+src/server/app.ts:isAppReason
+
+# --- V23-M2-T03 の続き(授権 `ADR-0519` 行74。`D-V23-65`)---
+# 新しい検査ファイル `src/server/unique-message.test.ts` がカーネルの既存の export を値で読む8行。 名前は import 文を読んで書いた。
+# **製品コードの層またぎは0件**(8件とも他の検査が採っている組。新しい層またぎの種類は0本)。
+# **`ADR-0009` 限定2 の照合**: 8件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/unique-message.test.ts:InboundStore
+src/server/unique-message.test.ts:KernelMetaStore
+src/server/unique-message.test.ts:appDbPath
+src/server/unique-message.test.ts:applyDiff
+src/server/unique-message.test.ts:applyManifest
+src/server/unique-message.test.ts:createApp
+src/server/unique-message.test.ts:ensureIslandRuntimeReady
+src/server/unique-message.test.ts:runScheduledWorkflow
+
+# --- V23-M2-T04(島の `reject` を入口ごとに。授権 `ADR-0519` 行74。`D-V23-65`)---
+# 新しい検査ファイル `src/server/island-reject.test.ts` がカーネルの既存の export を値で読む7行。 名前は import 文を読んで書いた。
+# **製品コードの層またぎは0件**(`src/server`・`src/mcp` の import は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 7件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/island-reject.test.ts:InboundStore
+src/server/island-reject.test.ts:KernelMetaStore
+src/server/island-reject.test.ts:appDbPath
+src/server/island-reject.test.ts:applyManifest
+src/server/island-reject.test.ts:createApp
+src/server/island-reject.test.ts:ensureIslandRuntimeReady
+src/server/island-reject.test.ts:runScheduledWorkflow
+
+# --- V23-M2-T05(作成と作成者への付与の原子化。授権 `ADR-0519` 行74。`D-V23-65`)---
+# 新しい検査ファイル `src/server/atomic-creator-grant.test.ts` がカーネルの既存の export を値で読む6行。 名前は import 文を読んで書いた。
+# **製品コードの層またぎは0件**(`src/server/app.ts` の import は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 6件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/atomic-creator-grant.test.ts:KernelMetaStore
+src/server/atomic-creator-grant.test.ts:appDbPath
+src/server/atomic-creator-grant.test.ts:applyManifest
+src/server/atomic-creator-grant.test.ts:createApp
+src/server/atomic-creator-grant.test.ts:createRecord
+src/server/atomic-creator-grant.test.ts:ensureIslandRuntimeReady
+
+# --- V23-M2-T06(MCP の作成で作成者に付与する。授権 `ADR-0519` 行74。`D-V23-65`)---
+# 新しい検査ファイル `src/mcp/creator-grant.test.ts` がカーネルの既存の export を値で読む6行。 名前は import 文を読んで書いた。
+# **製品コードの層またぎは0件**(`src/mcp/tools/write.ts` の import は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 6件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/mcp/creator-grant.test.ts:KernelMetaStore
+src/mcp/creator-grant.test.ts:appDbPath
+src/mcp/creator-grant.test.ts:applyManifest
+src/mcp/creator-grant.test.ts:createApp
+src/mcp/creator-grant.test.ts:createRecord
+src/mcp/creator-grant.test.ts:ensureIslandRuntimeReady
+
+# --- V23-M4-T03(入口ごとの `$actor`。授権 `ADR-0527` 行1。`D-V23-109`)---
+# 新しい検査ファイル3本(`src/mcp/actor-entry-points-mcp.test.ts`・`src/server/actor-entry-points-roster.test.ts`・`src/server/actor-entry-points.test.ts`)がカーネルの既存の export を値で読む20行。 名前は import 文を読んで書いた。
+# **製品コードの層またぎは0件**(`src/server`・`src/mcp` の製品コードの import は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 20件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/mcp/actor-entry-points-mcp.test.ts:KernelMetaStore
+src/mcp/actor-entry-points-mcp.test.ts:appDbPath
+src/mcp/actor-entry-points-mcp.test.ts:applyManifest
+src/mcp/actor-entry-points-mcp.test.ts:createApp
+src/server/actor-entry-points-roster.test.ts:KernelMetaStore
+src/server/actor-entry-points-roster.test.ts:appDbPath
+src/server/actor-entry-points-roster.test.ts:applyManifest
+src/server/actor-entry-points-roster.test.ts:createApp
+src/server/actor-entry-points.test.ts:AiCapabilityStore
+src/server/actor-entry-points.test.ts:InboundStore
+src/server/actor-entry-points.test.ts:KernelMetaStore
+src/server/actor-entry-points.test.ts:appDbPath
+src/server/actor-entry-points.test.ts:applyManifest
+src/server/actor-entry-points.test.ts:createApp
+src/server/actor-entry-points.test.ts:createRecord
+src/server/actor-entry-points.test.ts:dispatchAiJobs
+src/server/actor-entry-points.test.ts:ensureIslandRuntimeReady
+src/server/actor-entry-points.test.ts:resetWorkflowClock
+src/server/actor-entry-points.test.ts:runSchedulerTick
+src/server/actor-entry-points.test.ts:setWorkflowClock
+
+# --- V23-M4-T04(`$previous`・`changed_fields`・`$now`。授権 `ADR-0527` 行1。`D-V23-109`)---
+# 新しい検査ファイル2本(`src/server/previous-changed-now-mcp.test.ts`・`src/server/previous-changed-now.test.ts`)がカーネルの既存の export を値で読む13行。 名前は import 文を読んで書いた。
+# **製品コードの層またぎは0件**(`src/server`・`src/mcp` の製品コードの import は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 13件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/previous-changed-now-mcp.test.ts:KernelMetaStore
+src/server/previous-changed-now-mcp.test.ts:appDbPath
+src/server/previous-changed-now-mcp.test.ts:applyManifest
+src/server/previous-changed-now-mcp.test.ts:createApp
+src/server/previous-changed-now.test.ts:AiCapabilityStore
+src/server/previous-changed-now.test.ts:KernelMetaStore
+src/server/previous-changed-now.test.ts:appDbPath
+src/server/previous-changed-now.test.ts:applyManifest
+src/server/previous-changed-now.test.ts:createApp
+src/server/previous-changed-now.test.ts:dispatchAiJobs
+src/server/previous-changed-now.test.ts:ensureIslandRuntimeReady
+src/server/previous-changed-now.test.ts:resetWorkflowClock
+src/server/previous-changed-now.test.ts:setWorkflowClock
+
+# --- V23-M4-T05(`st_updated_by`。授権 `ADR-0527` 行1)---
+# 新しい検査ファイル3本(`src/server/updated-by-stamp.test.ts`・`src/server/updated-by-stamp-mcp.test.ts`・`src/server/updated-by-stamp-roster.test.ts`)がカーネルの既存の export を値で読む21行。 名前は import 文を読んで書いた(`web/test/updated-by-form.test.tsx` はカーネルから型しか読まないので0行)。
+# **製品コードの層またぎは0件**(`src/server`・`src/mcp`・`web/src` の製品コードがカーネルから値で読む名前は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 21件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/updated-by-stamp-mcp.test.ts:KernelMetaStore
+src/server/updated-by-stamp-mcp.test.ts:appDbPath
+src/server/updated-by-stamp-mcp.test.ts:applyManifest
+src/server/updated-by-stamp-mcp.test.ts:createApp
+src/server/updated-by-stamp-roster.test.ts:KernelMetaStore
+src/server/updated-by-stamp-roster.test.ts:appDbPath
+src/server/updated-by-stamp-roster.test.ts:applyManifest
+src/server/updated-by-stamp-roster.test.ts:createApp
+src/server/updated-by-stamp.test.ts:AiCapabilityStore
+src/server/updated-by-stamp.test.ts:InboundStore
+src/server/updated-by-stamp.test.ts:KernelMetaStore
+src/server/updated-by-stamp.test.ts:appDbPath
+src/server/updated-by-stamp.test.ts:applyManifest
+src/server/updated-by-stamp.test.ts:createApp
+src/server/updated-by-stamp.test.ts:createRecord
+src/server/updated-by-stamp.test.ts:dispatchAiJobs
+src/server/updated-by-stamp.test.ts:ensureIslandRuntimeReady
+src/server/updated-by-stamp.test.ts:resetWorkflowClock
+src/server/updated-by-stamp.test.ts:runSchedulerTick
+src/server/updated-by-stamp.test.ts:setWorkflowClock
+src/server/updated-by-stamp.test.ts:updateRecord
+
+# --- V23-M4-T06(島の入力 `actor` / `previous`。授権 `ADR-0527` 行1)---
+# 新しい検査ファイル1本(`src/server/island-actor-previous.test.ts`)がカーネルの既存の export を値で読む8行。 名前は import 文を読んで書いた(`Manifest` は型なので数えない)。
+# **製品コードの層またぎは0件**(`src/server`・`src/mcp`・`web/src` の製品コードがカーネルから値で読む名前は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 8件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/island-actor-previous.test.ts:KernelMetaStore
+src/server/island-actor-previous.test.ts:appDbPath
+src/server/island-actor-previous.test.ts:applyManifest
+src/server/island-actor-previous.test.ts:createApp
+src/server/island-actor-previous.test.ts:ensureIslandRuntimeReady
+src/server/island-actor-previous.test.ts:resetWorkflowClock
+src/server/island-actor-previous.test.ts:runSchedulerTick
+src/server/island-actor-previous.test.ts:setWorkflowClock
+
+# --- V23-M5-T03(行の招待の発行・行の一覧・取消・掃除。授権 `ADR-0533` 行45)---
+# 新しい検査ファイル1本(`src/server/row-invitations.test.ts`)がカーネルの既存の export を値で読む6行。 名前は import 文を検査の外の台本で読んで書いた(`Manifest` は型なので数えない)。
+# **製品コードの層またぎは0件**(`src/server/row-invitations.ts` と `app.ts` はカーネルから値で読む名前を1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 6件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/row-invitations.test.ts:KernelMetaStore
+src/server/row-invitations.test.ts:appDbPath
+src/server/row-invitations.test.ts:applyManifest
+src/server/row-invitations.test.ts:createApp
+src/server/row-invitations.test.ts:createRecord
+src/server/row-invitations.test.ts:ensureIslandRuntimeReady
+
+# --- V23-M6-T03(行を相手にした付与の読取の解決。入口ごとの検査。授権 `ADR-0539` 行35)---
+# 新しい検査ファイル1本(`src/server/principal-row-entries.test.ts`)がカーネルの既存の export を値で読む7行。 名前は import 文を検査の外の台本で読んで書いた(`Manifest` は型なので数えない)。
+# **製品コードの層またぎは0件**(`src/server/owner-scope.ts` はカーネルから値で読む名前を1本も増やしていない。カーネルの export も足していない)。 もう1本の新しい検査ファイル(`principal-row-resolution.test.ts`)はカーネルから型だけを読む。
+# **`ADR-0009` 限定2 の照合**: 7件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/principal-row-entries.test.ts:KernelMetaStore
+src/server/principal-row-entries.test.ts:appDbPath
+src/server/principal-row-entries.test.ts:applyManifest
+src/server/principal-row-entries.test.ts:createApp
+src/server/principal-row-entries.test.ts:createRecord
+src/server/principal-row-entries.test.ts:deleteRecord
+src/server/principal-row-entries.test.ts:ensureIslandRuntimeReady
+
+# --- V23-M6-T04(行を相手にした付与の書込。入口ごとの検査。授権 `ADR-0539` 行35)---
+# 新しい検査ファイル1本(`src/server/principal-row-write.test.ts`)がカーネルの既存の export を値で読む10行。 名前は import 文を検査の外の台本で読んで書いた(`Manifest`・`AiProvider` は型なので数えない)。
+# **製品コードの層またぎは0件**(`src/kernel/workflow-runner.ts`・`src/kernel/ai-dispatcher.ts` が足したのは `owner-scope.ts` から読む名前1語で、カーネルから値で読む名前は1本も増やしていない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 10件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/principal-row-write.test.ts:AiCapabilityStore
+src/server/principal-row-write.test.ts:InboundStore
+src/server/principal-row-write.test.ts:KernelMetaStore
+src/server/principal-row-write.test.ts:appDbPath
+src/server/principal-row-write.test.ts:applyManifest
+src/server/principal-row-write.test.ts:createApp
+src/server/principal-row-write.test.ts:createRecord
+src/server/principal-row-write.test.ts:dispatchAiJobs
+src/server/principal-row-write.test.ts:ensureIslandRuntimeReady
+src/server/principal-row-write.test.ts:runScheduledWorkflow
+
+# --- V23-M6-T04b(相手の名前の見せ方。授権 `ADR-0539` 行35)---
+# 新しい検査ファイル1本(`src/server/principal-row-labels.test.ts`)がカーネルの既存の export を値で読む5行。 名前は import 文を検査の外の台本で読んで書いた(`Manifest` は型なので数えない)。
+# **製品コードの層またぎは0件**(足した製品ファイル `src/server/representative-field.ts` はカーネルから `Table` を型で読むだけ。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 5件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/principal-row-labels.test.ts:KernelMetaStore
+src/server/principal-row-labels.test.ts:appDbPath
+src/server/principal-row-labels.test.ts:applyManifest
+src/server/principal-row-labels.test.ts:createApp
+src/server/principal-row-labels.test.ts:createRecord
+
+# --- V23-M6-T05(行の招待用コード。授権 `ADR-0539` 行35)---
+# 新しい検査ファイル1本(`src/server/row-invite-codes.test.ts`)がカーネルの既存の export を値で読む5行。 名前は import 文を検査の外の台本で読んで書いた(`Manifest` は型なので数えない)。
+# **製品コードの層またぎは0件**(足した製品ファイル `src/server/row-invite-codes.ts` はカーネルから何も読まない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 5件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/row-invite-codes.test.ts:KernelMetaStore
+src/server/row-invite-codes.test.ts:appDbPath
+src/server/row-invite-codes.test.ts:applyManifest
+src/server/row-invite-codes.test.ts:createApp
+src/server/row-invite-codes.test.ts:createRecord
+
+# --- V23-M6-T06(コードの招待。授権 `ADR-0539` 行35)---
+# 新しい検査ファイル1本(`src/server/row-code-invitations.test.ts`)がカーネルの既存の export を値で読む5行。 名前は import 文を検査の外の台本で読んで書いた(`Manifest` は型なので数えない)。
+# **製品コードの層またぎは0件**(この段で触った製品ファイル `app.ts`・`owner-scope.ts`・`row-invitations.ts` はカーネルから新しく何も読まない。カーネルの export も足していない)。
+# **`ADR-0009` 限定2 の照合**: 5件とも `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/row-code-invitations.test.ts:KernelMetaStore
+src/server/row-code-invitations.test.ts:appDbPath
+src/server/row-code-invitations.test.ts:applyManifest
+src/server/row-code-invitations.test.ts:createApp
+src/server/row-code-invitations.test.ts:createRecord
+
+# --- V23-M8-T03(退会の連鎖を宣言した表だけ deleteRecord へ回す。授権 `ADR-0545` 行1)---
+# 製品ファイル `src/server/auto-enroll.ts` がカーネルの既存の export `deleteRecord` を値で読む1行。 名前は import 文を `grep -n` で読んで書いた。
+# カーネルの export は足していない。 新しい検査ファイル(`src/kernel/record-history-entries.test.ts`)は `src/kernel` の中なので行は要らない。
+# **`ADR-0009` 限定2 の照合**: `normalizeSort` / `sortErrorPath` / `validateSortKeys` ではない。
+src/server/auto-enroll.ts:deleteRecord

@@ -244,7 +244,8 @@ describe("(T-1) 器(`J-G12` / 裁定 `R-17-1`)", () => {
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(manifestDefs())).toHaveLength(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(manifestDefs())).toHaveLength(31);
   });
 
   test("新設した `$defs` は `role_condition` の1本だけである", () => {
@@ -288,12 +289,23 @@ describe("(T-1) 器(`J-G12` / 裁定 `R-17-1`)", () => {
     // 弱めていない** —— **今日の差集合が2本ちょうどであることを順序ごと固定している。**
     // **並びは宣言順である** —— **`report` は `$defs/view` の直前に置いたので、
     // `role_condition`(末尾)より前に来る。**
-    expect(today.filter((name) => !before.includes(name))).toEqual(["report", "role_condition"]);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1)】期待値に `layout_node` を足した。** **旧の期待値は
+    // `report` と `role_condition` の2本。** **31本目 `layout_node`(並べ方の木)を新設したのも別の決定である**(`V20-M5`)。
+    // **「`V8-M18` が1本しか作っていない」という本来の主張は1ミリも弱めていない。** **並びは宣言順(`layout_node` は末尾)。**
+    expect(today.filter((name) => !before.includes(name))).toEqual([
+      "report",
+      "role_condition",
+      "layout_node",
+    ]);
     expect(before.filter((name) => !today.includes(name))).toEqual([]);
   });
 
   test("`rules[]` の4キー目が `when` で、`$defs/role_condition` を `$ref` で受ける", () => {
     const properties = ruleItemSchema().properties as Any;
+    // **【2026-09-27 追記(`V21-M2B`。`ADR-0482` の `AN-G2`。授権 `ADR-0483` 行22)。旧の期待値を消していない】**
+    // **旧(逐語)**: `expect(Object.keys(properties)).toEqual(["target", "table", "field", "view", "action", "can", "when"]);`
+    // **8キー目 `hidden_fields` を足したので 7 → 8。** **`when` が `$defs/role_condition` を
+    // `$ref` で受けることは1バイトも動かしていない**(下の2行)。
     expect(Object.keys(properties)).toEqual([
       "target",
       "table",
@@ -302,6 +314,7 @@ describe("(T-1) 器(`J-G12` / 裁定 `R-17-1`)", () => {
       "action",
       "can",
       "when",
+      "hidden_fields",
     ]);
     expect(Object.keys(properties.when as Any)).toEqual(["$comment", "description", "$ref"]);
     expect((properties.when as Any).$ref).toBe("#/$defs/role_condition");
@@ -325,7 +338,16 @@ describe("(T-1) 器(`J-G12` / 裁定 `R-17-1`)", () => {
     // **旧(逐語)**: `expect(Object.keys(roleItem.properties as Any)).toEqual(["id", "name", "rules"]);`
     // **4キー目 `signup` を `V8-M1-T02` が足した。****この検査が見ている `when` は
     // 1バイトも動いていない** —— **条件は今日も `rules[]` の内側にだけ在る。**
-    expect(Object.keys(roleItem.properties as Any)).toEqual(["id", "name", "rules", "signup"]);
+    // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys(roleItem.properties as Any)).toEqual(["id", "name", "rules", "signup"]);`
+    // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
+    expect(Object.keys(roleItem.properties as Any)).toEqual([
+      "id",
+      "name",
+      "rules",
+      "signup",
+      "density",
+    ]);
     expect((roleItem.properties as Any).when).toBeUndefined();
   });
 

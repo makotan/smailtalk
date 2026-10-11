@@ -26,13 +26,16 @@
  *    確かめているのは `web/test/theme-candidates.test.ts` で、**カーネルの検査関数そのもの**
  *    (`src/kernel/theme-contrast.ts`)を呼んでいる。web 側に同じ規則を再実装していない。
  *
- * **この製品の既定配色はこの表に入れられない** —— `--color-border: #ddd` が非テキストの
+ * **この製品の既定配色はこの表に入れられない** —— 枠線の色(`border_color`。CSS 名
+ * `--color-border`)の既定値 `#ddd` が非テキストの
  * 閾値 3:1 を通らないためである(ADR-0046 の 2026-07-25 追記「限界7」)。したがって
  * 「今の見た目」を候補として並べることはできない。**候補は3件とも、今の見た目とは違う。**
  *
  * ## カーネルから値を import しない
  *
- * スロット名は**マニフェストのキーそのもの**である(恒等写像)。したがって
+ * スロット名は**マニフェストのキー(役割名)そのもの**である(V20-M8 / ADR-0473)。CSS 名への
+ * 写像は表示層の `web/src/theme-role-map.ts` の1本で、見本の枠はそれを通して描く
+ * (`ThemePreviewPanel`)。この表は写像を持たない。したがって
  * `src/kernel/` から値を import する必要が無く、ADR-0009 限定2 と
  * `scripts/kernel-import-drift.test.ts` を製品コードでは1ミリも動かさない(型のみ import する)。
  * 先例は `web/src/ThemeExportPanel.tsx` である。
@@ -60,22 +63,23 @@ export type ThemeCandidate = {
  * (写しにすると、`:root` を変えたときに黙って食い違う)。
  */
 const BASE_METRICS = {
-  "--font-family-base": "system-ui, sans-serif",
-  "--font-size-secondary": "0.85em",
-  "--font-size-note": "0.875rem",
-  "--line-height-base": "1.6",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.25rem",
-  "--space-6": "2rem",
-  "--border-width": "1px",
-  "--control-border-radius": "4px",
-  "--surface-shadow": "none",
-  "--focus-outline-width": "2px",
-  "--detail-label-width": "8rem",
-  "--login-max-width": "24rem",
+  body_font: "system-ui, sans-serif",
+  secondary_font_size: "0.85em",
+  note_font_size: "0.875rem",
+  body_line_height: "1.6",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.25rem",
+  space_6: "2rem",
+  border_width: "1px",
+  control_radius: "4px",
+  surface_shadow: "none",
+  focus_ring_width: "2px",
+  // 【V20-M9 / ADR-0474 §Decision 1-3】2枠を語彙から外したので2行を外した。旧(逐語):
+  // "--detail-label-width": "8rem",
+  // "--login-max-width": "24rem",
 } as const;
 
 /**
@@ -101,15 +105,20 @@ export const THEME_CANDIDATES: readonly ThemeCandidate[] = Object.freeze([
     note: "白い地色に黒い文字。余白と書体は基準のまま。",
     slots: Object.freeze({
       ...BASE_METRICS,
-      "--color-text": "#111111",
-      "--color-text-secondary": "#595959",
-      "--color-text-label": "#595959",
-      "--color-text-placeholder": "#595959",
-      "--color-danger": "#a00000",
-      "--color-page-background": "#ffffff",
-      "--color-surface-highlight": "#f2f2f2",
-      "--color-border": "#767676",
-      "--focus-outline-color": "#005fcc",
+      body_text: "#111111",
+      secondary_text: "#595959",
+      label_text: "#595959",
+      placeholder_text: "#595959",
+      danger: "#a00000",
+      page_background: "#ffffff",
+      highlight_surface: "#f2f2f2",
+      border_color: "#767676",
+      focus_ring: "#005fcc",
+      // 【V20-M9 / ADR-0474 §1-2】足した4枠。今日の見た目と同じ値(主ボタンと小窓 = ページ地色の地に本文の文字色)。
+      primary_fill: "#ffffff",
+      on_primary: "#111111",
+      overlay_background: "#ffffff",
+      overlay_text: "#111111",
     }),
   }),
   Object.freeze({
@@ -118,16 +127,21 @@ export const THEME_CANDIDATES: readonly ThemeCandidate[] = Object.freeze([
     note: "濃紺の地色に明るい文字。余白と書体は「明るい」と同じで、違うのは配色だけ。",
     slots: Object.freeze({
       ...BASE_METRICS,
-      "--surface-shadow": "0 1px 3px #000000",
-      "--color-text": "#f5f5f5",
-      "--color-text-secondary": "#c8d8e8",
-      "--color-text-label": "#ffd54a",
-      "--color-text-placeholder": "#b0b8c0",
-      "--color-danger": "#ff9a8a",
-      "--color-page-background": "#102030",
-      "--color-surface-highlight": "#243447",
-      "--color-border": "#8fa3b8",
-      "--focus-outline-color": "#7fd4ff",
+      surface_shadow: "0 1px 3px #000000",
+      body_text: "#f5f5f5",
+      secondary_text: "#c8d8e8",
+      label_text: "#ffd54a",
+      placeholder_text: "#b0b8c0",
+      danger: "#ff9a8a",
+      page_background: "#102030",
+      highlight_surface: "#243447",
+      border_color: "#8fa3b8",
+      focus_ring: "#7fd4ff",
+      // 【V20-M9 / ADR-0474 §1-2】足した4枠。今日の見た目と同じ値(主ボタンと小窓 = ページ地色の地に本文の文字色)。
+      primary_fill: "#102030",
+      on_primary: "#f5f5f5",
+      overlay_background: "#102030",
+      overlay_text: "#f5f5f5",
     }),
   }),
   Object.freeze({
@@ -136,25 +150,30 @@ export const THEME_CANDIDATES: readonly ThemeCandidate[] = Object.freeze([
     note: "淡い黄の地色。**配色だけでなく余白と書体も違う**(明朝体・余白は広め・行間は 1.8)。",
     slots: Object.freeze({
       ...BASE_METRICS,
-      "--font-family-base": "Georgia, serif",
-      "--line-height-base": "1.8",
-      "--space-1": "0.375rem",
-      "--space-2": "0.75rem",
-      "--space-3": "1rem",
-      "--space-4": "1.5rem",
-      "--space-5": "2rem",
-      "--space-6": "3rem",
-      "--control-border-radius": "8px",
-      "--surface-shadow": "0 1px 3px #00000022",
-      "--color-text": "#1a237e",
-      "--color-text-secondary": "#37474f",
-      "--color-text-label": "#4a148c",
-      "--color-text-placeholder": "#5d4037",
-      "--color-danger": "#b00020",
-      "--color-page-background": "#fff8e1",
-      "--color-surface-highlight": "#ffecb3",
-      "--color-border": "#6d4c41",
-      "--focus-outline-color": "#00695c",
+      body_font: "Georgia, serif",
+      body_line_height: "1.8",
+      space_1: "0.375rem",
+      space_2: "0.75rem",
+      space_3: "1rem",
+      space_4: "1.5rem",
+      space_5: "2rem",
+      space_6: "3rem",
+      control_radius: "8px",
+      surface_shadow: "0 1px 3px #00000022",
+      body_text: "#1a237e",
+      secondary_text: "#37474f",
+      label_text: "#4a148c",
+      placeholder_text: "#5d4037",
+      danger: "#b00020",
+      page_background: "#fff8e1",
+      highlight_surface: "#ffecb3",
+      border_color: "#6d4c41",
+      focus_ring: "#00695c",
+      // 【V20-M9 / ADR-0474 §1-2】足した4枠。今日の見た目と同じ値(主ボタンと小窓 = ページ地色の地に本文の文字色)。
+      primary_fill: "#fff8e1",
+      on_primary: "#1a237e",
+      overlay_background: "#fff8e1",
+      overlay_text: "#1a237e",
     }),
   }),
 ]);

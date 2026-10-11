@@ -836,31 +836,36 @@ describe("システムテーブル: ビュー参照(類型1)と reference(類型
 describe("テーマの由来(origin)は参照整合性の対象ではない(ADR-0047 限定7)", () => {
   /** コントラスト検査を通る25スロット(値は入力であって集合の正ではない)。 */
   const passingSlots: Record<string, string> = {
-    "--color-danger": "#a00000",
-    "--color-text": "#000000",
-    "--color-text-label": "#595959",
-    "--color-text-placeholder": "#595959",
-    "--color-text-secondary": "#595959",
-    "--color-border": "#767676",
-    "--color-page-background": "#ffffff",
-    "--color-surface-highlight": "#f2f2f2",
-    "--font-family-base": "system-ui, sans-serif",
-    "--font-size-note": "0.875rem",
-    "--font-size-secondary": "0.85em",
-    "--line-height-base": "1.6",
-    "--space-1": "0.25rem",
-    "--space-2": "0.5rem",
-    "--space-3": "0.75rem",
-    "--space-4": "1rem",
-    "--space-5": "1.25rem",
-    "--space-6": "2rem",
-    "--border-width": "1px",
-    "--control-border-radius": "4px",
-    "--surface-shadow": "none",
-    "--focus-outline-color": "#005fcc",
-    "--focus-outline-width": "2px",
-    "--detail-label-width": "8rem",
-    "--login-max-width": "22rem",
+    danger: "#a00000",
+    body_text: "#000000",
+    label_text: "#595959",
+    placeholder_text: "#595959",
+    secondary_text: "#595959",
+    border_color: "#767676",
+    page_background: "#ffffff",
+    highlight_surface: "#f2f2f2",
+    // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+    primary_fill: "#ffffff",
+    on_primary: "#000000",
+    overlay_background: "#ffffff",
+    overlay_text: "#000000",
+    body_font: "system-ui, sans-serif",
+    note_font_size: "0.875rem",
+    secondary_font_size: "0.85em",
+    body_line_height: "1.6",
+    space_1: "0.25rem",
+    space_2: "0.5rem",
+    space_3: "0.75rem",
+    space_4: "1rem",
+    space_5: "1.25rem",
+    space_6: "2rem",
+    border_width: "1px",
+    control_radius: "4px",
+    surface_shadow: "none",
+    focus_ring: "#005fcc",
+    focus_ring_width: "2px",
+    // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+    // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
   };
 
   test("実在しないアプリを指す origin でも valid である(限定7 の機械的固定)", () => {
@@ -1949,21 +1954,23 @@ describe("`CM-G31` / `V10-M24-T05`: 名札の一意性(同じ画面の中で、�
   });
 
   // --- (3) 項目のまとまり `field_groups.<名前>.id`(新形)------------------------------
-  describe("項目のまとまり(field_groups の新形)", () => {
+  // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】綴りを `field_sections` に改めた。旧 describe 名の逐語**:
+  // 「項目のまとまり(field_groups の新形)」。判定は1つも緩めていない(入力のキーと期待する path の綴りだけを替えた)。
+  describe("項目のまとまり(field_sections の新形)", () => {
     test("同じ画面の中で名札が重複すると、2件目のまとまりで拒否される", () => {
       const manifest = anchorManifest([
         {
           id: "order-detail",
           type: "detail_view",
           table: "orders",
-          field_groups: {
+          field_sections: {
             基本: { id: "grp", fields: ["code"] },
             詳細: { id: "grp", fields: ["amount"] },
           },
         },
       ]);
       const errors = expectInvalid(validateReferentialIntegrity(manifest));
-      const error = errorAt(errors, "/app/views/0/field_groups/詳細/id");
+      const error = errorAt(errors, "/app/views/0/field_sections/詳細/id");
       expect(error.message).toContain("grp");
       expect(error.message).toContain("重複");
     });
@@ -1974,13 +1981,13 @@ describe("`CM-G31` / `V10-M24-T05`: 名札の一意性(同じ画面の中で、�
           id: "order-detail",
           type: "detail_view",
           table: "orders",
-          field_groups: { 基本: { id: "grp", fields: ["code"] } },
+          field_sections: { 基本: { id: "grp", fields: ["code"] } },
         },
         {
           id: "order-detail-2",
           type: "detail_view",
           table: "orders",
-          field_groups: { 基本: { id: "grp", fields: ["code"] } },
+          field_sections: { 基本: { id: "grp", fields: ["code"] } },
         },
       ]);
       expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
@@ -1992,7 +1999,7 @@ describe("`CM-G31` / `V10-M24-T05`: 名札の一意性(同じ画面の中で、�
           id: "order-detail",
           type: "detail_view",
           table: "orders",
-          field_groups: { 基本: ["code"], 詳細: ["amount"] },
+          field_sections: { 基本: ["code"], 詳細: ["amount"] },
         },
       ]);
       expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
@@ -2004,7 +2011,7 @@ describe("`CM-G31` / `V10-M24-T05`: 名札の一意性(同じ画面の中で、�
           id: "order-detail",
           type: "detail_view",
           table: "orders",
-          field_groups: { 基本: { fields: ["code"] }, 詳細: { fields: ["amount"] } },
+          field_sections: { 基本: { fields: ["code"] }, 詳細: { fields: ["amount"] } },
         },
       ]);
       expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });
@@ -2016,14 +2023,14 @@ describe("`CM-G31` / `V10-M24-T05`: 名札の一意性(同じ画面の中で、�
           id: "order-detail",
           type: "detail_view",
           table: "orders",
-          field_groups: {
+          field_sections: {
             "基本/一般": { id: "grp", fields: ["code"] },
             "詳細~notes": { id: "grp", fields: ["amount"] },
           },
         },
       ]);
       const errors = expectInvalid(validateReferentialIntegrity(manifest));
-      errorAt(errors, "/app/views/0/field_groups/詳細~0notes/id");
+      errorAt(errors, "/app/views/0/field_sections/詳細~0notes/id");
     });
   });
 
@@ -2035,7 +2042,7 @@ describe("`CM-G31` / `V10-M24-T05`: 名札の一意性(同じ画面の中で、�
         type: "detail_view",
         table: "orders",
         related: [relatedItem({ id: "same" })],
-        field_groups: { 基本: { id: "same", fields: ["code"] } },
+        field_sections: { 基本: { id: "same", fields: ["code"] } },
       },
     ]);
     expect(validateReferentialIntegrity(manifest)).toEqual({ valid: true });

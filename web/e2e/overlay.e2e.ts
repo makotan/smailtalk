@@ -25,6 +25,12 @@
  *   画面から1件も呼ばれていない。** **したがって本ファイルはその2つを chromium で1度も
  *   描いていない。** **器としては実在し `web/test` が属性を測っているが、画面上の当たり先は
  *   0件である**(`ADR-0094` §6 の 8「器が3つ増えても、AI が触れる口は0本のままである」)。
+ * - **【`V22-M2-T05` の追記。上の3行を1バイトも消していない】「`OverlayMenu` は今日この製品の画面から1件も
+ *   呼ばれていない」は今日から偽である。** メニューの位置を上に置いたアプリ(`app.workspace.navigation`。
+ *   `ADR-0486`)の「≡ メニュー」(`web/src/ViewNavigation.tsx`)が呼ぶ。 **その呼び手は出し先をテーマの器
+ *   (`.app-theme`)の内側にするので、「テーマの外」でもない**(`web/src/ui/overlay.tsx` の同じ追記)。
+ *   **本ファイルは今日もその呼び手を chromium で描いていない** —— 描くのは `V22-M2-T08` の
+ *   `web/e2e/workspace-navigation.e2e.ts` である。 `OverlayNotice` は今日も呼ばれていない。
  */
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import type { Diff, FormView, Manifest } from "../../src/kernel/types.ts";
@@ -224,5 +230,80 @@ test.describe("V4-M18 重ねて出す器と宣言", () => {
     expect(measured.color).toBe(await toRgb(measured.page));
     // **地色と文字色が同じ値でない**(= 塗りつぶしとして読める)。
     expect(measured.background).not.toBe(measured.color);
+  });
+  /**
+   * **【V20-M9 点検の中1 の処置】小窓の地色・文字色は overlay_background / overlay_text から来る
+   * (ADR-0474 §Decision 1-2)。** 点検で、導出の2行を入れ替えても(既定のテーマで小窓が黒地に白文字)
+   * 元に戻しても(page-background / text)E2E は1本も赤くならなかった。
+   * 前半: 既定のテーマで今日と同じ白地・黒文字。 後半: overlay_* だけを変えたテーマ
+   * (page_background / body_text は既定のまま)で、小窓の地色・文字色がその値になる。
+   */
+  test("(vi) 小窓の地色・文字色は既定で白地・黒文字、overlay_* を変えたテーマではその値になる(ADR-0474 §1-2)", async ({
+    page,
+    request,
+  }) => {
+    const app = await provisionApp(request);
+    await app.authenticate(page.context());
+    const view = formViewOf(app.manifest);
+    await applyDiff(request, app, modalDiff(view.id, "overlay-colors"));
+    const popup = page.locator('[data-slot="overlay-dialog"]');
+    const look = () =>
+      popup.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { background: style.backgroundColor, color: style.color };
+      });
+
+    await page.goto(`/apps/${app.appId}/views/${view.id}`);
+    await expect(popup).toBeVisible();
+    const before = await look();
+    console.log(`overlay colors default ${JSON.stringify(before)}`);
+    expect(before).toEqual({ background: "rgb(255, 255, 255)", color: "rgb(0, 0, 0)" });
+
+    await applyDiff(request, app, {
+      diff_id: "overlay-colors-theme",
+      intent: "小窓だけを淡い黄色の地に濃い灰の文字にしたい",
+      operations: [
+        {
+          op: "set_theme",
+          theme: {
+            slots: {
+              danger: "#a00000",
+              body_text: "#000000",
+              label_text: "#595959",
+              placeholder_text: "#595959",
+              secondary_text: "#595959",
+              border_color: "#767676",
+              page_background: "#ffffff",
+              highlight_surface: "#f2f2f2",
+              primary_fill: "#ffffff",
+              on_primary: "#000000",
+              overlay_background: "#fffbe6",
+              overlay_text: "#1a1a1a",
+              body_font: "system-ui, sans-serif",
+              note_font_size: "0.875rem",
+              secondary_font_size: "0.85em",
+              body_line_height: "1.6",
+              space_1: "0.25rem",
+              space_2: "0.5rem",
+              space_3: "0.75rem",
+              space_4: "1rem",
+              space_5: "1.25rem",
+              space_6: "2rem",
+              border_width: "1px",
+              control_radius: "4px",
+              surface_shadow: "none",
+              focus_ring: "#005fcc",
+              focus_ring_width: "2px",
+            },
+          },
+        },
+      ],
+    } as Diff);
+    await page.goto(`/apps/${app.appId}/views/${view.id}`);
+    await expect(popup).toBeVisible();
+    await expect.poll(async () => (await look()).background).toBe("rgb(255, 251, 230)");
+    const after = await look();
+    console.log(`overlay colors themed ${JSON.stringify(after)}`);
+    expect(after).toEqual({ background: "rgb(255, 251, 230)", color: "rgb(26, 26, 26)" });
   });
 });

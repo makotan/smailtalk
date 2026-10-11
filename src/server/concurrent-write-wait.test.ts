@@ -314,12 +314,22 @@ test("ADR-0069 限定3 / 限定4: IMMEDIATE 化したのは入口層の2本だ�
   expect(count(appTs, ".immediate()")).toBe(1);
   expect(count(inbound, ".immediate()")).toBe(1);
   expect(count(batch, "tx.immediate()")).toBe(1);
-  expect(count(mcpWrite, ".immediate()")).toBe(0);
+  // 【2026-09-29。`V23-M2-T11` / 授権 `ADR-0520` 行76 / 決定 `D-V23-75`】`write.ts` の `.immediate()` の数を
+  // 0 から 1 に打ち直した(旧の期待は `expect(count(mcpWrite, ".immediate()")).toBe(0);`)。 増えたのは
+  // `insert_sample_data` の行ごとの器1つで、deferred では書込中の別の接続を待てなかったため IMMEDIATE にした
+  // (`ADR-0498` 限定10 をこの1本に限って引き直した)。 上の「入口層2本 + 既存のバッチ1本だけ」は今日は
+  // 偽である。 `db.transaction(` の数は下のとおり 1 のまま。 値は Python の `str.count` で数え直した。
+  expect(count(mcpWrite, ".immediate()")).toBe(1);
 
   // ADR-0066 限定1: `db.transaction(` の件数を1つも増やしていない。
   expect(count(appTs, "db.transaction(")).toBe(1);
   expect(count(inbound, "db.transaction(")).toBe(1);
-  expect(count(mcpWrite, "db.transaction(")).toBe(0);
+  // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行40 / 決定 `D-V23-58`】`write.ts` の数を 0 から 1 に
+  // 打ち直した(旧の期待は `toBe(0)`)。 増えたのは `insert_sample_data` の行ごとの deferred の器1つで、
+  // 行と作成者への付与を包む(`ADR-0066` 限定1 と `ADR-0069` 限定3 の `write.ts` の数は、この1つの分だけ
+  // 破れる。`ADR-0517` §Decision 1)。 値は Python の `str.count` で数え直した。 上の「件数を1つも
+  // 増やしていない」は `write.ts` については今日は偽である。 `.immediate()` は 0 のまま(deferred)。
+  expect(count(mcpWrite, "db.transaction(")).toBe(1);
   expect(count(scheduler, "db.transaction(")).toBe(0);
 
   // ADR-0069 限定5: schedule には順番待ちを1バイトも入れない。

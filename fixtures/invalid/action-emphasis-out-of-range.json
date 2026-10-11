@@ -1,0 +1,30 @@
+{
+  "app": {
+    "id": "goods-shop",
+    "name": "商品管理",
+    "tables": [
+      {
+        "id": "goods",
+        "name": "商品",
+        "fields": [
+          { "id": "name", "name": "名前", "type": "text", "required": true },
+          { "id": "sellable", "name": "販売中", "type": "boolean" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "goods-detail",
+        "type": "detail_view",
+        "table": "goods",
+        "actions": [
+          {
+            "set": { "field": "sellable", "value": false },
+            "name": "販売を止める",
+            "action_emphasis": "loud"
+          }
+        ]
+      }
+    ]
+  }
+}

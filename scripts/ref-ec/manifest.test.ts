@@ -2256,15 +2256,26 @@ describe("(i) まだ払える注文が打ち切られる件の緩和(V3-M12-T08)
     expect(String(runs[0]?.error ?? "")).not.toContain("I-unstamped");
   });
 
-  test("(i-4) 宣言では「今」を書けない: $now も予約列も action_value に書けず apply が拒否する", () => {
-    // (a) 「今」を表す記法は1つも無い。`$` で始まる文字列は `$record.<フィールドID>` だけである。
+  /*
+   * **【`V23-M4-T02` / 裁定 `D-V23-106` の (1) / 授権 `ADR-0525` 行27】(a) の題材を `$today` に替えた。**
+   * `$now`(今の時刻)は `V23-M4` で `values` に書けるようになった(`ADR-0500` / `ADR-0524`)ので、
+   * 「`$now` を書くと拒否される」はもう真ではない。 **拒否の期待 `toBe(false)` は動かさず**、M4 の後も
+   * 書けない形 `$today` で「宣言に書けない形は apply が拒否する」を固定し続ける。 `$now` が受理される
+   * ことは `src/kernel/actor-previous-now.test.ts` が固定する。
+   * - **旧の題(逐語)**: 「(i-4) 宣言では「今」を書けない: $now も予約列も action_value に書けず apply が拒否する」
+   * - **旧の注釈(逐語)**: 「(a) 「今」を表す記法は1つも無い。`$` で始まる文字列は `$record.<フィールドID>` だけである。」
+   * - **旧の題材(逐語)**: `actionNow.values = { status: "cancelled", [STAMP]: "$now" };`
+   */
+  test("(i-4) 宣言に書けない形: $today も予約列も action_value に書けず apply が拒否する", () => {
+    // (a) `$today` は書ける参照の形のどれでもない(`values` で書ける参照は `$record` の2形と、
+    //     操作した人・更新前の値・今の時刻 `$now` の5形だけ)。
     const withNow = mitigatedEcManifest("reject-now");
     const sweepNow = (withNow.app.workflows ?? []).find((w) => w.id === SWEEP_ID);
     const actionNow = sweepNow?.actions[0];
     if (actionNow?.action !== "update_record") {
       throw new Error("unreachable");
     }
-    actionNow.values = { status: "cancelled", [STAMP]: "$now" };
+    actionNow.values = { status: "cancelled", [STAMP]: "$today" };
     createApp(store, "拒否 $now", { app_id: "reject-now" });
     expect(applyManifest(dataRoot, "reject-now", withNow).valid).toBe(false);
 

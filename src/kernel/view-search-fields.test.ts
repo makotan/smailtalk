@@ -156,7 +156,13 @@ describe("(T01-1) 語彙の総量(ADR-0112 限定1 / 限定11)", () => {
     // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
     // 書け、集計表(`report_view`)には書けない**)。
     // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-    expect(keys).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(31);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(32);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行60】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(keys).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+    expect(keys).toHaveLength(35);
     expect(keys).toContain(KEY);
     // **23キー目までの並びを1バイトも動かしていない**(末尾に足した)。
     // **【`V8-M20-T01` / 台帳 `J-G27` / `ADR-0301` で見る位置を1つ手前へ直した】** **19キー目だった
@@ -180,8 +186,12 @@ describe("(T01-1) 語彙の総量(ADR-0112 限定1 / 限定11)", () => {
   // この test に残るのは `$defs/theme` と `$defs/field`(どちらも8主題の外)だけである。**
   // **旧名の `$defs/field 11` は、消す前から本体が 12 を測っており食い違っていた。**
   test("$defs/theme 25・25 / $defs/field 12 が1つも動かない", () => {
-    expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(25);
-    expect(defs().theme?.required ?? []).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(23);
+    expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(27);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(defs().theme?.required ?? []).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(defs().theme?.required ?? []).toHaveLength(23);
+    expect(defs().theme?.required ?? []).toHaveLength(27);
     // **【V4-M19-T07 / ADR-0119 限定1 で 11 → 12 に更新した】** 12キー目 `hide_when_empty`
     // (値が無いとき行ごと出さない)が門A を通って増えた(V4-M19 単位E-a。2回目の審査。
     // 判定 = 限定採用)。**8型すべてに書けるキーである。****本 ADR の増分ではない。**
@@ -196,7 +206,9 @@ describe("(T01-1) 語彙の総量(ADR-0112 限定1 / 限定11)", () => {
     // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
     // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
     // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-    expect(Object.keys(defs().field?.properties ?? {})).toHaveLength(12);
+    // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行18 で 12 → 13 に更新した】** `unique` の直後に
+    // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+    expect(Object.keys(defs().field?.properties ?? {})).toHaveLength(13);
     // 【`V5-M29-T04` / `ADR-0250` 限定11】ここにあった「$defs/theme 25・25 / $defs/field 11 / RESOURCE_KINDS 7 / FIELD_TYPES 8 / DIFF_OPS 16 が1つも動かない」の検査は
     //   `scripts/vocabulary-drift.test.ts` へ移した(名前の一覧は `scripts/vocabulary-snapshot.txt` の
     //   `RESOURCE_KINDS:` で始まる行)。**総量ではなく名前と順序で見張る。**
@@ -458,7 +470,13 @@ describe("(T01-2) update_view で後から書けて、値が実際に運ばれ�
     // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
     // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
     // **検査は消していない。**
-    expect(keys).toHaveLength(27);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(27);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(28);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行61】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(keys).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+    expect(keys).toHaveLength(31);
     expect(keys[17]).toBe(KEY);
     expect(keys[18]).toBe("page_size");
   });

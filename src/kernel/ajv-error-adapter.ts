@@ -191,6 +191,18 @@ function forbiddenPropertiesIn(branchBody: unknown): string[] | undefined {
     .map(([name]) => name);
 }
 
+/** そのオブジェクトスキーマの `patternProperties` のパターン(宣言順)。無ければ空。 */
+function patternPropertyNames(baseSchema: unknown): string[] {
+  if (typeof baseSchema !== "object" || baseSchema === null) {
+    return [];
+  }
+  const patterns = (baseSchema as Record<string, unknown>).patternProperties;
+  if (typeof patterns !== "object" || patterns === null) {
+    return [];
+  }
+  return Object.keys(patterns as Record<string, unknown>);
+}
+
 /** オブジェクトスキーマと実インスタンスから、その文脈で受理される属性名を宣言順で返す。 */
 function resolveAllowedProperties(baseSchema: unknown, instance: unknown): string[] | undefined {
   if (typeof baseSchema !== "object" || baseSchema === null) {
@@ -210,7 +222,9 @@ function resolveAllowedProperties(baseSchema: unknown, instance: unknown): strin
     "else",
     "dependentSchemas",
     "dependentRequired",
-    "patternProperties",
+    // 【V20-M9 / ADR-0474】`patternProperties` をここから外した(旧(逐語): `"patternProperties",`)。
+    // `$defs/theme` が生の色の置き場として1本持つ。列挙は properties の名前だけを返し、
+    // 名前の形で受けるものは呼び出し側(`additionalProperties` の文面)がパターンとして添える。
     "$ref",
     "unevaluatedProperties",
   ];
@@ -410,12 +424,28 @@ const DIFF_OP_ENUM_HINT =
   // ので、種類数と6群目を取り除いた。** **上の注記が言う「追随が要る3箇所」のうち
   // (1) と (2) に当たる。(3)(語彙にありませんの名指し)には `set_user_kinds` が1度も
   // 出ていないので触っていない。**
-  "差分の op は17種です。追加(add_table / add_field / add_view / update_view)に加えて、" +
+  // **【`V20-M15-T01A` / `ADR-0479`。18種目 `remember_design` を足した】** **旧文の逐語は
+  // 「差分の op は17種です。」および「役割の宣言(set_roles。このアプリが宣言する役割の一覧を
+  // 丸ごと差し替える)が使えます。」であり、種類数と7群目の末尾だけを追随させた(8群目として
+  // `remember_design` を足した)。** **上の注記が言う「追随が要る3箇所」のうち (1) と (2) に当たる。
+  // (3)(語彙にありませんの名指し)には `remember_design` が1度も出ていないので触っていない。**
+  // **【`V22-M2-T02` / `ADR-0486`。19種目 `set_workspace` を足した】** **旧文の逐語は
+  // 「差分の op は18種です。」および「選んだ形の記録と型(remember_design。選んだ案の記録を1件足す / アプリの型を
+  // 丸ごと差し替える)が使えます。」であり、種類数と8群目の末尾だけを追随させた(9群目として `set_workspace` を足した)。**
+  // **上の注記が言う「追随が要る3箇所」のうち (1) と (2) に当たる。(3)(語彙にありませんの名指し)には
+  // `set_workspace` が1度も出ていないので触っていない。**
+  "差分の op は19種です。追加(add_table / add_field / add_view / update_view)に加えて、" +
   "削除(remove_field / remove_table / remove_view)と変更(change_table / change_field)、" +
   "自動化(add_workflow / update_workflow / remove_workflow)、" +
   "関数(add_function / update_function / remove_function)、" +
   "見た目(set_theme。アプリのテーマを丸ごと差し替える)、" +
-  "役割の宣言(set_roles。このアプリが宣言する役割の一覧を丸ごと差し替える)が使えます。" +
+  "役割の宣言(set_roles。このアプリが宣言する役割の一覧を丸ごと差し替える)、" +
+  "選んだ形の記録と型(remember_design。選んだ案の記録を1件足す / アプリの型を丸ごと差し替える)、" +
+  // **【`V22-M3-T02` / `ADR-0488` §Decision 2。9群目の末尾だけを直した】** **旧文の逐語は
+  // 「メニューの置き方(set_workspace。メニューを左に置くか上に置くかを丸ごと差し替える)が使えます。」であり、
+  // `set_workspace` の意味が直下のキーごとの置き換えに改まり、`my_page` を書けるようになったので末尾だけを追随させた。**
+  // 種類数(19)と他の群は1文字も変えていない。
+  "作業画面の枠(set_workspace。メニューの置き方 navigation とマイページ my_page を、書いたキーだけ置き換える。null でそのキーを消す)が使えます。" +
   "リネーム・型変更・選択肢の変更・必須の変更に専用の op はありません —— " +
   "change_table / change_field の changes に id / name / type / options / required / reference_table を書きます" +
   "(例: フィールドのリネームは change_field の changes.id)。" +
@@ -433,6 +463,156 @@ const DIFF_OP_ENUM_HINT =
   "発火条件(trigger.type)に manual と書いたワークフローを、" +
   "画面の操作起点(view の actions の run)から起こします。" +
   "既に適用した変更を取り消したい場合は undo を使ってください。";
+
+/**
+ * **選んだ形の記録と型(`design_memory`)の下の位置か**(`V20-M15-T01A`。`ADR-0479` §Decision 2 の 10)。
+ *
+ * **マニフェスト側 `/app/design_memory/...` と差分側 `/operations/<n>/design_memory/...` の2つだけ。**
+ * 先頭で位置を固定する —— ワークフローの `values` のように**キーが利用者の識別子**である場所に
+ * `design_memory` という名前の項目が在っても当たらない。
+ */
+const DESIGN_MEMORY_PATH = /^(\/app|\/operations\/\d+)\/design_memory(\/|$)/;
+
+/**
+ * **`design_memory` の下の位置の名前**(メッセージ冒頭用)。 配列の要素(`patterns/0`)は
+ * 「patterns の1番目」と言う(添字の `0` をそのまま出さない)。
+ */
+function describeDesignMemoryLocation(instancePath: string): string {
+  const segments = instancePath.split("/");
+  const last = segments[segments.length - 1] ?? "";
+  const parent = segments[segments.length - 2] ?? "";
+  if (/^\d+$/.test(last)) {
+    return `${parent} の${Number(last) + 1}番目`;
+  }
+  return describeLocation(instancePath);
+}
+
+/**
+ * **`design_memory` の下のときだけ、`pattern` / `maxItems` / `uniqueItems` の文言を差し替える**
+ * (`V20-M15-T01A`。`ADR-0479` §Decision 2 の 10 / 計画 §10-5 の中9)。
+ *
+ * - `pattern` —— この位置の `pattern` は**改行の禁止**だけである(`^[^\r\n\u2028\u2029]+$`)。
+ *   既定の「識別子の規約に合いません」は嘘の理由になる(罠 R5)。 **空文字は `minLength` と
+ *   `pattern` の2件が同時に出るので、空文字のときは `pattern` 側を落として1件にする。**
+ * - `maxItems` / `uniqueItems` —— 既定は英語混じりの `default` に落ちる。 日本語の文言にする。
+ *
+ * **当たらなければ `undefined` を返し、今日どおりの `switch` に落ちる。** **既存の `maxItems`
+ * (設計図に14か所)と `uniqueItems`(12か所)の出力は1バイトも変えない**(`design_memory` の外の
+ * 位置では呼ばれても `undefined` を返す)。 陰性対照は `src/kernel/design-memory.test.ts` に在る。
+ */
+function designMemoryError(error: ErrorObject, data: unknown): ValidationError | null | undefined {
+  const path = error.instancePath;
+  if (!DESIGN_MEMORY_PATH.test(path)) {
+    return undefined;
+  }
+  const params = (error.params ?? {}) as Record<string, unknown>;
+  const where = describeDesignMemoryLocation(path);
+  switch (error.keyword) {
+    case "pattern":
+      if (data === "") {
+        return null;
+      }
+      // 要素の位置(「patterns の1番目」)は日本語で終わるので、助詞の前に空白を置かない。
+      return {
+        path,
+        message: `${where}${/番目$/.test(where) ? "" : " "}に改行は書けません。1行で書いてください。`,
+      };
+    case "maxItems":
+      return { path, message: `${where} は${String(params.limit)}件までです。` };
+    case "uniqueItems": {
+      const first = Math.min(Number(params.i), Number(params.j)) + 1;
+      const second = Math.max(Number(params.i), Number(params.j)) + 1;
+      return { path, message: `${where} に同じ型が2つあります(${first}番目と${second}番目)。` };
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * **行の招待の宣言の名前の配列(`by` / `grantable` / `target_roles`)の要素の位置**(`V23-M5-T02`)。
+ * マニフェスト側(`/app/tables/N/access_control/…`)と差分の側(`add_table` の `table`・`change_table` の
+ * `changes`)のどちらでも当たるよう、`access_control/invitations/` から後ろだけを見る。
+ */
+const INVITATIONS_NAME_PATH = /\/access_control\/invitations\/(by|grantable|target_roles)(\/\d+)?$/;
+
+/**
+ * **行を相手にした付与の権限名の配列(`grant.principal_row.via`)の位置**(`V23-M6-T02`)。
+ * 招待の名前の配列と同じ罠(識別子の汎用 hint・英語の既定文)を同じ文言で手当てする。
+ */
+const PRINCIPAL_ROW_VIA_PATH = /\/access_control\/grant\/principal_row\/(via)(\/\d+)?$/;
+
+/**
+ * **子の表に行を作れる権限の子の表 ID の配列(`permissions[].create_child`)の位置**(`V23-M7-T02`)。
+ * 要素は表 ID なので `pattern` は今日の汎用の文言のまま(表 ID の規約そのもの)。 `uniqueItems` だけ、
+ * 英語の既定文に落ちないよう日本語にする。
+ */
+const CREATE_CHILD_PATH = /\/access_control\/permissions\/\d+\/create_child$/;
+
+/** **行の招待の期限の日数(`expires_days`)の位置**(`V23-M5-T02`)。 */
+const INVITATIONS_EXPIRES_PATH = /\/access_control\/invitations\/expires_days$/;
+
+/**
+ * **行の招待の宣言の下のときだけ、`pattern` / `uniqueItems` / `minimum` / `maximum` / `type` の文言を差し替える**
+ * (`V23-M5-T02`。`ADR-0532` §Decision 1-1)。
+ *
+ * - 名前の配列(`by` / `grantable` / `target_roles`)の要素の `pattern` —— 既定の「識別子の規約に合いません」と
+ *   その hint(ハイフンを使える・64文字)は、この位置では**罠**である(権限名・役割名はハイフンを使えず32文字まで。
+ *   hint に従って直すと、もう一度断られる)。 権限名・役割名の書き方を言う。
+ * - 名前の配列の `uniqueItems` —— 既定は英語混じりの `default` に落ちる。 日本語にする。
+ * - `expires_days` の `minimum` / `maximum` / `type` —— 「1〜30の整数」と日本語で言う(既定の `default` は英語、
+ *   `type` の既定は「integer を指定してください」で範囲を言わない)。
+ *
+ * **当たらなければ `undefined` を返し、今日どおりの `switch` に落ちる。** **この位置の外の出力は1バイトも変えない。**
+ */
+function invitationsError(error: ErrorObject, data: unknown): ValidationError | undefined {
+  const path = error.instancePath;
+  const params = (error.params ?? {}) as Record<string, unknown>;
+  const name = INVITATIONS_NAME_PATH.exec(path) ?? PRINCIPAL_ROW_VIA_PATH.exec(path);
+  if (name !== null) {
+    const isRole = name[1] === "target_roles";
+    const kind = isRole ? "役割名(roles の id)" : "権限名(permissions の id)";
+    if (error.keyword === "pattern" && name[2] !== undefined) {
+      return {
+        path,
+        message: `${name[1]} の値 ${describeValue(data)} は${kind}の形に合いません。`,
+        hint: `${kind}は、英小文字・数字・アンダースコアだけの1〜32文字です(ハイフン・大文字・空白は使えません)。宣言した${
+          isRole ? "役割" : "権限"
+        }の id をそのまま書いてください。`,
+      };
+    }
+    if (error.keyword === "uniqueItems" && name[2] === undefined) {
+      const first = Math.min(Number(params.i), Number(params.j)) + 1;
+      const second = Math.max(Number(params.i), Number(params.j)) + 1;
+      return {
+        path,
+        message: `${name[1]} に同じ名前が2回あります(${first}番目と${second}番目)。`,
+        hint: "同じ名前は1回だけ書いてください。",
+      };
+    }
+    return undefined;
+  }
+  if (CREATE_CHILD_PATH.test(path) && error.keyword === "uniqueItems") {
+    const first = Math.min(Number(params.i), Number(params.j)) + 1;
+    const second = Math.max(Number(params.i), Number(params.j)) + 1;
+    return {
+      path,
+      message: `create_child に同じ表が2回あります(${first}番目と${second}番目)。`,
+      hint: "同じ子の表は1回だけ書いてください。",
+    };
+  }
+  if (
+    INVITATIONS_EXPIRES_PATH.test(path) &&
+    (error.keyword === "minimum" || error.keyword === "maximum" || error.keyword === "type")
+  ) {
+    return {
+      path,
+      message: `expires_days の値 ${describeValue(data)} は書けません。招待の期限の日数は1〜30の整数で書いてください。`,
+      hint: "省略すると7日になります。引用符で囲んだ文字列や小数は書けません。",
+    };
+  }
+  return undefined;
+}
 
 /**
  * `view.table` を指す JSON Pointer か(マニフェスト側と差分の `add_view` 側)。
@@ -478,6 +658,42 @@ const VIEW_TABLE_PATH = /^(\/app\/views\/\d+|\/operations\/\d+\/view)\/table$/;
 const ACTION_VALUE_SCHEMA_PATH = /(^|\/)\$defs\/action_value\//;
 
 /**
+ * **`values` の器(`$defs/workflow_action.properties.values.additionalProperties`)に由来するエラーか**
+ * (`V23-M4-T02` / `SC-G13` / `ADR-0524` §Decision 1-7)。
+ *
+ * `values` の器は `type: string` と、`$actor` / `$previous` / `$now` で始まる値の `if/then` を持ち、
+ * `else` で今日の `$defs/action_value` を指す。 器の `type` と `then` の `pattern` で落ちたエラーは
+ * `schemaPath` が `$defs/action_value` を含まないので、{@link ACTION_VALUE_SCHEMA_PATH} だけを見ると
+ * **罠の汎用文**(「string を指定してください」「英小文字で始まり…」)に落ちる。 判定は
+ * {@link ACTION_VALUE_SCHEMA_PATH} と同じく `schemaPath` で行う(位置を数え上げない)。
+ */
+const VALUES_CONTAINER_SCHEMA_PATH = /\/values\/additionalProperties\//;
+
+/**
+ * **`values` の値の位置か**(`V23-M4-T02`)。 `values` の値だけが、`$record` の2形に加えて
+ * 操作した人・更新前の値・今の時刻の5形を書ける(`ADR-0500` 限定3・4)。 **その位置で
+ * 「`$record.<フィールドID>` だけ」と言うと嘘になる**ので、文面をここで書き分ける。
+ *
+ * - 器に由来するエラー({@link VALUES_CONTAINER_SCHEMA_PATH})は、必ず `values` の位置である。
+ * - `$defs/action_value` に由来するエラーは `values` と `target` / `payload` / `input` / `fallback` で
+ *   共有されるので、`instancePath` の末尾が `values/<キー>` のときだけ `values` の位置とみなす
+ *   (`$defs/action_value` を `values` のキーで指す定義は `workflow_action` の1つだけである)。
+ */
+function isWorkflowValuesPosition(error: ErrorObject): boolean {
+  const schemaPath = error.schemaPath ?? "";
+  if (VALUES_CONTAINER_SCHEMA_PATH.test(schemaPath)) {
+    return true;
+  }
+  return ACTION_VALUE_SCHEMA_PATH.test(schemaPath) && /\/values\/[^/]+$/.test(error.instancePath);
+}
+
+/** `values` の位置で書ける参照の全量(`V23-M4-T02`。文面に字面で並べる)。 */
+const WORKFLOW_VALUES_REFERENCE_FORMS =
+  '"$record.<フィールドID>"(発火したレコードの値)・"$record._id"(レコード自身のID)・' +
+  '"$previous.<フィールドID>"(更新前の値。trigger が on_update のときだけ)・' +
+  '"$actor.id" / "$actor.login" / "$actor.role"(操作した人)・"$now"(今の時刻)';
+
+/**
  * `$defs/action_value` の **pattern 違反**に付ける hint(V1-M2-T05e / T05d §5-3)。
  *
  * ## なぜ専用の hint が要るのか(**無ければ制約が有害になる**)
@@ -515,9 +731,35 @@ const ACTION_VALUE_PATTERN_HINT =
   "なお、固定の文字列とレコードの値をつなげて1つの値にすることはできません。" +
   '値の全体が "$record.<フィールドID>" であるか、全体が固定の文字列であるかの、どちらかです。';
 
+/**
+ * **`values` の位置の pattern 違反**に付ける hint(`V23-M4-T02`)。 {@link ACTION_VALUE_PATTERN_HINT} の
+ * 4点(置換されない結果・字面・`_id`・連結できないこと)をそのまま満たし、書ける参照を5形まで並べる。
+ */
+const WORKFLOW_VALUES_PATTERN_HINT =
+  `値の全体を参照1つにしてください。書ける参照は ${WORKFLOW_VALUES_REFERENCE_FORMS} だけです。` +
+  'これ以外の "$" で始まる形(例: "$actor.email"・"$previous._id"・"$today")は書けません。' +
+  '波括弧を外して "record.name" と書いても直りません —— ' +
+  "それは固定の文字列として、そのまま書き込まれます。" +
+  "なお、固定の文字列と参照をつなげて1つの値にすることはできません。" +
+  "値の全体が参照1つであるか、全体が固定の文字列であるかの、どちらかです。";
+
 /** 通常のリソースID(`$defs/resource_id`)の pattern 違反に付ける hint。 */
 const RESOURCE_ID_PATTERN_HINT =
   "英小文字で始まり、英小文字・数字・ハイフン・アンダースコアのみを使う1〜64文字にしてください(例: book-tracker, finished_at)。";
+
+/**
+ * **並べ方の木の節(`$defs/layout_node`)のスキーマか**(`V20-M5-T07` 軽5)。
+ * `discriminator`(`propertyName: "type"`)を持つ定義は `layout_node` の1本だけである
+ * (`validate.ts` の ajv の設定の注釈)。`verbose: true` なので `parentSchema` が来る。
+ */
+function isLayoutNodeSchema(parentSchema: unknown): boolean {
+  if (typeof parentSchema !== "object" || parentSchema === null) {
+    return false;
+  }
+  const discriminator = (parentSchema as { discriminator?: { propertyName?: unknown } })
+    .discriminator;
+  return discriminator?.propertyName === "type";
+}
 
 /**
  * `view.table`(`$defs/view_table_id`)の pattern 違反に付ける hint(ADR-0006 §11)。
@@ -562,8 +804,30 @@ const VIEW_TABLE_PATTERN_HINT =
  * スロット由来のエラーだけ**が過不足なく引っかかる(差分側は
  * `$defs/app/properties/theme` 経由で `$ref` されるが、解決後はどちらも
  * `#/$defs/theme/properties/<スロット名>/pattern` になることを実測で確認した)。
+ *
+ * **【V20-M9 / ADR-0474 §Decision 1-1】色の値域は入れ子の `anyOf`(外側2枝 = [実値(内側に16進 / oklch), 参照])になり、
+ * 生の色の値は `patternProperties` の下に在る。** 旧(逐語):
+ * `/(^|\/)\$defs\/theme\/properties\/[^/]+(\/anyOf\/[0-9]+)?\/pattern$/`。 `anyOf` の段を何段でも、
+ * `properties` と `patternProperties` の両方を受ける形にした(スロット名も生の色の名前も列挙しない)。
  */
-const THEME_SLOT_SCHEMA_PATH = /(^|\/)\$defs\/theme\/properties\/[^/]+\/pattern$/;
+const THEME_SLOT_SCHEMA_PATH =
+  /(^|\/)\$defs\/theme\/(properties|patternProperties)\/[^/]+(\/anyOf\/[0-9]+)*\/pattern$/;
+
+/**
+ * **テーマのスロットの位置の `anyOf` そのもの**(`V20-M7`。色スロット9件の値域は `anyOf` の2枝 =
+ * 16進 / oklch)。
+ *
+ * 値がどちらの枝にも当たらないと、Ajv は枝ごとの `pattern` エラー2件と、`anyOf` のエラー1件を返す。
+ * **枝の2件は同じ族(色)に当たって同じ path・同じ message になるので、{@link dedupeKey} で1件に
+ * まとまる。** `anyOf` の1件は汎用文面(「不正です(anyOf: …)」)で、書式を1文字も教えないので、
+ * **この位置でだけ落とす**(M5 の先例「素の oneOf だと拒否文面が混ざる」を踏まない)。
+ * **テーマのスロット以外の位置の `anyOf` は1バイトも変えない**(今日どおり汎用文面で返す)。
+ *
+ * **【V20-M9 / ADR-0474】入れ子の `anyOf`(外側と内側)と `patternProperties`(生の色の値)の位置も落とす。**
+ * 旧(逐語): `/(^|\/)\$defs\/theme\/properties\/[^/]+\/anyOf$/`。
+ */
+const THEME_SLOT_ANYOF_SCHEMA_PATH =
+  /(^|\/)\$defs\/theme\/(properties|patternProperties)\/[^/]+(\/anyOf\/[0-9]+)*\/anyOf$/;
 
 /**
  * テーマのスロット値の**族**(値域の正は `schemas/manifest.schema.json` の
@@ -571,7 +835,7 @@ const THEME_SLOT_SCHEMA_PATH = /(^|\/)\$defs\/theme\/properties\/[^/]+\/pattern$
  *
  * ## 族は `pattern` の文字列から引く(**スロット名を列挙しない**)
  *
- * スロット名で族を決めると、**25個のスロット名の4番めの写しがここに生まれる。**
+ * スロット名で族を決めると、**25個のスロット名の4番めの写しがここに生まれる。** 【V20-M9 で偽になった】今日の役割の枠は27個(ADR-0474)。「写しを作らない」という趣旨は変わらない。
  * 正は3箇所(`web/test/__fixtures__/styles-token-slots.txt` / `$defs/theme` /
  * `src/kernel/theme-contrast.ts` の役割表)で一致を機械的に固定してある
  * (ADR-0046 限定1)。**4つめを増やすと、その照合の外側に写しが1つできる。**
@@ -582,9 +846,12 @@ const THEME_SLOT_SCHEMA_PATH = /(^|\/)\$defs\/theme\/properties\/[^/]+\/pattern$
  *
  * 5つの `pattern` は先頭2〜7文字で区別できる(`^#(` / `^(0|` / `^(none|` /
  * `^[0-9]{1,2}` / `^[^(`)。**順序に依存させない**ため、どれも先頭に錨を打っている。
+ * **【V20-M7 追記】色の値域は `anyOf` の2枝になり、色の族の `match` は `^#(` と `^oklch\(` の
+ * 2つの pattern に当たる選言である**(pattern は6つ、族は5つのまま)。`^oklch\(` は他の4族の
+ * 先頭と重ならない。
  * **どの族にも当たらなければ hint を差し替えず、汎用文面のまま返す**(憲法6 ——
  * 族が分からないのに族名を騙るほうが有害である)。
- * `$defs/theme` の25スロットが全部どれかの族に当たることは
+ * `$defs/theme` の25スロットが全部どれかの族に当たることは 【V20-M9 で偽になった】今日は役割の枠27個と、生の色(patternProperties)の値が族に当たる(ADR-0474)。
  * `src/kernel/ajv-error-adapter.test.ts` が**スキーマを読んで**機械的に固定している。
  *
  * ## 文面の要件(**3点すべてを含むこと**)
@@ -609,12 +876,25 @@ const THEME_VALUE_FAMILIES: readonly {
   readonly hint: string;
 }[] = [
   {
-    match: /^\^#\(\[0-9a-fA-F\]/,
+    // 【V20-M7】色の値域は anyOf の2枝(16進 / oklch)なので、どちらの pattern にも当たる選言にした。
+    // 【V20-M9 / ADR-0474】参照の枝(`^\$palette_…`)も色の族に入れる(3つの枝の誤りが同じ文面に揃い、1件にまとまる)。
+    // 旧(逐語): `match: /^\^#\(\[0-9a-fA-F\]|^\^oklch\\\(/,`
+    match: /^\^#\(\[0-9a-fA-F\]|^\^oklch\\\(|^\^\\\$palette_/,
     label: "色",
     hint:
-      "色は16進表記だけです —— # に続けて3桁または6桁の16進数を書いてください(例: #333 / #1a4f9c)。" +
-      "色名(blue / red)・rgb() / rgba() / hsl()・var() は書けません。" +
-      "透明度付きの8桁(#rrggbbaa)もこのスロットでは書けません。",
+      "色は16進表記か、明るさ基準の oklch 表記です —— # に続けて3桁または6桁の16進数を書くか、" +
+      "oklch(L C H) の形で L(0〜1 の小数か 0%〜100%)・C(0 以上の小数)・H(0〜360 の度。単位は書かない)を" +
+      "半角空白1つで区切って書いてください(例: #333 / #1a4f9c / oklch(0.55 0.15 250))。" +
+      "小数は6桁まで、oklch は小文字だけです。" +
+      // 【V20-M7B / ADR-0472 §Decision 2-4】旧(逐語): "sRGB で表せない色(彩度の高い色の一部)は書けません —— 断られたら C を小さくしてください。"
+      // 色域の外の色も受けるようになったので外した。代わりに none を書ける位置と書けない位置を書き分ける。
+      "H の位置にだけ none を書けます(0 と書いたのと同じ色になります)。L と C の位置には none を書けません。" +
+      "色名(blue / red)・rgb() / rgba() / hsl() / lch() / oklab()・var() は書けません。" +
+      // 【V20-M7B】旧(逐語)は「…oklch の / で区切る透明度・none・カンマ区切り…」。none を「L と C の位置の none」に直した(上の文と矛盾させない)。
+      "透明度付きの8桁(#rrggbbaa)も、oklch の / で区切る透明度・L と C の位置の none・カンマ区切り・単位(deg)も、このスロットでは書けません。" +
+      // 【V20-M9 / ADR-0474 §Decision 1-1】参照の綴りを1文足した(例の丸括弧の外に置く —— 例は単独で通る値だけ)。
+      "生の色(palette_ で始まる名前。英小文字・数字・_ で1〜40字)を同じテーマに定義していれば、" +
+      "$palette_<名前> の形でその色を指すこともできます。",
   },
   {
     match: /^\^\(0\|\[0-9\]\{1,4\}/,
@@ -782,6 +1062,43 @@ function convert(
     return reservedPermissionId;
   }
 
+  /*
+   * **テーマのスロットの位置の `anyOf` だけ落とす**(`V20-M7`)。理由は
+   * {@link THEME_SLOT_ANYOF_SCHEMA_PATH} の doc に書いた。**当たらなければ今日どおりの `switch` に落ちる。**
+   */
+  if (error.keyword === "anyOf" && THEME_SLOT_ANYOF_SCHEMA_PATH.test(error.schemaPath ?? "")) {
+    return null;
+  }
+
+  /*
+   * **`set_workspace` の器の位置だけ**(`V22-M3-T02`。`ADR-0488` §Decision 2 の 3)。 理由は
+   * {@link SET_WORKSPACE_VALUE_ANYOF_SCHEMA_PATH} と {@link SET_WORKSPACE_EMPTY_SCHEMA_PATH} の doc に書いた。
+   * **当たらなければ今日どおりの `switch` に落ちる。**
+   */
+  const setWorkspace = setWorkspaceError(error, path);
+  if (setWorkspace !== undefined) {
+    return setWorkspace;
+  }
+
+  /*
+   * **選んだ形の記録と型の下の位置だけ**、`pattern` / `maxItems` / `uniqueItems` の文言を差し替える
+   * (`V20-M15-T01A`)。理由は {@link designMemoryError} の doc に書いた。**当たらなければ今日どおりの
+   * `switch` に落ちる。**
+   */
+  const designMemory = designMemoryError(error, data);
+  if (designMemory !== undefined) {
+    return designMemory;
+  }
+
+  /*
+   * **行の招待の宣言(`access_control.invitations`)の下の位置だけ**(`V23-M5-T02`)。 理由は
+   * {@link invitationsError} の doc に書いた。 **当たらなければ今日どおりの `switch` に落ちる。**
+   */
+  const invitationsResult = invitationsError(error, data);
+  if (invitationsResult !== undefined) {
+    return invitationsResult;
+  }
+
   switch (error.keyword) {
     // `if` は allOf による分岐制御の副産物で、原因は同時に報告される then/else 側のエラー。
     // そのまま出すとLLMを混乱させるため落とす。
@@ -797,6 +1114,34 @@ function convert(
         hint: DIFF_OP_PATH.test(path)
           ? DIFF_OP_ENUM_HINT
           : "許可される値のいずれかに置き換えてください。v0の語彙は拡張できません。",
+      };
+    }
+
+    /*
+     * **【`V20-M5-T01` / `ADR-0471`】並べ方の木の節の型の判別**(`$defs/layout_node` の `discriminator`)。
+     * - `mapping` … `type` の値がどの枝にも無い。**書ける値の一覧は枝の `const` を宣言順に並べたもの**
+     *   (`enum` の拒否と同じ文面の作法)。
+     * - `tag` … `type` が無い / 文字列でない。**同じ位置の `required` の拒否が同時に出るので、ここでは出さない**
+     *   (文字列でない場合は `type` の値として `mapping` と同じ文面を出す)。
+     */
+    case "discriminator": {
+      const parentSchema = (error as { parentSchema?: unknown }).parentSchema as
+        | { oneOf?: { properties?: { type?: { const?: unknown } } }[] }
+        | undefined;
+      const allowed = toAllowedValues(
+        (parentSchema?.oneOf ?? []).map((branch) => branch.properties?.type?.const),
+      );
+      const tagValue = (params as { tagValue?: unknown }).tagValue;
+      const record = data as Record<string, unknown> | null | undefined;
+      const hasTag = record !== null && typeof record === "object" && Object.hasOwn(record, "type");
+      if (!hasTag) {
+        return null;
+      }
+      return {
+        path: `${path}/type`,
+        message: `type の値 ${describeValue(tagValue ?? record?.type)} は語彙にありません。`,
+        allowed_values: allowed,
+        hint: "許可される値のいずれかに置き換えてください。v0の語彙は拡張できません。",
       };
     }
 
@@ -828,6 +1173,18 @@ function convert(
           path,
           message: `未知のプロパティ "${extra}" は指定できません。`,
           hint: "v0の語彙にないプロパティです。削除するか、語彙内の表現に置き換えてください。",
+        };
+      }
+      // 【V20-M9 / ADR-0474】名前の形で受けるもの(`patternProperties`)が在れば、そのパターンも添える。
+      const patterns = patternPropertyNames(parentSchema);
+      if (patterns.length > 0) {
+        return {
+          path,
+          message: `未知のプロパティ "${extra}" は指定できません。`,
+          allowed_values: allowed,
+          hint:
+            `この位置で指定できるのは allowed_values のプロパティと、名前が ${patterns.join(" / ")} に合うプロパティだけです。` +
+            `"${extra}" を削除するか、そのいずれかに置き換えてください。`,
         };
       }
       return {
@@ -863,13 +1220,21 @@ function convert(
        * **`$defs/action_value` の位置だけ、汎用文面を使わない**(V1-M2-T05a D3)。
        * 経緯と判定方法の根拠は `ACTION_VALUE_SCHEMA_PATH` の doc に書いた。
        */
-      if (ACTION_VALUE_SCHEMA_PATH.test(error.schemaPath ?? "")) {
+      /*
+       * **【`V23-M4-T02`】`values` の器の位置も同じ文面に入れる**(`ADR-0524` §Decision 1-7)。
+       * 器に `type: string` を置いたので、型違反は器の側でも起きる。 `values` の位置では書ける参照が
+       * 5形増えるので、括弧の中だけを書き分ける(hint は同じ)。
+       */
+      const valuesPosition = isWorkflowValuesPosition(error);
+      if (valuesPosition || ACTION_VALUE_SCHEMA_PATH.test(error.schemaPath ?? "")) {
         return {
           path,
           message:
             `${where} に ${describeValue(data)} を指定していますが、` +
             `ワークフローのアクションが書ける値は文字列だけです` +
-            `(固定の文字列か、"$record.<フィールドID>" の形の参照)。`,
+            (valuesPosition
+              ? `(固定の文字列か、${WORKFLOW_VALUES_REFERENCE_FORMS} の形の参照)。`
+              : `(固定の文字列か、"$record.<フィールドID>" の形の参照)。`),
           /*
            * **「文字列にすれば通る」と言ってはならない。それが罠である。**
            * `"true"` にすると差分は通り、実行のたびにレコード書き込みが型違反で
@@ -891,6 +1256,26 @@ function convert(
             `(履歴テーブルの status / trigger_type に select を使ってはいけないのと同じ理由です)。`,
         };
       }
+      /*
+       * **【`V20-M5-T07` 軽5 / `ADR-0471`】並べ方の木の節(`$defs/layout_node`)の位置。**
+       * 子の口は `if`(文字列)/ `then`(葉)/ `else`(節)なので、文字列でない値は `else` の節へ回り、
+       * 汎用文面は「object を指定してください」だけになる —— **文字列の葉も書けることを言わない**(NF4 に届かない)。
+       * 見分けは親スキーマの `discriminator`({@link isLayoutNodeSchema})。
+       * **根(`…/layout`)には葉を置けない**ので、根は節だけを言う。
+       */
+      if (params.type === "object" && isLayoutNodeSchema(error.parentSchema)) {
+        return /\/layout$/.test(path)
+          ? {
+              path,
+              message: `${where} の値 ${describeValue(data)} は並べ方の木の根になりません。根には並べ方の節(object)を書いてください。`,
+              hint: '根は { "type": "stack", "children": [...] } のような節です(type は stack / cluster / sidebar / switcher / grid / split)。項目名の文字列は、節の子として書いてください。',
+            }
+          : {
+              path,
+              message: `${where} の値 ${describeValue(data)} は並べ方の木の子になりません。子には、項目名(フィールドID)か "action:<名前>" の文字列、または並べ方の節(object)を書いてください。`,
+              hint: '文字列なら、この画面の表示項目のフィールドIDか "action:<ボタンの識別子>"。節なら { "type": "stack", "children": [...] } のような object です。数値・真偽値・null・配列は書けません。',
+            };
+      }
       return {
         path,
         message: `${where} の型が不正です。${String(params.type)} を指定してください(実際の値: ${describeValue(data)})。`,
@@ -903,7 +1288,8 @@ function convert(
        * 経緯と文面の要件は `ACTION_VALUE_PATTERN_HINT` の doc に書いた。
        * `case "type":` と同じく `schemaPath` で判定する(位置を数え上げない)。
        */
-      if (ACTION_VALUE_SCHEMA_PATH.test(error.schemaPath ?? "")) {
+      const valuesPattern = isWorkflowValuesPosition(error);
+      if (valuesPattern || ACTION_VALUE_SCHEMA_PATH.test(error.schemaPath ?? "")) {
         /*
          * `if/then/else` の**どちらの枝で落ちたか**で message を分ける。
          * - `else`(`$` で始まらない = リテラル扱い)… **そのまま書き込まれる**ことが起きる結果である
@@ -918,7 +1304,8 @@ function convert(
             ? `${where} に ${describeValue(data)} を指定していますが、これは参照の形になっていません。`
             : `${where} に ${describeValue(data)} を指定しています。これは置換されません —— ` +
               `この文字列がそのまま、1文字も変わらずにレコードに書き込まれます。`,
-          hint: ACTION_VALUE_PATTERN_HINT,
+          // **【`V23-M4-T02`】`values` の位置では5形まで並べる**(「`$record` だけ」と言わない)。
+          hint: valuesPattern ? WORKFLOW_VALUES_PATTERN_HINT : ACTION_VALUE_PATTERN_HINT,
         };
       }
       /*
@@ -927,6 +1314,20 @@ function convert(
        * {@link THEME_VALUE_FAMILIES} の doc に書いた。**message も差し替える** ——
        * 「識別子の規約に合いません」はテーマの値については1文字も当たっていない。
        */
+      /*
+       * **【`V20-M5-T01` / `ADR-0471`】並べ方の木の葉**(`$defs/layout_node` の子の口の `then`)。
+       * 葉は識別子そのものではなく「項目のフィールドID か `action:<ボタンの識別子>`」なので、
+       * 識別子の汎用文面(例: book-tracker)では書き直し方が伝わらない。**長さ・数値は書けない**ことも言う。
+       */
+      // 見分けは葉の規約の綴り(`^(action:)?` で始まる pattern)で行う —— 参照先の定義の中の schemaPath は
+      // `#/oneOf/...` に縮み、定義の名前を含まないため。
+      if (String(params.pattern ?? "").startsWith("^(action:)?")) {
+        return {
+          path,
+          message: `${where} の値 ${describeValue(data)} は並べ方の木の葉の形に合いません。`,
+          hint: '葉には、この画面の表示項目のフィールドID(英小文字で始まり、英小文字・数字・ハイフン・アンダースコアのみ)か、"action:<ボタンの識別子>" を書いてください。長さや数値(12px など)は書けません。',
+        };
+      }
       const themeFamily = themeValueFamily(error);
       if (themeFamily !== undefined) {
         return {
@@ -981,6 +1382,47 @@ function convert(
       };
     }
   }
+}
+
+/**
+ * **`set_workspace` の器のキーの値の `anyOf`(`$ref` か `null` の2択)の位置**(`V22-M3-T02`)。
+ *
+ * 値が `$ref` の側で落ちると、Ajv はその本当の誤り(例: 位置の値が `side` / `top` でない)に加えて、
+ * `null` の側の `type` の誤り1件と、`anyOf` の誤り1件を返す。 **後の2件は「`null` でない」「どちらにも
+ * 合わない」という言い訳であって原因ではない**ので落とす(テーマのスロットの `anyOf` と同じ作法)。
+ * **この器の外の `anyOf` は1バイトも変えない。**
+ *
+ * **【`V23-M5-T02`】3つ目のキー `invitations` を足した。** 旧(逐語):
+ * `/\/then\/properties\/workspace\/properties\/(navigation|my_page)\/anyOf(\/1\/type)?$/`
+ */
+const SET_WORKSPACE_VALUE_ANYOF_SCHEMA_PATH =
+  /\/then\/properties\/workspace\/properties\/(navigation|my_page|invitations)\/anyOf(\/1\/type)?$/;
+
+/**
+ * **`set_workspace` の器の `minProperties`(空の `{}` を断る)の位置**(`V22-M3-T02`。`ADR-0488` §Decision 2 の 3)。
+ * 汎用の「指定すべき項目がありません」ではなく、**`{}` は何も変えない指示であることと、消すには
+ * `null` を書くこと**を言う(M2 までは `{}` が「宣言を消す」だったので、書き手がそう思い込んでいる)。
+ */
+const SET_WORKSPACE_EMPTY_SCHEMA_PATH = /\/then\/properties\/workspace\/minProperties$/;
+
+/** `set_workspace` の器の位置の誤りの文言(当たらなければ `undefined`、落とすなら `null`)。 */
+function setWorkspaceError(error: ErrorObject, path: string): ValidationError | null | undefined {
+  const schemaPath = error.schemaPath ?? "";
+  if (
+    (error.keyword === "anyOf" || error.keyword === "type") &&
+    SET_WORKSPACE_VALUE_ANYOF_SCHEMA_PATH.test(schemaPath)
+  ) {
+    return null;
+  }
+  if (error.keyword === "minProperties" && SET_WORKSPACE_EMPTY_SCHEMA_PATH.test(schemaPath)) {
+    return {
+      path,
+      message:
+        "set_workspace の workspace が空({})です。空の workspace は何も変えない指示なので受け付けません。",
+      hint: 'set_workspace は書いたキーだけを置き換えます(書かなかったキーは残ります)。メニューの置き方は navigation、マイページは my_page に書いてください。宣言を消すときは、そのキーに null を書きます(例: {"navigation": null} / {"my_page": null}。両方消すと workspace ごと消えます)。',
+    };
+  }
+  return undefined;
 }
 
 /**

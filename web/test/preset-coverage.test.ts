@@ -961,7 +961,13 @@ describe("未到達側: 要求を書き込む場所が無いこと", () => {
     // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
     // 書け、集計表(`report_view`)には書けない**)。
     // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-    expect(Object.keys(viewSchema.properties)).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewSchema.properties)).toHaveLength(31);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewSchema.properties)).toHaveLength(32);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行97】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(viewSchema.properties)).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+    expect(Object.keys(viewSchema.properties)).toHaveLength(35);
     expect(viewSchema.additionalProperties).toBe(false);
     for (const absent of [
       "preset_row_border", // R14 罫線
@@ -1514,7 +1520,13 @@ describe("§4-8 と同じ形の実測: 拒否で何往復増えるか", () => {
     // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
     // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
     // **検査は消していない。**
-    expect(errors[0]?.allowed_values).toHaveLength(27);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(errors[0]?.allowed_values).toHaveLength(27);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(errors[0]?.allowed_values).toHaveLength(28);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行98】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(errors[0]?.allowed_values).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+    expect(errors[0]?.allowed_values).toHaveLength(31);
     // **エラーだけを読んで直せる手は「消す」しかない。** 消すと `changes` が空になり、
     // 次の往復で別の拒否が返る —— **要求を落とすまで通らない。**
     const document = JSON.parse(JSON.stringify(diff));

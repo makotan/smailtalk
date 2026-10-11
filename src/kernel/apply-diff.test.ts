@@ -331,6 +331,10 @@ describe("foldOperations(現行マニフェスト + operations → 次のマニ�
       // **集計表は流れの段になれない**)。
       // **`schemas/diff.schema.json` の `view_changes` にも同名を1本足してある。**
       "flow",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー `group_by` が list_view の受付表の末尾に加わった。** **form / detail_view の同じ列挙には現れない。** **旧の列挙はこの1行が無い形である。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
     ]);
   });
 
@@ -403,7 +407,8 @@ describe("foldOperations(現行マニフェスト + operations → 次のマニ�
       // **V4-M16-T12(`P-G17` の (C) 側 / ADR-0092 限定2)で項目のまとまり field_groups が
       // detail_view にだけ増えた** —— **門A の本審査(`V4-M14` 本審査② の単位9。
       // 判定 = 限定採用)を通った増分である。** `list_view` / form の同じ列挙には現れない。
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **【V4-M19-T03 / ADR-0118 限定1・限定6 で更新した】** `preset_density`(画面の
       // 詰まり具合)が3種すべてに増えた —— 門A の本審査(V4-M19 単位C。2回目の審査。
       // 判定 = 限定採用)を通った増分である。**本 ADR の増分ではない。**
@@ -437,6 +442,10 @@ describe("foldOperations(現行マニフェスト + operations → 次のマニ�
       // **集計表は流れの段になれない**)。
       // **`schemas/diff.schema.json` の `view_changes` にも同名を1本足してある。**
       "flow",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行87】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `layout` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
   });
 

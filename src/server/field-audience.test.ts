@@ -94,7 +94,9 @@ test("(a)【反転】$defs/field.properties から audience が消えた(V8-M20 
   // 廃止され、14 → 12 になった。** **代わりに立つのは面の規則
   // (`app.roles[].rules` の `{ target: "field", … }`)である** —— **`$defs/field` の
   // 側には1キーも足していない。**
-  expect(keys).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行10 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(keys).toHaveLength(13);
   expect(keys).not.toContain("audience");
   expect(keys).not.toContain("writable_by");
 });
@@ -159,7 +161,13 @@ test("(a) $defs/view.properties は 31 で、ADR-0071 の増分は0キーであ�
   // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
   // 書け、集計表(`report_view`)には書けない**)。
   // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-  expect(Object.keys(schema().$defs.view?.properties ?? {})).toHaveLength(31);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(schema().$defs.view?.properties ?? {})).toHaveLength(31);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(schema().$defs.view?.properties ?? {})).toHaveLength(32);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行9】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(schema().$defs.view?.properties ?? {})).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+  expect(Object.keys(schema().$defs.view?.properties ?? {})).toHaveLength(35);
   expect(Object.keys(schema().$defs.view?.properties ?? {})).not.toContain("audience");
 });
 
@@ -438,11 +446,13 @@ test("(f) `B-G2` は予約規約フィールドを1本も足していない(ADR-
   // **残る4本(`st_owner` / `st_public` / `st_undeletable` / `st_no_direct_create`)は
   // 今日もフィールドも実装も在る** —— **ただし `st_owner` の読取の重ね順は変わった**
   // (`D-V8-35`)。**「4本は1ミリも変わっていない」とは書かない。**
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行11(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(declared.sort()).toEqual(["NO_DIRECT_CREATE_FIELD", "OWNER_FIELD", "PUBLIC_FIELD", "UNDELETABLE_FIELD"]);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に5本目)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
   expect(declared.sort()).toEqual([
     "NO_DIRECT_CREATE_FIELD",
     "OWNER_FIELD",
     "PUBLIC_FIELD",
     "UNDELETABLE_FIELD",
+    "UPDATED_BY_FIELD",
   ]);
 
   // **`B-G2` の増分が0本であることの、より直接的な測り方** —— **項目ごとの見せ分けの宣言は

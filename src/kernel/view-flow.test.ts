@@ -147,11 +147,24 @@ function confirm(id: string, step: number): Record<string, unknown> {
 
 describe("(T01-a) 増分はキー1本ちょうどである(ADR-0359 §4b 限定1)", () => {
   test("$defs/view.properties は 31 / $defs は 30 / view_changes は 27 である", () => {
-    expect(Object.keys(viewSchema().properties as Any)).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as Any)).toHaveLength(31);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as Any)).toHaveLength(32);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行80】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(viewSchema().properties as Any)).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+    expect(Object.keys(viewSchema().properties as Any)).toHaveLength(35);
     // **`$defs` の本数は 30 のまま1つも増えない** —— **`flow` は `custom_css` と同じ
     // インラインで書いた。****新しい `$defs` を作らない**(限定1 / 限定3)。
-    expect(Object.keys(defs())).toHaveLength(30);
-    expect(Object.keys(viewChangesSchema().properties as Any)).toHaveLength(27);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(defs())).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewChangesSchema().properties as Any)).toHaveLength(27);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewChangesSchema().properties as Any)).toHaveLength(28);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行198(撃(隠れ))】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(viewChangesSchema().properties as Any)).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+    expect(Object.keys(viewChangesSchema().properties as Any)).toHaveLength(31);
   });
 
   test("flow は $defs/view.properties の末尾(31本目)である", () => {
@@ -167,15 +180,23 @@ describe("(T01-a) 増分はキー1本ちょうどである(ADR-0359 §4b 限定1
   test("RESOURCE_KINDS(8)/ FIELD_TYPES(9)/ DIFF_OPS(17)を1要素も増やしていない", () => {
     expect(RESOURCE_KINDS).toHaveLength(8);
     expect(FIELD_TYPES).toHaveLength(9);
-    expect(DIFF_OPS).toHaveLength(17);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。
+    // **この行が固定していたのは「画面の流れの決定が op を足していないこと」であり、足したのは別の決定である。** テスト名は当時の逐語のまま。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行20)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+    expect(DIFF_OPS).toHaveLength(19);
   });
 
   test("$defs/view_type の5種目を作っていない(4値のまま)", () => {
     expect((defs().view_type as Any).enum as string[]).toHaveLength(4);
   });
 
+  // **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧行の逐語**:
+  // `expect(Object.keys((defs().view_action as Any).properties as Any)).toHaveLength(8);`
+  // **9本目は強調(`action_emphasis`)であり、形を決めるキーではない**(`oneOf` の4枝の
+  // どれにも現れない)。**5形目を作っていないことは下の `oneOf` の本数で見る。**
   test("$defs/view_action の5形目を作っていない(ADR-0360 限定3)", () => {
-    expect(Object.keys((defs().view_action as Any).properties as Any)).toHaveLength(8);
+    expect(Object.keys((defs().view_action as Any).properties as Any)).toHaveLength(9);
+    expect((defs().view_action as Any).oneOf as unknown[]).toHaveLength(4);
   });
 
   test("差分スキーマ側は manifest 側を $ref するだけで、定義を二重に持たない", () => {

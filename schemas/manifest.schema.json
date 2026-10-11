@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://smailtalk.dev/schemas/manifest.schema.json",
   "title": "SmAIltalk リソースマニフェスト (v0)",
-  "description": "v0のリソース語彙。リソース種は app / table / form / list_view / detail_view の5種のみ、フィールド型は text / long_text / number / boolean / date / select / reference / image / file の9種のみ (image は V2-M2 / ADR-0035 が足した商品画像用の型。file は V5-M16 / ADR-0161 が足した9種目で、画像に限らない一般のファイルを1件だけ紐づける。受け入れる種類の制限は0件で、上限は1件20,000,000バイト。実体が画像と判定できないものは必ずダウンロードとして返り、ブラウザ内では開かない)。この語彙は意図的に狭く保たれており、拡張してはならない。",
+  "description": "v0のリソース語彙。リソース種は app / table / form / list_view / detail_view の5種のみ、フィールド型は text / long_text / number / boolean / date / select / reference / image / file の9種のみ (image は V2-M2 / ADR-0035 が足した商品画像用の型。file は V5-M16 / ADR-0161 が足した9種目で、画像に限らない一般のファイルを1件だけ紐づける。受け入れる種類の制限は0件で、上限は1件20,000,000バイト。実体が画像と判定できないものは必ずダウンロードとして返り、ブラウザ内では開かない)。この語彙は意図的に狭く保たれており、拡張してはならない。【2026-09-27 訂正。直前の文を消していない】冒頭の「リソース種は app / table / form / list_view / detail_view の5種のみ」は今日は偽である —— リソース種は app / table / form / list_view / detail_view / workflow / function / report_view の8種である。",
   "type": "object",
   "required": ["app"],
   "additionalProperties": false,
@@ -66,6 +66,11 @@
           "additionalProperties": false,
           "properties": {
             "slots": { "$ref": "#/$defs/theme" },
+            "slots_dark": {
+              "$comment": "ADR-0458 §Decision 2 (V20-M10。門A 本審査 = 限定採用)。**暗い側の組を1本だけ足す** —— app.theme の properties は3キーを超えない (限定1。モードは明るい / 暗いの2値で閉じ、3つ目の置き場を作らない)。**役割の層 $defs/theme をそのまま参照する** (限定2) —— 独自の枠集合を作らないので、枠が1つでも欠けたら拒否が役割の層の必須の集合から自動で効く。生の色への参照は slots_dark の中で閉じる (slots の生の色を指せない。ADR-0474)。コントラスト検査は slots と同じ閾値・同じ組で掛かる (モード別の例外を作らない)。**required には入れない** (ADR-0047 限定2 と同型)。省略したテーマは暗い側を持たず、OS が暗くても明るいまま描かれる (D-V20-31)。",
+              "description": "暗いモードのときに使う配色 (slots と同じ枠をすべて書く)。省略でき、省略した場合は暗いモードでも slots の配色 (明るい見た目) のまま描かれる。$palette_… の参照は slots_dark の中に書いた生の色だけを指せる。set_theme はテーマを丸ごと差し替えるので、slots_dark を書かずに差し替えると暗い側の配色は消える。",
+              "$ref": "#/$defs/theme"
+            },
             "origin": {
               "$comment": "由来 (D-M1-1)。**カーネルは origin の真偽を検証しない** —— テンプレート app が実在するかも版が一致するかも、apply_diff の呼び出し側 (AI) の自己申告である (ADR-0047 §1b / 限定7。憲法6)。**参照整合性検査の対象にしない** (src/kernel/referential-integrity.ts が「検査しない」ことを明記している) —— 対象にすると、テンプレート app を削除した日に既存アプリのマニフェストが読めなくなる (src/kernel/validate.ts:74〜:77 が警告した形と同型)。孤児は検出のみ・自動刈り取りなし。**省略できる** —— 手で作ったテーマは由来を持たない。",
               "description": "このテーマの由来 (どのアプリのテーマを写したか)。省略でき、省略は由来を持たない (手で作った) ことを意味する。カーネルはこの内容の真偽を検証しない (自己申告である)。",
@@ -89,8 +94,8 @@
           }
         },
         "roles": {
-          "$comment": "J-G1b (V8-M16-T02。ユーザ決定 D-V8-31。ADR-0007 門A 本審査 = 限定採用)。**$defs/app の9本目のキーである。****ADR-0013 §4c の追加関門3問に答えたうえで足した増分である** —— 問1 (既存キーの転用で目的が達成できないことをキーの意味の数で示せるか): user_kinds は「運営ではない利用者の種類」の宣言であり、予約4語 (owner / editor / viewer / anonymous) を1語も書けない ($defs/app/properties/user_kinds/items/id の not: { enum: [...] } が塞いでいる)。役割は予約4語を主体として書けなければ成立しないので、user_kinds を転用するとその値域そのものを壊す (= 既存キーの意味を1つ増やすのではなく、既存キーの禁止を解くことになる)。問2 (書き換える既存分岐の false 宣言を名指しで全件列挙しているか): 差分側で false 宣言を書き足した既存分岐は数ではなく名指しで全17件であり、schemas/diff.schema.json の $defs/operation の $comment に列挙してある。問3 (置き換えとなる新しい不変条件は何か): **置き換えとなる新しい不変条件: $defs/app は id / name / tables / views / workflows / functions / theme / user_kinds / roles の9キーで閉じる。10本目のキーを足してはならない。****10本目を足す提案には、この9本目とまったく同じ関門 —— ADR-0013 §4c の3問に改めて答えたうえで ADR-0007 の門A を通すこと —— を課す。****$defs の本数28 は1つも増えない** (値域をインラインで書き、新しい $defs を作らない —— user_kinds が ADR-0158 限定8 で採り、ADR-0074 が audience について採ったのと同じ作法)。**required には入れない** —— workflows / functions / theme / user_kinds と同じ理由で、入れると既存マニフェストが全部 invalid になり readCurrentManifest が例外を投げる。省略は「役割を1つも宣言していない」ことを意味する。**要素が持てるのは id と name の2本だけである** —— **規則 (rules) は V8-M17 が足す。本タスクは1バイトも書いていない。****id の値域は予約4語 (owner / editor / viewer / anonymous) ∪ app.user_kinds[].id と同じ形の文字列である** —— したがって not: { enum: [...] } を持たない。**これは「運営3ロールの予約が解けた」ことを意味しない** (D-V8-31 の逐語) —— 予約は今日どおり user_kinds の側で効いており、**その not を1バイトも動かしていない。**roles[].id は別のキーであり、そこで予約4語を主体として書けるようにしただけである。**上限は12である** (予約4 + 宣言分8。user_kinds の上限8 と同型に閉じた)。**同じ id を2回書けない** —— uniqueItems はオブジェクト全体の同値でしか効かない (user_kinds が今日も塞げていない穴) ので、src/kernel/referential-integrity.ts の適用時検査で塞いでいる。**この宣言を書き込む差分操作は set_roles である** (DIFF_OPS の18種目)。**【正直に書く】判定の実装は本タスクに1バイトも無い** —— この宣言を書いても、行の読取・書込・削除のふるまいは今日どおりである。**【2026-08-09 追記 (V8-M17。台帳 J-G6 / J-G7 / J-G8 / J-G9 / J-G10 / J-G11。メインの裁定 R-13)。上の『要素が持てるのは id と name の2本だけである』『規則 (rules) は V8-M17 が足す。本タスクは1バイトも書いていない』は今日から偽である。旧文を1バイトも消していない】** **V8-M17 が3キー目 rules を足した** —— **要素は id / name / rules の3キーで閉じる。4キー目を足してはならない** (条件 when を足すのは V8-M18 であり、それは rules[] の内側のキーであって roles[] のキーではない)。**$defs の本数28 は今日も1つも増えていない** (値域はすべてインラインで書いた)。**【正直に書く】判定の実装は V8-M17 にも1バイトも無い** —— **規則を書いても、行の読取・書込・削除のふるまいは今日どおりである。サーバ層の判定は後続の担当が書く。****【2026-08-11 追記 (V8-M29 第2波。台帳 T-G9a / T-G11 / T-G12 / T-G13。判定値 = 廃止。ADR-0301 限定8 が要求する『撤去したキーの $comment を消して終わりにせず、新しい $comment を隣に置く』の履行)。旧文を1バイトも消していない】** **本キーの直前に在った8本目のキー user_kinds ($defs/app/properties/user_kinds) を廃止した。$defs/app.properties は 9 → 8 になった。** **上の本文にある user_kinds への言及 (問1 の『user_kinds は…』/ 『required には…workflows / functions / theme / user_kinds と同じ理由で』/ 『id の値域は予約4語 ∪ app.user_kinds[].id と同じ形の文字列である』) は、制定時の事実であって今日の正ではない。1バイトも書き換えていない。** **【何が代わりに担うか (ADR-0301 限定2)】** **(a) 人に付けられる値の一覧 = app.roles[].id (本キー)。サーバ層の assignableRoleValues が組む。** **(b) 登録で名乗れる値 = 同じく app.roles[].id。サーバ層の signupKindValues が組む (予約4語を先に落とすので、省略時の既定が owner になることは無い)。** **(c) 非運営の種類の表示名 = 本キーの name。ただし name は今日も任意である (ユーザ決定 D-V8-79) ので、書かなければ画面に識別子がそのまま出る。** **【担い手が無いもの (同 限定6 の ④)。名指しで列挙する】** **(1) 『立場という器に予約4語 (owner / editor / viewer / anonymous) を書けない』という禁止1件 —— 器ごと消えたので担い手が無い。予約そのものは $defs/table/properties/access_control/properties/permissions/items/properties/id の not.enum / RESERVED_ROLES (3語) / DEFAULT_ROLE_IDS (3語) / countOwners の SQL の 'owner' に残る (ユーザ決定 D-V8-80 が承知した)。** **(2) 行ごとのアクセス権の上限8 の出所 —— 上限8 は user_kinds の maxItems 8 に合わせた数であり、その独立した第2の出所が消えた (src/kernel/access-control-declaration.test.ts が逐語で記録している)。** **(3) 宣言によって customer を値域から外すこと —— 着手前は user_kinds を宣言すると人に付けられる値から customer が外れた。今日は外す手段が1つも無い。** **(4) user_kinds を書いて保存されている既存アプリのマニフェスト —— 今日から additionalProperties: false で invalid になる。移行の実装も op も1つも無い。** **【禁止の履行 (同 限定10)】この追記は『語彙が減った』ことを成果として1文字も書いていない。**",
-          "description": "このアプリが宣言する役割の一覧。省略でき、省略した場合は役割を1つも宣言していないことを意味する。要素は識別子 (id) と表示名 (name) だけを持ち、id には予約4語 (owner / editor / viewer / anonymous) と user_kinds で宣言した種類の識別子を書ける。差し替えは差分操作 set_roles で行う (全体差し替え。部分更新の op は無い)。**今日はここに規則を1本も書けず、宣言しても行の見え方・書き換え方は1つも変わらない。****【2026-08-09 追記 (V8-M17)。直前の1文の前半は今日は偽である。1バイトも消していない】規則 (rules) をここに書ける。ただし後半は今日も真である —— 書いても行の見え方・書き換え方は1つも変わらない (判定の実装は後続のマイルストーン)。**",
+          "$comment": "J-G1b (V8-M16-T02。ユーザ決定 D-V8-31。ADR-0007 門A 本審査 = 限定採用)。**$defs/app の9本目のキーである。****ADR-0013 §4c の追加関門3問に答えたうえで足した増分である** —— 問1 (既存キーの転用で目的が達成できないことをキーの意味の数で示せるか): user_kinds は「運営ではない利用者の種類」の宣言であり、予約4語 (owner / editor / viewer / anonymous) を1語も書けない ($defs/app/properties/user_kinds/items/id の not: { enum: [...] } が塞いでいる)。役割は予約4語を主体として書けなければ成立しないので、user_kinds を転用するとその値域そのものを壊す (= 既存キーの意味を1つ増やすのではなく、既存キーの禁止を解くことになる)。問2 (書き換える既存分岐の false 宣言を名指しで全件列挙しているか): 差分側で false 宣言を書き足した既存分岐は数ではなく名指しで全17件であり、schemas/diff.schema.json の $defs/operation の $comment に列挙してある。問3 (置き換えとなる新しい不変条件は何か): **置き換えとなる新しい不変条件: $defs/app は id / name / tables / views / workflows / functions / theme / user_kinds / roles の9キーで閉じる。10本目のキーを足してはならない。****10本目を足す提案には、この9本目とまったく同じ関門 —— ADR-0013 §4c の3問に改めて答えたうえで ADR-0007 の門A を通すこと —— を課す。****$defs の本数28 は1つも増えない** (値域をインラインで書き、新しい $defs を作らない —— user_kinds が ADR-0158 限定8 で採り、ADR-0074 が audience について採ったのと同じ作法)。**required には入れない** —— workflows / functions / theme / user_kinds と同じ理由で、入れると既存マニフェストが全部 invalid になり readCurrentManifest が例外を投げる。省略は「役割を1つも宣言していない」ことを意味する。**要素が持てるのは id と name の2本だけである** —— **規則 (rules) は V8-M17 が足す。本タスクは1バイトも書いていない。****id の値域は予約4語 (owner / editor / viewer / anonymous) ∪ app.user_kinds[].id と同じ形の文字列である** —— したがって not: { enum: [...] } を持たない。**これは「運営3ロールの予約が解けた」ことを意味しない** (D-V8-31 の逐語) —— 予約は今日どおり user_kinds の側で効いており、**その not を1バイトも動かしていない。**roles[].id は別のキーであり、そこで予約4語を主体として書けるようにしただけである。**上限は12である** (予約4 + 宣言分8。user_kinds の上限8 と同型に閉じた)。**同じ id を2回書けない** —— uniqueItems はオブジェクト全体の同値でしか効かない (user_kinds が今日も塞げていない穴) ので、src/kernel/referential-integrity.ts の適用時検査で塞いでいる。**この宣言を書き込む差分操作は set_roles である** (DIFF_OPS の18種目)。**【正直に書く】判定の実装は本タスクに1バイトも無い** —— この宣言を書いても、行の読取・書込・削除のふるまいは今日どおりである。**【2026-08-09 追記 (V8-M17。台帳 J-G6 / J-G7 / J-G8 / J-G9 / J-G10 / J-G11。メインの裁定 R-13)。上の『要素が持てるのは id と name の2本だけである』『規則 (rules) は V8-M17 が足す。本タスクは1バイトも書いていない』は今日から偽である。旧文を1バイトも消していない】** **V8-M17 が3キー目 rules を足した** —— **要素は id / name / rules の3キーで閉じる。4キー目を足してはならない** (条件 when を足すのは V8-M18 であり、それは rules[] の内側のキーであって roles[] のキーではない)。**$defs の本数28 は今日も1つも増えていない** (値域はすべてインラインで書いた)。**【正直に書く】判定の実装は V8-M17 にも1バイトも無い** —— **規則を書いても、行の読取・書込・削除のふるまいは今日どおりである。サーバ層の判定は後続の担当が書く。****【2026-08-11 追記 (V8-M29 第2波。台帳 T-G9a / T-G11 / T-G12 / T-G13。判定値 = 廃止。ADR-0301 限定8 が要求する『撤去したキーの $comment を消して終わりにせず、新しい $comment を隣に置く』の履行)。旧文を1バイトも消していない】** **本キーの直前に在った8本目のキー user_kinds ($defs/app/properties/user_kinds) を廃止した。$defs/app.properties は 9 → 8 になった。** **上の本文にある user_kinds への言及 (問1 の『user_kinds は…』/ 『required には…workflows / functions / theme / user_kinds と同じ理由で』/ 『id の値域は予約4語 ∪ app.user_kinds[].id と同じ形の文字列である』) は、制定時の事実であって今日の正ではない。1バイトも書き換えていない。** **【何が代わりに担うか (ADR-0301 限定2)】** **(a) 人に付けられる値の一覧 = app.roles[].id (本キー)。サーバ層の assignableRoleValues が組む。** **(b) 登録で名乗れる値 = 同じく app.roles[].id。サーバ層の signupKindValues が組む (予約4語を先に落とすので、省略時の既定が owner になることは無い)。** **(c) 非運営の種類の表示名 = 本キーの name。ただし name は今日も任意である (ユーザ決定 D-V8-79) ので、書かなければ画面に識別子がそのまま出る。** **【担い手が無いもの (同 限定6 の ④)。名指しで列挙する】** **(1) 『立場という器に予約4語 (owner / editor / viewer / anonymous) を書けない』という禁止1件 —— 器ごと消えたので担い手が無い。予約そのものは $defs/table/properties/access_control/properties/permissions/items/properties/id の not.enum / RESERVED_ROLES (3語) / DEFAULT_ROLE_IDS (3語) / countOwners の SQL の 'owner' に残る (ユーザ決定 D-V8-80 が承知した)。** **(2) 行ごとのアクセス権の上限8 の出所 —— 上限8 は user_kinds の maxItems 8 に合わせた数であり、その独立した第2の出所が消えた (src/kernel/access-control-declaration.test.ts が逐語で記録している)。** **(3) 宣言によって customer を値域から外すこと —— 着手前は user_kinds を宣言すると人に付けられる値から customer が外れた。今日は外す手段が1つも無い。** **(4) user_kinds を書いて保存されている既存アプリのマニフェスト —— 今日から additionalProperties: false で invalid になる。移行の実装も op も1つも無い。** **【禁止の履行 (同 限定10)】この追記は『語彙が減った』ことを成果として1文字も書いていない。**【ADR-0486 による改訂 (V22-M2-T02。門A = MN-G1 / MN-G2 の限定採用。ユーザ決定 D-V22-1 / D-V22-9 / D-V22-10 / D-V22-13) —— 上の記述は制定時の事実であり、消さずに残す】**$defs/app の末尾 (design_memory の後) に10本目のキー workspace を足した** (メニューの位置。中は navigation 1キー)。**置き換えとなる新しい不変条件: $defs/app は id / name / tables / views / workflows / functions / theme / roles / design_memory / workspace の10キーで閉じる。11本目のキーを足してはならない。** workspace は required に入れない (入れると既存マニフェストが全部 invalid になる)。足す提案は ADR-0013 §4c の3問に答えたうえで門A を通し、ADR-0486 と同格の個別 ADR を新規に書く。",
+          "description": "このアプリが宣言する役割の一覧。省略でき、省略した場合は役割を1つも宣言していないことを意味する。要素は識別子 (id) と表示名 (name) だけを持ち、id には予約4語 (owner / editor / viewer / anonymous) と user_kinds で宣言した種類の識別子を書ける。差し替えは差分操作 set_roles で行う (全体差し替え。部分更新の op は無い)。**今日はここに規則を1本も書けず、宣言しても行の見え方・書き換え方は1つも変わらない。****【2026-08-09 追記 (V8-M17)。直前の1文の前半は今日は偽である。1バイトも消していない】規則 (rules) をここに書ける。ただし後半は今日も真である —— 書いても行の見え方・書き換え方は1つも変わらない (判定の実装は後続のマイルストーン)。**【2026-09-27 訂正。直前の文を消していない】冒頭の「要素は識別子 (id) と表示名 (name) だけを持ち」と「user_kinds で宣言した種類の識別子」は今日は偽である —— 要素に書けるのは id / name / rules / signup / density の5キーで、id に書けるのは予約4語か、小文字英数と _ だけの1〜32文字の識別子である (user_kinds は廃止された)。",
           "type": "array",
           "minItems": 1,
           "maxItems": 12,
@@ -101,7 +106,7 @@
             "additionalProperties": false,
             "properties": {
               "id": {
-                "description": "役割の識別子。予約4語 (owner / editor / viewer / anonymous) か、app.user_kinds で宣言できる識別子と同じ形 (小文字英数と _ だけ・1〜32文字)。同じ識別子を2回書くことはできない。",
+                "description": "役割の識別子。予約4語 (owner / editor / viewer / anonymous) か、app.user_kinds で宣言できる識別子と同じ形 (小文字英数と _ だけ・1〜32文字)。同じ識別子を2回書くことはできない。【2026-09-27 訂正。直前の文を消していない】直前の「app.user_kinds で宣言できる識別子と同じ形」は今日は辿れない —— app.user_kinds は廃止された。形は括弧の中のとおり、小文字英数と _ だけの1〜32文字である。",
                 "type": "string",
                 "pattern": "^[a-z0-9_]{1,32}$"
               },
@@ -157,6 +162,14 @@
                       "$comment": "J-G12 / J-G13 / J-G14 / J-G15 / J-G16 (V8-M18。ADR-0007 門A 本審査 = 5行とも限定採用。ユーザ決定 D-V8-17 / D-V8-22。メインの裁定 R-7 / R-17)。**$defs/app/properties/roles/items/properties/rules/items の7キー目である。****省略できる** —— **省略したら、この規則は今日どおり常に通る。****値域は新設の $defs/role_condition ただ1本であり、この場所には形を1バイトも書いていない** (二重に持たないため)。**画面 (target: view) とボタン (target: action) の規則には書けない** —— **下の allOf の該当分岐が when: false で閉じている。****理由: 条件が見るのは「判定している行の項目の値」であり、画面とボタンの許可には判定する行が1つも無い。****「書けるが必ず効かない組み合わせ」を1つも作らない** (ADR-0086 限定4。V8-M17 が対象ごとに書けるキーを false で閉じたのと同じ作法)。**画面・ボタンにも条件を書けるようにする提案は、ADR-0007 の門A を新規に通すこと。**",
                       "description": "この規則が当たる条件。省略できる。省略したら、この規則は常に通る (今日どおり)。条件から見えるのは「判定している行の項目の値」と「要求している人の識別子」の2つだけで、他の表・他の行・時刻・環境変数・集計値・参照先の中身は1つも見えない。画面 (target: view) とボタン (target: action) の規則には書けない —— 判定する行が1つも無いからである。",
                       "$ref": "#/$defs/role_condition"
+                    },
+                    "hidden_fields": {
+                      "$comment": "V21-M2B (ADR-0482 の AN-G2 §2-2 / §2-5。ADR-0007 門A 本審査 = 限定採用。ユーザ決定 D-V21-15 / D-V21-16)。**rules[] の8キー目である** (ADR-0306 限定2 / ADR-0322 限定4 の「8キー目を足さない」を ADR-0482 が引き直した)。**書けるのは未ログイン (anonymous) の要素の、対象が表 (table) の規則だけ** (役割の分岐の else と、対象ごとの分岐の false で閉じる)。**未ログインにだけ効く** —— 名指しした項目は、未ログインが表の行を受け取るすべての口で「無い項目」になる。同じ表を名指しした未ログインの規則が複数あれば和集合。**書かなければ全項目が見える** (後から足した項目も見える。H-V21-5)。**$defs を1本も増やさない** (値域はインライン)。**実在・消去・改名・条件 (when) との組は適用時検査 (src/kernel/referential-integrity.ts と apply-diff.ts の改名の追随) が見る。**",
+                      "description": "ログインしていない人にだけ隠す項目のIDの並び。ログインしていない人の役割 (anonymous) の、表の読取規則にだけ書ける。書いた項目は、ログインしていない人には値も項目名も渡らず、並べ替え・絞り込み・合計・区切りにも使えない。ログインした人の見え方は変わらない。",
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": { "$ref": "#/$defs/resource_id" }
                     }
                   },
                   "allOf": [
@@ -190,6 +203,7 @@
                         "properties": {
                           "view": false,
                           "action": false,
+                          "hidden_fields": false,
                           "can": { "type": "array", "items": { "enum": ["read", "write"] } }
                         }
                       }
@@ -207,6 +221,7 @@
                           "field": false,
                           "action": false,
                           "when": false,
+                          "hidden_fields": false,
                           "can": { "type": "array", "items": { "const": "read" } }
                         }
                       }
@@ -223,6 +238,7 @@
                           "table": false,
                           "field": false,
                           "when": false,
+                          "hidden_fields": false,
                           "can": { "type": "array", "items": { "const": "read" } }
                         }
                       }
@@ -241,6 +257,7 @@
                           "view": false,
                           "action": false,
                           "when": false,
+                          "hidden_fields": false,
                           "can": {
                             "type": "array",
                             "minItems": 1,
@@ -264,6 +281,7 @@
                           "view": false,
                           "action": false,
                           "when": false,
+                          "hidden_fields": false,
                           "can": {
                             "type": "array",
                             "minItems": 1,
@@ -281,6 +299,12 @@
                 "description": "この役割で登録できるかどうか。誰でも登録できる (open) か、招待が要る (invite) かの2つだけ。省略すると open (誰でも登録できる) の扱いになり、応答は着手前と1バイトも変わらない。未ログイン (anonymous) には書けない。差し替えは差分操作 set_roles で行う (全体差し替え。部分更新の op は無い)。**この宣言は権限を1ミリも変えない** —— 行の見え方・書き換え方を決めるのは rules であって、こちらは「登録の口を通れるか」だけを決める。",
                 "enum": ["open", "invite"],
                 "type": "string"
+              },
+              "density": {
+                "$comment": "V20-M11-T01 / T02 (DS-S17。ADR-0007 門A 本審査 = 限定採用。ADR-0464)。**5キー目 density(ADR-0464)。6キー目を足さない。****$defs/app/properties/roles/items は id / name / rules / signup / density の5キーで閉じる** —— **上の signup の $comment にある「id / name / rules / signup の4キーで閉じる。5キー目を足してはならない」は今日から偽である。旧文を1バイトも消していない** (ADR-0334 限定13 の作法。この $comment を破った明文の隣に置いた)。**6キー目を足す提案には、改めて門A の本審査を通し、ADR-0464 と同格の個別 ADR を新規に書くことを課す** (ADR-0464 §Decision 3-2)。**値域は comfortable / compact の2値ちょうどであり、キーの直下に書く** ($ref にしない。新しい $defs を作らない)。**値1つにつき当たり先が1つ実在する** —— 画面の器の系統 (web/src/ui/family.ts の UI_FAMILIES と同じ2値)。**PRD の7軸17値のうち採ったのは情報密度の2値だけである** (ユーザ決定 D-V20-35 = 詰め具合だけ)。**色の値域を1つも持たない** (ADR-0464 限定3)。**required に入れない。既定値を default に書かない** —— 省略した役割の人の画面は着手前と1バイトも変わらない。**画面に preset_density を書いた画面ではそちらが勝つ** (ユーザ決定 D-V20-34)。**anonymous には書けない** (下の allOf の分岐が false で閉じる) —— **未ログインの画面に渡る定義には app.roles が1本も入らないので、書けても効かない** (ADR-0086 限定4 の「書けるが効かない」を作らない)。**判定は画面の側 (web/src/ui/family.ts の resolveUiFamily) の1箇所だけが持つ。カーネルはこの値を1つも検査しない** (foldSetRoles の全置換のまま)。**書き込む手段は差分操作 set_roles の全体差し替え1本である** —— 差分操作を1つも足していない。**この宣言は権限を1ミリも変えない。**",
+                "description": "この役割の人が開く画面の詰め具合。ゆったり (comfortable) か、詰めて (compact) かの2つだけ。省略すると画面は今日どおりに描かれる。画面に preset_density を書いた画面ではそちらが勝つ。変わるのは詰め具合だけで、色は変わらない。未ログイン (anonymous) には書けない。差し替えは差分操作 set_roles で行う (全体差し替え。部分更新の op は無い)。集計表の画面と、上端の帯やメニューには効かない。効くのはその人のアカウントの役割1つである (付与表だけで持つ2つ目以降の役割には効かない)。",
+                "enum": ["comfortable", "compact"],
+                "type": "string"
               }
             },
             "allOf": [
@@ -294,6 +318,7 @@
                   "$comment": "J-G11 (V8-M17。ADR-0007 門A 本審査 = 限定採用。メインの裁定 R-13-2)。**未ログインの非対称を、この分岐1つで表す** —— **限定の逐語は『未ログインの要素だけ対象から項目を除き動詞を読取に絞る分岐を schemas/manifest.schema.json に書く』であり、書く場所まで限定が名指ししている。****サーバ層で握りつぶさない。****ここで絞るのは2つだけである**: (1) 対象から field を除く (未ログインに項目単位の許可を書けない) / (2) 動詞を read に絞る (未ログインに書込・削除を書けない)。**表・画面・ボタンの読取は書ける** —— **非対称は項目と動詞にだけ在る。****この分岐は id が anonymous の要素にだけ当たる** —— **owner / editor / viewer と、user_kinds で宣言した種類には1ミリも当たらない。****【禁止】これを『未ログインが安全になった』と読まない** —— **判定の実装は今日1バイトも無く、ここで止まるのは宣言の側だけである。****【2026-08-11 追記 (V8-M28。台帳 T-G14 / T-G17)。上の逐語を1バイトも消していない】** **対象が4種から6種になったが、この分岐の target の enum は [\"table\", \"view\", \"action\"] の3語のままである** —— **この分岐は「書ける対象」を**正の列挙**で絞る形なので、5種目 app と6種目 role は列挙に無いことによって既に閉じている。** **【この enum に app / role を足してはならない】** **足すと逆に「未ログインがアプリの定義を変えられる」「未ログインが人に役割を配れる」と宣言できてしまう。** **したがって本 MS はこの1行を1バイトも書き換えていない。** **二重に閉じてもいる** —— **新2対象の動詞は write 1語ちょうどであり、この分岐は can を read に絞っているので、仮に target が通っても can が通らない。** **【禁止】これを「未ログインは定義を変えられない」の**実装上の**保証と読まない** —— **ここで止まるのは宣言の側だけであり、HTTP の口の関門はまだこの判定を読んでいない (配線は後続の MS)。**",
                   "properties": {
                     "signup": false,
+                    "density": false,
                     "rules": {
                       "type": "array",
                       "items": {
@@ -306,88 +331,400 @@
                       }
                     }
                   }
+                },
+                "else": {
+                  "$comment": "V21-M2B (ADR-0482 の AN-G2 §2-2。ADR-0007 門A 本審査 = 限定採用)。**hidden_fields は未ログイン (anonymous) の要素にだけ書ける。**ログインした人の役割には書けない (D-V21-16。ログインした人の見え方を変えない)。",
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": { "type": "object", "properties": { "hidden_fields": false } }
+                    }
+                  }
                 }
               }
             ]
+          }
+        },
+        "design_memory": {
+          "$comment": "ADR-0479 §Decision 1 (V20-M15-T01A。門A = ADR-0466 = DS-S22 の限定採用。ユーザ決定 D-V20-18 / D-V20-56〜D-V20-64)。**$defs/app の9本目 (末尾) のキーである** —— 既存8キーの並び (= 拒否の allowed_values の順) を1つも動かさない。**required には入れない** (workflows / functions / theme / roles と同じ理由。入れると既存マニフェストが全部 invalid になる)。省略は「選んだ記録も型も持たない」ことを意味し、**design_memory を1度も書いていないアプリの定義は1バイトも変わらない**。**中は choices (利用者が見比べで選んで適用した案の記録。古い順・末尾が最新・最新20件まで) と patterns (このアプリの型。1文ずつ・10件まで・重複不可) の2キーで閉じる (ADR-0479 限定1)。3キー目を足してはならない。** 選んだ記録の要素は name / tradeoff / reason の3キーで閉じる (限定2。選ばれなかった案の名前も、頼んだ人も、日時も持たない)。**空の配列も空の器も残さない** (minItems 1 / minProperties 1。畳み込みが消す)。**型は描画を1つも決めない** —— 読むのは AI (候補生成の既定) と要件定義書だけである。字数はコードポイントで数え、改行 (\\r \\n U+2028 U+2029) は pattern で断る。**新しい $defs を作らない** (値域をその場に書く)。書き込む差分操作は18種目の remember_design (schemas/diff.schema.json)。",
+          "description": "このアプリで選んだ形の記録と、このアプリの型。省略でき、省略した場合はどちらも持たない。書き込むのは差分操作 remember_design (選んだ記録を1件足す / 型を丸ごと差し替える)。",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "choices": {
+              "description": "見比べで選んで適用した案の記録 (古い順。末尾が最新)。最新20件まで残り、21件目で最も古いものから落ちる。",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 20,
+              "items": {
+                "type": "object",
+                "required": ["name", "tradeoff"],
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "description": "選んだ案の名前 (1〜40字・1行)。",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[^\\r\\n\\u2028\\u2029]+$"
+                  },
+                  "tradeoff": {
+                    "description": "選んだ案のトレードオフ (1〜80字・1行)。",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "pattern": "^[^\\r\\n\\u2028\\u2029]+$"
+                  },
+                  "reason": {
+                    "description": "選んだ理由 (任意。1〜200字・1行)。",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "pattern": "^[^\\r\\n\\u2028\\u2029]+$"
+                  }
+                }
+              }
+            },
+            "patterns": {
+              "description": "このアプリの型 (「このアプリのフォームは区切りのある1カラム」のような1文ずつ)。10件まで・重複不可。案を作るときの既定になる。",
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80,
+                "pattern": "^[^\\r\\n\\u2028\\u2029]+$"
+              }
+            }
+          }
+        },
+        "workspace": {
+          "$comment": "ADR-0486 §Decision 1 (V22-M2-T02。門A = MN-G1 / MN-G2 の限定採用。ユーザ決定 D-V22-1 / D-V22-2 / D-V22-9 / D-V22-10 / D-V22-13)。**$defs/app の10本目 (末尾) のキーである** —— 既存9キーの並び (= 拒否の allowed_values の順) を1つも動かさない。**required には入れない** (workflows / functions / theme / roles / design_memory と同じ理由。入れると既存マニフェストが全部 invalid になる)。省略は「メニューはアプリの既定の左」を意味し、**workspace を1度も書いていないアプリの定義は1バイトも変わらない**。**中は navigation の1キーで閉じる (ADR-0486 限定7)。2つ目のキーを足してはならない** —— V22-M3 の my_page はここを越える (予告であって許可ではない。改めて門A を通すこと)。navigation は placement (アプリの既定。side = 左 / top = 上) と by_role (役割ごとの上書き。要素は role / placement の2キーで閉じる) の2キーで閉じる (限定8)。**位置の値を3つ目 (下・右・隠す など) に広げない / 未ログイン専用の指定を作らない / 画面ごとの位置を作らない。** **by_role の並びは意味を持たない** (ADR-0008 限定2。同じ役割は2回書けないので、並びで勝ち負けが決まる場面が無い)。**by_role の role は app.roles[].id に在る役割だけで、anonymous は書けない** (未ログインはアプリの既定。D-V22-10) —— 検査は src/kernel/referential-integrity.ts の適用時検査 (役割を宣言していないアプリで by_role を書く / 同じ役割を2回書く も断る)。**空の配列も空の器も残さない** (minItems 1 / minProperties 1。宣言を消すのは set_workspace に {} を渡す)。**新しい $defs を作らない** (値域をその場に書く。$defs は 31 のまま)。書き込む差分操作は19種目の set_workspace (schemas/diff.schema.json)。名前を shell にしないのは、製品の外枠 .shell (D-G6 / ADR-0051 限定3) と取り違えないためである。【ADR-0488 による改訂 (V22-M3-T02。門A = MP-G1 / MP-G4 の限定採用。ユーザ決定 D-V22-4 / D-V22-21)】上の「中は navigation の1キーで閉じる (ADR-0486 限定7)。2つ目のキーを足してはならない」と「宣言を消すのは set_workspace に {} を渡す」は今日の正ではない。**中は navigation と my_page の2キーで閉じる (ADR-0488 限定1)。3つ目のキーを足してはならない。** my_page は open_after_login / tables / views の3キーで閉じ、**my_page にだけ minProperties を付けない** (my_page: {} は「既定どおりマイページを置く」)。tables は exclude / include の2キーで閉じ minProperties 1、include の要素は table / owner_field の2キー、配列は空を許さない (限定2)。**set_workspace は直下のキーごとの置き換えである** (書かなかったキーは残す・null でそのキーを消す・空の {} は断る・すべて消えると workspace キーごと消える。ADR-0488 §Decision 2)。実在・重複・持ち主の分かり方・owner_field の型・detail_view の検査は src/kernel/referential-integrity.ts の適用時検査。",
+          "description": "作業画面の枠の宣言。メニュー (画面の一覧) の置き方 (navigation) とマイページ (my_page) の2つ。省略でき、省略した場合はメニューを左に置き、マイページは置かない。書き込むのは差分操作 set_workspace (書いたキーだけを置き換える。書かなかったキーは残る。値を null にするとそのキーを消す)。【追記。直前の「2つ」は今日は3つである】3つ目の invitations は、自分宛ての招待の受け取り画面をメニューに置く (表の access_control.invitations を宣言したアプリでは必須)。",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "navigation": {
+              "description": "メニューの位置。placement がアプリの既定 (side = 左 / top = 上。省略時は左)、by_role が役割ごとの上書き (指定の無い役割とログインしていない人はアプリの既定)。",
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "placement": {
+                  "description": "アプリの既定の位置。side = 左 / top = 上。",
+                  "enum": ["side", "top"]
+                },
+                "by_role": {
+                  "description": "役割ごとの上書き (1件以上)。role はこのアプリが宣言した役割 (roles の id)。anonymous は書けない。同じ役割は1回だけ。並びは意味を持たない。",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["role", "placement"],
+                    "properties": {
+                      "role": {
+                        "description": "位置を上書きする役割の id (roles の id)。",
+                        "type": "string"
+                      },
+                      "placement": {
+                        "description": "この役割の位置。side = 左 / top = 上。",
+                        "enum": ["side", "top"]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "my_page": {
+              "description": "マイページ (ログインした人ごとの頁。アカウント・自分の記録・選んだ画面) を置く。書いてあれば置く ({} なら既定どおり置く)。自分の記録には、持ち主が自動で分かる表 (st_owner の表と、読取の規則の条件に「自分」がある表) が載る。",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "open_after_login": {
+                  "description": "画面を指さずにログインしたとき、最初にマイページを開くか (省略時は開かない)。",
+                  "type": "boolean"
+                },
+                "tables": {
+                  "description": "自分の記録に載せる表の足し引き。exclude = 自動で載る表から外す表の id。include = 自動では載らない表を、持ち主の列 (text 型で必須でない列。ログインIDが入る) を名指しして足す。",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "exclude": {
+                      "description": "外す表の id (1件以上)。持ち主が自動で分かる表だけを書ける。",
+                      "type": "array",
+                      "minItems": 1,
+                      "items": { "type": "string" }
+                    },
+                    "include": {
+                      "description": "足す表 (1件以上)。持ち主が自動では分からない表だけを書ける。",
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["table", "owner_field"],
+                        "properties": {
+                          "table": {
+                            "description": "足す表の id。",
+                            "type": "string"
+                          },
+                          "owner_field": {
+                            "description": "持ち主の列の id (text 型で必須でない列)。この列の値がログインIDと等しい行が自分の記録になる。",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "views": {
+                  "description": "マイページに開くボタンとして並べる画面の id (1件以上。detail_view は書けない)。",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string" }
+                }
+              }
+            },
+            "invitations": {
+              "description": "自分宛ての招待の受け取り画面をメニューに置く。label はメニューに出す名前。表の access_control.invitations を宣言したアプリでは必須 (書かないと差分が断られる)。null で消せる。",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label"],
+              "properties": {
+                "label": {
+                  "description": "メニューに出す受け取り画面の名前 (例: 招待)。",
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
           }
         }
       }
     },
     "theme": {
-      "$comment": "ADR-0047 限定5 / 限定6 と ADR-0046 限定1。**スロット名を列挙し additionalProperties: false で閉じる** —— AI は値を埋められるがスロットを増やせない (D-1)。これを説明文ではなくスキーマで担保するのが限定5 である。**properties のキー集合は web/test/__fixtures__/styles-token-slots.txt の「テーマ対象」スロット集合 (25件) と src/kernel/theme-contrast.ts の役割表と完全に一致する** (ADR-0046 限定1。照合は2本のテストに分かれている —— web/test/theme-slot-parity.test.ts と src/kernel/theme-contrast.test.ts。ADR-0046 の 2026-07-25 追記)。**required は properties の全キーである** (2026-07-25 追記(2)。部分テーマを作らない) —— 片側しか指定されていない対はコントラスト検査で1組も測れず、前景だけ #fff にしたテーマがエラー0件で通ってしまうためで、あわせて「マニフェストだけ読めば見た目が決まる」(Δ4 非発火の論証) が実際に真になる。**値域は型と形式だけで縛る** (限定6) —— 色は #rgb / #rrggbb の16進表記 (コントラスト検査が読める形と同一)、長さは 0 か数値+px/rem/em、行間は単位なしの数値。**calc( / var( / {{ / $record. を1つも許さない** (ADR-0013 限定12 を1バイトも破らない)。値域を広げたくなったら ADR-0046 §3a / ADR-0047 §3a の門を通すこと。",
-      "description": "テーマのスロット値。25個のスロット名すべてに値を書く (省略できるスロットは1つも無い)。スロットを増やすことはできない。",
+      "$comment": "ADR-0047 限定5 / 限定6 と ADR-0046 限定1。**スロット名を列挙し additionalProperties: false で閉じる** —— AI は値を埋められるがスロットを増やせない (D-1)。これを説明文ではなくスキーマで担保するのが限定5 である。**properties のキー集合 (役割名。body_text など) は src/kernel/theme-contrast.ts の役割表と完全に一致し、web/src/theme-role-map.ts の写像を通すと web/test/__fixtures__/styles-token-slots.txt の「テーマ対象」スロット集合 (25件。CSS カスタムプロパティ名) と完全に一致する** (ADR-0046 限定1。V20-M8 / ADR-0473 が「恒等での一致」を「写像を通した一致」に引き直した —— 一致の中身は緩めていない。写像は web/src/theme-role-map.ts の1本だけで、ここにもカーネルにも写像を置かない。名前を CSS カスタムプロパティ名のまま残したのは --detail-label-width と --login-max-width の2件だけ (D-V20-12)。照合は2本のテストに分かれている —— web/test/theme-slot-parity.test.ts と src/kernel/theme-contrast.test.ts。ADR-0046 の 2026-07-25 追記)。**required は properties の全キーである** (2026-07-25 追記(2)。部分テーマを作らない) —— 片側しか指定されていない対はコントラスト検査で1組も測れず、前景だけ #fff にしたテーマがエラー0件で通ってしまうためで、あわせて「マニフェストだけ読めば見た目が決まる」(Δ4 非発火の論証) が実際に真になる。**値域は型と形式だけで縛る** (限定6) —— 色は #rgb / #rrggbb の16進表記 (コントラスト検査が読める形と同一)、長さは 0 か数値+px/rem/em、行間は単位なしの数値。**calc( / var( / {{ / $record. を1つも許さない** (ADR-0013 限定12 を1バイトも破らない)。値域を広げたくなったら ADR-0046 §3a / ADR-0047 §3a の門を通すこと。【V20-M9 / ADR-0474 §Decision 1-3(D-V20-12)】--detail-label-width と --login-max-width の2件は語彙から外した (properties と required から同時に。ADR-0457 限定1)。今日この2件を書いたテーマは「未知のプロパティ」として拒否される。web/src/styles.css の :root の2行 (8rem / 22rem) は1バイトも動かしておらず、固定値の一覧ではテーマ対象外へ移した。上の文の「名前を CSS カスタムプロパティ名のまま残したのは … 2件だけ」は撤去の前の逐語である (今日は0件)。【V20-M9 / ADR-0474 §Decision 1-1 / 1-2(D-V20-14 / D-V20-28)】(1) 役割の枠を4つ足した (primary_fill / on_primary / overlay_background / overlay_text。properties と required に同時に。highlight_surface の直後)。役割の枠は 25 − 2 + 4 = 27。(2) patternProperties を1本 (^palette_[a-z0-9_]{1,40}$) 足し、AI が名付ける生の色を置けるようにした (D-1 の「スロットは有限」を生の色の名前の数についてだけ撤回した。役割の枠は今日も additionalProperties: false で閉じている)。(3) 色の枠13件と生の色の値の値域を外側の anyOf 2枝 [実値 (内側の anyOf に16進 / oklch), 参照 ^\\$palette_[a-z0-9_]{1,40}$] にした。参照を書けるのは色の枠と生の色の値だけで、余白・書体・行間・文字寸・線の太さ・角丸・影には書けない。上の文の「calc( / var( / {{ / $record. を1つも許さない」は今日も真である (参照の綴りは $palette_ の1種ちょうど)。上の文の「25件」「AI は…スロットを増やせない (D-1)」は引き直しの前の逐語である。",
+      "description": "テーマのスロット値。役割の枠 27個すべてに値を書く (省略できる枠は1つも無い)。役割の枠を増やすことはできない。加えて、palette_ で始まる名前で生の色をいくつでも定義でき (0個でもよい)、色の枠と生の色の値から $palette_名前 で参照できる。",
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "--color-danger",
-        "--color-text",
-        "--color-text-label",
-        "--color-text-placeholder",
-        "--color-text-secondary",
-        "--color-border",
-        "--color-page-background",
-        "--color-surface-highlight",
-        "--font-family-base",
-        "--font-size-note",
-        "--font-size-secondary",
-        "--line-height-base",
-        "--space-1",
-        "--space-2",
-        "--space-3",
-        "--space-4",
-        "--space-5",
-        "--space-6",
-        "--border-width",
-        "--control-border-radius",
-        "--surface-shadow",
-        "--focus-outline-color",
-        "--focus-outline-width",
-        "--detail-label-width",
-        "--login-max-width"
+        "danger",
+        "body_text",
+        "label_text",
+        "placeholder_text",
+        "secondary_text",
+        "border_color",
+        "page_background",
+        "highlight_surface",
+        "primary_fill",
+        "on_primary",
+        "overlay_background",
+        "overlay_text",
+        "body_font",
+        "note_font_size",
+        "secondary_font_size",
+        "body_line_height",
+        "space_1",
+        "space_2",
+        "space_3",
+        "space_4",
+        "space_5",
+        "space_6",
+        "border_width",
+        "control_radius",
+        "surface_shadow",
+        "focus_ring",
+        "focus_ring_width"
       ],
       "properties": {
-        "--color-danger": {
-          "description": "エラー・危険な操作の文字色。#rgb または #rrggbb。",
+        "danger": {
+          "description": "エラー・危険な操作の文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-text": {
-          "description": "本文の文字色。#rgb または #rrggbb。",
+        "body_text": {
+          "description": "本文の文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-text-label": {
-          "description": "項目名 (ラベル) の文字色。#rgb または #rrggbb。",
+        "label_text": {
+          "description": "項目名 (ラベル) の文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-text-placeholder": {
-          "description": "未入力時の案内文の文字色。#rgb または #rrggbb。",
+        "placeholder_text": {
+          "description": "未入力時の案内文の文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-text-secondary": {
-          "description": "補助的な説明文の文字色。#rgb または #rrggbb。",
+        "secondary_text": {
+          "description": "補助的な説明文の文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-border": {
+        "border_color": {
           "$comment": "非テキストの前景として扱う (コントラスト閾値 3:1)。**この製品自身の既定値 #ddd はこの閾値を通らない** —— ADR-0046 の 2026-07-25 追記「限界7」。既定の描画は変わらない (検査が掛かるのは incoming のテーマだけ) が、既定の見た目をテーマとして表すことはできない。",
-          "description": "区切り線・枠線の色。#rgb または #rrggbb。",
+          "description": "区切り線・枠線の色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-page-background": {
-          "description": "ページの地色。#rgb または #rrggbb。",
+        "page_background": {
+          "description": "ページの地色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--color-surface-highlight": {
-          "description": "強調された面 (表の見出し・ホバー中の行) の地色。#rgb または #rrggbb。",
+        "highlight_surface": {
+          "description": "強調された面 (表の見出し・ホバー中の行) の地色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--font-family-base": {
+        "primary_fill": {
+          "description": "主ボタン (詳細画面で主と宣言したボタン) の地色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
+          "type": "string",
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
+        },
+        "on_primary": {
+          "description": "主ボタンの文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
+          "type": "string",
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
+        },
+        "overlay_background": {
+          "description": "重ねて出す小窓 (選択肢の一覧など) の地色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
+          "type": "string",
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
+        },
+        "overlay_text": {
+          "description": "重ねて出す小窓の文字色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
+          "type": "string",
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
+        },
+        "body_font": {
           "$comment": "書体だけは列挙で縛れないので、**禁止文字の否定クラス**で縛る —— 丸括弧を許さないので calc( / var( / rgba( が書けず、波括弧を許さないので {{…}} が書けず、$ を許さないので $record. が書けない (限定6)。セミコロン・コロン・バックスラッシュ・山括弧も許さない (CSS 宣言の外へ出る形を1つも許さない)。",
           "description": "本文の書体 (フォントスタック)。丸括弧・波括弧・セミコロン・コロンなどを含められない。",
           "type": "string",
@@ -395,86 +732,104 @@
           "maxLength": 200,
           "pattern": "^[^(){}\\[\\];:$@!=%*/\\\\<>&?|^~#+\\u0000-\\u001f]{1,200}$"
         },
-        "--font-size-note": {
+        "note_font_size": {
           "description": "注記の文字寸。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--font-size-secondary": {
+        "secondary_font_size": {
           "description": "補助文の文字寸。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--line-height-base": {
+        "body_line_height": {
           "description": "本文の行間。**単位なしの数値**を文字列で書く (例: 1.6)。",
           "type": "string",
           "pattern": "^[0-9]{1,2}(\\.[0-9]{1,3})?$"
         },
-        "--space-1": {
+        "space_1": {
           "description": "余白の段階1 (最小)。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--space-2": {
+        "space_2": {
           "description": "余白の段階2。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--space-3": {
+        "space_3": {
           "description": "余白の段階3。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--space-4": {
+        "space_4": {
           "description": "余白の段階4。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--space-5": {
+        "space_5": {
           "description": "余白の段階5。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--space-6": {
+        "space_6": {
           "description": "余白の段階6 (最大)。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--border-width": {
+        "border_width": {
           "description": "枠線の太さ。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--control-border-radius": {
+        "control_radius": {
           "description": "入力部品の角丸。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
         },
-        "--surface-shadow": {
+        "surface_shadow": {
           "$comment": "複合値なので形を列挙で縛る —— none か、長さ2〜4個 (+ 任意の16進色) だけである。**丸括弧を許さないので rgba( が書けない** (限定6) —— したがって不透明度は16進8桁 (#rrggbbaa) で書くことになる。この制限は記録 docs/plan/v3/records/v3-m1-t03a.md に限界として書いた。**影の中の色はコントラスト検査の対象ではない** (役割表では not-a-color。V3-M1-T02 の記録 §11-3 の穴)。",
           "description": "面の影。none か、長さ2〜4個と任意の16進色 (例: 0 1px 3px #0000001a)。",
           "type": "string",
           "pattern": "^(none|(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))( (0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))){1,3}( #([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))?)$"
         },
-        "--focus-outline-color": {
-          "description": "フォーカスリングの色。#rgb または #rrggbb。",
+        "focus_ring": {
+          "description": "フォーカスリングの色。16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_brand)。",
           "type": "string",
-          "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         },
-        "--focus-outline-width": {
+        "focus_ring_width": {
           "description": "フォーカスリングの太さ。0 か、数値に px / rem / em を付けた形。",
           "type": "string",
           "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
-        },
-        "--detail-label-width": {
-          "description": "詳細画面の項目名の幅。0 か、数値に px / rem / em を付けた形。",
+        }
+      },
+      "patternProperties": {
+        "^palette_[a-z0-9_]{1,40}$": {
+          "$comment": "V20-M9 / ADR-0474 §Decision 1-1。生の色 (AI が名付ける色)。置き場はこの patternProperties の1本だけで、必須の集合に1件も入らない (0件でもテーマは valid。ADR-0455 限定5)。値は実値 (16進 / oklch) か、別の生の色への参照 $palette_名前。参照の解決 (未解決・循環・深すぎの拒否) はカーネル (src/kernel/theme-reference.ts) が incoming にだけ掛ける (ADR-0047 限定8)。",
+          "description": "生の色。palette_ で始まる名前 (英小文字・数字・_ で1〜40字) を付けて、役割の色の枠から $palette_名前 で参照する。値は 16進の #rgb / #rrggbb か、明るさ基準の oklch(L C H) か、別の生の色への参照 $palette_名前 (例: #1a4f9c / oklch(0.55 0.15 250) / $palette_blue_600)。",
           "type": "string",
-          "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
-        },
-        "--login-max-width": {
-          "description": "ログイン画面の最大幅。0 か、数値に px / rem / em を付けた形。",
-          "type": "string",
-          "pattern": "^(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))$"
+          "anyOf": [
+            {
+              "anyOf": [
+                { "pattern": "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                {
+                  "pattern": "^oklch\\((0(\\.[0-9]{1,6})?|1(\\.0{1,6})?|([1-9]?[0-9](\\.[0-9]{1,6})?|100(\\.0{1,6})?)%) [0-9]{1,3}(\\.[0-9]{1,6})? (([1-9]?[0-9]|[12][0-9]{2}|3[0-5][0-9])(\\.[0-9]{1,6})?|360(\\.0{1,6})?|none)\\)$"
+                }
+              ]
+            },
+            { "pattern": "^\\$palette_[a-z0-9_]{1,40}$" }
+          ]
         }
       }
     },
@@ -561,6 +916,13 @@
                     "$comment": "AC-G4a —— この権限名が**上限**であること (その付与が実効の範囲を広げるのではなく、和集合の答えを絞る側であること) を、表の定義が宣言する (V17-M10-T04。門A の本審査 = V17-M10-T02。判定値は限定採用。ADR = docs/adr/0429-record-permission-upper-bound.md の限定表13行)。**permissions[] の要素の6キー目である。****置き換えとなる新しい不変条件: permissions[] の要素のキーは6つ。7つ目を足してはならない。** (ADR-0294 限定2「要素は id / name / read / write / delete の5キーちょうど。6キー目を足さない」・ADR-0405 限定2・ADR-0412 限定1 第2項 が引いた線を、本キーが通った門A が引き直した。**あちらの本文は1バイトも書き換えていない。**) **access_control は今日も9キー・grant は今日も5キー・$defs は今日も 30 のままである (ADR-0429 限定1)** —— **値域はインラインで書き、$ref を1つも使わない。****required に入れない (同 限定2)** —— **書かなかった権限名は今日と1バイトも変わらない。****値域は boolean ちょうどで、列挙も文字列も3値目も作らない (同 限定3)** —— **「どちらが勝つか」を宣言者が選べる形にしない (同 限定7 / ADR-0308 限定5 後段 / ADR-0309 限定3 後段)。****面 (roles[] / rules[] / can) に1バイトも足していない (同 限定4)** —— 道 (iv) は「この行だけ」を構造的に満たせないので採らなかった。**綴りは ADR-0429 が1文字も決めていない** —— 同 §Decision の 2 の (1) の逐語「本 ADR も固定しない。」のとおりであり、restrictive に決めたのは V17-M10-T04 である。**候補と却下理由は docs/plan/v17/records/v17-m10.md §3-4 の T04-0 に在る** —— **max / limit / cap / bound / ceiling の語族を1語も使っていない**: この製品で「上限」と呼んでいるのは引き継ぎの段数 5 と件数 1000 の**打ち切り**であり、それと読み違えないためである (ADR-0429 §Decision 2 の (1) の拘束 (c))。**【この schema が止めないもの】(1) この符号を書いた権限名が permissions[] の中に実在すること、(2) 矛盾する組み合わせ を拒むこと は、どちらも JSON Schema では表せない** —— 適用時検査 (src/kernel/referential-integrity.ts のアクセス権管理の宣言の側の類型17) の担当であり、V17-M10-T05 が足す。**diff.schema.json に値域を1バイトも書き写さない (ADR-0429 限定1 第4項)** —— change_table は manifest 側の access_control 全体を $ref で受けるので、差分操作を1つも増やさずに後から宣言できる。**【正直に書く】この $comment を書いた時点 (V17-M10-T04) で判定の実装は1バイトも無い** —— **今日この符号を書いても、行の読取・書込・削除のふるまいは今日どおりである = 「書けるが今日は効かない」。****和集合の2段化 (ADR-0429 §Decision 2 の (2)) と前提の関門 (同 (3)) は V17-M10B-T06 の担当である。****【禁止】本キーを根拠に「狭められるようになった」と読まない。****【正直に書く】上限が効くのは grant.member 経由の直接の付与だけである (ADR-0429 限定9)** —— **grant.group 経由で解けた付与は、この符号を持っていても上限として1件も数えない。****inherit_from 経由で親から降りてきた付与に上限がどう掛かるかは、審査も ADR も1度も考えていない (ADR-0429 §誇張しない の 5)。****7つ目のキーを足す提案・値域を3値以上にする提案・required に入れる提案・どちらが勝つかを宣言で選べるキーを作る提案・値域を diff.schema.json に書き写す提案は、改めて ADR-0007 の門A を通すこと (ADR-0429 §Decision 11)。****【V17-M10B-T08b による訂正 (2026-09-10)。上の本文を1バイトも消していない】上の本文のうち 5文が今日は偽である。** **1文ずつ書く (授権 = docs/adr/0430-upper-bound-through-group-and-inheritance.md §Decision 7 の表)。****(1) 逐語「今日この符号を書いても、行の読取・書込・削除のふるまいは今日どおりである = 「書けるが今日は効かない」。」は今日は偽である** —— **判定は V17-M10B-T06 が配線した。この符号を持つ付与が1件でも効いている行では、読取・書込・削除の答えが実際にその範囲まで絞られる。****(2) 逐語「和集合の2段化 (ADR-0429 §Decision 2 の (2)) と前提の関門 (同 (3)) は V17-M10B-T06 の担当である。」は今日は偽である** —— **担当ではなく、済んだ (V17-M10B-T06。実装は src/server/owner-scope.ts)。****(3) 逐語「【禁止】本キーを根拠に「狭められるようになった」と読まない。」は今日は偽である** —— **今日は狭められる。****ただし迂回できることを同じ場所に書く: 上限で書けない人でも、同じ行について他の人に強い権限を渡す付与は作れる (付与を作ってよいかの判定に、上限は1つも掛かっていない)。****時刻で動く処理は今日どおり素通りする** —— **【禁止】これを「どの入口でも必ず効く」と読まない。****(4) 逐語「上限が効くのは grant.member 経由の直接の付与だけである (ADR-0429 限定9)」と「grant.group 経由で解けた付与は、この符号を持っていても上限として1件も数えない。」は、今日はどちらも偽である** —— **ADR-0429 限定9 は撤回された (V17-M10B-T06a の本審査。判定値は限定採用。ADR = docs/adr/0430-upper-bound-through-group-and-inheritance.md)。****上限は grant.group 経由で解けた付与にも効く** —— **あとからその人をグループに入れたことで、その人にできることが減ることがある。****(5) 逐語「inherit_from 経由で親から降りてきた付与に上限がどう掛かるかは、審査も ADR も1度も考えていない (ADR-0429 §誇張しない の 5)。」は今日は偽である** —— **ADR-0430 が考え、V17-M10B-T06 が段どうしの合成にも上限を掛けた。親から降りてきた付与にも効く (実測は V17-M10B-T07)。****あわせて、上の逐語「【この schema が止めないもの】…適用時検査 (…類型17) の担当であり、V17-M10-T05 が足す。」は偽ではないが、今日の形と違う** —— **V17-M10-T05 が足した3条項のうち1本を V17-M10B-T06c が外し、今日は2本である。****ただし permissions[] の全部を絞る側にした宣言は今日も保存できない** —— **creator_permission は必須であり、その指す先も必ず絞る側になるので、残る条項が拒否する (実測は src/kernel/referential-integrity.test.ts の (13b))。****上限だけを持つ人は、その上限が許すぶんをそのまま受け取る (0 にはならない)** —— **この符号を持つ付与も「渡す」側に入る。****符号を1つも書いていないアプリの答えは、今日と1ビットも変わらない。****この訂正で、access_control のキー・permissions[] の要素のキー・required・$defs を1つも動かしていない。****diff.schema.json は0バイトである。**",
                     "description": "この権限名が上限かどうか。true にすると、この権限名の付与は「できることを足す」のではなく「その行のその人にできることを、この権限名の範囲まで絞る」ものになる (同じ行に強い付与と並んだときも、実効の範囲はこちらまで狭まる)。書かなかった権限名は今日と1バイトも変わらない (今までどおり足す側である)。絞る対象は付与表で利用者を直接名指しした付与だけで、グループ経由で解けた付与は上限として数えない。読める・書ける・消せるの3つと同時に書く (この符号だけでは何も表せない)。件数や段数の打ち切り (permissions は8件まで、inherit_from は2件まで) とは何の関係も無い。今日はこの符号を書いても行の見え方・書き換え方は1つも変わらない (判定の配線は後のマイルストーン)。**【2026-09-10 訂正 (V17-M10B-T08b)。上の本文を1バイトも消していない】上の本文のうち3文が今日は偽である。****(1)「「できることを足す」のではなく」は今日は偽である** —— **この符号を持つ付与も、できることを足す側に入る。上限だけを持つ人は、その上限が許すぶんをそのまま受け取る (0 にはならない)。この符号が足すのは「そこまでに絞る」ほうの働きであって、足す働きを取り上げるものではない。****(2)「絞る対象は付与表で利用者を直接名指しした付与だけで、グループ経由で解けた付与は上限として数えない。」は今日は偽である** —— **上限は、相手を直接名指しした付与にも、グループ経由で解けた付与にも、引き継ぎ元 (親) から降りてきた付与にも効く。あとからその人をグループに入れたことで、その人にできることが減ることがある。****(3)「今日はこの符号を書いても行の見え方・書き換え方は1つも変わらない (判定の配線は後のマイルストーン)。」は今日は偽である** —— **判定は配線され、読取・書込・削除の答えが実際にこの符号まで絞られる。****ただし、上限で書けない人でも、同じ行について他の人に強い権限を渡す付与は作れる (付与を作ってよいかの判定に、上限は1つも掛かっていない)。時刻で動く処理は今日どおり素通りする。****符号を1つも書いていないアプリの答えは、今日と1ビットも変わらない。**",
                     "type": "boolean"
+                  },
+                  "create_child": {
+                    "description": "この権限名を親の行で持つ人が、親の行に書けなくても、その行を親にして行を作れる子の表のID (1つ以上)。子の表の inherit_from はこの表を指していなければならない。付与・名簿・グループを記録する表と、この表自身は書けない。上限 (restrictive) の権限名には書けない。作るときだけに効き、別の親への付け替えには使えない。",
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": { "$ref": "#/$defs/resource_id" }
                   }
                 }
               }
@@ -597,6 +959,34 @@
                 "permission": {
                   "description": "付与表のうち、権限名を持つ select 項目のID。",
                   "$ref": "#/$defs/resource_id"
+                },
+                "principal_row": {
+                  "description": "付与の相手に、別の表の行を書けるようにする宣言 (任意)。付与表の column が table の行を指し、その行に via のどれかの権限を持つ人が、この付与を受け取る (たどるのは1段だけ)。",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["column", "table", "via"],
+                  "properties": {
+                    "column": {
+                      "description": "付与表のうち、相手の行を指す reference 項目のID。",
+                      "$ref": "#/$defs/resource_id"
+                    },
+                    "table": {
+                      "description": "相手の行の表のID。その表にも access_control があり、名簿 (members の table) がこの表と同じでなければならない。",
+                      "$ref": "#/$defs/resource_id"
+                    },
+                    "via": {
+                      "description": "相手の行の表の権限名 (permissions の id。1つ以上)。相手の行にこのどれかの権限を持つ人が付与を受け取る。",
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32,
+                        "pattern": "^[a-z0-9_]{1,32}$"
+                      }
+                    }
+                  }
                 }
               }
             },
@@ -617,6 +1007,31 @@
                 "group": {
                   "description": "利用者の表のうち、グループの表を指す reference 項目のID (任意)。",
                   "$ref": "#/$defs/resource_id"
+                },
+                "auto_enroll": {
+                  "$comment": "SC-G1 / SC-G2 (V23-M1。ADR-0497 限定1: members は4キーを超えない・中は roles / name の2キーで閉じる・新しい $defs を作らない)。役割の実在と anonymous の拒否・name の列の型・account の型・同じ名簿を指す宣言の食い違い・既存の重複は、どれも JSON Schema では表せないので適用時検査 (src/kernel/referential-integrity.ts と src/kernel/apply-diff.ts) の担当である。",
+                  "description": "登録した人・役割を配られた人を、この利用者の表へ自動で1行ずつ入れる宣言 (任意)。書かなかった名簿は今日と1バイトも変わらない。書くと、利用者の表の account の列に重複を許さなくなる。",
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["roles"],
+                  "properties": {
+                    "roles": {
+                      "description": "自動で入れる役割 (app.roles の id) の一覧。1つ以上で、同じ役割を2度書けない。anonymous は書けない。",
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 32,
+                        "pattern": "^[a-z0-9_]{1,32}$"
+                      }
+                    },
+                    "name": {
+                      "description": "利用者の表のうち、ログイン名を入れる text 項目のID (任意)。account・group の列とは別の列を指す。本人はこの列だけを書き換えられる。",
+                      "$ref": "#/$defs/resource_id"
+                    }
+                  }
                 }
               }
             },
@@ -664,8 +1079,67 @@
                 "maxLength": 32,
                 "pattern": "^[a-z0-9_]{1,32}$"
               }
+            },
+            "invitations": {
+              "$comment": "V23-M5-T02 (門A = ADR-0501 の SC-G17〜SC-G19 を補う ADR-0532 §Decision 1-1 の限定採用。決定 D-V23-119 / D-V23-133 軽5)。**access_control の10キー目である。****置き換えとなる新しい不変条件: access_control のキーは10。11個目を足してはならない (ADR-0532 限定1)。****中は5キーで閉じ、grantable だけが必須である。****新しい $defs を1つも作らない** —— 値域はインラインで書き、group_from は既存の resource_id を $ref で受ける (ADR-0532 式3)。**required に入れない** —— 書かない表は今日と1バイトも変わらない。**【正直に書く】この schema が止めないもの**: by / grantable の要素が permissions[].id に実在すること / target_roles の要素が roles に実在すること / group_from が招待する表の reference 項目でグループの表を指し、members.group が宣言されていること / 付与表に決まった列の外の必須の項目が無いこと / 招待を宣言した表 (enabled: true) があるのに workspace.invitations が無いこと —— **どれも適用時検査 (src/kernel/referential-integrity.ts の類型17 の項目13 と項目13 の続き) の担当である。****【正直に書く】判定・口・内部表の実装は V23-M5-T02 の時点で1バイトも無い** —— 書けるが今日はまだ招待を出せない。当たり先は V23-M5-T03 以降である。**group_from は項目名の付け替え (change_field の rename) に追随しない** —— access_control の他の列の指し (grant / members / groups) と同じ扱いである (付け替えると適用時検査が断る)。",
+              "description": "この表の行に、ほかの人を招待できるようにする宣言 (書かなかった表は今日と1バイトも変わらない)。招待された人が承諾すると、その行への権限が付く。grantable (招待で渡せる権限名。1つ以上) が必須。by = 招待を出せる権限名 (省略するとこの表の creator_permission と同じ。運営者はいつでも招待できる)。target_roles = 招待を受けられる役割 (省略するとログインできる人なら誰でも)。expires_days = 招待の期限の日数 (1〜30の整数。省略すると7)。group_from = 承諾したとき、名簿の所属グループ欄に書く値を持つこの表の参照項目の id (グループの表を指す項目。名簿の group を宣言しているときだけ書ける)。by / grantable は permissions の id、target_roles はアプリの roles の id でなければならない。招待を宣言した表があるアプリは、set_workspace で workspace.invitations (受け取り画面) も書くこと。",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["grantable"],
+              "properties": {
+                "by": {
+                  "description": "招待を出せる権限名 (permissions の id。1つ以上)。省略するとこの表の creator_permission と同じ。運営者はこの指定によらず招待できる。",
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "pattern": "^[a-z0-9_]{1,32}$"
+                  }
+                },
+                "grantable": {
+                  "description": "招待で渡せる権限名 (permissions の id。1つ以上)。",
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "pattern": "^[a-z0-9_]{1,32}$"
+                  }
+                },
+                "target_roles": {
+                  "description": "招待を受けられる役割 (アプリの roles の id。1つ以上)。省略するとログインできる人なら誰でも受けられる。",
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "pattern": "^[a-z0-9_]{1,32}$"
+                  }
+                },
+                "expires_days": {
+                  "description": "招待の期限の日数 (1〜30の整数)。省略すると7日。",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 30
+                },
+                "group_from": {
+                  "description": "承諾したとき、承諾した人の名簿の所属グループ欄に書く値を持つ、この表の参照項目の id (グループの表を指す項目)。省略すると所属グループは変えない。",
+                  "$ref": "#/$defs/resource_id"
+                }
+              }
             }
           }
+        },
+        "history": {
+          "description": "true にすると、この表への全ての書込 (作成・更新・削除) を変更履歴に残す。省略は false。history: true の詳細画面が残っている間は外せない (先に画面の history を外す)。外しても前の履歴は残るが、外している間はどこからも読めず、戻すとまた読める。",
+          "type": "boolean"
         }
       }
     },
@@ -718,6 +1192,13 @@
           "description": "この値が重複しないことを要求する (単一列の一意制約)。true = テーブル全体で一意。\"owner\" = 同じ持ち主 (st_owner) の中だけで一意。省略時は false。DDL 制約ではなくアプリ層の書込時検査で担保する。null (未設定) は重複対象にしない。複合ユニーク (複数列の組) は書けず、スコープに使えるのは持ち主だけで列名は書けない。",
           "enum": [true, false, "owner"]
         },
+        "unique_message": {
+          "$comment": "FR-6 (V23-M2-T02 / ADR-0498 §Decision 1・限定1・限定3 / 決定 D-V23-46・D-V23-56)。**$defs/field の13本目のキーである。**unique の検査に当たったとき、書込の応答に返す文言をアプリの作者が宣言する (今日の汎用の文面を差し替える)。**unique: true と unique: \"owner\" の両方に効く** (D-V23-46)。**unique が無いか false の列に書くと、適用時に拒否する** (referential-integrity.ts。書けるが効かない宣言を作らない。change_field で unique を外して本キーが残る形も同じく拒否する)。**長さは文字 (コードポイント) で 1〜200** (D-V23-56。ajv の maxLength / minLength は既定でコードポイントを数える。実測は src/kernel/unique-message-declaration.test.ts の (R-2c))。**文言は作者が書いた固定の文であり、行の値を埋め込む仕組みは無い。**全型で書ける (unique と同じく、型で絞る allOf の分岐を1つも足していない)。**書込時に文言を返すこと・状態コード 422 は V23-M2-T03 の段であり、このキーを足した時点 (T02) では宣言として受け入れられるだけである。** **【2026-09-29 追記(V23-M2-T11)。上の文を1バイトも書き換えていない】書込時に文言を返すこと・状態コード 422 は V23-M2-T03 で実装済みである。**",
+          "description": "unique の検査に当たったときに返す文言 (1〜200文字)。unique が true か \"owner\" の列にだけ書ける。",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
         "unit": {
           "$comment": "E-G14 / F-9 (単位表示側の**4回目**。1〜3回目はいずれも却下)。この number の値が何の単位かを宣言する (V4-M10-T46 / ADR-0086 限定1〜限定11)。**$defs/field の10キー目である。****【ADR-0086 限定1 の字面との差を正直に書く】**限定1 は「field.properties を 8 → 9 にする」と書いているが、**実測の着手前は 9 だった** —— ADR-0086 は V4-M10 本体 (ADR-0076 の writable_by が9キー目に入った) の実装前に書かれている。**増分が1キーであることは限定1 のとおりで、起点だけが1つずれている。****ユーザ決定 D-V4-57 の逐語**「この数値が円なのかポイントなのか個数なのかをマニフェストに書けるようにしたい (表示名に括弧書きするのではなく、値の意味として)」。**これは『欠けている置き場』を1つ作るものである** —— web/src/fields/display.tsx のコメントが「マニフェストには『この number は通貨である』と書く手段が無く…単位を出すにはマニフェスト外の知識 (フィールド名の推測) が要り、Δ4 (自己完結性の喪失) に当たる」と自ら名指ししていた欠けである。**置き場ができたので、単位を出しても Δ4 を踏まない** —— **推測を1つもしない。****FIELD_TYPES を1つも動かしていない (限定2)** —— currency 型は作っていない。RESOURCE_KINDS (7) / DIFF_OPS (16) も動いていない。**値は単位を表す短い文字列1つだけである (限定3)** —— **配列にしない。通貨コード (ISO 4217) の enum にもしない** (「ポイント」「個」「回」は通貨コードを持たない)。**長さの上限を schema で固定する** (maxLength: 8。**単位は語であって文ではない**)。**number 型のフィールドにだけ書ける (限定4)** —— 下の allOf が他の7型で false にしており、**書いたら差分全体を拒否する。「書けるが効かない組み合わせ」を1つも作っていない。****描画規則は1通りに固定する (限定5)** —— **値の後ろに置く1通りだけ。**記号の位置・小数桁・負数の表し方・端数処理・桁数・接頭辞を1つも作らない。**アプリが位置を選べない。****桁区切りを1バイトも動かしていない (限定6)** —— web/src/fields/display.tsx の GROUPING_MIN_INTEGER_DIGITS = 5 は今日も1つの定数であり、**単位を書いても閾値は変わらない。****したがって 4256 点 と 24,724 円 は今日も違う書式で並ぶ** (ADR-0086 §Context 4 の6 が不利な材料として自ら申告した状態であり、消えていない)。**$defs/view に1バイトも触っていない (限定7)** —— **画面ごとに単位を変えられない。単位はフィールドの性質である。****diff.schema.json の field_changes にも同じキーを1本足した (限定8。8 → 9)** —— change_field で後から書け、**カーネル (buildChangedField) が値を実際に運ぶ。****既定は『単位を出さない』(限定9)** —— 書かなかったフィールドは今日と1文字も変わらない。**表示関数の引数を1本も増やしていない (限定10)** —— 単位は field (既に引数である) の中に入って届く。**テーマ・CSS に1バイトも触っていない (限定11)** —— $defs/theme の 25スロットも web/src/styles.css も動いていない。**税込・税抜は単位ではない** —— product.price の表示名 `価格(税込)` は今日どおり必要である (§Decision 4-3)。**記号の位置・小数桁・端数処理を書けるようにする提案、桁区切りの閾値を宣言にする提案、画面ごとに単位を変える提案、他の型にも書けるようにする提案は、改めて ADR-0007 の門A を通すこと (ADR-0086 §Decision 5)。**",
           "description": "この number の値が何の単位か (円 / 点 / 個 など) を表す短い文字列。number 型にだけ書ける。書くと画面で値の後ろに出る。省略したフィールドは今日どおり単位を出さない。桁区切りの規則は単位を書いても1文字も変わらない。税込・税抜のような但し書きは単位ではないので、表示名 (name) に書くこと。",
@@ -727,7 +1208,7 @@
         },
         "emphasis": {
           "$comment": "P-G28 + P-G22 の (C) 側。この select の値のうち、どれが注意を要するかを『意味の名前』で宣言する (V4-M16-T10 / ADR-0090 限定1〜限定10)。**$defs/field の11キー目である。****門A 本審査 (V4-M14 単位3) を通って限定採用された増分であり、審査記録は docs/plan/v4/records/v4-m14-gate-a-value-emphasis.md である。****目的文の逐語**「値そのものが注意を要するとき、その値が一覧の中で他の値と並んだまま目で拾えるようにしたい」—— **『並んだまま』が判定の核である** (filter / sort で絞る・並べ替えるのとは違う。ADR-0090 §Context 1)。**値域は『options の値 → 意味の名前』の対応表である (限定3)** —— キーはそのフィールドの options の値 (アプリが決めた任意の文字列)、値は**有限 enum 4値 (neutral / info / caution / danger) だけ**である。**5値目を足さない。****色の実値も CSS 文字列も長さも1バイトも書けない** (ADR-0050 限定11 と同じ形)。**拒否リストを作らない** —— enum と additionalProperties だけで閉じる (ADR-0013 限定13)。**select 型のフィールドにだけ書ける (限定4)** —— 下の allOf の4本目の分岐が他の7型で false にしており、**書いたら差分全体を拒否する。「書けるが効かない組み合わせ」を1つも作っていない。****options に無い値をキーに書いても拒否する (限定4 後段)** —— その検査は src/kernel/referential-integrity.ts にあり、add_field / add_table / change_field の全経路を1箇所で覆う (適用後マニフェストを見る)。**新しい $defs を1つも作っていない (限定1)** —— $defs の本数28 は不変である。**$defs/view に1バイトも触っていない (限定1)** —— **画面ごとに強調を変えることはできない。強調は値の性質である。****RESOURCE_KINDS (7) / FIELD_TYPES (8) / DIFF_OPS (16) を1つも動かしていない (限定2)** —— emphasis 型も status 型も作っていない。**描画に使う色は $defs/theme の25スロットから導出する (限定5)** —— **新しい色スロットを1つも作らず、マニフェストに色の実値は1バイトも現れない。**当たり先は web/src/styles.css の .field-emphasis と、意味の名前1つにつき1つの属性セレクタ規則である (限定6。**当たり先の無い enum 値を置いてはならない** = ADR-0050 §3a 3 を ADR-0090 が自らに課した)。**座標系9プロパティを1つも使っていない (限定7)。****既定は『強調しない』(限定8)** —— **書かなかったフィールドは今日と1ピクセルも変わらない。**書いても、対応表に載っていない値は今日と1文字も変わらない。**diff.schema.json の field_changes にも同じキーを1本足した (9 → 10)** —— change_field で後から書け、**カーネル (buildChangedField) が値を実際に運ぶ** (ADR-0076 の writable_by が作った穴を繰り返さない)。**【正直に書く】どの値が注意かをカーネルは1度も検証しない** —— 検証するのは『そのキーが options に在るか』だけである (ADR-0090 §Context 4 の 4)。**強調色と背景色の対はコントラスト検査に1組も載っていない** (同 5。載せる作業は ADR-0046 §3a の門であり ADR-0090 の射程外)。**ADR-0049 §3 限定3 の内容欄『値単位の見た目を作らない』を、本キーは正面から破っている** —— **破ったことは ADR-0090 §Context 5 の 1 が名指しで認めている。丸めない。****意味の名前を5値目にする提案、select 以外の型に書けるようにする提案、色の実値を書けるようにする提案、画面ごとに強調を変える提案は、改めて ADR-0007 の門A を通し ADR-0090 と同格の個別 ADR を書くこと (ADR-0090 §Decision 4)。**",
-          "description": "この select の値のうち、どれが注意を要するかを意味の名前で宣言する対応表。キーはこのフィールドの options の値、値は neutral / info / caution / danger の4つだけ。select 型にだけ書ける (他の型に書くと差分全体が拒否される)。options に無い値をキーに書いても拒否される。色の実値も CSS 文字列も書けない (配色はアプリのテーマの25スロットから導かれる)。省略したフィールドと、対応表に載せなかった値は今日と1ピクセルも変わらない。画面ごとに変えることはできない (強調は値の性質である)。",
+          "description": "この select の値のうち、どれが注意を要するかを意味の名前で宣言する対応表。キーはこのフィールドの options の値、値は neutral / info / caution / danger の4つだけ。select 型にだけ書ける (他の型に書くと差分全体が拒否される)。options に無い値をキーに書いても拒否される。色の実値も CSS 文字列も書けない (配色はアプリのテーマの25スロットから導かれる)。省略したフィールドと、対応表に載せなかった値は今日と1ピクセルも変わらない。画面ごとに変えることはできない (強調は値の性質である)。【2026-09-27 訂正。直前の文を消していない】直前の「テーマの25スロット」は今日は27スロットである。",
           "type": "object",
           "minProperties": 1,
           "propertyNames": { "type": "string", "minLength": 1 },
@@ -1047,6 +1528,10 @@
           "$comment": "J-G9 (V8-M17。ADR-0007 門A 本審査 = 限定採用。メインの裁定 R-13-1)。**$defs/view_action の9キー目である** (着手前は8キー)。**足した理由は1つだけ** —— **役割の規則 ($defs/app/properties/roles/items/properties/rules の target: action) からボタンを名指しできるようにするためである。****新しい値域を作っていない** —— **既存の $defs/resource_id を $ref で受ける** (form / view / run と同じ形)。**任意である** —— **required に入れると既存マニフェストのボタンが全部 invalid になる** (workflows / functions / theme / user_kinds / roles と同じ理由)。**識別子を書いていないボタンは今日どおり通り、役割の規則から名指しできないだけである。****一意なのは同じ画面の中だけである** —— **別の画面に同じ識別子を書ける** (だから規則の側は view と action の2つで名指しする)。**重複は JSON Schema では表せないので、適用時検査 (src/kernel/referential-integrity.ts) が拒否する。****4形すべて (遷移 / 値の書換 / 行き先の宣言 / 自動処理の起動) に書ける** —— **oneOf のどの分岐でも false にしていない。****このキーは見た目を1ミリも変えない** —— **画面に出る文字は name であって id ではない。****【キー数の期待値について。裁定 R-13-1 の逐語】** **$defs/view_action は V8-M17 時点で9キー、V8-M20 が audience を消して8キーに戻る。****期待値を1つの数字に揃えてはならない** —— 揃えると V8-M17 と V8-M20 の完了条件が互いを赤くする。**【正直に書く】このキーは判定を1バイトも持たない** —— **名指しできるようになっただけで、ボタンが出るか出ないかは今日どおりである。**",
           "description": "このボタンの識別子。省略できる。役割に束ねた規則から、この画面のこのボタンを名指しするために使う。同じ画面の中で同じ識別子を2度書くことはできない (別の画面なら同じ識別子を書ける)。画面に出る文字は name のほうであり、この識別子は表示されない。",
           "$ref": "#/$defs/resource_id"
+        },
+        "action_emphasis": {
+          "description": "このボタンの見た目の強さ。primary (主。押してほしいボタン) / secondary (副) / danger (危険。取り消しにくい操作) の3つから1つを選ぶ。省略できる。書かなければ副として描かれ、並び順で主が決まることはない。詳細画面 (detail_view) のボタンにだけ書ける。一覧 (list_view) の行のボタンには書けない。編集・削除などの組込のボタンの見た目は変わらない。",
+          "enum": ["primary", "secondary", "danger"]
         }
       }
     },
@@ -1276,13 +1761,13 @@
           }
         },
         "menu_listed": {
-          "$comment": "E-G12 画面をメニューへ出す/出さないをアプリが画面ごとに宣言する (V4-M10-T45 / ADR-0084 限定1〜限定9)。**$defs/view の20キー目である。****ユーザ決定 D-V4-54 の逐語**「詳細画面のように単体で開く画面を、アプリが画面ごとにメニューへ出す/出さないと選べるようにしたい」。**値は真偽値1つで、enum にしない (限定2)** —— 「条件つきで出す」「この相手にだけ出す」を1つも作らない。**既定は『出す』(限定3)** —— 書かなかった画面は今日どおり一覧に並ぶ。既定を反転させると既存の全アプリのメニューが黙って変わる。**掲載の判定は AND 1つに固定する (限定4)**: 掲載 = canUseView(role, manifest, view) **かつ** 本キーが偽でないこと。**『どちらが勝つか』の規則を1つも作らない** (ADR-0074 限定2 の精神)。**これは可視性の宣言ではない (限定5)** —— audience と役割が違う。**canUseView / isViewAudienceAllowed / canReadTableRole の本体を1バイトも書き換えていない。****一覧から外した画面へ行クリックからは今日どおり到達でき、URL 直叩きの応答も1バイトも変わらない。****一覧掲載と遮断が同じ述語に載っている構造は1ミリも変わっていない** —— 本キーはその上に AND を1つ足すだけである (ADR-0084 §Decision 3-2)。**diff.schema.json の view_changes にも同じキーを1本足した (限定6。13 → 14)** —— update_view で後から書け、**カーネル (applyViewChanges) が値を実際に運ぶ。****audience / related / actions を view_changes に足すことは本 ADR の射程外である。****allOf の3分岐のどれでも false にしていない** (list_view / form / detail_view の3種すべてに書ける) —— 掲載は種別に依存しない属性である (name / custom_css と同じ)。**表示層以外の経路を1バイトも変えていない (限定8)**: MCP の経路・GET /manifest・レコードAPI の応答は今日と同じである。**ADR-0053 の『隠す』規則を1バイトも変えていない (限定9)** —— 2本目の隠す規則を作らず、限定4 の AND の右辺に1項足しただけである。**2本目の掲載・可視性のキーを足す提案、値を enum にする提案は、改めて ADR-0007 の門A を通すこと (ADR-0084 §Decision 4)。**",
-          "description": "この画面を画面一覧 (メニュー) に並べるかどうか。省略した画面は今日どおり並ぶ。false と書くと一覧から落ちるだけで、行クリックや URL からは今日どおり開ける (見せる相手を決めるのは役割の規則 (roles の rules) であって、このキーではない)。",
+          "$comment": "E-G12 画面をメニューへ出す/出さないをアプリが画面ごとに宣言する (V4-M10-T45 / ADR-0084 限定1〜限定9)。**$defs/view の20キー目である。****ユーザ決定 D-V4-54 の逐語**「詳細画面のように単体で開く画面を、アプリが画面ごとにメニューへ出す/出さないと選べるようにしたい」。**値は真偽値1つで、enum にしない (限定2)** —— 「条件つきで出す」「この相手にだけ出す」を1つも作らない。**既定は『出す』(限定3)** —— 書かなかった画面は今日どおり一覧に並ぶ。既定を反転させると既存の全アプリのメニューが黙って変わる。**掲載の判定は AND 1つに固定する (限定4)**: 掲載 = canUseView(role, manifest, view) **かつ** 本キーが偽でないこと。**『どちらが勝つか』の規則を1つも作らない** (ADR-0074 限定2 の精神)。**これは可視性の宣言ではない (限定5)** —— audience と役割が違う。**canUseView / isViewAudienceAllowed / canReadTableRole の本体を1バイトも書き換えていない。****一覧から外した画面へ行クリックからは今日どおり到達でき、URL 直叩きの応答も1バイトも変わらない。****一覧掲載と遮断が同じ述語に載っている構造は1ミリも変わっていない** —— 本キーはその上に AND を1つ足すだけである (ADR-0084 §Decision 3-2)。**diff.schema.json の view_changes にも同じキーを1本足した (限定6。13 → 14)** —— update_view で後から書け、**カーネル (applyViewChanges) が値を実際に運ぶ。****audience / related / actions を view_changes に足すことは本 ADR の射程外である。****allOf の3分岐のどれでも false にしていない** (list_view / form / detail_view の3種すべてに書ける) —— 掲載は種別に依存しない属性である (name / custom_css と同じ)。**表示層以外の経路を1バイトも変えていない (限定8)**: MCP の経路・GET /manifest・レコードAPI の応答は今日と同じである。**ADR-0053 の『隠す』規則を1バイトも変えていない (限定9)** —— 2本目の隠す規則を作らず、限定4 の AND の右辺に1項足しただけである。**2本目の掲載・可視性のキーを足す提案、値を enum にする提案は、改めて ADR-0007 の門A を通すこと (ADR-0084 §Decision 4)。** **2026-09-28 追記 (V22-M4-T01 / ADR-0494 §Decision 1-2 / EN-G1。上の文は1バイトも消していない)**: 上の「表示層以外の経路を1バイトも変えていない (限定8)」は今日も真だが、本キーは「メニューに並べるか」に加えて「未ログインの入口の候補に入れるか」も決める —— 未ログインの入口はメニューに載せる公開の一覧画面のうち並び順で最初のもので、1つも無ければ載せない画面も含めた最初の公開の一覧画面である。未ログインのメニューとログイン画面の画面リンクにも載せない画面は出ない (ADR-0084 限定4 の掲載の判定を公開の経路にも当てた)。入口を名指しするキーは足していない。既定 (書かなければ載せる) は変えていない。3つ目の効き目は持たせない。",
+          "description": "この画面を画面一覧 (メニュー) に並べるかどうか。省略した画面は今日どおり並ぶ。false と書くと一覧から落ちるだけで、行クリックや URL からは今日どおり開ける (見せる相手を決めるのは役割の規則 (roles の rules) であって、このキーではない)。 ログインしていない人がアプリの入口を開いたときに最初に出す画面も、このキーで決まる: メニューに載せる公開の一覧画面のうち並び順で最初のものを出し、1つも無ければ載せない画面も含めた最初の公開の一覧画面を出す。",
           "type": "boolean"
         },
-        "field_groups": {
-          "$comment": "P-G17 の (C) 側 —— 詳細画面の項目のまとまり (V4-M16-T12 / ADR-0092 限定1〜限定9)。**$defs/view の21キー目である。**門A の本審査 (V4-M14 本審査② の単位9) を通って**限定採用**された増分である (審査記録 docs/plan/v4/records/v4-m14-gate-a-field-grouping.md。ADR = docs/adr/0092-detail-field-grouping.md)。**目的文 (S1 が確定させたもの) の逐語**「項目数の多い画面で、関係のある項目どうしがまとまって見えるようにしたい」。**新しい $defs を作らず、値の構造をここにインラインで書く** ($defs の本数28 を1つも増やさない = 限定1)。**$defs/field.properties 11 / $defs/table.properties 4 / $defs/theme 25 にも1バイトも触っていない。****値は「まとまりの名前 → そのまとまりに属するフィールドIDの配列」の1段だけである (限定3)** —— **入れ子にしない** (まとまりの中にまとまりを書けない)。**並び順を指定するキーを1つも足していない** —— 順序はマニフェストの記述順である。**まとまりの名前は表示名であって resource_id ではない** ので propertyNames は素の文字列 (1〜40文字) にしてある。**detail_view 分岐でだけ許す (限定2)** —— 下の allOf の list_view 分岐と form 分岐では false である。**「書けるが効かない組み合わせ」を1つも作らない** (ADR-0086 限定4)。**fields を1バイトも変えていない (限定4)** —— fields は今日どおり平坦なフィールドIDの配列のままで、まとまりに属さない項目は今日どおり並ぶ。**fields を本キーで置き換えない。****整合しない宣言は差分全体を拒否する (限定5)** —— 同じフィールドIDが2つのまとまりに現れたら拒否し、fields に無いIDを書いても拒否する。**fields は任意である**ので、fields を書いていない detail_view (= テーブル定義順の全項目) では対象テーブルのフィールドに実在するかを見る。**判定は src/kernel/referential-integrity.ts の validateReferentialIntegrity 1箇所にあり、add_view / update_view の両経路を覆う。****拒否は「全か無か」である** (ADR-0047 限定9)。**器の見せ方をアプリが選べない (限定6)** —— **器の形を指すキーをここに1つも置かない。**プラットフォームが1通りに決める (V4-M16-T12 は「見出し付きの区切り」を採った。理由は web/test/detail-field-grouping.test.tsx のヘッダ)。**書かなかった画面は今日と1ピクセルも変わらない (限定8)** —— 既定は「まとまり無し」であり、既定を反転させない。**related の子一覧には当たらない。****diff.schema.json の view_changes にも同じキーを1本足した (14 → 15)** —— update_view で後から書け、**カーネル (applyViewChanges) が値を実際に運ぶ** (ADR-0076 の writable_by / ADR-0080 の representative_field が作った「キーは在るが効かない」穴を踏み直さない)。**前進では外せない (限定9。P-G50)** —— update_view はキーを消す手段を持たず、外すには undo で戻すか remove_view + add_view で作り直す (preset_ / custom_css / menu_listed と同じ性質)。**入れ子にする提案・器の形をアプリに選ばせる提案・list_view / form にも書けるようにする提案・related にも当てる提案は、改めて ADR-0007 の門A を通すこと (ADR-0092 §Decision 4)。**",
-          "description": "詳細画面 (detail_view) の項目のまとまり。「まとまりの名前 → そのまとまりに属するフィールドIDの配列」を書く。まとまりに属さない項目は今日どおり先に平坦に並び、そのあとにまとまりが記述順で並ぶ。入れ子にはできず、まとまりの出し方 (タブか区切りか) も指定できない。同じIDを2つのまとまりに書くと、また fields (省略時は対象テーブルのフィールド) に無いIDを書くと、差分全体が拒否される。",
+        "field_sections": {
+          "$comment": "【V20-M3-T01 / ADR-0469 / ADR-0460 限定2。2026-09-24】綴りを field_groups から field_sections に改め、旧綴りは設計図にも差分にも残していない (移行の手段は作っていない)。書ける分岐を入力フォームと詳細画面の2つにした —— 下の allOf の list_view 分岐と report_view 分岐で false、form 分岐の false は旧綴りごと外した。値の形 (oneOf の2枝) は1バイトも変えていない。以下は旧綴りの時点の記述であり、1バイトも書き換えていない (「detail_view 分岐でだけ許す」は今日の正ではない)。P-G17 の (C) 側 —— 詳細画面の項目のまとまり (V4-M16-T12 / ADR-0092 限定1〜限定9)。**$defs/view の21キー目である。**門A の本審査 (V4-M14 本審査② の単位9) を通って**限定採用**された増分である (審査記録 docs/plan/v4/records/v4-m14-gate-a-field-grouping.md。ADR = docs/adr/0092-detail-field-grouping.md)。**目的文 (S1 が確定させたもの) の逐語**「項目数の多い画面で、関係のある項目どうしがまとまって見えるようにしたい」。**新しい $defs を作らず、値の構造をここにインラインで書く** ($defs の本数28 を1つも増やさない = 限定1)。**$defs/field.properties 11 / $defs/table.properties 4 / $defs/theme 25 にも1バイトも触っていない。****値は「まとまりの名前 → そのまとまりに属するフィールドIDの配列」の1段だけである (限定3)** —— **入れ子にしない** (まとまりの中にまとまりを書けない)。**並び順を指定するキーを1つも足していない** —— 順序はマニフェストの記述順である。**まとまりの名前は表示名であって resource_id ではない** ので propertyNames は素の文字列 (1〜40文字) にしてある。**detail_view 分岐でだけ許す (限定2)** —— 下の allOf の list_view 分岐と form 分岐では false である。**「書けるが効かない組み合わせ」を1つも作らない** (ADR-0086 限定4)。**fields を1バイトも変えていない (限定4)** —— fields は今日どおり平坦なフィールドIDの配列のままで、まとまりに属さない項目は今日どおり並ぶ。**fields を本キーで置き換えない。****整合しない宣言は差分全体を拒否する (限定5)** —— 同じフィールドIDが2つのまとまりに現れたら拒否し、fields に無いIDを書いても拒否する。**fields は任意である**ので、fields を書いていない detail_view (= テーブル定義順の全項目) では対象テーブルのフィールドに実在するかを見る。**判定は src/kernel/referential-integrity.ts の validateReferentialIntegrity 1箇所にあり、add_view / update_view の両経路を覆う。****拒否は「全か無か」である** (ADR-0047 限定9)。**器の見せ方をアプリが選べない (限定6)** —— **器の形を指すキーをここに1つも置かない。**プラットフォームが1通りに決める (V4-M16-T12 は「見出し付きの区切り」を採った。理由は web/test/detail-field-grouping.test.tsx のヘッダ)。**書かなかった画面は今日と1ピクセルも変わらない (限定8)** —— 既定は「まとまり無し」であり、既定を反転させない。**related の子一覧には当たらない。****diff.schema.json の view_changes にも同じキーを1本足した (14 → 15)** —— update_view で後から書け、**カーネル (applyViewChanges) が値を実際に運ぶ** (ADR-0076 の writable_by / ADR-0080 の representative_field が作った「キーは在るが効かない」穴を踏み直さない)。**前進では外せない (限定9。P-G50)** —— update_view はキーを消す手段を持たず、外すには undo で戻すか remove_view + add_view で作り直す (preset_ / custom_css / menu_listed と同じ性質)。**入れ子にする提案・器の形をアプリに選ばせる提案・list_view / form にも書けるようにする提案・related にも当てる提案は、改めて ADR-0007 の門A を通すこと (ADR-0092 §Decision 4)。**",
+          "description": "入力フォーム (form) と詳細画面 (detail_view) の項目のまとまり。一覧 (list_view) と集計表 (report_view) には書けない。「まとまりの名前 → そのまとまりに属するフィールドIDの配列」を書く。まとまりに属さない項目は今日どおり先に平坦に並び、そのあとにまとまりが記述順で並ぶ。入れ子にはできず、まとまりの出し方 (タブか区切りか) も指定できない。同じIDを2つのまとまりに書くと、また fields (省略時は対象テーブルのフィールド) に無いIDを書くと、差分全体が拒否される。",
           "type": "object",
           "minProperties": 1,
           "propertyNames": {
@@ -1349,7 +1834,7 @@
         },
         "preset_density": {
           "$comment": "P-G32 の (C) 側 —— 画面の詰まり具合 (余白・寸法) を、画面の役割に合わせてアプリが選ぶ (V4-M19-T03 / ADR-0118 限定1〜限定13)。**$defs/view の26キー目であり、9つ目の preset_ キーである。**門A の本審査 (V4-M19 単位C。**2回目の審査。前回 = V4-M14 単位7 は却下**) を通って**限定採用**された増分である (審査記録 docs/plan/v4/records/v4-m19-gate-a-view-density.md。ADR = docs/adr/0118-view-density-preset.md)。**目的文 (S1 が確定させたもの) の逐語**「画面の詰まり具合 (余白・寸法) を、画面の役割に合わせてアプリが選べるようにしたい」。**上の search_fields / page_size の $comment が『26キー目を足してはならない』と書いたのは ADR-0112 / ADR-0113 制定時の不変条件であり、本キーはまさにその門A (V4-M19 単位C) を新規に通って来ている** —— **その $comment を1バイトも書き換えていない** (ADR-0093 が ADR-0050 に対して、ADR-0084 が ADR-0055 に対して採った作法と同型)。**置き換えとなる新しい不変条件: 27キー目を足してはならない。****あわせて ADR-0093 が置いた『9つ目のプリセットキーを足してはならない』を、ADR-0118 が『10個目のプリセットキーを足してはならない』に引き直した** —— **ADR-0050 / ADR-0093 の本文を1バイトも書き換えていない。****【本数の食い違いを隠さない】ADR-0118 限定1 は『view.properties を 22 → 23 にする』『view_changes を 16 → 17 にする』と書いているが、それは modal も search_fields も page_size も入る前の実測である (同 ADR §限界6 が本数の衝突を『記録しただけで調停していない』と申告している)。****実際の増分は 25 → 26 / 19 → 20 である。****守ったのは『1本だけ足す』という増分であって、限定表が写した絶対値ではない。****値域は2値の enum だけである (限定3)** —— comfortable / compact のほかに3値目を足さない。自由な文字列も自由な数値も1つも受けず、px も rem も割合も CSS 文字列も1バイトも書けない。**拒否リストを作らない** (ADR-0013 限定13) —— enum と additionalProperties:false だけで閉じる。**新しい $defs を作らない** ($defs の本数28 を1つも増やさない = 限定1)。**$defs/theme 25・25 には1バイトも触っていない (限定5)** —— --space-1〜--space-6 の名前も値も変えず、ビュー単位テーマを作らない (ADR-0047 限定1 不可侵)。**$defs/field にも1バイトも触っていない (限定1)** —— **項目ごと・列ごとに密度を変えることはできない。****3種 (list_view / form / detail_view) すべてに書ける** —— 下の allOf のどの分岐でも false にしていない。詰まり具合は画面そのものの性質であり、表・入力・詳細のどれにも器が在るためである。**当たり先は2値それぞれについて実在する (限定6)** —— comfortable = web/src/ui/family.ts の DEFAULT_UI_FAMILY が指す既定の描画、compact = Tailwind の group-data-[ui-family=compact]/ui: 変種 (2026-08-04 実測で web/src/ の15行・出現29箇所)。**当たり先の無い enum 値を1つも置いていない** (ADR-0050 §3a 3)。**系統の判定は resolveUiFamily() の1箇所に保つ (限定7)** —— マニフェスト由来の値も、実行時のテスト用の口も、ビルド時の環境変数も、既定も、すべて同じ1つの関数を通す。**既定は resolveUiFamily() が返す値 (今日は comfortable) であり、書かなかった画面は今日と1ピクセルも変わらない (限定8)** —— **既定を反転させない。****schema に default を書かない** —— 既定は表示層の1箇所が持つ (既定を2箇所に住まわせない)。**マニフェストの値からクラス名を生やさない (限定10)** —— data-ui-family の属性値に enum の1要素が入るだけで、アプリID・画面IDを指す属性を1つも新設しない (その2つの属性名を本 $comment に書かないのは、web/test/preset-boundary.test.ts の (iv) が製品コードから字面で0件を数えているためである)。safelist を1行も置いていない。**座標系9プロパティを1つも足していない / @media を1つも足していない (限定9)。****RESOURCE_KINDS 7 / FIELD_TYPES 8 / DIFF_OPS 16 / $defs/operation.properties 8 を1つも動かしていない (限定4)** —— 密度専用の op を作らず、書き込みは既存の add_view / update_view だけである。**diff.schema.json の view_changes にも同じキーを1本足した (19 → 20)** —— update_view で後から書け、**カーネル (applyViewChanges) が値を実際に運ぶ** (ADR-0076 の writable_by / ADR-0080 の representative_field が作った『キーは在るが効かない』穴を踏み直さない)。**前進では外せない (限定12)** —— update_view はキーを消す手段を持たず、外すには undo で戻すか remove_view + add_view で作り直す (他の preset_ / custom_css / menu_listed / field_groups / modal / search_fields / page_size と同じ性質)。**ただし comfortable と書いた画面は今日の既定と同じ描画に戻せる (既定が comfortable だから)** —— **既定が将来変われば、この一文は偽になる。****3値目を足す提案・10個目のプリセットキーを足す提案・--space-1〜--space-6 を画面ごとに上書きできるようにする提案・項目ごと / 列ごとに密度を変えられるようにする提案・系統をアプリが定義できるようにする提案・@media で画面幅により切り替える提案は、改めて ADR-0007 の門A を通すこと (ADR-0118 §Decision 4)。**",
-          "description": "この画面の詰まり具合 (余白・寸法)。comfortable (既定。ゆったり) / compact (密) のいずれか。書かなかった画面は今日と1ピクセルも変わらない。px も割合も CSS 文字列も書けず、3値目は無い。項目ごと・列ごとには変えられない (画面単位である)。2つの系統は角丸の軸では差が無い。",
+          "description": "この画面の詰まり具合 (余白・寸法)。comfortable (既定。ゆったり) / compact (密) のいずれか。書かなかった画面は今日と1ピクセルも変わらない。(役割に詰め具合 (density) を書いた場合は、その役割の人には、詰まり具合を書かなかった画面へ役割の指定が効く。今日と変わらないのは、画面にも役割にも詰め具合を書いていない場合である。)px も割合も CSS 文字列も書けず、3値目は無い。項目ごと・列ごとには変えられない (画面単位である)。2つの系統は角丸の軸では差が無い。",
           "type": "string",
           "enum": ["comfortable", "compact"]
         },
@@ -1391,6 +1876,35 @@
             "step": { "type": "integer", "minimum": 1 },
             "kind": { "type": "string", "enum": ["input", "confirm"] }
           }
+        },
+        "field_width": {
+          "$comment": "【V20-M3-T02 / ADR-0460 限定4〜限定7。2026-09-24】入力欄の幅。$defs/view の32キー目である。**上の after_delete / flow の $comment が『32キー目を足してはならない』と書いた線は、門A の本審査 (V20-M0 の DS-S4。判定 = 限定採用。条文 = ADR-0460) を通って越えた。その $comment を1バイトも書き換えていない。版全体の上限は ADR-0454 の総則 ($defs/view の properties は34キーを超えない) が持つ。****入力フォーム (form) でだけ書ける** (list_view / detail_view / report_view の分岐は false で閉じる = ADR-0086 限定4)。形は「フィールドID → 3値」の対応表で、値は short / medium / full の3値だけ (長さのリテラル・割合・数値は1つも受けない。4値目を足さない = 限定5)。**接頭辞 preset_ で始めない** (preset_ のキーは9本のまま = 限定6。ADR-0118 限定2 を破らない)。**入力欄の高さと必須印の見せ方のキーは足さない** (限定7)。値域は新しい $defs を作らずこの場に書く ($defs は30本のまま)。キーは入力フォームの fields に在るフィールドでなければならない (無いIDは referential-integrity.ts が拒否する)。描画は入力欄を包む項目の枠に描画側の有限のクラスを当てる (web/src/styles.css に input / select / textarea を的にした寸法の規則を1本も足さない = ADR-0469 §Decision 5-2)。書かなかった項目は今日と1ピクセルも変わらない。",
+          "description": "入力フォーム (form) の入力欄の幅。キーは入力項目 (fields) のフィールドID、値は short (狭い) / medium (中くらい。書かない項目と同じ幅) / full (フォームの幅いっぱい) のいずれか。書かなかった項目は今日の幅のまま。",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/resource_id" },
+          "additionalProperties": { "type": "string", "enum": ["short", "medium", "full"] }
+        },
+        "group_by": {
+          "$comment": "【V20-M4-T02 / ADR-0470 (ADR-0461 限定1 を引き直した) / ADR-0461 限定2〜限定4。2026-09-24】一覧の束ねるキー。$defs/view の33キー目である。**版全体の上限は ADR-0454 の総則 ($defs/view の properties は34キーを超えない) が持つ。****綴りは集計表と同じ group_by だが、形は違う** —— 集計表は配列 (1〜3本。要素に id / table も書ける)、一覧は**オブジェクト1つ** (field と、日付の項目のときだけ granularity)。**配列にしない。1本ちょうど・1段だけ** (ADR-0470 限定1)。**一覧 (list_view) でだけ書ける** (form / detail_view / report_view の分岐は false で閉じる = ADR-0461 限定2 / ADR-0086 限定4)。**field は $defs/resource_id を参照する** (予約された行の番号 _id を通さない。1行1群になるため)。**granularity は集計表の束ねるキーの要素の定義を $ref で共有する** (day / week / month の3値。値域を2箇所に書かない。集計表の器 $defs/report の JSON は1バイトも動かしていない = ADR-0461 限定3)。**スキーマで表せない4点は適用時にカーネルが拒否する** (src/kernel/referential-integrity.ts): field がこの一覧の表示列 (columns) に在ること / 型が select / reference / boolean / date の4種であること / date には granularity が必須であること / date 以外には granularity を書けないこと。**行は今までどおり1件ずつ出る。見出しを挟むだけである** (D-V20-11)。**群ごとの件数・群ごとのページ送り・群の折り畳み・群の向き (降順) を指すキーは1本も無い** (ADR-0461 限定4)。値域は新しい $defs を作らずこの場に書く ($defs は30本のまま)。",
+          "description": "一覧 (list_view) を、項目の値ごとに見出しで区切って見せるための束ねるキー。field にこの一覧の表示列 (columns) に在る select / reference / boolean / date の項目を1つ書く。date の項目のときは granularity (day / week / month。週は月曜始まり) を必ず書き、date 以外の項目には書けない。行は今までどおり1件ずつ出て、同じ値の行の前に見出しが1つ挟まる。",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field"],
+          "properties": {
+            "field": { "$ref": "#/$defs/resource_id" },
+            "granularity": {
+              "$ref": "#/$defs/report/properties/group_by/items/properties/granularity"
+            }
+          }
+        },
+        "layout": {
+          "$comment": "【V20-M5-T01 / ADR-0462 限定2 / ADR-0471。2026-09-24】画面の中の並べ方の木の根。$defs/view の34キー目である。**版全体の上限は ADR-0454 の総則 ($defs/view の properties は34キーを超えない) が持ち、本キーで上限ちょうどになる。****画面の器に足す根のキーはこの1本ちょうど** (layout_ で始まる2本目を作らない = ADR-0462 限定2)。**入力フォーム・詳細画面・一覧の3分岐で書ける** (report_view の分岐は false で閉じる)。**一覧で効くのはカードの中だけである** —— 画面自身に preset_list_shape: \"card\" を書いていない一覧に書くと適用時に拒否する (書けるが効かない組み合わせを作らない = ADR-0086 限定4)。**入力フォーム・詳細画面では項目のまとまり (field_sections) と両方は書けない** (適用時に拒否)。**書かない画面は今日どおり自動で並ぶ** (PRD F3 の P4)。木に置かなかった表示項目は拒否しない (描画が末尾に縦に積む)。値の形は $defs/layout_node。",
+          "description": "画面の中の並べ方 (入力フォーム・詳細画面・カードの形の一覧のカードの中)。$defs/layout_node の節を1つ書く。葉には、この画面の表示項目 (form / detail_view は fields、list_view は columns) のフィールドID か \"action:<ボタンの識別子>\" (入力フォームは送信ボタンの action:submit だけ) を書く。同じ葉を2回置けない。入れ子は根を1段目として3段まで。省略すると今日どおり自動で並ぶ。",
+          "$ref": "#/$defs/layout_node"
+        },
+        "history": {
+          "description": "詳細画面だけに書ける。true にすると、その行の変更履歴を新しい順に出す。その画面の表が history: true を宣言していないと適用時に断られる。",
+          "type": "boolean"
         }
       },
       "allOf": [
@@ -1403,20 +1917,23 @@
           "then": {
             "required": ["columns"],
             "properties": {
+              "history": false,
               "fields": false,
               "related": false,
               "actions": {
                 "$comment": "L-G1 / L-G2 一覧の行の操作起点 (V5-M21-T01 / ADR-0171 限定1〜限定12)。**着手前ここは \"actions\": false, であった** —— **ADR-0171 (門A / 判定 = 限定採用) がその false を解いた。****旧値を隠さない: 2026-08-05 の着手前は false である。****解いたのは list_view 分岐だけで、下の form 分岐の \"actions\": false, は1バイトも解いていない (限定3)。****\"related\": false, も両分岐で1バイトも解いていない (限定4)。****新しいキーも新しい $defs も1本も作っていない (限定5)** —— $defs 28 / $defs/view.properties 28 は着手前と同値である。**値の定義は $defs/view.properties.actions ($ref → $defs/view_actions) がそのまま当たる** —— ここは allOf の分岐なので、下の items が**それに重なる**だけである (値域を二重に持たない)。**【V5-M25-T07 / L-G3 で外した。旧文を1バイトも消していない】着手前ここには items: { type: object, properties: { set: false } } が在り、直後の旧文がその理由を書いていた。****今日それは偽である** —— **V5-M25-T03 が ADR-0175 の規則 (実行中の重複を 409 で拒む) を実装したので、ADR-0171 限定10 の順序拘束が解けた。****【禁止】「二重押しが防げるようになったから解いた」と読まない** —— **set 形の冪等性は今日も1つも無く、押した回数だけ書込が起きる (ADR-0100 §限界1 は set 形については1バイトも無効化されていない)。****拘束が求めていたのは「規則が実在すること」であって「二重押しが防げること」ではない。****旧文 (今日は偽)**: 「【限定10 の順序拘束をここで機械的に閉じている】ADR-0171 限定10 の逐語「ADR-0175 の規則が実装されるまで、一覧の set 形を実装しない (順序の拘束)」に従い、items.properties.set を false にして一覧の set 形を閉じてある。したがって一覧に書けるのは遷移の形 (form + prefill) だけである。」**detail_view の set 形は1バイトも変わっていない。****$defs/view_action.oneOf は 2 のままで、3つ目の形を1つも作っていない (限定1)** —— ここは oneOf を増やしているのではなく、2形のうち1形を list_view でだけ閉じている。**【V5-M25-T07 の実測】上の「外す先はここ1箇所である」は実際には2箇所であった** —— **schema のここと、src/kernel/types.ts の ListView.actions の Extract<...> の対である** (types.ts 側の doc がそれを名指ししていた)。**記録に書いた (docs/plan/v5/records/v5-m25.md)。****プリフィル値は「その操作起点が乗っている行の _id」である (ADR-0171 §Decision 3)** —— detail_view では今日と同じ意味である (開いているレコード = その画面が乗っている行)。**visible_when は一覧では行ごとに1回ずつ評価される (§Decision 4)** —— 条件式の形は $defs/filter_leaf 1本のままで1バイトも広げていない (限定7)。**複数行を同時に対象にする形を1つも作っていない (限定2)** —— チェックボックス・全選択・範囲選択は1つも無く、V4-M20 単位C (一括操作) は今日も将来送りである。**UI に出さないことを「押せない」と書かない (限定9)** —— 最終防衛線はサーバの 403 / 404 である。**入力フォームにも書けるようにする提案・related を一覧に書けるようにする提案・3つ目の形を足す提案・複数行を対象にする提案は、改めて ADR-0007 の門A を通すこと (ADR-0171 §Decision 6)。**",
-                "type": "array"
+                "type": "array",
+                "items": { "type": "object", "properties": { "action_emphasis": false } }
               },
               "preset_label_placement": false,
               "preset_field_columns": false,
-              "field_groups": false,
+              "field_sections": false,
               "modal": false,
               "after_save": false,
               "reference_pickers": false,
               "report": false,
               "after_delete": false,
+              "field_width": false,
               "flow": {
                 "$comment": "**`ADR-0360` 限定2 —— 確認の段に置けるのは `detail_view` だけである。**この種別では段の種類を入力の段に固定する(**キーそのものは書ける。閉じているのは値の1つだけである**)。**`false` で丸ごと閉じない**のは、入力の段としてはこの種別でも段になれるからである。**部分的な制約を分岐に足す形は既存作法である**(すぐ上の `actions` の `items.properties.view: false` / 5つ目の分岐の `menu_listed: {\"const\": false}`)。**`form` に確認の段を置けるようにすることは `ADR-0360` §4 の 2 が名指しで禁じている**(`form` には操作起点を1つも置けず、確定のボタンの文言も宣言できないためである)。",
                 "type": "object",
@@ -1434,6 +1951,7 @@
           "then": {
             "required": ["fields"],
             "properties": {
+              "history": false,
               "columns": false,
               "sort": false,
               "filter": false,
@@ -1444,13 +1962,13 @@
               "preset_pager_position": false,
               "preset_image_size": false,
               "preset_text_preview": false,
-              "field_groups": false,
               "preset_list_shape": false,
               "search_fields": false,
               "page_size": false,
               "sum_field": false,
               "report": false,
               "after_delete": false,
+              "group_by": false,
               "flow": {
                 "$comment": "**`ADR-0360` 限定2 —— 確認の段に置けるのは `detail_view` だけである。**この種別では段の種類を入力の段に固定する(**キーそのものは書ける。閉じているのは値の1つだけである**)。**`false` で丸ごと閉じない**のは、入力の段としてはこの種別でも段になれるからである。**部分的な制約を分岐に足す形は既存作法である**(すぐ上の `actions` の `items.properties.view: false` / 5つ目の分岐の `menu_listed: {\"const\": false}`)。**`form` に確認の段を置けるようにすることは `ADR-0360` §4 の 2 が名指しで禁じている**(`form` には操作起点を1つも置けず、確定のボタンの文言も宣言できないためである)。",
                 "type": "object",
@@ -1485,7 +2003,9 @@
               "page_size": false,
               "sum_field": false,
               "reference_pickers": false,
-              "report": false
+              "report": false,
+              "field_width": false,
+              "group_by": false
             }
           }
         },
@@ -1499,6 +2019,7 @@
             "$comment": "**`NV-G9` / `V10-M4-T01` —— 集計表は流れの段になれない。****この分岐の `\"flow\": false` の1行は `ADR-0359` にも `ADR-0360` にも1条も書かれていない判断であり、憲法2「語彙は狭く始める」に倒したメインの決定である**(`V10-M4` の決1)。**`after_delete` との非対称が1つ生まれる** —— **削除の後の行き先には集計表を指せる**(`ADR-0359` §4a 限定4)**のに、集計表は段になれない。丸めずに書く。****解くには `ADR-0007` の門A を新規に通すこと。**",
             "required": ["report"],
             "properties": {
+              "history": false,
               "columns": false,
               "fields": false,
               "related": false,
@@ -1511,7 +2032,7 @@
               "reference_pickers": false,
               "search_fields": false,
               "page_size": false,
-              "field_groups": false,
+              "field_sections": false,
               "preset_column_align": false,
               "preset_column_width": false,
               "preset_pager_position": false,
@@ -1522,7 +2043,10 @@
               "preset_list_shape": false,
               "preset_density": false,
               "after_delete": false,
-              "flow": false
+              "flow": false,
+              "field_width": false,
+              "group_by": false,
+              "layout": false
             }
           }
         },
@@ -1596,6 +2120,14 @@
               "maximum": 3650
             }
           }
+        },
+        "changed_fields": {
+          "$comment": "SC-G14 / ADR-0500 限定5・限定6 / ADR-0524 §Decision 1-3。workflow_trigger の5キー目。**on_update だけで書ける** (下の allOf の on_create / manual / schedule の分岐で false)。意味は「列挙したどれかの項目の値が変わったときだけ発火する」の1つに固定し、作り手が組める結合 (and / or / not)・比較の演算子・変わった後の値の条件を1つも足さない。項目がトリガー元の表に実在することは referential-integrity.ts が apply 時に見る。6つ目のキーを足してはならない。",
+          "description": "on_update でだけ書ける (任意)。列挙した項目のどれかの値が変わった更新でだけ発火する。書かなければ今日どおり更新のたびに発火する。項目はトリガー元の表のフィールドIDで、1件以上・重複なし。",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/resource_id" }
         }
       },
       "allOf": [
@@ -1607,7 +2139,7 @@
           },
           "then": {
             "required": ["table"],
-            "properties": { "at": false, "older_than": false }
+            "properties": { "at": false, "older_than": false, "changed_fields": false }
           }
         },
         {
@@ -1630,7 +2162,7 @@
           },
           "then": {
             "required": ["table"],
-            "properties": { "at": false, "older_than": false }
+            "properties": { "at": false, "older_than": false, "changed_fields": false }
           }
         },
         {
@@ -1640,7 +2172,8 @@
             "required": ["type"]
           },
           "then": {
-            "required": ["at"]
+            "required": ["at"],
+            "properties": { "changed_fields": false }
           }
         },
         {
@@ -1687,9 +2220,15 @@
           "$ref": "#/$defs/resource_id"
         },
         "values": {
-          "description": "書き込む値。キーはフィールドID、値はリテラルか $record.<フィールドID> の参照。",
+          "description": "書き込む値。キーはフィールドID、値はリテラルか参照1つ。参照は $record.<フィールドID> / $record._id に加えて、values でだけ $actor.id / $actor.login / $actor.role (操作した人) / $previous.<フィールドID> (更新前の値。on_update のときだけ) / $now (今の時刻) を書ける。",
           "type": "object",
-          "additionalProperties": { "$ref": "#/$defs/action_value" }
+          "additionalProperties": {
+            "$comment": "SC-G13 / ADR-0500 限定3・限定4 / ADR-0524 §Decision 1-7。**新しい参照を受けるのは values の値だけである** —— $defs/action_value は1バイトも変えず、target / payload / input / fallback は今日どおり action_value を直接指す。if は $ の直後が actor / previous / now で始まる値、then は5形の完全一致 (前置き・連結・6形目は無い。$previous は _ で始まる項目を指せない)、else は今日と同じ action_value。$previous がトリガーの種別 (on_update) と合うか・項目が実在するかは字面の検査ではないので referential-integrity.ts が apply 時に見る。型違反・形の違反の文面は ajv-error-adapter.ts が values の位置で書き分ける。",
+            "type": "string",
+            "if": { "type": "string", "pattern": "^\\$(actor|previous|now)" },
+            "then": { "pattern": "^\\$(actor\\.(id|login|role)|previous\\.[a-z][a-z0-9_-]*|now)$" },
+            "else": { "$ref": "#/$defs/action_value" }
+          }
         },
         "target": {
           "$comment": "EC-G13 / ADR-0040。target が受ける正規形は3形だけである: (i) $record._id (自己更新) / (ii) $record.<reference フィールドID> (その参照フィールドが保持する _id = 参照先の別テーブル行を狙う) / (iii) 定数 UUID リテラル (特定の行)。$record.<field> の field は**単一の reference 型フィールドの1ホップのみ**で、join・多段 ($record.a.b)・クエリは書けない (action_value の pattern が単一トークンに限定している)。pattern は $defs/action_value を共有し変えていない ($record.<field> は既に許される) —— 変えたのはこの description だけ (Δ5)。適用時 (referential-integrity 類型13) に確定するのは「参照フィールドが実在し reference 型か / リテラルが UUID 形か」まで。**実行時にその参照先『行』が実在するかは保証しない** (発火のたびに変わり適用時にはまだ存在しない = T-2 の原理的限界。過剰約束しない)。",
@@ -1939,9 +2478,9 @@
       "additionalProperties": false,
       "properties": {
         "source": {
-          "description": "入力元の種別。table (テーブルの全行) / view (list_view を適用した行) / record ($record の1レコード) の3種のみが語彙である。",
+          "description": "入力元の種別。table (テーブルの全行) / view (list_view を適用した行) / record ($record の1レコード) / actor (操作した人の id・login・role) / previous (更新前の行全体。on_update のワークフローから呼ぶときだけ) の5種のみが語彙である。",
           "type": "string",
-          "enum": ["table", "view", "record"]
+          "enum": ["table", "view", "record", "actor", "previous"]
         },
         "table": {
           "description": "source=table のとき島に全行を渡す対象のテーブルID。システムテーブルは指定できない。",
@@ -1984,6 +2523,26 @@
           "if": {
             "type": "object",
             "properties": { "source": { "const": "record" } },
+            "required": ["source"]
+          },
+          "then": {
+            "properties": { "table": false, "view": false, "via": false }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "source": { "const": "actor" } },
+            "required": ["source"]
+          },
+          "then": {
+            "properties": { "table": false, "view": false, "via": false }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "source": { "const": "previous" } },
             "required": ["source"]
           },
           "then": {
@@ -2158,6 +2717,232 @@
             "is_empty": {
               "description": "その項目が「空」のとき、条件は成り立つ (「持ち主が空の行」=「みんなのもの」)。空とみなすのは null と、値が入っていないことと、長さ0の文字列の3つで、0 と false は空ではない。書けるのは true だけである —— 「空でない」は not で書く。この葉は要求している人を1バイトも見ないので、ログインしていない要求でも成り立つ。",
               "const": true
+            }
+          }
+        }
+      ]
+    },
+    "layout_node": {
+      "$comment": "【V20-M5-T01 / ADR-0462 限定1〜限定5 / ADR-0471 (ADR-0462 限定6 の「木が持てるキーは3つ」を引き直した)。2026-09-24】画面の中の並べ方の木の節。**$defs の31本目である** (30本目までは role_condition の $comment が数えた系譜。31本目を作るのは並べ方の木だけ = ADR-0462 限定1)。**新設した理由は再帰である** —— 節は自分自身を子に持つので、値域をインラインで書けない (同じ理由の先例が2本ある: schemas/manifest.schema.json の $defs/filter_node と $defs/role_condition)。**$defs/filter_node と同じ作法で書く**: $ref の自己参照で任意段の入れ子を schema 上は許し、**有限性の歯止めはコード側に置く** —— **深さの上限 (MAX_LAYOUT_DEPTH=3。根の節が1段目) は JSON Schema では直接制限できないため、適用時に src/kernel/referential-integrity.ts が検査する** (ADR-0462 限定4)。絞り込みの木の上限 MAX_FILTER_DEPTH (=8) は共有しない (条文が別の1本を新設すると決めた)。**型は6種ちょうど** (stack / cluster / sidebar / switcher / grid / split = PRD F3 のフェーズ1)。**型ごとの oneOf で閉じ、各枝は type を const で判別し additionalProperties:false** —— 型ごとに持てないキーはその枝が拒否する (sidebar と split は gap を持たない)。**持てるキーは PRD F3 の表の逐語どおり** (ADR-0471): stack = gap / children、cluster = gap / justify / children、sidebar = side / main / side_width / side_position、switcher = gap / threshold / children、grid = gap / min_item / children、split = start / end。**値はすべて有限の enum である** (type: string を重ねて書かない —— 書くと数値を渡したときに「型が不正」と「語彙にない」の2件が出て、書ける値の一覧を持たない1件目が先に読まれる) —— gap は5値 (xs / sm / md / lg / xl = ADR-0462 限定3)、justify は3値、side_width / threshold / min_item は3値 (sm / md / lg)、side_position は2値。**数値・px・rem・割合・自由記述を1つも受けない** (PRD NF7。画面幅の条件もここには書けない)。**条件・式・座標系のキーを1つも持たない** (ADR-0462 限定6 の残り)。**型の判別は discriminator (propertyName: type) で行う** —— ajv が type の値で枝を1本だけ選んで検査するので、拒否の文面に他の枝の都合 (「type は cluster でなければならない」など) が混ざらない (NF4。src/kernel/validate.ts が ajv に discriminator: true を渡している)。**子は葉か節である** —— 子の口は if (文字列) / then (葉) / else (節の $ref) で書く (oneOf で書くと、葉の拒否に「object を指定してください」が、節の拒否に「string を指定してください」が必ず混ざるため)。 葉は文字列1つで、その画面の表示項目のフィールドID か \"action:<ボタンの識別子>\" (入力フォームでは予約名 action:submit だけ)。葉の文字列の形 (本体は $defs/resource_id と同じ規約) はここで閉じ、**指し先の実在・同じ葉の重複・深さはスキーマで表せないので適用時にカーネルが拒否する**。後続フェーズ候補の5種 (center / cover / frame / reel / app_shell) を足してはならない —— 足すには ADR-0007 の門A を新規に通すこと。",
+      "description": "画面の中の並べ方の木の節1つ。type で6種の並べ方 (stack = 縦に積む / cluster = 横に並べて溢れたら折り返す / sidebar = 脇と本文 / switcher = 幅があれば横並び・無ければ縦 / grid = 最小幅を満たす範囲で列を作る / split = 両端に振り分ける) を選ぶ。子は項目のフィールドID か \"action:<ボタンの識別子>\" の文字列、または入れ子の節 (根を1段目として3段まで)。値はすべて名前の一覧から選ぶ (数値・px は書けない)。",
+      "type": "object",
+      "required": ["type"],
+      "discriminator": {
+        "propertyName": "type"
+      },
+      "oneOf": [
+        {
+          "description": "縦に一定間隔で積む。",
+          "type": "object",
+          "required": ["type", "children"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "stack"
+            },
+            "gap": {
+              "enum": ["xs", "sm", "md", "lg", "xl"]
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "if": {
+                  "type": "string"
+                },
+                "then": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+                },
+                "else": {
+                  "$ref": "#/$defs/layout_node"
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "横に並べ、溢れたら折り返す。",
+          "type": "object",
+          "required": ["type", "children"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "cluster"
+            },
+            "gap": {
+              "enum": ["xs", "sm", "md", "lg", "xl"]
+            },
+            "justify": {
+              "enum": ["start", "end", "between"]
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "if": {
+                  "type": "string"
+                },
+                "then": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+                },
+                "else": {
+                  "$ref": "#/$defs/layout_node"
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "固定幅の脇 (side) と残りの本文 (main)。本文が狭いと縦に積む。",
+          "type": "object",
+          "required": ["type", "side", "main"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "sidebar"
+            },
+            "side": {
+              "if": {
+                "type": "string"
+              },
+              "then": {
+                "type": "string",
+                "maxLength": 71,
+                "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+              },
+              "else": {
+                "$ref": "#/$defs/layout_node"
+              }
+            },
+            "main": {
+              "if": {
+                "type": "string"
+              },
+              "then": {
+                "type": "string",
+                "maxLength": 71,
+                "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+              },
+              "else": {
+                "$ref": "#/$defs/layout_node"
+              }
+            },
+            "side_width": {
+              "enum": ["sm", "md", "lg"]
+            },
+            "side_position": {
+              "enum": ["start", "end"]
+            }
+          }
+        },
+        {
+          "description": "幅があれば子を全部横に並べ、無ければ一斉に縦に積む。",
+          "type": "object",
+          "required": ["type", "children"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "switcher"
+            },
+            "gap": {
+              "enum": ["xs", "sm", "md", "lg", "xl"]
+            },
+            "threshold": {
+              "enum": ["sm", "md", "lg"]
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "if": {
+                  "type": "string"
+                },
+                "then": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+                },
+                "else": {
+                  "$ref": "#/$defs/layout_node"
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "子の最小幅を満たす範囲で自動的に列を作る。",
+          "type": "object",
+          "required": ["type", "children"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "grid"
+            },
+            "gap": {
+              "enum": ["xs", "sm", "md", "lg", "xl"]
+            },
+            "min_item": {
+              "enum": ["sm", "md", "lg"]
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "if": {
+                  "type": "string"
+                },
+                "then": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+                },
+                "else": {
+                  "$ref": "#/$defs/layout_node"
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "始端 (start) と終端 (end) に振り分ける。",
+          "type": "object",
+          "required": ["type", "start", "end"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "split"
+            },
+            "start": {
+              "type": "array",
+              "items": {
+                "if": {
+                  "type": "string"
+                },
+                "then": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+                },
+                "else": {
+                  "$ref": "#/$defs/layout_node"
+                }
+              }
+            },
+            "end": {
+              "type": "array",
+              "items": {
+                "if": {
+                  "type": "string"
+                },
+                "then": {
+                  "type": "string",
+                  "maxLength": 71,
+                  "pattern": "^(action:)?[a-z][a-z0-9_-]*$"
+                },
+                "else": {
+                  "$ref": "#/$defs/layout_node"
+                }
+              }
             }
           }
         }

@@ -6,11 +6,11 @@
  *
  * ## 何を固定しているか
  *
- * 1. **生成規則は1本(恒等写像)である**(T05-4)—— 出てくる宣言名の集合は
- *    `schemas/manifest.schema.json` の `$defs/theme` の properties キー集合と**完全一致**し、
- *    変換を1つも挟まない。**2本目の変換規則を作ると赤になる**(実測は実施記録 §TDD)。
- *    T03 段階B が `web/test/theme-slot-parity.test.ts` で定義し、T04 が製品経路
- *    (`web/test/app-theme.test.tsx`)で固定したのと**同一の規則**である。
+ * 1. **生成規則は1本(写像 `web/src/theme-role-map.ts`)である**(T05-4 / V20-M8 / ADR-0473)——
+ *    出てくる宣言名の集合は `schemas/manifest.schema.json` の `$defs/theme` の properties キー
+ *    (役割名)を写像に通した CSS 名の集合と**完全一致**する。**2本目の変換規則を作ると赤になる。**
+ *    `web/test/theme-slot-parity.test.ts` と製品経路(`web/test/app-theme.test.tsx`)が
+ *    見ているのと**同一の写像**である。
  * 2. **カーネルの値を1つも import しない**(ADR-0009 限定2 / `scripts/kernel-import-drift.test.ts`)
  *    —— 生成はマニフェストのキーから組み立てる。ここで読むのは**スキーマのファイル**だけである。
  * 3. **持ち出し物が自分の限界を明記している**(T05-5 / T05-6)—— 逃げ道(D-G5)を含まないこと・
@@ -31,6 +31,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { Manifest, Theme } from "../../src/kernel/types.ts";
 import { App } from "../src/App.tsx";
 import { buildThemeCss, ThemeExportPanel } from "../src/ThemeExportPanel.tsx";
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 
 const APP_ID = "sample-app";
 const REPO_ROOT = dirname(dirname(import.meta.dir));
@@ -47,15 +48,28 @@ function themeSlotNames(): string[] {
   return Object.keys(schema.$defs.theme.properties);
 }
 
-/** 25スロット全部に値を書いたテーマ(`$defs/theme` は全キー `required`)。 */
+/** スロット名(役割名)が写る CSS カスタムプロパティ名。**写像の表から引く**(書き下さない)。 */
+function cssNameOf(slot: string): string {
+  const name = THEME_ROLE_TO_CSS_PROPERTY[slot];
+  if (name === undefined) throw new Error(`写像に無いスロット: ${slot}`);
+  return name;
+}
+
+/**
+ * 25スロット全部に値を書いたテーマ(`$defs/theme` は全キー `required`)。
+ *
+ * **色かどうかは写像の CSS 名で判定する**(V20-M8)。キーは役割名なので、キーの綴りで
+ * 判定すると1件も当たらず黙って意味を失う。
+ */
 function sampleTheme(origin?: Theme["origin"]): Theme {
   const slots: Record<string, string> = {};
   for (const slot of themeSlotNames()) {
-    slots[slot] = slot.startsWith("--color") || slot.endsWith("-color") ? "#123456" : "7px";
+    const css = cssNameOf(slot);
+    slots[slot] = css.startsWith("--color") || css.endsWith("-color") ? "#123456" : "7px";
   }
-  slots["--font-family-base"] = "Georgia, serif";
-  slots["--line-height-base"] = "2";
-  slots["--surface-shadow"] = "none";
+  slots.body_font = "Georgia, serif";
+  slots.body_line_height = "2";
+  slots.surface_shadow = "none";
   const theme: Theme = { slots };
   if (origin !== undefined) {
     theme.origin = origin;
@@ -83,20 +97,30 @@ function declarationsOf(css: string): { name: string; value: string }[] {
 }
 
 // ---------------------------------------------------------------------------
-// 生成規則(恒等写像1本)
+// 生成規則(写像1本)
 // ---------------------------------------------------------------------------
 
-describe("theme.css の生成規則(T05-4。変換規則は T03 段階B の1本だけ)", () => {
-  test("宣言名の集合が $defs/theme の properties キー集合と完全一致する(恒等写像)", () => {
+describe("theme.css の生成規則(T05-4。変換規則は写像1本だけ)", () => {
+  test("宣言名の集合が $defs/theme の properties キーを写像に通した CSS 名の集合と完全一致する", () => {
     const theme = sampleTheme();
     const declarations = declarationsOf(buildThemeCss(theme));
 
-    expect(declarations.map((d) => d.name).sort()).toEqual(themeSlotNames().sort());
+    expect(declarations.map((d) => d.name).sort()).toEqual(themeSlotNames().map(cssNameOf).sort());
     // 25件ちょうど。**多くも少なくもない**(テーマ対象外の3スロットは入らない)。
-    expect(declarations).toHaveLength(25);
-    // 名前は CSS カスタムプロパティ名そのもの(写しを1つも挟んでいない)。
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(declarations).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(declarations).toHaveLength(23);
+    expect(declarations).toHaveLength(27);
+    // 名前は CSS カスタムプロパティ名である(役割名のまま出していない)。
     for (const declaration of declarations) {
       expect(declaration.name).toMatch(/^--[a-z][a-z0-9-]*$/);
+    }
+    // 色の枠(CSS 名で判定)に色の値が入っている(判定が空回りしていない)。
+    const colors = declarations.filter(
+      (d) => d.name.startsWith("--color") || d.name.endsWith("-color"),
+    );
+    expect(colors.length).toBeGreaterThan(0);
+    for (const declaration of colors) {
+      expect(declaration.value).toBe("#123456");
     }
   });
 
@@ -104,13 +128,13 @@ describe("theme.css の生成規則(T05-4。変換規則は T03 段階B の1本�
     const theme = sampleTheme();
     const byName = new Map(declarationsOf(buildThemeCss(theme)).map((d) => [d.name, d.value]));
     for (const [slot, value] of Object.entries(theme.slots)) {
-      expect(byName.get(slot)).toBe(value);
+      expect(byName.get(cssNameOf(slot))).toBe(value);
     }
-    expect(byName.get("--font-family-base")).toBe("Georgia, serif");
-    expect(byName.get("--line-height-base")).toBe("2");
+    expect(byName.get(cssNameOf("body_font"))).toBe("Georgia, serif");
+    expect(byName.get(cssNameOf("body_line_height"))).toBe("2");
   });
 
-  test("並びはスロット名の昇順で、キーの並び順に依存しない(生成物が一意に決まる)", () => {
+  test("並びは CSS 名の昇順で、キーの並び順に依存しない(生成物が一意に決まる)", () => {
     const theme = sampleTheme();
     const reversed: Theme = {
       slots: Object.fromEntries(Object.entries(theme.slots).reverse()),
@@ -126,6 +150,23 @@ describe("theme.css の生成規則(T05-4。変換規則は T03 段階B の1本�
     // この関数は与えられたものをそのまま写すだけで、検証を二重化しない
     // (`web/src/AppWorkspace.tsx` の `themeScopeStyle` と同じ判断)。
     expect(declarationsOf(buildThemeCss({ slots: {} }))).toEqual([]);
+  });
+
+  test("【V20-M9-T02 / ADR-0474 §1-6】生の色は --palette-… の宣言として出て、参照は var(--palette-…) のまま出る(解かない)", () => {
+    const theme = sampleTheme();
+    theme.slots.palette_brand = "#1d4ed8";
+    theme.slots.palette_ocean_700 = "$palette_brand";
+    theme.slots.primary_fill = "$palette_ocean_700";
+    const css = buildThemeCss(theme);
+    const byName = new Map(declarationsOf(css).map((d) => [d.name, d.value]));
+    expect(css).toContain("--palette-brand:");
+    expect(byName.get("--palette-brand")).toBe("#1d4ed8");
+    // 生の色どうしの参照も、役割の枠の参照も、CSS の変数参照へ写すだけ(表示層は解決器を呼ばない)。
+    expect(byName.get("--palette-ocean-700")).toBe("var(--palette-brand)");
+    expect(byName.get(cssNameOf("primary_fill"))).toBe("var(--palette-ocean-700)");
+    expect(css).toContain("var(--palette-brand)");
+    // 参照の綴りそのもの($palette_…)は生成物に残らない。
+    expect(css).not.toContain("$palette_");
   });
 });
 
@@ -384,4 +425,13 @@ describe("導線(AppWorkspace のビュー一覧と同じ階層。ロールで�
     fireEvent.click(screen.getByTestId("open-theme-export"));
     await waitFor(() => expect(screen.getByTestId("theme-export-empty")).toBeDefined());
   });
+});
+
+// 【V20-M9-T05】持ち出した theme.css の頭書きの「スロットは有限で、増やすことはできない。」は、
+// 生の色(palette_…)を開けた V20-M9 で偽になった(役割の枠は増やせないが、生の色は名前を付けて足せる)。
+test("V20-M9: theme.css の頭書きは「スロットは有限」と言い切らず、役割の枠と生の色を分けて書く", () => {
+  const css = buildThemeCss(sampleTheme());
+  expect(css).not.toContain("スロットは有限で、増やすことはできない。");
+  expect(css).toContain("役割の枠は決まった名前だけで、増やすことはできない。");
+  expect(css).toContain("palette_");
 });

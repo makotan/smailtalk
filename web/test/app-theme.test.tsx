@@ -13,10 +13,11 @@
  *    **「当てられなかった」のではなく、当てる材料が存在しない。**
  * 4. **`.shell` には当てない**(ADR-0048 限定2)—— アプリのテーマがシェルへ漏れない。
  *    シェルの見た目は V3-M3(D-G6。保留のまま)の担当である。
- * 5. **変換規則は1本(恒等写像)である**(T04-11)—— 注入されるカスタムプロパティ名の集合は
- *    `schemas/manifest.schema.json` の `$defs/theme` の properties キー集合と**完全一致**する。
- *    **2本目の変換規則を作らないことを、製品コードの経路で機械的に固定する**
- *    (T03 段階B が `web/test/theme-slot-parity.test.ts` で定義した規則と同一である)。
+ * 5. **変換規則は1本(写像 `web/src/theme-role-map.ts`)である**(T04-11 / V20-M8 / ADR-0473)——
+ *    マニフェストのキーは役割名(`body_text` など)であり、注入されるカスタムプロパティ名の集合は
+ *    `schemas/manifest.schema.json` の `$defs/theme` の properties キーを写像に通した集合と
+ *    **完全一致**する。**2本目の変換規則を作らないことを、製品コードの経路で機械的に固定する**
+ *    (`web/test/theme-slot-parity.test.ts` が見る写像と同一である)。
  *
  * ## このファイルが証明しないこと(誇張しない)
  *
@@ -32,6 +33,7 @@ import { dirname, join } from "node:path";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { Manifest, Theme } from "../../src/kernel/types.ts";
 import { App } from "../src/App.tsx";
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 
 const APP_ID = "sample-app";
 
@@ -47,19 +49,39 @@ function themeSlotNames(): string[] {
 }
 
 /**
+ * スロット名(役割名)が写る CSS カスタムプロパティ名。**写像の表から引く**(対応をここに書き下さない)。
+ * 表に無い名前は赤くする(スキーマと写像のずれを黙って通さない)。
+ */
+function cssNameOf(slot: string): string {
+  const name = THEME_ROLE_TO_CSS_PROPERTY[slot];
+  if (name === undefined) throw new Error(`写像に無いスロット: ${slot}`);
+  return name;
+}
+
+/** 注入されるはずのカスタムプロパティ名の集合(スキーマのキーを写像に通したもの)。 */
+function injectedNames(): string[] {
+  return themeSlotNames().map(cssNameOf);
+}
+
+/**
  * 検証用のテーマ。**25スロット全部に値を書く**(`$defs/theme` は全キー `required`。
  * ADR-0047 の 2026-07-25 追記(2))。値はスキーマのキーから機械的に作る ——
- * 色スロットは `#000`(ここでは形だけが要る。コントラスト検査は E2E とカーネル側の担当)。
+ * 色スロットは `#123456`(ここでは形だけが要る。コントラスト検査は E2E とカーネル側の担当)。
+ *
+ * **色かどうかは写像の CSS 名で判定する**(V20-M8)。キーは役割名(`body_text` など)なので、
+ * キーの綴り(`--color` で始まる / `-color` で終わる)で判定すると1件も当たらず、
+ * 全件が長さの値になって黙って意味を失う。
  */
 function sampleTheme(): Theme {
   const slots: Record<string, string> = {};
   for (const slot of themeSlotNames()) {
-    slots[slot] = slot.startsWith("--color") || slot.endsWith("-color") ? "#123456" : "7px";
+    const css = cssNameOf(slot);
+    slots[slot] = css.startsWith("--color") || css.endsWith("-color") ? "#123456" : "7px";
   }
   // 形式が決まっているスロットは、その形式で上書きする(`$defs/theme` の pattern)。
-  slots["--font-family-base"] = "Georgia, serif";
-  slots["--line-height-base"] = "2";
-  slots["--surface-shadow"] = "none";
+  slots.body_font = "Georgia, serif";
+  slots.body_line_height = "2";
+  slots.surface_shadow = "none";
   return { slots };
 }
 
@@ -168,9 +190,9 @@ describe("当たる3画面(T04-1)", () => {
     await waitFor(() => expect(screen.getByTestId("view-list")).toBeDefined());
     const injected = injectedProperties();
     // 25件ちょうど。**多くも少なくもない。**
-    expect(Object.keys(injected).sort()).toEqual(themeSlotNames().sort());
-    expect(injected["--font-family-base"]).toBe("Georgia, serif");
-    expect(injected["--line-height-base"]).toBe("2");
+    expect(Object.keys(injected).sort()).toEqual(injectedNames().sort());
+    expect(injected[cssNameOf("body_font")]).toBe("Georgia, serif");
+    expect(injected[cssNameOf("body_line_height")]).toBe("2");
   });
 
   test("ログイン画面(未認証)のスコープ要素にもテーマが立つ", async () => {
@@ -187,7 +209,9 @@ describe("当たる3画面(T04-1)", () => {
     // ログイン画面がスコープ要素の**内側**にある(マニフェストは未認証でも取得できる)。
     const scope = screen.getByTestId("app-theme");
     expect(scope.contains(screen.getByTestId("login-page"))).toBe(true);
-    expect(Object.keys(injectedProperties())).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(injectedProperties())).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(injectedProperties())).toHaveLength(23);
+    expect(Object.keys(injectedProperties())).toHaveLength(27);
   });
 
   test("認証確認中(me が未応答)のスコープ要素にもテーマが立つ", async () => {
@@ -201,7 +225,9 @@ describe("当たる3画面(T04-1)", () => {
     await waitFor(() => expect(screen.getByTestId("auth-loading")).toBeDefined());
     const scope = screen.getByTestId("app-theme");
     expect(scope.contains(screen.getByTestId("auth-loading"))).toBe(true);
-    expect(Object.keys(injectedProperties())).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(injectedProperties())).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(injectedProperties())).toHaveLength(23);
+    expect(Object.keys(injectedProperties())).toHaveLength(27);
   });
 });
 
@@ -295,8 +321,8 @@ describe("シェルへ漏れない(ADR-0048 限定2 / T04-2)", () => {
   });
 });
 
-describe("変換規則は恒等写像1本だけ(T04-11)", () => {
-  test("注入されるプロパティ名が `$defs/theme` のキーそのままである", async () => {
+describe("変換規則は写像1本だけ(T04-11 / V20-M8)", () => {
+  test("注入されるプロパティ名は `$defs/theme` のキーを写像に通した CSS 名である", async () => {
     const theme = sampleTheme();
     stub((url) => {
       if (url === meUrl) {
@@ -312,9 +338,17 @@ describe("変換規則は恒等写像1本だけ(T04-11)", () => {
     await waitFor(() => expect(screen.getByTestId("view-list")).toBeDefined());
     const injected = injectedProperties();
 
-    // (a) 名前が1文字も変換されていない(恒等)。
+    // (a) 各スロットの値が、写像の CSS 名に1件ずつ届いている(値は加工しない)。
     for (const slot of themeSlotNames()) {
-      expect(injected[slot]).toBe(theme.slots[slot]);
+      expect(injected[cssNameOf(slot)]).toBe(theme.slots[slot]);
+    }
+    // (a') 色の枠(CSS 名で判定)に色の値が立っている(判定が空回りしていない)。
+    const colorNames = injectedNames().filter(
+      (name) => name.startsWith("--color") || name.endsWith("-color"),
+    );
+    expect(colorNames.length).toBeGreaterThan(0);
+    for (const name of colorNames) {
+      expect(injected[name]).toBe("#123456");
     }
     // (b) **テーマ対象外の3件は1つも注入されない**(T04-12)。
     for (const excluded of ["--shell-max-width", "--border-style", "--focus-outline-style"]) {

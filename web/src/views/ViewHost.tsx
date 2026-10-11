@@ -42,7 +42,7 @@ import { canUseView, useRole } from "../auth/authz.tsx";
 // (a) の対照(既存エントリの成果物)と (b) の対象が別のコードになる。**
 import { navigate } from "../navigation.tsx";
 import { Button } from "../ui/button.tsx";
-import { resolveUiFamily } from "../ui/family.ts";
+import { resolveRoleDisplayDensity, resolveUiFamily, type UiFamily } from "../ui/family.ts";
 import { OverlayDialog } from "../ui/overlay.tsx";
 import { Alert, AlertDescription, AlertTitle } from "../ui/surfaces.tsx";
 import { cn } from "../ui/utils.ts";
@@ -340,6 +340,13 @@ export function ViewHost({ appId, manifest, view, recordId, prefill }: ViewRende
    * `web/test/flow-next-step.test.tsx` の (f-2) 群)。
    */
   const role = useRole();
+  /*
+   * **その人の役割に書かれた詰め具合**(`V20-M11-T03`。`ADR-0464` 限定5)。
+   * **役割は上の `useRole()` の1つを読み直すだけで、`useRole` を呼ぶ箇所を1つも増やしていない。**
+   * **`ViewRendererProps` にも1本も足していない**(`manifest` はこの器が既に受けている)。
+   * **値を引くのは `resolveRoleDisplayDensity` の1本、判定は `resolveUiFamily` の1箇所である。**
+   */
+  const roleDensity = resolveRoleDisplayDensity(manifest.app.roles, role);
   const here = flowStepOf(view);
   const nextStep = nextFlowStepView(manifest, view);
   const flowNextBlock =
@@ -528,8 +535,10 @@ export function ViewHost({ appId, manifest, view, recordId, prefill }: ViewRende
          * **宣言を書いた画面にだけ作用域が立つ** —— 書かなかった画面では要素が1つも出ず、
          * DOM は今日と1バイトも変わらない。**器の内側に置いてある**(`ViewShell` の子)ので、
          * 重ねて出す画面(`modal`)でもポータルの中で当たる。
+         * **【`V20-M11-T03` 追記】役割に詰め具合を書いたアプリでは、画面の宣言が無くても
+         * その役割の人には作用域が立つ**(画面の宣言が在れば画面が勝つ。`D-V20-34`)。
          */}
-        <ViewDensityScope view={view}>
+        <ViewDensityScope view={view} roleDensity={roleDensity}>
           {/*
            * 見出し。`name` を足しても表示先が無ければ要求は満たされない(計画書 完了条件1)ので、
            * ディスパッチ層が種別によらず必ず1つ出す。描画の中身は従来どおり各レンダラに任せる。
@@ -627,19 +636,50 @@ export function ViewHost({ appId, manifest, view, recordId, prefill }: ViewRende
  *    (実測は `web/test/view-density.test.tsx` の (T04-6))。
  * 3. **「画面ごとに当てられることを確かめた」と、CSS の計算値については書けない** ——
  *    **happy-dom は CSS を1バイトも計算しない。** **chromium の実測は別に採る。**
+ *
+ * ## **【`V20-M11-T03` / `ADR-0464` 限定5 による追記。上の本文を1バイトも消していない】**
+ *
+ * **上の「宣言を書いた画面にだけ要素が1つ出る」の「宣言」は、今日から「画面の宣言か、
+ * 開いた人の役割の宣言(`app.roles[].density`)」である。** **どちらも無ければ今日どおり
+ * 素の子を並べ、DOM は1バイトも変わらない。** **両方在れば画面の宣言が勝つ**(`D-V20-34`。
+ * 判定は `resolveUiFamily` の1箇所)。
+ *
+ * **役割の宣言が届かない先**(**隠さない**):
+ * 1. **集計表(`report_view`)** —— 今日どおり作用域の外である。
+ * 2. **重ねて出す画面(`modal`)の枠** —— 上の 1 のとおり、作用域の外である。
+ * 3. **画面の外(上端の帯・メニュー・コメント欄)** —— アプリの器(`<main>`)は引数なしの
+ *    `resolveUiFamily()` のままである。
+ * 4. **付与表だけで持つ2本目以降の役割** —— 見るのは `useRole()` の1つだけである。
+ * 5. **ビルド時に `VITE_ST_UI_FAMILY=compact` としたとき、役割の `comfortable` は効かない**
+ *    (上の 2 と同じ理由)。
+ * 6. **テーマの試し表示(`ThemePreviewPanel` / `ThemeImportPanel`)** —— 試している持ち主
+ *    本人の役割の宣言が当たる(別の役割の見え方を試す口は無い)。
  */
-function ViewDensityScope({ view, children }: { view: View; children: React.ReactNode }) {
+function ViewDensityScope({
+  view,
+  roleDensity,
+  children,
+}: {
+  view: View;
+  roleDensity: UiFamily | undefined;
+  children: React.ReactNode;
+}) {
   // **書かなかった画面は器を1つも通らない** —— 今日と1バイトも変わらない(限定8)。
   // **【`V8-M8` による追記。旧文を1バイトも書き換えていない】** **集計表(`report_view`)には
   // `preset_density` を書けない**(`schemas/manifest.schema.json` の `allOf` の
   // `report_view` 分岐が `false` で閉じている)ので、**器を1つも通らない側へ倒す。**
-  if (view.type === "report_view" || view.preset_density === undefined) {
+  // **【`V20-M11-T03` による追記】** **役割の宣言も無いときだけ素の子を返す。** **集計表は
+  // 役割の宣言があっても今日どおり器を通らない。**
+  if (
+    view.type === "report_view" ||
+    (view.preset_density === undefined && roleDensity === undefined)
+  ) {
     return <>{children}</>;
   }
   return (
     <div
       className="contents group/ui"
-      data-ui-family={resolveUiFamily(view.preset_density)}
+      data-ui-family={resolveUiFamily(view.preset_density, roleDensity)}
       data-testid="view-density-scope"
     >
       {children}

@@ -1202,6 +1202,110 @@ test("(iii-e) 島の中に判定を1バイトも出していない(判定の綴�
   }
 });
 
+test("(iii-e2) 【V23-M2-T04 / ADR-0498 限定7】島へ注入する名前の集合: 綴りのある島の第2引数の reject の1本だけで、グローバルは綴りの有無で変わらない", () => {
+  // **足すホスト関数は `reject` の1本だけ**(`ADR-0498` 限定7・`D-V23-60`)。 capability を
+  // 宣言しない島で、(1) 綴りの無い島の引数は1つ、(2) 綴りのある島の引数は2つで、第2引数の
+  // 名前の集合はちょうど `reject` の1つ、(3) 島から見えるグローバルの名前の集合は両者で同じ
+  // (`reject` をグローバルに生やしていない)ことを、実行して固定する。
+  const probeApp = "auto-guard-inject";
+  const store = KernelMetaStore.open(dataRoot);
+  try {
+    createApp(store, "注入の名前", { app_id: probeApp });
+  } finally {
+    store.close();
+  }
+  const fields = [
+    { id: "v", name: "v", type: "text" },
+    { id: "n", name: "引数の数", type: "number" },
+    { id: "keys", name: "第2引数の名前", type: "long_text" },
+    { id: "globals", name: "グローバルの名前", type: "long_text" },
+  ];
+  const output = {
+    fields: [
+      { id: "n", type: "number" },
+      { id: "keys", type: "text" },
+      { id: "globals", type: "text" },
+    ],
+  };
+  const globals = 'Object.getOwnPropertyNames(globalThis).sort().join(",")';
+  const probe = {
+    app: {
+      id: probeApp,
+      name: "注入の名前",
+      tables: [
+        { id: "plain_src", name: "綴りなし", fields },
+        { id: "spelled_src", name: "綴りあり", fields },
+        {
+          id: "probe_log",
+          name: "実行履歴",
+          fields: [
+            { id: "ran_at", name: "実行時刻", type: "date" },
+            { id: "workflow", name: "ワークフロー", type: "text" },
+            { id: "trigger_type", name: "きっかけ", type: "text" },
+            { id: "status", name: "結果", type: "text" },
+            { id: "error", name: "エラー", type: "long_text" },
+          ],
+        },
+      ],
+      views: [],
+      functions: [
+        {
+          id: "plain_probe",
+          name: "綴りなし",
+          code: `export default function () { return [{ n: arguments.length, keys: "", globals: ${globals} }]; }`,
+          input: { source: "record" },
+          output,
+        },
+        {
+          id: "spelled_probe",
+          name: "綴りあり",
+          code: `export default function (input, host) { /* reject */ return [{ n: arguments.length, keys: Object.keys(host).sort().join(","), globals: ${globals} }]; }`,
+          input: { source: "record" },
+          output,
+        },
+      ],
+      workflows: [
+        {
+          id: "plain_wf",
+          name: "綴りなし",
+          trigger: { type: "on_create", table: "plain_src" },
+          history_table: "probe_log",
+          actions: [{ action: "run_function", function: "plain_probe", write_back: "$record" }],
+        },
+        {
+          id: "spelled_wf",
+          name: "綴りあり",
+          trigger: { type: "on_create", table: "spelled_src" },
+          history_table: "probe_log",
+          actions: [{ action: "run_function", function: "spelled_probe", write_back: "$record" }],
+        },
+      ],
+    },
+  } as unknown as Manifest;
+  const applied = applyManifest(dataRoot, probeApp, probe);
+  expect(applied.valid, JSON.stringify(applied)).toBe(true);
+  const db = new Database(appDbPath(dataRoot, probeApp));
+  try {
+    const read = (tableId: string): Record<string, unknown> => {
+      const created = createRecord(db, probe, tableId, { v: "x" });
+      expect(created.ok, JSON.stringify(created)).toBe(true);
+      const listed = listRecords(db, probe, tableId, {});
+      const row = listed.ok ? (listed.value as unknown as Record<string, unknown>[])[0] : undefined;
+      return row ?? {};
+    };
+    const plain = read("plain_src");
+    const spelled = read("spelled_src");
+    expect(plain.n).toBe(1);
+    expect(spelled.n).toBe(2);
+    expect(spelled.keys).toBe("reject");
+    expect(String(spelled.globals).length).toBeGreaterThan(0);
+    expect(spelled.globals).toBe(plain.globals);
+    expect(String(plain.globals).split(",")).not.toContain("reject");
+  } finally {
+    db.close();
+  }
+});
+
 // =====================================================================================
 // (F) **面(役割に束ねた権限)が3経路に効く**(`V8-M21` の後半。台帳 `J-G21` / `J-G22a` /
 //     `J-G23` の「判定の家は `src/server/owner-scope.ts` の既存1本」/ ユーザ決定 `D-V8-23`)
@@ -1962,4 +2066,765 @@ test("(AC-G14-3) 単件 GET の答え(404 / 200)と、この段の判定の答�
     { label: "共有(持ち主が空)の行", status: 200, refused: false },
     { label: "他人が持つ行(条件なしの読取の規則つき)", status: 200, refused: false },
   ]);
+});
+
+// =====================================================================================
+// 【2026-10-02 追記。上の検査は1バイトも書き換えていない】自動処理の書き手の救済と、作成者への付与の並び
+// (`V23-M10-T02c-c`。決定 `D-V23-299`・`D-V23-300`・`D-V23-301`・`D-V23-302`。門A `ADR-0555`)
+//
+// 持ち主の列の無いきっかけの表から動く自動処理は、今日は書き手が空になり、行ごとの権限か役割の規則を
+// 決めた表への書込を「書き手を特定できません」で断られていた。 直した後は、今日の判定が断ったときだけ、
+// 発火させた操作者でもう一度判定する(案2 救済型)。 作成者への付与は作成の自動処理より先に書く。
+// 題材はこの節だけで閉じたアプリ(`RESCUE_APP_ID`)で、上の題材(`APP_ID`)を1バイトも使わない。
+// =====================================================================================
+
+const RESCUE_APP_ID = "auto-rescue";
+const RESCUE_ALL = ["read", "write", "delete"];
+const RESCUE_PERMISSIONS = [
+  { id: "p_owner", name: "持ち主", read: true, write: true, delete: true },
+  { id: "p_member", name: "仲間", read: true, write: false, delete: false },
+];
+const RESCUE_UNKNOWN_WRITER = "この発火では書き手を特定できません";
+
+function rescueGrantTable(id: string, target: string, targetTable: string) {
+  return {
+    id,
+    name: `${id} の付与`,
+    fields: [
+      { id: target, name: "対象", type: "reference", reference_table: targetTable },
+      { id: "member", name: "相手", type: "reference", reference_table: "members" },
+      { id: "permission", name: "権限", type: "select", options: ["p_owner", "p_member"] },
+    ],
+  };
+}
+
+function rescueAccess(
+  grantTable: string,
+  target: string,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    enabled: true,
+    permissions: RESCUE_PERMISSIONS,
+    creator_permission: "p_owner",
+    grant: { table: grantTable, target, member: "member", permission: "permission" },
+    members: { table: "members", account: "account" },
+    ...extra,
+  };
+}
+
+/** きっかけの表(持ち主の列も行ごとの権限も持たない共有の表)。 */
+function rescueTrigger(id: string, fields: Record<string, unknown>[]) {
+  return { id, name: id, fields: [...fields, { id: "v", name: "値", type: "text" }] };
+}
+
+const RESCUE_STAFF_WRITABLE = [
+  "pokes",
+  "taps",
+  "actas_pokes",
+  "owner_pokes",
+  "isl_pokes",
+  "plain_log",
+  "seen_log",
+  "sched_src",
+  "wf_log",
+  // 【V23-M10-T01d / D-V23-299】持ち主の列を持つ表(行の持ち主として自動処理が書き換える)。
+  "owned_pokes",
+];
+
+const RESCUE_TABLES = [
+  "members",
+  "orgs",
+  "org_grants",
+  "evals",
+  "eval_grants",
+  "cfgs",
+  "cfg_grants",
+  "agents",
+  "own_items",
+  "own_grants",
+  "teams",
+  "team_grants",
+  "hubs",
+  "hub_grants",
+  "hub_evals",
+  "hub_eval_grants",
+  // 【V23-M10-T01d / D-V23-299】持ち主の決まった行を自動処理で書き換えるきっかけの表。
+  "chain_pokes",
+  ...RESCUE_STAFF_WRITABLE,
+];
+
+function rescueManifest(): Manifest {
+  const cfgRef = { id: "cfg", name: "設定", type: "reference", reference_table: "cfgs" };
+  const orgRef = { id: "org", name: "組織", type: "reference", reference_table: "orgs" };
+  return {
+    app: {
+      id: RESCUE_APP_ID,
+      name: "自動処理の書き手の救済",
+      tables: [
+        {
+          id: "members",
+          name: "名簿",
+          representative_field: "name",
+          fields: [
+            { id: "name", name: "名前", type: "text" },
+            { id: "account", name: "利用者ID", type: "text" },
+          ],
+        },
+        {
+          id: "orgs",
+          name: "組織",
+          representative_field: "name",
+          fields: [
+            { id: "name", name: "名前", type: "text" },
+            { id: "note", name: "メモ", type: "text" },
+          ],
+          access_control: rescueAccess("org_grants", "org", {
+            creatable_by_roles: ["owner", "staff"],
+          }),
+        },
+        rescueGrantTable("org_grants", "org", "orgs"),
+        {
+          id: "evals",
+          name: "評価",
+          fields: [
+            { ...orgRef },
+            { id: "label", name: "名前", type: "text" },
+            { id: "status", name: "状況", type: "text" },
+          ],
+          access_control: rescueAccess("eval_grants", "ev", { inherit_from: ["org"] }),
+        },
+        rescueGrantTable("eval_grants", "ev", "evals"),
+        {
+          id: "cfgs",
+          name: "設定",
+          history: true,
+          fields: [
+            { id: "name", name: "名前", type: "text" },
+            { id: "v", name: "値", type: "text" },
+            { id: "st_updated_by", name: "更新者", type: "text" },
+          ],
+          access_control: rescueAccess("cfg_grants", "cfg"),
+        },
+        rescueGrantTable("cfg_grants", "cfg", "cfgs"),
+        {
+          id: "agents",
+          name: "代理",
+          fields: [
+            { id: "label", name: "名前", type: "text" },
+            { id: "st_owner", name: "持ち主", type: "text" },
+          ],
+        },
+        {
+          id: "own_items",
+          name: "持ち主の列のある表",
+          fields: [
+            { id: "v", name: "値", type: "text" },
+            { id: "st_owner", name: "持ち主", type: "text" },
+          ],
+          access_control: rescueAccess("own_grants", "item"),
+        },
+        rescueGrantTable("own_grants", "item", "own_items"),
+        {
+          id: "teams",
+          name: "チーム",
+          representative_field: "name",
+          fields: [{ id: "name", name: "名前", type: "text" }],
+          access_control: rescueAccess("team_grants", "team", {
+            creatable_by_roles: ["owner", "staff"],
+          }),
+        },
+        { ...rescueGrantTable("team_grants", "team", "teams"), history: true },
+        {
+          id: "hubs",
+          name: "作ると同時に選ぶ組織",
+          representative_field: "name",
+          fields: [{ id: "name", name: "名前", type: "text" }],
+          access_control: rescueAccess("hub_grants", "hub", {
+            creatable_by_roles: ["owner", "staff"],
+          }),
+        },
+        rescueGrantTable("hub_grants", "hub", "hubs"),
+        {
+          id: "hub_evals",
+          name: "作ると同時に作る評価",
+          fields: [
+            { id: "hub", name: "組織", type: "reference", reference_table: "hubs" },
+            { id: "label", name: "名前", type: "text" },
+          ],
+          access_control: rescueAccess("hub_eval_grants", "ev", { inherit_from: ["hub"] }),
+        },
+        rescueGrantTable("hub_eval_grants", "ev", "hub_evals"),
+        rescueTrigger("pokes", [{ ...cfgRef }]),
+        rescueTrigger("taps", []),
+        rescueTrigger("actas_pokes", [
+          { ...cfgRef },
+          { id: "agent", name: "代理", type: "reference", reference_table: "agents" },
+        ]),
+        rescueTrigger("owner_pokes", []),
+        rescueTrigger("isl_pokes", [{ ...orgRef }]),
+        rescueTrigger("sched_src", [{ ...cfgRef }]),
+        // 【V23-M10-T01d / D-V23-299】持ち主の列を持つ表(この行から動く自動処理の書き手は
+        // その行の持ち主に決まる)と、それを書き換えるきっかけの表。
+        rescueTrigger("owned_pokes", [
+          { ...cfgRef },
+          { id: "st_owner", name: "持ち主", type: "text" },
+        ]),
+        rescueTrigger("chain_pokes", [
+          {
+            id: "owned",
+            name: "持ち主の決まった行",
+            type: "reference",
+            reference_table: "owned_pokes",
+          },
+        ]),
+        {
+          id: "plain_log",
+          name: "素の記録",
+          fields: [
+            { id: "v", name: "値", type: "text" },
+            { id: "st_updated_by", name: "更新者", type: "text" },
+          ],
+        },
+        { id: "seen_log", name: "見えた件数", fields: [{ id: "n", name: "件数", type: "text" }] },
+        {
+          id: "wf_log",
+          name: "実行履歴",
+          fields: [
+            { id: "ran_at", name: "実行時刻", type: "date" },
+            { id: "workflow", name: "ワークフロー", type: "text" },
+            { id: "trigger_type", name: "起点", type: "text" },
+            { id: "status", name: "結果", type: "text" },
+            { id: "error", name: "詳細", type: "long_text" },
+          ],
+        },
+      ],
+      views: [],
+      roles: [
+        {
+          id: "owner",
+          name: "運営",
+          rules: [
+            { target: "app", can: ["write"] },
+            { target: "role", can: ["write"] },
+            ...RESCUE_TABLES.map((table) => ({ target: "table", table, can: RESCUE_ALL })),
+          ],
+        },
+        {
+          id: "staff",
+          name: "担当",
+          rules: [
+            ...[
+              "members",
+              "orgs",
+              "evals",
+              "cfgs",
+              "own_items",
+              "teams",
+              "agents",
+              "hubs",
+              "hub_evals",
+            ].map((table) => ({ target: "table", table, can: ["read"] })),
+            ...RESCUE_STAFF_WRITABLE.map((table) => ({ target: "table", table, can: RESCUE_ALL })),
+          ],
+        },
+        // 【V23-M10-T01d / D-V23-299】きっかけの表にだけ書ける役割(記録の表への書込の規則は無い)。
+        {
+          id: "clerk",
+          name: "受付",
+          rules: [{ target: "table", table: "taps", can: RESCUE_ALL }],
+        },
+        { id: "editor", name: "編集者" },
+        { id: "viewer", name: "閲覧者" },
+      ],
+      functions: [
+        {
+          id: "island_eval",
+          name: "島が評価を作る",
+          code: 'export default function (record) { return [{ op: "create", table: "evals", values: { org: record.org, label: "島" } }]; }',
+          input: { source: "record" },
+          output: { ops: true },
+        },
+        {
+          id: "seen_grants",
+          name: "作成の自動処理が見た付与の件数",
+          code: 'export default function (input) { const rows = Array.isArray(input) ? input : []; return [{ op: "create", table: "seen_log", values: { n: String(rows.length) } }]; }',
+          input: { source: "table", table: "team_grants", via: "team" },
+          output: { ops: true },
+        },
+      ],
+      workflows: [
+        {
+          id: "wf_hub_eval",
+          name: "組織を作ると評価を1件作る",
+          trigger: { type: "on_create", table: "hubs" },
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "create_record",
+              table: "hub_evals",
+              values: { hub: "$record._id", label: "自動" },
+            },
+          ],
+        },
+        {
+          id: "wf_eval_note",
+          name: "評価の状況を組織のメモへ写す",
+          trigger: { type: "on_update", table: "evals" },
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "update_record",
+              table: "orgs",
+              target: "$record.org",
+              values: { note: "$record.status" },
+            },
+          ],
+        },
+        {
+          id: "wf_poke",
+          name: "設定を書き換える",
+          trigger: { type: "on_create", table: "pokes" },
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "update_record",
+              table: "cfgs",
+              target: "$record.cfg",
+              values: { v: "$record.v" },
+            },
+          ],
+        },
+        {
+          id: "wf_tap",
+          name: "素の記録を残す",
+          trigger: { type: "on_create", table: "taps" },
+          history_table: "wf_log",
+          actions: [{ action: "create_record", table: "plain_log", values: { v: "$record.v" } }],
+        },
+        {
+          id: "wf_actas",
+          name: "代理として設定を書き換える",
+          trigger: { type: "on_create", table: "actas_pokes" },
+          act_as: "$record.agent",
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "update_record",
+              table: "cfgs",
+              target: "$record.cfg",
+              values: { v: "$record.v" },
+            },
+          ],
+        },
+        {
+          id: "wf_own",
+          name: "持ち主の列のある表へ作る",
+          trigger: { type: "on_create", table: "owner_pokes" },
+          history_table: "wf_log",
+          actions: [{ action: "create_record", table: "own_items", values: { v: "$record.v" } }],
+        },
+        {
+          id: "wf_isl",
+          name: "島が評価を作る",
+          trigger: { type: "on_create", table: "isl_pokes" },
+          history_table: "wf_log",
+          actions: [{ action: "run_function", function: "island_eval", write_ops: true }],
+        },
+        {
+          id: "wf_seen",
+          name: "作成の自動処理が付与を数える",
+          trigger: { type: "on_create", table: "teams" },
+          history_table: "wf_log",
+          actions: [{ action: "run_function", function: "seen_grants", write_ops: true }],
+        },
+        {
+          id: "wf_chain",
+          name: "持ち主の決まった行を書き換える",
+          trigger: { type: "on_create", table: "chain_pokes" },
+          // 書き換える行の持ち主として書く(持ち主の列のある表の行は、書き手が空だと見つからない)。
+          act_as: "$record.owned",
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "update_record",
+              table: "owned_pokes",
+              target: "$record.owned",
+              values: { v: "$record.v" },
+            },
+          ],
+        },
+        {
+          id: "wf_owned",
+          name: "持ち主の決まった行の更新で設定を書き換える",
+          trigger: { type: "on_update", table: "owned_pokes" },
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "update_record",
+              table: "cfgs",
+              target: "$record.cfg",
+              values: { v: "$record.v" },
+            },
+          ],
+        },
+        {
+          id: "wf_sched",
+          name: "決まった時刻にきっかけの行を作る",
+          trigger: { type: "schedule", at: { hour: 4, minute: 0 }, table: "sched_src" },
+          history_table: "wf_log",
+          actions: [
+            {
+              action: "create_record",
+              table: "pokes",
+              values: { cfg: "$record.cfg", v: "$record.v" },
+            },
+          ],
+        },
+      ],
+    },
+  } as unknown as Manifest;
+}
+
+type RescueUser = ReturnType<typeof seedSession> & { member: string };
+type RescueRig = {
+  root: string;
+  server: ReturnType<typeof createServerApp>;
+  owner: RescueUser;
+  dave: RescueUser;
+  carol: RescueUser;
+  orgA: string;
+  evalA: string;
+  cfg: string;
+};
+
+const rescueRoots: string[] = [];
+
+afterEach(async () => {
+  for (const dir of rescueRoots.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+function rescueKernelCreate(
+  root: string,
+  table: string,
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const db = new Database(appDbPath(root, RESCUE_APP_ID));
+  try {
+    const created = createRecord(db, rescueManifest(), table, values);
+    if (!created.ok) {
+      throw new Error(`${table} に台の行を置けない: ${JSON.stringify(created.errors)}`);
+    }
+    return created.value as unknown as Record<string, unknown>;
+  } finally {
+    db.close();
+  }
+}
+
+function rescueRows(root: string, table: string): Record<string, unknown>[] {
+  const db = new Database(appDbPath(root, RESCUE_APP_ID), { readonly: true });
+  try {
+    return db.query<Record<string, unknown>, []>(`SELECT * FROM "${table}" ORDER BY rowid`).all();
+  } finally {
+    db.close();
+  }
+}
+
+function rescueHistory(root: string, table: string): Record<string, unknown>[] {
+  const db = new Database(appDbPath(root, RESCUE_APP_ID), { readonly: true });
+  try {
+    const exists = db
+      .query<{ n: number }, []>(
+        `SELECT count(*) AS n FROM sqlite_master WHERE type = 'table' AND name = '_record_history'`,
+      )
+      .get();
+    if ((exists?.n ?? 0) === 0) {
+      return [];
+    }
+    return db
+      .query<Record<string, unknown>, [string]>(
+        `SELECT op, actor_id, entry FROM _record_history WHERE table_id = ? ORDER BY seq`,
+      )
+      .all(table);
+  } finally {
+    db.close();
+  }
+}
+
+async function rescueRig(): Promise<RescueRig> {
+  const root = await mkdtemp(join(tmpdir(), "gp-auto-rescue-"));
+  rescueRoots.push(root);
+  const store = KernelMetaStore.open(root);
+  try {
+    createApp(store, "自動処理の書き手の救済", { app_id: RESCUE_APP_ID });
+  } finally {
+    store.close();
+  }
+  const applied = applyManifest(root, RESCUE_APP_ID, rescueManifest());
+  if (!applied.valid) {
+    throw new Error(JSON.stringify(applied.errors));
+  }
+  const ownerS = seedSession(root, RESCUE_APP_ID, { role: "owner", username: "op1" });
+  const daveS = seedSession(root, RESCUE_APP_ID, { role: "staff", username: "dave" });
+  const carolS = seedSession(root, RESCUE_APP_ID, { role: "staff", username: "carol" });
+  const memberOf = (account: string, name: string) =>
+    String(rescueKernelCreate(root, "members", { name, account })._id);
+  const owner = { ...ownerS, member: memberOf(ownerS.userId, "運営") };
+  const dave = { ...daveS, member: memberOf(daveS.userId, "でいぶ") };
+  const carol = { ...carolS, member: memberOf(carolS.userId, "かろる") };
+  const orgA = String(rescueKernelCreate(root, "orgs", { name: "組織A" })._id);
+  rescueKernelCreate(root, "org_grants", {
+    org: orgA,
+    member: carol.member,
+    permission: "p_owner",
+  });
+  const evalA = String(rescueKernelCreate(root, "evals", { org: orgA, label: "台の評価" })._id);
+  const cfg = String(rescueKernelCreate(root, "cfgs", { name: "設定1", v: "初め" })._id);
+  return {
+    root,
+    server: createServerApp({ dataRoot: root }),
+    owner,
+    dave,
+    carol,
+    orgA,
+    evalA,
+    cfg,
+  };
+}
+
+async function rescuePost(
+  rig: RescueRig,
+  user: { cookie: string },
+  table: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return await rig.server.request(
+    new Request(`http://localhost/api/apps/${RESCUE_APP_ID}/tables/${table}/records`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: user.cookie, origin: TEST_ORIGIN },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+async function rescuePatch(
+  rig: RescueRig,
+  user: { cookie: string },
+  table: string,
+  id: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const path = `http://localhost/api/apps/${RESCUE_APP_ID}/tables/${table}/records/${id}`;
+  const current = await rig.server.request(new Request(path, { headers: { cookie: user.cookie } }));
+  return await rig.server.request(
+    new Request(path, {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        cookie: user.cookie,
+        origin: TEST_ORIGIN,
+        "if-match": current.headers.get("etag") ?? "",
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+test("D-V23-299: 更新をきっかけに動く update_record —— 組織の持ち主が評価の状況を変えると、組織のメモまで書ける", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePatch(rig, rig.carol, "evals", rig.evalA, { status: "済" });
+  expect(res.status, await res.clone().text()).toBe(200);
+  const org = rescueRows(rig.root, "orgs").find((row) => row._id === rig.orgA);
+  expect(org?.note).toBe("済");
+});
+
+test("D-V23-299: 作成をきっかけに動く update_record —— 運営者は、自分が書ける設定の表を自動処理から書き換えられる", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.owner, "pokes", { cfg: rig.cfg, v: "運営" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  const cfg = rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg);
+  expect(cfg?.v).toBe("運営");
+});
+
+test("D-V23-299: 関数(コードの島)の write_ops —— 組織の持ち主の作成で動いた島が、その組織の評価を作れる", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.carol, "isl_pokes", { org: rig.orgA });
+  expect(res.status, await res.clone().text()).toBe(201);
+  expect(rescueRows(rig.root, "evals").map((row) => row.label)).toEqual(["台の評価", "島"]);
+});
+
+test("D-V23-300・D-V23-299: 組織を作ると、作成の自動処理が作った人の権限でその組織の評価を作れる(作ると同時に選べる)", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.dave, "hubs", { name: "組織D" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  const created = ((await res.json()) as { record: { _id: string } }).record._id;
+  const evals = rescueRows(rig.root, "hub_evals").filter((row) => row.hub === created);
+  expect(evals.map((row) => row.label)).toEqual(["自動"]);
+  const grants = rescueRows(rig.root, "hub_grants").filter((row) => row.hub === created);
+  expect(grants.map((row) => [row.member, row.permission])).toEqual([[rig.dave.member, "p_owner"]]);
+});
+
+test("D-V23-300: 作成の自動処理が付与の表を読むと、作った人の付与が1件見える", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.dave, "teams", { name: "チームD" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  expect(rescueRows(rig.root, "seen_log").map((row) => row.n)).toEqual(["1"]);
+});
+
+test("D-V23-300(陰性): 作成者への付与を書かない作成(カーネルの直の作成)では、作成の自動処理に付与は見えない", async () => {
+  const rig = await rescueRig();
+  rescueKernelCreate(rig.root, "teams", { name: "台のチーム" });
+  expect(rescueRows(rig.root, "seen_log").map((row) => row.n)).toEqual(["0"]);
+});
+
+test("D-V23-300(陰性): 付与の行の変更履歴の入口は今日どおり http のまま(付与を自動処理の器の中で書かない)", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.dave, "teams", { name: "チームH" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  // 付与の表は履歴を宣言している。 作成者への付与の1件は、今日どおり入口 http・操作者は作った人。
+  expect(rescueHistory(rig.root, "team_grants")).toEqual([
+    { op: "create", actor_id: rig.dave.userId, entry: "http" },
+  ]);
+});
+
+test("D-V23-302: 操作者でも書けない相手は断られ、断りの文は操作者で判定した理由になる", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.dave, "pokes", { cfg: rig.cfg, v: "担当" });
+  const text = await res.text();
+  expect(res.status, text).toBe(400);
+  const message = (JSON.parse(text) as { errors: { message: string }[] }).errors
+    .map((error) => error.message)
+    .join("\n");
+  expect(message).toContain(`この自動処理の書き手("${rig.dave.userId}")`);
+  expect(message).not.toContain(RESCUE_UNKNOWN_WRITER);
+  expect(rescueRows(rig.root, "pokes")).toHaveLength(0);
+  expect(rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg)?.v).toBe("初め");
+});
+
+test("D-V23-299・D-V23-302: act_as を書いた発火は救われず、辿れないときは今日の文で断られる(運営者でも)", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.owner, "actas_pokes", { cfg: rig.cfg, v: "代理" });
+  const text = await res.text();
+  expect(res.status, text).toBe(400);
+  expect(text).toContain(RESCUE_UNKNOWN_WRITER);
+  expect(rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg)?.v).toBe("初め");
+});
+
+test("D-V23-299・D-V23-302: 操作者が空の発火(カーネルの直の作成)は救われず、今日の文で断られる", async () => {
+  const rig = await rescueRig();
+  const db = new Database(appDbPath(rig.root, RESCUE_APP_ID));
+  try {
+    const created = createRecord(db, rescueManifest(), "pokes", { cfg: rig.cfg, v: "空" });
+    expect(created.ok).toBe(false);
+    expect(JSON.stringify(created.ok ? {} : created.errors)).toContain(RESCUE_UNKNOWN_WRITER);
+  } finally {
+    db.close();
+  }
+  expect(rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg)?.v).toBe("初め");
+});
+
+test("D-V23-299・D-V23-302: 時刻起動が作った行から動く自動処理は救われず、今日の文で断られる", async () => {
+  const rig = await rescueRig();
+  const src = rescueKernelCreate(rig.root, "sched_src", { cfg: rig.cfg, v: "時刻" });
+  const m = rescueManifest();
+  const workflow = (m.app.workflows ?? []).find((w) => w.id === "wf_sched");
+  const db = new Database(appDbPath(rig.root, RESCUE_APP_ID));
+  try {
+    runScheduledWorkflow(db, m, workflow as never, { records: [src as never] });
+  } finally {
+    db.close();
+  }
+  expect(rescueRows(rig.root, "pokes")).toHaveLength(0);
+  expect(rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg)?.v).toBe("初め");
+  const failed = rescueRows(rig.root, "wf_log").filter((row) => row.workflow === "wf_sched");
+  expect(failed.map((row) => row.status)).toEqual(["failure"]);
+  expect(String(failed[0]?.error)).toContain(RESCUE_UNKNOWN_WRITER);
+});
+
+test("D-V23-301: 持ち主の列(st_owner)のある表へ自動処理が行を作る形は救われず、今日の文で断られる(運営者でも)", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.owner, "owner_pokes", { v: "持ち主" });
+  const text = await res.text();
+  expect(res.status, text).toBe(400);
+  expect(text).toContain(RESCUE_UNKNOWN_WRITER);
+  expect(rescueRows(rig.root, "own_items")).toHaveLength(0);
+});
+
+test("D-V23-299: 権限を決めていない表への自動処理の記録は、今日どおり誰の権限も問わずに書かれ、更新者の欄は保存した人", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.dave, "taps", { v: "記録" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  const rows = rescueRows(rig.root, "plain_log");
+  expect(rows.map((row) => [row.v, row.st_updated_by])).toEqual([["記録", rig.dave.userId]]);
+});
+
+test("D-V23-302: 救済で通った書込の履歴の操作者と更新者の欄は、保存した人・入口は自動処理のまま", async () => {
+  const rig = await rescueRig();
+  const res = await rescuePost(rig, rig.owner, "pokes", { cfg: rig.cfg, v: "履歴" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  const cfg = rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg);
+  expect(cfg?.st_updated_by).toBe(rig.owner.userId);
+  const history = rescueHistory(rig.root, "cfgs").filter((row) => row.op === "update");
+  expect(history).toEqual([
+    { op: "update", actor_id: rig.owner.userId, entry: "on_create/on_update" },
+  ]);
+});
+
+// --- 【V23-M10-T01d】独立点検の指摘(中1〜中3)の処置 -------------------------------------
+//
+// 救済の2つの条件(今日の判定が通ればそこで終わる・書き手が決まっていれば救わない)と、
+// 作成者への付与の並びの画面の一括の入口に、壊すと赤になる検査を足す。 MCP の2入口は
+// src/mcp/creator-grant.test.ts の末尾に置いた(この表の import を増やさないため)。
+
+test("D-V23-299(陰性): 今日の判定で通る書込は救済の判定を掛けない —— 記録の表に書込の規則を持たない人の発火でも、権限を決めていない表へは今日どおり書ける", async () => {
+  const rig = await rescueRig();
+  const clerk = seedSession(rig.root, RESCUE_APP_ID, { role: "clerk", username: "clerk" });
+  const res = await rescuePost(rig, clerk, "taps", { v: "受付の記録" });
+  expect(res.status, await res.clone().text()).toBe(201);
+  const rows = rescueRows(rig.root, "plain_log");
+  expect(rows.map((row) => [row.v, row.st_updated_by])).toEqual([["受付の記録", clerk.userId]]);
+});
+
+test("D-V23-299・D-V23-302(陰性): 書き手が決まっている発火は救われず、操作者なら書ける相手でも今日の文(書き手で判定した理由)で断られる", async () => {
+  const rig = await rescueRig();
+  // 持ち主の決まった行の持ち主は dave(設定の表に書けない)。 発火させるのは運営者(設定の表に
+  // 書ける)。 運営者の作成 → 自動処理が dave として その行を書き換え → その行の更新で動く
+  // 自動処理(act_as なし)の書き手は行の持ち主の dave に決まり、操作者(運営者)はそのまま運ばれる。
+  const owned = String(
+    rescueKernelCreate(rig.root, "owned_pokes", {
+      cfg: rig.cfg,
+      v: "初め",
+      st_owner: rig.dave.userId,
+    })._id,
+  );
+  const res = await rescuePost(rig, rig.owner, "chain_pokes", { owned, v: "運営の更新" });
+  const text = await res.text();
+  expect(res.status, text).toBe(400);
+  const message = (JSON.parse(text) as { errors: { message: string }[] }).errors
+    .map((error) => error.message)
+    .join("\n");
+  expect(message).toContain(`ワークフロー "wf_owned" アクション1(update_record → cfgs)`);
+  expect(message).toContain(`この自動処理の書き手("${rig.dave.userId}")`);
+  expect(message).not.toContain(`この自動処理の書き手("${rig.owner.userId}")`);
+  expect(rescueRows(rig.root, "cfgs").find((row) => row._id === rig.cfg)?.v).toBe("初め");
+  expect(rescueRows(rig.root, "owned_pokes").find((row) => row._id === owned)?.v).toBe("初め");
+});
+
+test("D-V23-300・D-V23-308: 画面の一括の作成でも、作成の自動処理が付与の表を読むと作った人の付与が1件見える", async () => {
+  const rig = await rescueRig();
+  const res = await rig.server.request(
+    new Request(`http://localhost/api/apps/${RESCUE_APP_ID}/batch`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: rig.dave.cookie,
+        origin: TEST_ORIGIN,
+      },
+      body: JSON.stringify({ ops: [{ op: "create", table: "teams", values: { name: "一括" } }] }),
+    }),
+  );
+  expect(res.status, await res.clone().text()).toBe(200);
+  expect(rescueRows(rig.root, "seen_log").map((row) => row.n)).toEqual(["1"]);
 });

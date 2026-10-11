@@ -40,6 +40,7 @@
  */
 
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { resolvePreviewRoot } from "../server/preview-store.ts";
 import { normalizeActor } from "./actor-guard.ts";
 import { createMcpServer } from "./server.ts";
 
@@ -63,6 +64,11 @@ export type McpHttpConfig = {
   dataRoot: string;
   /** `get_preview_url` が返す URL の基底。Web サーバのリッスン先と揃える。 */
   previewBaseUrl: string;
+  /**
+   * 下見の置き場の根(`V20-M13-T02a`)。`ST_PREVIEW_ROOT` を書いたときだけ在る。
+   * **無ければ `createMcpServer` が既定(`<resolve(dataRoot)>.previews`)に倒す。**
+   */
+  previewRoot?: string | undefined;
   /** リッスンポート。**ホスト名はここに無い**(定数である)。 */
   port: number;
   /** 期待するオリジンの一覧。**ワイルドカードを1つも許さない**(`ADR-0272` 限定6)。 */
@@ -145,6 +151,10 @@ export function loadMcpHttpConfig(env: Record<string, string | undefined>): McpH
     // **名乗りを読むのは、HTTP ではこの1行だけである**(裁定 `M31-1`)。
     // **既定値を持たない**(既定の主体を置くと、それが事実上の全権になる)。
     actor: normalizeActor(env.ST_MCP_ACTOR),
+    // **下見の置き場の根**(`V20-M13-T02a`)。**書いたときだけ載せる**(既定は `createMcpServer` 側)。
+    ...((env.ST_PREVIEW_ROOT?.trim() ?? "") === ""
+      ? {}
+      : { previewRoot: resolvePreviewRoot(env.ST_DATA_ROOT ?? "data", env) }),
   };
 }
 
@@ -257,6 +267,7 @@ export async function handleMcpHttpRequest(
   const server = createMcpServer({
     dataRoot: config.dataRoot,
     previewBaseUrl: config.previewBaseUrl,
+    previewRoot: config.previewRoot,
     // **要求ごとに作り直すサーバにも、起動時に決めた名乗りをそのまま渡す**
     // (`V8-M31-T02`)。**要求ごとに名乗りが変わる余地を作らない** ——
     // ヘッダや本文から主体を読む形にすると、繋いだ側が主体を選べてしまう。
@@ -290,6 +301,11 @@ export type StartMcpHttpServerOptions = {
    * **明示した側が勝つ**(`expectedOrigins` と同じ扱い)。
    */
   actor?: string | undefined;
+  /**
+   * 下見の置き場の根(`V20-M13` 点検の処置 軽4)。 省略時は `env` の `ST_PREVIEW_ROOT`、それも無ければ
+   * `createMcpServer` の既定(`<resolve(dataRoot)>.previews`)。 **明示した側が勝つ。**
+   */
+  previewRoot?: string | undefined;
 };
 
 export type RunningMcpHttpServer = {
@@ -319,6 +335,7 @@ export async function startMcpHttpServer(
     expectedOrigins: options.expectedOrigins ?? fromEnv ?? [],
     expectedOriginsFromEnv: options.expectedOrigins !== undefined || fromEnv !== undefined,
     actor: normalizeActor(options.actor) ?? envConfig?.actor,
+    previewRoot: options.previewRoot ?? envConfig?.previewRoot,
   };
 
   const server = Bun.serve({

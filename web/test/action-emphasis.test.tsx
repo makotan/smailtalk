@@ -25,6 +25,28 @@
  *    `data-variant` 属性と className の字面だけで、**「画面でどう見えるか」は1件も測っていない。**
  * 5. **chromium で1度も確かめていない**(`web/e2e` に1本も足していない)。
  * 6. **2つの見た目に見分けが付くか(コントラスト・視認性)を1件も測っていない。**
+ *
+ * ## 【`V20-M2-T02` / `ADR-0459`。2026-09-24 に追記。上の文は1バイトも消していない】上の規約は今日から偽である
+ *
+ * **上の「固定する規約」(1番目を主、それ以外を副)と、「言えないこと」1 の逐語
+ * 「**アプリが宣言で選ぶことはできない。**」「**語彙は1バイトも増えていない**」は、今日から偽である。**
+ * **`$defs/view_action.properties` に9キー目 `action_emphasis`(`primary` / `secondary` /
+ * `danger` の3値。省略可)が足され、各ボタンの見た目はそのボタン自身の宣言だけで決まる。**
+ *
+ * - `primary` → `variant="default"`(**旧の「主」と同じ見た目**。塗りつぶしの `primary` variant ではない)
+ * - `secondary` → `variant="secondary"`
+ * - `danger` → `variant="destructive"`
+ * - **書いていない → `variant="secondary"`(主を出さない)。** **並び順は見た目に1バイトも効かない。**
+ *
+ * **「言えないこと」3(1番目が絞り落とされると主が1つも出ない)は形を変えて今日も真である** ——
+ * **繰り上げが無いのは同じだが、理由は「位置」ではなく「各ボタンが自分の宣言だけで決まる」ことに
+ * なった。****(c) 群が固定する。**
+ * **「言えないこと」4 / 6 は今日も真である**(ここは happy-dom で CSS を計算しない)。
+ * **「言えないこと」5 は今日から偽である** —— **`web/e2e/action-emphasis.e2e.ts` を足し、
+ * chromium の計算値で主と副の地色が違うことを測った。**
+ *
+ * **旧の検査9本の名前(逐語)と、打ち直した先は `docs/plan/v20/records/v20-m2-t02.md` に書いた。**
+ * **消した検査は1本も無い**(9本とも同じ主題の新しい期待値へ打ち直した)。
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -34,7 +56,7 @@ import type { DetailView, Manifest } from "../../src/kernel/types.ts";
 import type { Role } from "../src/api.ts";
 import { RoleProvider } from "../src/auth/authz.tsx";
 import { DetailViewRenderer } from "../src/views/DetailViewRenderer.tsx";
-import { grantRules, viewRead } from "./role-rules.ts";
+import { actionRead, grantRules, viewRead } from "./role-rules.ts";
 
 const ROOT = dirname(dirname(import.meta.dir));
 const WRITER_ROLE: Role = "owner";
@@ -108,6 +130,42 @@ function actionsManifest(actions: NonNullable<DetailView["actions"]>): Manifest 
     ["owner", "customer"],
     [viewRead("entry-form"), viewRead("target-form")],
   );
+}
+
+/**
+ * **3形(遷移 / 値の書換 / 自動処理の起動)を1画面に並べる題材**(`V20-M2-T03`)。
+ * **`DetailViewRenderer` の3箇所の `variant` がどれも宣言を読むことを見るため。**
+ * **手動で起こすワークフロー1本を足す以外は `actionsManifest` と同じである。**
+ */
+function threeShapeManifest(actions: NonNullable<DetailView["actions"]>): Manifest {
+  const manifest = actionsManifest(actions);
+  (manifest.app as { workflows?: unknown[] }).workflows = [
+    {
+      id: "notify",
+      name: "知らせる",
+      trigger: { type: "manual", table: "entries" },
+      actions: [{ action: "create_record", table: "targets", values: { label: "通知" } }],
+      history_table: "targets",
+    },
+  ];
+  return manifest;
+}
+
+/**
+ * **宣言ボタンの器(`detail-action-origins`)の中で、`data-variant` が主に当たる値
+ * (`default`)のボタンを数える。** **組込の編集ボタン(`detail-edit`)は元から
+ * `default` なので、器の外にあり、ここでは数えない。**
+ */
+function countDeclaredPrimary(section: HTMLElement): number {
+  // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): return section.querySelectorAll('[data-testid="detail-action-origins"] [data-variant="default"]')
+  return section.querySelectorAll('[data-testid="detail-action-origins"] [data-variant="emphasis"]')
+    .length;
+}
+
+function variantsOf(section: HTMLElement): (string | null)[] {
+  return [
+    ...section.querySelectorAll('[data-testid="detail-action-origins"] button[data-variant]'),
+  ].map((node) => node.getAttribute("data-variant"));
 }
 
 /** 遷移先が `entries`(public)の操作起点 —— **customer では絞り落とされる。** */
@@ -201,7 +259,7 @@ async function renderDetail(manifest: Manifest, role: Role = WRITER_ROLE): Promi
 }
 
 // ---------------------------------------------------------------------------
-// (a) 1件のとき、そのボタンは主(default)である
+// (a) 宣言の無いボタンは主にならない(`V20-M2-T02` (a))
 // ---------------------------------------------------------------------------
 
 /**
@@ -211,69 +269,163 @@ async function renderDetail(manifest: Manifest, role: Role = WRITER_ROLE): Promi
  * **className は `cva` が組む長い字面なので、そちらを主の根拠にしない。**
  * **className も一応見る**((a) の2本目)—— 属性だけが合っていて見た目が変わらない、
  * という壊れ方を素通りさせないため。
+ *
+ * **【`V20-M2-T02`。旧テスト名(逐語)】**
+ * 「(a) 操作起点が1件のとき、そのボタンは主(data-variant=default)である」。
+ * **旧は「1件なら主」を固定していた。今日は宣言が無ければ1件でも副である。**
  */
-test("(a) 操作起点が1件のとき、そのボタンは主(data-variant=default)である", async () => {
-  await renderDetail(actionsManifest([TO_SCOPED_FORM]));
+test("(a) 操作起点が1件で宣言が無いとき、そのボタンは主にならない(data-variant=secondary)", async () => {
+  const section = await renderDetail(actionsManifest([TO_SCOPED_FORM]));
   const button = screen.getByTestId("action-origin-target-form");
-  expect(button.getAttribute("data-variant")).toBe("default");
+  expect(button.getAttribute("data-variant")).toBe("secondary");
+  expect(countDeclaredPrimary(section)).toBe(0);
 });
 
-test("(a) 主のボタンの className は副のそれと実際に違う(属性だけの差にしない)", async () => {
-  const solo = await renderDetail(actionsManifest([TO_SCOPED_FORM]));
+/**
+ * **【`V20-M2-T02`。旧テスト名(逐語)】**
+ * 「(a) 主のボタンの className は副のそれと実際に違う(属性だけの差にしない)」。
+ * **旧は「1件のとき(主)と2件の2番目(副)」を比べていた。今日は宣言で主と副を作って比べる。**
+ * **地色のクラスの期待(`bg-background` / `bg-secondary`)は1文字も変えていない。**
+ */
+test("(a) 宣言した主のボタンの className は、宣言した副のそれと実際に違う(属性だけの差にしない)", async () => {
+  const solo = await renderDetail(
+    actionsManifest([{ ...TO_SCOPED_FORM, action_emphasis: "primary" }] as NonNullable<
+      DetailView["actions"]
+    >),
+  );
   const primaryClass = solo.querySelector('[data-testid="action-origin-target-form"]')?.className;
   cleanup();
-  const pair = await renderDetail(actionsManifest([TO_PUBLIC_FORM, TO_SCOPED_FORM]));
+  const pair = await renderDetail(
+    actionsManifest([{ ...TO_SCOPED_FORM, action_emphasis: "secondary" }] as NonNullable<
+      DetailView["actions"]
+    >),
+  );
   const secondaryClass = pair.querySelector('[data-testid="action-origin-target-form"]')?.className;
   expect(primaryClass).not.toBe(secondaryClass);
-  // **`web/src/ui/button.tsx` の既存5値のうち2つを選んでいるだけである**(新しい variant を
+  // **`web/src/ui/button.tsx` の既存5値のうち3つを選んでいるだけである**(新しい variant を
   // 1つも作っていない)。**地色のクラスがそれぞれの variant のものになっている。**
-  expect(primaryClass).toContain("bg-background");
+  // 【V20-M9 / ADR-0474 §1-7】主は `button.tsx` に足した variant `emphasis` で描く(上の「新しい variant を
+  // 1つも作っていない」は引き直しの前の逐語)。旧(逐語): `expect(primaryClass).toContain("bg-background");`
+  expect(primaryClass).toContain("bg-primary-fill");
+  expect(primaryClass).toContain("text-on-primary");
   expect(secondaryClass).toContain("bg-secondary");
 });
 
 // ---------------------------------------------------------------------------
-// (b) 2件のとき、1番目だけが主
+// (b) 並び順は見た目に効かない
 // ---------------------------------------------------------------------------
 
-test("(b) 操作起点が2件のとき、1番目だけが主で2番目は副である", async () => {
-  await renderDetail(actionsManifest([TO_PUBLIC_FORM, TO_SCOPED_FORM]));
+/**
+ * **【`V20-M2-T02`。旧テスト名(逐語)】**
+ * 「(b) 操作起点が2件のとき、1番目だけが主で2番目は副である」。
+ * **旧は1番目を主と固定していた。今日は宣言が無ければ2件とも副である。**
+ */
+test("(b) 操作起点が2件で宣言が無いとき、2件とも副で、主は1つも出ない", async () => {
+  const section = await renderDetail(actionsManifest([TO_PUBLIC_FORM, TO_SCOPED_FORM]));
   expect(screen.getByTestId("action-origin-entry-form").getAttribute("data-variant")).toBe(
-    "default",
+    "secondary",
   );
   expect(screen.getByTestId("action-origin-target-form").getAttribute("data-variant")).toBe(
     "secondary",
   );
+  expect(countDeclaredPrimary(section)).toBe(0);
 });
 
-test("(b) 主は「書いた順の1番目」であって表示名でもフォームIDでもない(並べ替えると入れ替わる)", async () => {
-  await renderDetail(actionsManifest([TO_SCOPED_FORM, TO_PUBLIC_FORM]));
+/**
+ * **【`V20-M2-T02`。旧テスト名(逐語)】**
+ * 「(b) 主は「書いた順の1番目」であって表示名でもフォームIDでもない(並べ替えると入れ替わる)」。
+ * **旧は「並べ替えると主が入れ替わる」を固定していた。今日は並べ替えても主は入れ替わらない。**
+ */
+test("(b) 主は宣言したボタンであって並び順ではない(並べ替えても入れ替わらない)", async () => {
+  const declared = { ...TO_SCOPED_FORM, action_emphasis: "primary" } as NonNullable<
+    DetailView["actions"]
+  >[number];
+  await renderDetail(actionsManifest([declared, TO_PUBLIC_FORM]));
   expect(screen.getByTestId("action-origin-target-form").getAttribute("data-variant")).toBe(
-    "default",
+    // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): "default",
+    "emphasis",
+  );
+  expect(screen.getByTestId("action-origin-entry-form").getAttribute("data-variant")).toBe(
+    "secondary",
+  );
+  cleanup();
+  await renderDetail(actionsManifest([TO_PUBLIC_FORM, declared]));
+  expect(screen.getByTestId("action-origin-target-form").getAttribute("data-variant")).toBe(
+    // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): "default",
+    "emphasis",
   );
   expect(screen.getByTestId("action-origin-entry-form").getAttribute("data-variant")).toBe(
     "secondary",
   );
 });
 
-test("(b) 3件以上でも主は1番目の1つだけである(2つ目を主にする手段は無い)", async () => {
+/**
+ * **【`V20-M2-T03` (a)。完了条件2】** **旧テスト名(逐語)**:
+ * 「(b) 3件以上でも主は1番目の1つだけである(2つ目を主にする手段は無い)」。
+ * **旧は「2つ目を主にする手段は無い」を固定していた。今日は並び順を変えずに2番目を主にできる。**
+ */
+test("(b) 並び順を変えずに、3件のうち2番目だけを主にできる", async () => {
   await renderDetail(
     actionsManifest([
       TO_SCOPED_FORM,
-      TO_PUBLIC_FORM,
+      { ...TO_PUBLIC_FORM, action_emphasis: "primary" },
       { form: "target-form", prefill: { field: "parent" }, name: "もう一度" },
     ] as NonNullable<DetailView["actions"]>),
   );
   const buttons = screen.getAllByTestId(/^action-origin-/);
   expect(buttons).toHaveLength(3);
+  // **並びは書いた順のまま**(1番目 target-form / 2番目 entry-form / 3番目 target-form)。
+  expect(buttons.map((node) => node.getAttribute("data-testid"))).toEqual([
+    "action-origin-target-form",
+    "action-origin-entry-form",
+    "action-origin-target-form",
+  ]);
   expect(buttons.map((node) => node.getAttribute("data-variant"))).toEqual([
-    "default",
     "secondary",
+    // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): "default",
+    "emphasis",
     "secondary",
   ]);
 });
 
 // ---------------------------------------------------------------------------
-// (c) 1番目が絞り落とされたとき、2番目は繰り上がらない(**意図した挙動**)
+// (T03-a) 主・副・危険の3通りが別の data-variant になる。3形すべてで宣言を読む
+// ---------------------------------------------------------------------------
+
+test("(T03-a) 主・副・危険・宣言なしが、default / secondary / destructive / secondary に描き分けられる", async () => {
+  const section = await renderDetail(
+    actionsManifest([
+      { ...TO_PUBLIC_FORM, action_emphasis: "primary" },
+      { ...TO_SCOPED_FORM, action_emphasis: "secondary" },
+      {
+        form: "target-form",
+        prefill: { field: "parent" },
+        name: "捨てる",
+        action_emphasis: "danger",
+      },
+      { form: "target-form", prefill: { field: "parent" }, name: "書かない" },
+    ] as NonNullable<DetailView["actions"]>),
+  );
+  // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): expect(variantsOf(section)).toEqual(["default", "secondary", "destructive", "secondary"]);
+  expect(variantsOf(section)).toEqual(["emphasis", "secondary", "destructive", "secondary"]);
+  expect(new Set(variantsOf(section).slice(0, 3)).size).toBe(3);
+});
+
+test("(T03-a) 値の書換(set)と自動処理の起動(run)の形も、同じ対応で宣言を読む", async () => {
+  const section = await renderDetail(
+    threeShapeManifest([
+      { set: { field: "st_public", value: true }, name: "公開する", action_emphasis: "primary" },
+      { run: "notify", name: "知らせる", action_emphasis: "danger" },
+      { set: { field: "st_public", value: false }, name: "非公開にする" },
+      { run: "notify", name: "もう一度知らせる", action_emphasis: "secondary" },
+    ] as NonNullable<DetailView["actions"]>),
+  );
+  // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): expect(variantsOf(section)).toEqual(["default", "destructive", "secondary", "secondary"]);
+  expect(variantsOf(section)).toEqual(["emphasis", "destructive", "secondary", "secondary"]);
+});
+
+// ---------------------------------------------------------------------------
+// (c) 1番目が絞り落とされたとき、2番目は繰り上がらない(`V20-M2-T02` (d))
 // ---------------------------------------------------------------------------
 
 // =====================================================================================
@@ -300,27 +452,94 @@ test("(b) 3件以上でも主は1番目の1つだけである(2つ目を主に�
 // **(c) 群の主題(「絞り落とされても2番目は繰り上がらない」)を測る材料は
 // この題材から消えた** —— **代わりに、絞り込みが1件も起きないこと(2件とも出て、
 // 1番目だけが主であること)を測る。** **繰り上げの規則そのものは (a) / (b) 群が測っている。**
+//
+// **【`V20-M2-T02`。2026-09-24 に追記。上の文は1バイトも消していない】**
+// **上の「1番目だけが主」は今日から偽である** —— **宣言が無ければ2件とも副である。**
+// **「この題材ではもう作れない」は今日も真だが、ボタンの識別子(`id`)と役割の規則
+// (`target: "action"`)を使えば、1番目を役割で絞り落とす状況を作れる**(下の (c-d) の2本)。
 // =====================================================================================
-test("(c の反転) customer でも公開テーブルの操作起点は落ちない(2件とも出て、1番目だけが主)", async () => {
+
+/**
+ * **【`V20-M2-T02`。旧テスト名(逐語)】**
+ * 「(c の反転) customer でも公開テーブルの操作起点は落ちない(2件とも出て、1番目だけが主)」。
+ */
+test("(c の反転) customer でも公開テーブルの操作起点は落ちない(2件とも出て、宣言が無いので2件とも副)", async () => {
   await renderDetail(actionsManifest([TO_PUBLIC_FORM, TO_SCOPED_FORM]), CUSTOMER_ROLE);
   const buttons = screen.getAllByTestId(/^action-origin-/);
   expect(buttons).toHaveLength(2);
   expect(buttons.map((node) => node.getAttribute("data-variant"))).toEqual([
-    "default",
+    "secondary",
     "secondary",
   ]);
 });
 
-test("(c の反転) 並びを入れ替えても、主になるのは1番目だけである", async () => {
-  await renderDetail(actionsManifest([TO_SCOPED_FORM, TO_PUBLIC_FORM]), CUSTOMER_ROLE);
+/**
+ * **【`V20-M2-T02`。旧テスト名(逐語)】**
+ * 「(c の反転) 並びを入れ替えても、主になるのは1番目だけである」。
+ */
+test("(c の反転) customer でも、主になるのは宣言したボタンだけである(並びに依らない)", async () => {
+  await renderDetail(
+    actionsManifest([
+      TO_SCOPED_FORM,
+      { ...TO_PUBLIC_FORM, action_emphasis: "primary" },
+    ] as NonNullable<DetailView["actions"]>),
+    CUSTOMER_ROLE,
+  );
   const buttons = screen.getAllByTestId(/^action-origin-/);
   expect(buttons).toHaveLength(2);
-  expect(buttons[0]?.getAttribute("data-variant")).toBe("default");
-  expect(buttons[1]?.getAttribute("data-variant")).toBe("secondary");
+  expect(buttons[0]?.getAttribute("data-variant")).toBe("secondary");
+  // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): expect(buttons[1]?.getAttribute("data-variant")).toBe("default");
+  expect(buttons[1]?.getAttribute("data-variant")).toBe("emphasis");
+});
+
+/**
+ * **1番目を役割で絞り落とす題材**: 2つのボタンに識別子を付け、owner には2つとも、
+ * customer には2番目だけを見せる規則(`target: "action"` × `read`)を足す。
+ */
+function roleDroppedManifest(first: object, second: object): Manifest {
+  return grantRules(
+    grantRules(
+      actionsManifest([
+        { ...TO_PUBLIC_FORM, id: "first", ...first },
+        { ...TO_SCOPED_FORM, id: "second", ...second },
+      ] as NonNullable<DetailView["actions"]>),
+      ["owner"],
+      [actionRead("entry-detail", "first"), actionRead("entry-detail", "second")],
+    ),
+    ["customer"],
+    [actionRead("entry-detail", "second")],
+  );
+}
+
+test("(c-d) 主と宣言した1番目が役割で絞り落とされても、宣言の無い2番目は主に繰り上がらない", async () => {
+  const section = await renderDetail(
+    roleDroppedManifest({ action_emphasis: "primary" }, {}),
+    CUSTOMER_ROLE,
+  );
+  const buttons = screen.getAllByTestId(/^action-origin-/);
+  expect(buttons.map((node) => node.getAttribute("data-testid"))).toEqual([
+    "action-origin-target-form",
+  ]);
+  expect(buttons[0]?.getAttribute("data-variant")).toBe("secondary");
+  expect(countDeclaredPrimary(section)).toBe(0);
+  cleanup();
+  // **対照**: owner には2つとも出て、宣言した1番目だけが主である。
+  const ownerSection = await renderDetail(roleDroppedManifest({ action_emphasis: "primary" }, {}));
+  // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): expect(variantsOf(ownerSection)).toEqual(["default", "secondary"]);
+  expect(variantsOf(ownerSection)).toEqual(["emphasis", "secondary"]);
+});
+
+test("(c-d) 1番目が絞り落とされても、主と宣言した2番目は主のまま描かれる(各ボタンは自分の宣言だけで決まる)", async () => {
+  const section = await renderDetail(
+    roleDroppedManifest({}, { action_emphasis: "primary" }),
+    CUSTOMER_ROLE,
+  );
+  // 【V20-M9 / ADR-0474 §1-7】主の variant を "default" → "emphasis" に打ち直した。旧(逐語): expect(variantsOf(section)).toEqual(["default"]);
+  expect(variantsOf(section)).toEqual(["emphasis"]);
 });
 
 // ---------------------------------------------------------------------------
-// (d) actions を持たない画面の DOM が1バイトも変わらない
+// (d) actions を持たない画面の DOM が1バイトも変わらない / 宣言の無い画面は主が消えるぶんだけ変わる
 // ---------------------------------------------------------------------------
 
 /**
@@ -334,6 +553,16 @@ const PLAIN_DETAIL_HTML = readFileSync(
   "utf8",
 ).trim();
 
+/**
+ * **宣言の無いボタン2つを持つ詳細画面の描画を、`DetailViewRenderer.tsx` を書き換える
+ * 前に取った DOM**(`V20-M2-T03` (d)。題材は `actionsManifest([TO_PUBLIC_FORM, TO_SCOPED_FORM])`、
+ * 役割は owner)。**着手前は1番目が `default`(主)、2番目が `secondary`(副)である。**
+ */
+const UNDECLARED_BEFORE_HTML = readFileSync(
+  join(ROOT, "web", "test", "__fixtures__", "detail-view-actions-undeclared-before.html"),
+  "utf8",
+).trim();
+
 test("(d) actions を持たない detail_view の DOM が着手前と完全一致する", async () => {
   const section = await renderDetail(plainManifest());
   expect(section.outerHTML).toBe(PLAIN_DETAIL_HTML);
@@ -341,10 +570,56 @@ test("(d) actions を持たない detail_view の DOM が着手前と完全一�
   expect(screen.queryByTestId("detail-action-origins")).toBeNull();
 });
 
+test("(d) 宣言の無い画面の DOM は、1番目のボタンの data-variant と class の2属性だけが着手前と違う", async () => {
+  const section = await renderDetail(actionsManifest([TO_PUBLIC_FORM, TO_SCOPED_FORM]));
+  const after = section.outerHTML;
+  expect(after).not.toBe(UNDECLARED_BEFORE_HTML);
+  // **着手前の DOM から、1番目のボタンの2属性だけを取り出す。**
+  const holder = document.createElement("div");
+  holder.innerHTML = UNDECLARED_BEFORE_HTML;
+  const beforeFirst = holder.querySelector('[data-testid="action-origin-entry-form"]');
+  expect(beforeFirst?.getAttribute("data-variant")).toBe("default");
+  // **今日の DOM の1番目のボタンに、その2属性だけを戻すと、着手前と1バイトも違わない。**
+  const first = section.querySelector('[data-testid="action-origin-entry-form"]');
+  expect(first?.getAttribute("data-variant")).toBe("secondary");
+  first?.setAttribute("data-variant", beforeFirst?.getAttribute("data-variant") ?? "");
+  first?.setAttribute("class", beforeFirst?.getAttribute("class") ?? "");
+  expect(section.outerHTML).toBe(UNDECLARED_BEFORE_HTML);
+});
+
+// 【V20-M9 / ADR-0474 §Decision 1-7】主を新しい variant `emphasis`(地色 primary_fill・文字色 on_primary)で描くように
+// なったので、DOM は「1番目のボタンの data-variant と class の2属性」だけが着手前と違う。**平常時の計算後の見た目は
+// 既定値(#fff / #000)のまま今日と同じ**である(chromium の実測は `web/e2e/action-emphasis.e2e.ts` の (iii))。
+// hover / active の見た目は変わる(地色は白のまま枠線が本文の文字色になる。ADR-0474 §6 の 5)。テスト名は引き直しの前の逐語。
+// 旧(逐語): `expect(section.outerHTML).toBe(UNDECLARED_BEFORE_HTML);`
+test("(d) 1番目に primary と書けば、着手前の見た目(DOM)に1バイト違わず戻せる", async () => {
+  // **持ち主は `action_emphasis` を書くことで、反転前と同じ見た目に戻せる**(`ADR-0459` 限定5)。
+  const section = await renderDetail(
+    actionsManifest([
+      { ...TO_PUBLIC_FORM, action_emphasis: "primary" },
+      TO_SCOPED_FORM,
+    ] as NonNullable<DetailView["actions"]>),
+  );
+  const holder = document.createElement("div");
+  holder.innerHTML = UNDECLARED_BEFORE_HTML;
+  const beforeFirst = holder.querySelector('[data-testid="action-origin-entry-form"]');
+  const first = section.querySelector('[data-testid="action-origin-entry-form"]');
+  expect(first?.getAttribute("data-variant")).toBe("emphasis");
+  expect(first?.getAttribute("class")).toContain("bg-primary-fill");
+  expect(first?.getAttribute("class")).toContain("text-on-primary");
+  first?.setAttribute("data-variant", beforeFirst?.getAttribute("data-variant") ?? "");
+  first?.setAttribute("class", beforeFirst?.getAttribute("class") ?? "");
+  expect(section.outerHTML).toBe(UNDECLARED_BEFORE_HTML);
+});
+
 test("(d) 編集/削除のボタンの variant を1バイトも変えていない", async () => {
   // **編集ボタンは今日も `variant` 未指定(= `default`)、削除は `destructive`** である。
   // **主副の描き分けは操作起点(`actions`)にしか当たっていない。**
-  const manifest = actionsManifest([TO_SCOPED_FORM]);
+  // **【`V20-M2-T02`】宣言(主・危険)を書いても、組込のボタンには当たらない。**
+  const manifest = actionsManifest([
+    { ...TO_SCOPED_FORM, action_emphasis: "danger" },
+    { ...TO_PUBLIC_FORM, action_emphasis: "primary" },
+  ] as NonNullable<DetailView["actions"]>);
   await renderDetail(manifest);
   expect(screen.getByTestId("detail-edit").getAttribute("data-variant")).toBe("default");
   expect(screen.getByTestId("detail-delete").getAttribute("data-variant")).toBe("destructive");

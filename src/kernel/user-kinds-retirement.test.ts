@@ -129,6 +129,11 @@ describe("(1) 立場の一覧を書いたマニフェストは、今日から拒
       "functions",
       "theme",
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory` を末尾に足した(旧の期待値は `"roles"` で終わる8要素。上の注の実測の逐語も当時のもの)。**
+      // **`user_kinds` が入っていないことは1バイトも変わらない。**
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行7)】10本目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる9要素。逐語)。 `user_kinds` が入っていないことは1バイトも変わらない。**
+      "workspace",
     ]);
   });
 
@@ -180,6 +185,9 @@ describe("(3) 器の本数(減った側と、動かなかった側を別々に�
     // **旧の期待値(逐語)**: `9`(`id` / `name` / `tables` / `views` / `workflows` /
     // `functions` / `theme` / `user_kinds` / `roles`)。
     const keys = Object.keys((manifestDefs().app as Any).properties as Any);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory` を末尾に足した(旧の期待値は `"roles"` で終わる8要素)。**
+    // **この検査が固定していたのは「`user_kinds` が消えたこと」であり、足したのは別の決定である。**
+    // テスト名の「9 → 8」は当時の逐語のまま。
     expect(keys).toEqual([
       "id",
       "name",
@@ -189,6 +197,9 @@ describe("(3) 器の本数(減った側と、動かなかった側を別々に�
       "functions",
       "theme",
       "roles",
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行7)】10本目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる9要素。逐語)。 足したのは別の決定である。**
+      "workspace",
     ]);
   });
 
@@ -196,6 +207,7 @@ describe("(3) 器の本数(減った側と、動かなかった側を別々に�
     // **旧の期待値(逐語)**: `op` / `table` / `field` / `view` / `changes` / `workflow` /
     // `function` / `theme` / `user_kinds` / `roles` の10キー。
     const keys = Object.keys((diffDefs().operation as Any).properties as Any);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory` を末尾に足した(旧の期待値は `"roles"` で終わる9要素)。** テスト名は当時の逐語のまま。
     expect(keys).toEqual([
       "op",
       "table",
@@ -206,16 +218,24 @@ describe("(3) 器の本数(減った側と、動かなかった側を別々に�
       "function",
       "theme",
       "roles",
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行7)】11キー目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる10要素。逐語)。**
+      "workspace",
     ]);
   });
 
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。
+  // **`set_user_kinds` が無いことは下の1行が名前で固定し続ける。** テスト名は当時の逐語のまま。
   test("`DIFF_OPS` は 18 → 17 である", () => {
-    expect(DIFF_OPS).toHaveLength(17);
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行7)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19。 `set_user_kinds` が無いことは下の1行が名前で固定し続ける。
+    expect(DIFF_OPS).toHaveLength(19);
     expect(DIFF_OPS as readonly string[]).not.toContain("set_user_kinds");
   });
 
   test("`$defs/operation.allOf` の分岐は 18 → 17 である", () => {
-    expect((diffDefs().operation as Any).allOf as unknown[]).toHaveLength(17);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `.toHaveLength(17);` —— 18本目の分岐 `remember_design` を足したので 17 → 18。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行7)】旧(逐語)**: `expect((diffDefs().operation as Any).allOf as unknown[]).toHaveLength(18);` —— 19本目の分岐 `set_workspace` を足したので 18 → 19。
+    expect((diffDefs().operation as Any).allOf as unknown[]).toHaveLength(19);
   });
 
   test("`$defs` は 29 のまま・`$defs/table.properties` は 6 のままである(減らしすぎの検出)", () => {
@@ -224,8 +244,10 @@ describe("(3) 器の本数(減った側と、動かなかった側を別々に�
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(manifestDefs())).toHaveLength(30);
-    expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(6);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(manifestDefs())).toHaveLength(31);
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行86】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+    expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(7);
   });
 });
 

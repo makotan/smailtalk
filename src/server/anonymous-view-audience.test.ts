@@ -400,11 +400,13 @@ test("(f) 予約規約フィールドは 4本である(V8-M20 / J-G30 で st_adm
   const declared = [...source.matchAll(/^export const ([A-Z_]+_FIELD) = "(st_[a-z_]+)";$/gm)].map(
     (m) => m[1] as string,
   );
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行10(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(declared.sort()).toEqual(["NO_DIRECT_CREATE_FIELD", "OWNER_FIELD", "PUBLIC_FIELD", "UNDELETABLE_FIELD"]);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に5本目)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
   expect(declared.sort()).toEqual([
     "NO_DIRECT_CREATE_FIELD",
     "OWNER_FIELD",
     "PUBLIC_FIELD",
     "UNDELETABLE_FIELD",
+    "UPDATED_BY_FIELD",
   ]);
   expect(declared).not.toContain("ADMIN_READABLE_FIELD");
   // **未ログインの宣言は予約規約フィールドではなく `app.roles[].id` の予約語に置かれている。**

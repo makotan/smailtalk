@@ -357,6 +357,11 @@ export function useReferenceChoices(
   appId: string,
   manifest: Manifest,
   referenceTableIds: ResourceId[],
+  /**
+   * **【`V23-M7-T05b`】新規作成のフォームの表**(任意。編集のフォームは渡さない = 絞らない)。
+   * **候補の行の判定の5つ目のキーにこの表の鍵があるときだけ、値が真の行に絞る**(鍵が無ければ今日どおり全部並ぶ)。
+   */
+  creatingTableId?: ResourceId,
 ): ReferenceChoices {
   // 依存配列に配列そのものを置くと毎レンダリングで再取得になるので、内容を鍵にする。
   const key = [...new Set(referenceTableIds)].sort().join(",");
@@ -373,12 +378,36 @@ export function useReferenceChoices(
       // だが、未解決だと下の早期 return が選択肢を黙って空にして握り潰す。
       // 「到達しないはず」に安全性を預けない。
       const table = resolveViewTable(manifest, tableId);
-      fetchRecords(appId, tableId).then(
+      // **【`V23-M7-T05b`】型は `fetchRecords` の引数から取る**(`../api.ts` から import する名前を増やさない)。
+      let rowAccess: Parameters<NonNullable<Parameters<typeof fetchRecords>[3]>>[0];
+      fetchRecords(appId, tableId, {}, (access) => {
+        rowAccess = access;
+      }).then(
         (rows) => {
           if (cancelled || table === undefined) {
             return;
           }
-          const value = rows.map((row) => ({
+          // **【`V23-M7-T07`】作る表がこの参照先の表を指す参照の項目をちょうど1つ持つときだけ絞る。**
+          // 選択肢は参照先の表ごとに1組で、画面はどの項目が親を辿る項目かを知らない(宣言を読まない)。
+          // 2つ以上あると、親を辿らない項目の選択肢まで絞ってしまうので、どちらも今日どおり全部並べる
+          // (作れない親は保存で断られる)。 1つなら、その項目が親を辿る項目である(子の表の鍵は、
+          // 親を辿る項目がこの表を指すときだけ宣言に書ける)。
+          const sameParentFields =
+            creatingTableId === undefined
+              ? 0
+              : (resolveViewTable(manifest, creatingTableId)?.fields ?? []).filter(
+                  (field) => field.type === "reference" && field.reference_table === tableId,
+                ).length;
+          const allowedRows =
+            creatingTableId === undefined || sameParentFields !== 1
+              ? rows
+              : rows.filter((row) => {
+                  const createChild = rowAccess?.[row._id]?.create_child;
+                  return createChild === undefined || !Object.hasOwn(createChild, creatingTableId)
+                    ? true
+                    : createChild[creatingTableId] === true;
+                });
+          const value = allowedRows.map((row) => ({
             id: row._id,
             label: referenceLabel(table, row),
           }));
@@ -400,7 +429,7 @@ export function useReferenceChoices(
     return () => {
       cancelled = true;
     };
-  }, [appId, key, manifest]);
+  }, [appId, key, manifest, creatingTableId]);
 
   return choices;
 }
@@ -491,6 +520,58 @@ export function grantMemberScope(
 }
 
 /**
+ * **【`V23-M6-T06b`】相手の行を指す欄**(`grant.principal_row`。付与表の列 `column` と、それが指す表 `table`)。
+ *
+ * `grant.table` がその表で `principal_row` を書いた宣言を集める(**マニフェストの宣言だけ**。読取を1件も飛ばさない)。
+ * 付与表の一覧・詳細で相手の行の代表項目を出す場所と、入力画面でその欄を読むだけにする場所を知るためだけに使う。
+ * **判定式は1つも持たない** —— 相手の欄を書けるのは招待の承諾だけで、それを止めているのはサーバである。
+ * 宣言の無いアプリでは空の配列(= 今日どおり)。
+ */
+export function principalRowColumns(
+  manifest: Manifest,
+  grantTableId: ResourceId,
+): { column: ResourceId; table: ResourceId }[] {
+  const found: { column: ResourceId; table: ResourceId }[] = [];
+  for (const table of manifest.app.tables) {
+    const principal = table.access_control?.grant?.principal_row;
+    if (table.access_control?.grant?.table !== grantTableId || principal === undefined) {
+      continue;
+    }
+    if (
+      typeof principal.column === "string" &&
+      typeof principal.table === "string" &&
+      !found.some((item) => item.column === principal.column && item.table === principal.table)
+    ) {
+      found.push({ column: principal.column, table: principal.table });
+    }
+  }
+  return found;
+}
+
+/**
+ * **【`V23-M6-T06b`】その表(R)が相手の行を宣言していれば、相手の表(S)の id**(宣言を読むだけ)。
+ * 行の詳細の「招待する」で、ログイン名とコードを切り替えられるようにするかを決める。 無ければ `undefined`(= 今日どおり)。
+ */
+export function principalRowTableOf(
+  manifest: Manifest,
+  tableId: ResourceId,
+): ResourceId | undefined {
+  const table = manifest.app.tables.find((candidate) => candidate.id === tableId);
+  const principal = table?.access_control?.grant?.principal_row;
+  return typeof principal?.table === "string" ? principal.table : undefined;
+}
+
+/**
+ * **【`V23-M6-T06b`】その表がどこかの表の相手の行(`principal_row.table`)に指されているか**(宣言を読むだけ)。
+ * 行の詳細でコードの欄の口を呼ぶかを決める。 見られるかを決めるのはサーバの口の答え(200 以外は何も出さない)。
+ */
+export function inviteCodeTableDeclared(manifest: Manifest, tableId: ResourceId): boolean {
+  return manifest.app.tables.some(
+    (table) => table.access_control?.grant?.principal_row?.table === tableId,
+  );
+}
+
+/**
  * **付与表を名指ししている保護対象の表の id**(`V14-M2-T02`。台帳 `RB-G3`。`ADR-0402`)。
  *
  * **`grant.table` だけを見る。** **`inherit_from` も `grant.member` も1度も参照しない** ——
@@ -545,6 +626,94 @@ export function grantTableParentId(
     return table.id;
   }
   return undefined;
+}
+
+/**
+ * **【`V23-M12-T03`。`D-V23-356`。門A `ADR-0571` §Decision 1-3】付与の表の権限の欄の値を、宣言の名前
+ * (`permissions[].name`)に替えて出す。** 画面の表示だけに使う(保存する値・選択肢の値・口の応答は ID のまま)。
+ *
+ * - 替えるのは、表 `tableId` の `select` の欄 `field` が、どこかの表の `access_control.grant` に
+ *   `table: tableId`・`permission: field.id` で名指されているときだけ(`enabled` が真の宣言)。
+ * - `parentTableId` を渡したら(子の一覧の親の表)、その表の宣言の名だけを引く。
+ * - 渡さなければ、その付与の表を使う全部の宣言を引き、同じ ID に違う名が付いていれば ID のまま出す。
+ * - 宣言の無い表の `select`・付与の表でも権限の欄でない `select`・宣言に無い ID は値のまま(今日どおり)。
+ *
+ * **【ここに置く理由】** `web/src/` で `access_control` を綴る製品ファイルを増やさない
+ * (`src/server/access-control-localization.test.ts` の列挙・`ADR-0542` 式8)。 判定式は1つも持たない
+ * (宣言を読むだけ)。
+ */
+export function permissionLabel<T>(
+  manifest: Manifest,
+  tableId: ResourceId,
+  field: Field,
+  value: T,
+  parentTableId?: ResourceId,
+): T | string {
+  if (typeof value !== "string" || field.type !== "select") {
+    return value;
+  }
+  let name: string | undefined;
+  for (const table of manifest.app.tables) {
+    const declared = table.access_control;
+    if (
+      declared === undefined ||
+      declared.enabled !== true ||
+      declared.grant?.table !== tableId ||
+      declared.grant?.permission !== field.id ||
+      (parentTableId !== undefined && table.id !== parentTableId)
+    ) {
+      continue;
+    }
+    const found = declared.permissions?.find((permission) => permission.id === value)?.name;
+    if (found === undefined) {
+      continue;
+    }
+    if (name !== undefined && name !== found) {
+      return value;
+    }
+    name = found;
+  }
+  return name ?? value;
+}
+
+/**
+ * **【`V23-M12-T03`。`D-V23-356`】表示部品に渡す欄と値**({@link permissionLabel} を当てた値と、その値に合わせた欄)。
+ *
+ * 権限の欄の強調(`emphasis`。鍵は保存の値 = ID)を、名前で出しても今日どおり当てるため、名前に替えたときだけ
+ * 同じ強調を名前の鍵にも写した欄の写しを返す(マニフェストは書き換えない)。 替えなかったときは受け取った欄と値をそのまま返す。
+ */
+export function permissionShown<T>(
+  manifest: Manifest,
+  tableId: ResourceId,
+  field: Field,
+  value: T,
+  parentTableId?: ResourceId,
+): { field: Field; value: T | string } {
+  const shown = permissionLabel(manifest, tableId, field, value, parentTableId);
+  if (shown === value || field.type !== "select" || typeof value !== "string") {
+    return { field, value: shown };
+  }
+  const emphasis = field.emphasis?.[value];
+  return {
+    field:
+      emphasis === undefined
+        ? field
+        : { ...field, emphasis: { ...field.emphasis, [String(shown)]: emphasis } },
+    value: shown,
+  };
+}
+
+/**
+ * **【`V23-M12-T03`。`D-V23-356`】変更履歴の招待の件の「権限: …」を、その行の表(`tableId`)の宣言の名前で出す**
+ * (宣言に無い ID は値のまま)。 招待の権限はその行の表の `permissions[].id` である。
+ */
+export function invitePermissionLabel(
+  manifest: Manifest,
+  tableId: ResourceId,
+  permission: string,
+): string {
+  const declared = manifest.app.tables.find((table) => table.id === tableId)?.access_control;
+  return declared?.permissions?.find((item) => item.id === permission)?.name ?? permission;
 }
 
 /** 行の値を、参照先の `_id` として読む(空文字は「指していない」)。 */
@@ -762,7 +931,10 @@ export type FieldInputProps = {
    * **解決は {@link resolveReferencePicker} の1関数だけが行い、ここでは分岐しない。**
    * **渡さなければ「画面側の宣言が無い」に倒れる**(= 項目側 → 既定の順)。
    */
-  view?: Pick<FormView, "reference_pickers">;
+  view?: Pick<FormView, "reference_pickers"> &
+    // **【`V23-M12-T03`。`D-V23-356`】`table` は `select` の選択肢の見出しを権限の名前で出すためだけに読む**
+    // (渡さなければ見出しは値のまま = 今日どおり)。
+    Partial<Pick<FormView, "table">>;
   /**
    * **所属アプリのマニフェスト**(`K-G9` / `K-G11`。`V6-M4-T01`)。
    *
@@ -878,7 +1050,10 @@ export function FieldInput({
           <option value={UNSELECTED} />
           {field.options.map((option) => (
             <option key={option} value={option}>
-              {option}
+              {/* 【`V23-M12-T03`。`D-V23-356`】見出しだけ宣言の名前(値は ID のまま)。 */}
+              {manifest === undefined || view?.table === undefined
+                ? option
+                : permissionLabel(manifest, view.table, field, option)}
             </option>
           ))}
         </Select>

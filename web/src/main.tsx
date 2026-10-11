@@ -4,12 +4,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
+import { applyInitialColorScheme } from "./color-scheme.ts";
 // **配られる CSS の集合は2本である**(ADR-0088 限定2 / 限定6。集合の定義と全量性は
 // `web/test/style-sources.test.ts` が持つ)。**並びは「生成 → 手書き」である** ——
 // `tailwind.css` の出力は全部 `@layer` の中にあり `styles.css` は層の外にあるので、
 // 読み込み順に関わらず `styles.css` の規則が勝つ。並びは読む人のためのものである。
 import "./tailwind.css";
 import "./styles.css";
+
+// **【V20-M10-T03】最初の描画の前に明暗のモードを1度当てる**(覚えた値がアプリ一覧にも効く)。
+applyInitialColorScheme();
 
 const container = document.getElementById("root");
 if (container === null) {

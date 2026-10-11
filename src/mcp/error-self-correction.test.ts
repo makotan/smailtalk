@@ -428,7 +428,10 @@ test("語彙外の op は、許可値と『正しい書き方』を示すエラ�
   // **旧(逐語)**: `expect(error?.allowed_values).toHaveLength(18);`
   // **直上のコメントが「自動追随しない。見落としやすい」と予告していたとおり、ここは今回も赤くなった** ——
   // **語彙が**増えた**ときだけでなく**減った**ときにも赤くなることが、今日はじめて実測された。**
-  expect(error?.allowed_values).toHaveLength(17);
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】17 → 18**(18種目 `remember_design`)。**旧(逐語)**: `expect(error?.allowed_values).toHaveLength(17);`
+  // **直上のコメントが「自動追随しない。見落としやすい」と予告していたとおり、ここは今回も赤くなった。**
+  // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行24)】旧(逐語)**: `expect(error?.allowed_values).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19。 直上のコメントが「自動追随しない。見落としやすい」と予告していたとおり、ここは今回も赤くなった。
+  expect(error?.allowed_values).toHaveLength(19);
   for (const op of [
     "remove_field",
     "remove_table",

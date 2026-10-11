@@ -43,5 +43,13 @@ export type AuthEnv = {
      * 立たない(read-only を構造で守る。限定2)。
      */
     anonymousPublic?: boolean;
+    /**
+     * **未ログインの表ごとの読取の窓が開いているか**(`V21-M2`。`ADR-0482` の `AN-G1`)。
+     * middleware が「未認証 GET で、対象テーブルが公開規約フィールドを持たず、
+     * `owner-scope.ts` の `anonymousTableReadable` が真」の場合にだけ true を立てる。
+     * GET ハンドラはこのフラグを見て「規則の条件に合う行だけ・予約規約フィールドを伏せて」返す。
+     * **書込には立たない**(`ADR-0034` 限定2 を守る)。
+     */
+    anonymousTableRead?: boolean;
   };
 };

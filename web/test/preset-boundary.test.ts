@@ -244,9 +244,9 @@ test("(ii) styles.css に position / z-index / 座標のプロパティが1つ�
   }
 });
 
-test("(ii) 手で書く側に、幅の条件以外の at-rule / 配色設定のメディア特性 / テーマ切り替えの属性セレクタが無い", () => {
+test("(ii) 手で書く側の at-rule は @media だけ・条件は幅2つと配色設定の暗い側1つだけ・配色設定の綴りはちょうど1回・値を持たない属性セレクタ [data-theme] は無い", () => {
   // **【V4-M15-T07 で1行だけ書き換えた。ADR-0089 限定5】**
-  //
+  // 【V20-M10 点検の処置(T05 の送り分)で test 名を改めた。行数は変えていない】旧名の逐語: `(ii) 手で書く側に、幅の条件以外の at-rule / 配色設定のメディア特性 / テーマ切り替えの属性セレクタが無い`
   // **着手前の3行は次のとおりだった**(2026-08-03 実測):
   //   expect(css).not.toContain("@");                     // :172
   //   expect(css).not.toContain("prefers-color-scheme");  // :173
@@ -267,11 +267,47 @@ test("(ii) 手で書く側に、幅の条件以外の at-rule / 配色設定の�
   const conditions = [...body.matchAll(/@media([^{]*)\{/g)].map((match) =>
     (match[1] ?? "").trim().replace(/\s+/g, ""),
   );
-  expect([...new Set(conditions)].sort()).toEqual(["(min-width:40rem)", "(min-width:64rem)"]);
+  // 【V20-M10-T02 / ADR-0458 限定5 / 限定8】旧行の逐語:
+  //   `  expect([...new Set(conditions)].sort()).toEqual(["(min-width:40rem)", "(min-width:64rem)"]);`
+  // **条件の列挙は3つ**(幅2 + 配色設定の暗い側1)。**列挙の外は今日どおり赤である。**
+  expect([...new Set(conditions)].sort()).toEqual([
+    "(min-width:40rem)",
+    "(min-width:64rem)",
+    "(prefers-color-scheme:dark)",
+  ]);
 
-  // **以下の2行は着手前から1バイトも変えていない。**
-  expect(css).not.toContain("prefers-color-scheme");
+  // **以下の2行は着手前から在った2本である**(`ADR-0089` 限定5 / `ADR-0458` 限定10 が本数で残すもの)。
+  // 【V20-M10-T02 / 計画 §10 の 2】1本目の旧行の逐語: `  expect(css).not.toContain("prefers-color-scheme");`。
+  // **「1つも無い」から「ちょうど1回(配色設定の `@media` の条件の1箇所だけ)」へ建て替えた** ——
+  // 注釈・2本目の `@media`・別の置き場に綴りを書くと赤くなる。**2本目(値を持たない `[data-theme]`)は
+  // 1バイトも変えていない** —— 実装が書くのは値付きの `[data-theme="dark"]` / `[data-theme="light"]` だけであり、
+  // 属性の有無だけを見るセレクタを止める見張りとして今日も生きている。
+  // **`ADR-0458` 式10 が数えられるよう、`expect(` で始まり綴りを含む1行に保つ**(整形で割らない長さにした)。
+  expect(css.split("prefers-color-scheme").length - 1).toBe(1);
   expect(css).not.toContain("[data-theme]");
+});
+
+// 【V20-M10-T02 / ADR-0458 限定8 / 限定9。計画 §10 の 2 の「値の列挙を見る見張りは別に新設する」】
+// **`ADR-0458` 式10 の4本には数えない**(上の (ii) の2本と `style-sources.test.ts` (集合7) の2本が4本である)。
+const DARK_SCHEME_CONDITION = "(prefers-color-scheme:dark)";
+
+test("(ii-dark) 配色設定の @media は暗い側の1本だけ、テーマ切り替えの属性は data-theme の1つ・値は light / dark の2値だけ", () => {
+  const body = stripComments(css);
+  // 配色設定の条件は `@media (prefers-color-scheme: dark)` の1箇所だけ(明るい側・否定・組み合わせを書かない)。
+  const schemeConditions = [...body.matchAll(/@media([^{]*)\{/g)]
+    .map((match) => (match[1] ?? "").trim().replace(/\s+/g, ""))
+    .filter((condition) => !condition.startsWith("(min-width:"));
+  // 期待値は定数で書く(この行を式10 の4本に数えさせないため。計画 §10 の 2)。
+  expect(schemeConditions).toEqual([DARK_SCHEME_CONDITION]);
+  // 属性セレクタのうちテーマ切り替えに当たるものは `data-theme` の1つだけ、値は2値だけ。
+  const themeAttributes = [...body.matchAll(/\[(data-[a-z-]*theme[a-z-]*)/g)].map(
+    (match) => match[1],
+  );
+  expect([...new Set(themeAttributes)]).toEqual(["data-theme"]);
+  const themeValues = [...body.matchAll(/\[data-theme="([^"]*)"\]/g)].map((match) => match[1]);
+  expect([...new Set(themeValues)].sort()).toEqual(["dark", "light"]);
+  // 属性セレクタの本数は2本ちょうど(`:root[data-theme="dark"]` と `:root:not([data-theme="light"])`)。
+  expect(themeValues.length).toBe(2);
 });
 
 test("(ii) px リテラルは :root のスロット定義の中にしか無い(自由な px 座標が無い)", () => {
@@ -587,14 +623,18 @@ test("(vi-4) 前提が偽であることの実証 —— 手で書く側に幅�
     (match[1] ?? "").trim().replace(/\s+/g, ""),
   );
   // **「1つも足さない」が偽であることは、0 でないことで示す**(本数そのものは (ii) が固定している)。
-  expect(conditions.length).toBe(2);
+  // 【V20-M10-T02】旧行の逐語: `  expect(conditions.length).toBe(2);`。**幅の条件だけを数える**
+  // (配色設定の1本は段組と無関係。`ADR-0458` 限定7 / 限定8)。
+  expect(conditions.filter((condition) => condition.startsWith("(min-width:")).length).toBe(2);
 });
 
 test("(vi-5) 帰結が真であることの実証 —— 段組の規則が @media の内側に1つも無い", () => {
   const body = stripComments(css);
   // `@media` のブロックを波括弧の対応で切り出す(入れ子は `ADR-0089` 限定2 により存在しない)。
   const insides: string[] = [];
-  for (const match of body.matchAll(/@media[^{]*\{/g)) {
+  // 【V20-M10-T02】旧行の逐語: `  for (const match of body.matchAll(/@media[^{]*\{/g)) {`。**幅の条件の
+  // `@media` だけを切り出す**(配色設定の1本の内側は `:root:not(…)` の色の組であり、段組と無関係)。
+  for (const match of body.matchAll(/@media\s*\(min-width[^{]*\{/g)) {
     let depth = 1;
     let index = (match.index ?? 0) + match[0].length;
     const start = index;
@@ -778,8 +818,13 @@ test("(ix-6) §10.6 が書いた数え方が、今日の実物に対して実際
   // **手順を書いただけで数えていない、を止める。** **手引きの3つの数を実物で測り直す。**
   const raw = STYLES_SOURCE.split("\n").filter((line) => line.includes("@media")).length;
   const stripped = STYLES_SOURCE.replace(/\/\*[\s\S]*?\*\//g, "");
-  const conditions = (stripped.match(/@media/g) ?? []).length;
-  expect(raw, "grep が返す行数(コメント込み)").toBe(15);
+  // 【V20-M10-T02】旧2行の逐語: `  const conditions = (stripped.match(/@media/g) ?? []).length;` /
+  // `  expect(raw, "grep が返す行数(コメント込み)").toBe(15);`。**配色設定の `@media` を1本足したので
+  // 行数は 15 → 16。幅の条件の本数は幅だけを数えて 2 のまま。** `docs/manual.md` §10.6 の表の「15」は
+  // 今日から古い(文書の打ち直しは `V20-M10-T05` の持ち分。`tools/docs/preset-boundary-docs.test.ts` (ix-5) は
+  // 綴りの存在だけを見るので赤くならない)。
+  const conditions = (stripped.match(/@media\s*\(min-width/g) ?? []).length;
+  expect(raw, "grep が返す行数(コメント込み)").toBe(16);
   expect(conditions, "コメントを除いた幅の条件の本数").toBe(2);
   // **この2つが食い違っていることが、手順が要る理由そのものである。**
   expect(raw).not.toBe(conditions);
@@ -798,4 +843,165 @@ test("(ix-7) 追記が引く行番号が、今日そのファイルのその行�
       `styles.css:${lineNo} が「${literal}」を指していない`,
     ).toContain(literal);
   }
+});
+
+// ---------------------------------------------------------------------------
+// (x) 並べ方の木(`layout`)の語彙と、描画側の対応表(`V20-M5-T05`。穴 `H-V20-14`)
+//
+// **なぜ足したか**: 上の (i) の走査は `$defs/view.properties` のうち `preset_` で始まるキーだけを、
+// (ii) の走査は `web/src/styles.css`(手で書く側)と `data-preset-` の属性セレクタだけを見る。
+// **並べ方の木はどちらにも入らない** —— 根のキーは `layout`(接頭辞が無い)、値域は
+// `$defs/layout_node` の中、当たり先は `web/src/views/LayoutTree.tsx` の対応表(Tailwind の
+// クラスの文字列)であり、CSS にも `data-preset-` にも1バイトも現れない(置き場 (B)。
+// `docs/plan/v20/records/v20-m5-t02.md`)。**このままだと、対応表に座標・重ね順・画面幅の
+// 接頭辞・生の px を書いても、本ファイルは1本も赤くならない。**
+//
+// **ここでは語彙(スキーマの値域)と対応表(描画側のソースの字面)を実際に読む。**
+// 対応表は import せず**ソースの字面から取り出す**(import した値だと、字面にだけ在る別の
+// 定数を見落とすため)。取り出し方は `export const LAYOUT_… = { キー: "文字列", … };` と
+// `export const LAYOUT_… = "文字列";` の2形だけである(形を変えたら (x-1) が赤くなる)。
+// ---------------------------------------------------------------------------
+
+const LAYOUT_TREE_PATH = join(PRODUCT_ROOT, "web", "src", "views", "LayoutTree.tsx");
+
+/** 対応表の名前 → (キー → 文字列)。1本の文字列の定数はキー `""` に入れる。 */
+function layoutTables(source: string): Map<string, Map<string, string>> {
+  const tables = new Map<string, Map<string, string>>();
+  for (const match of source.matchAll(
+    /^export const (LAYOUT_[A-Z_]+)[^=]*?= \{\n([\s\S]*?)\n\}/gm,
+  )) {
+    const entries = new Map<string, string>();
+    for (const entry of (match[2] ?? "").matchAll(/^\s*([a-z_]+): "([^"]*)",?$/gm)) {
+      entries.set(entry[1] as string, entry[2] as string);
+    }
+    tables.set(match[1] as string, entries);
+  }
+  for (const match of source.matchAll(/^export const (LAYOUT_[A-Z_]+) = "([^"]*)";$/gm)) {
+    tables.set(match[1] as string, new Map([["", match[2] as string]]));
+  }
+  return tables;
+}
+
+/** `$defs/layout_node` の値域: パラメータ名 → 値(全枝の和)。型の名前はキー `type` に入れる。 */
+function layoutDomains(): Map<string, Set<string>> {
+  const node = readJson(MANIFEST_SCHEMA_PATH).$defs.layout_node;
+  const domains = new Map<string, Set<string>>();
+  const add = (name: string, value: string) => {
+    const set = domains.get(name) ?? new Set<string>();
+    set.add(value);
+    domains.set(name, set);
+  };
+  for (const branch of node.oneOf as Any[]) {
+    for (const [name, prop] of Object.entries(branch.properties as Record<string, Any>)) {
+      if (typeof prop.const === "string") {
+        add(name, prop.const);
+      }
+      for (const value of (prop.enum ?? []) as string[]) {
+        add(name, value);
+      }
+    }
+  }
+  return domains;
+}
+
+/** パラメータ名 → それを受ける対応表の名前。**型の名前は `LAYOUT_TYPE_CLASS` が受ける。** */
+const LAYOUT_TABLE_OF: Record<string, string> = {
+  type: "LAYOUT_TYPE_CLASS",
+  gap: "LAYOUT_GAP_CLASS",
+  justify: "LAYOUT_JUSTIFY_CLASS",
+  side_width: "LAYOUT_SIDE_WIDTH_CLASS",
+  side_position: "LAYOUT_SIDE_POSITION_ORDER",
+  threshold: "LAYOUT_THRESHOLD_CLASS",
+  min_item: "LAYOUT_MIN_ITEM_CLASS",
+};
+
+/** クラスの文字列を持つ対応表(`LAYOUT_SIDE_POSITION_ORDER` は文書順の名前であってクラスではない)。 */
+const LAYOUT_CLASS_TABLES = [
+  "LAYOUT_TYPE_CLASS",
+  "LAYOUT_GAP_CLASS",
+  "LAYOUT_JUSTIFY_CLASS",
+  "LAYOUT_SIDE_WIDTH_CLASS",
+  "LAYOUT_THRESHOLD_CLASS",
+  "LAYOUT_MIN_ITEM_CLASS",
+  "LAYOUT_SIDEBAR_MAIN_CLASS",
+  "LAYOUT_SPLIT_END_CLASS",
+];
+
+test("(x-1) 並べ方の木の語彙の値は、1つ残らず描画側の対応表のキーとして現れる(値域と対応表のキーが完全一致)", () => {
+  const tables = layoutTables(readFileSync(LAYOUT_TREE_PATH, "utf-8"));
+  const domains = layoutDomains();
+  // 値域を持つ名前(型 + パラメータ6つ)が、対応表を割り当てた名前と一致する。
+  expect([...domains.keys()].sort()).toEqual(Object.keys(LAYOUT_TABLE_OF).sort());
+  for (const [name, values] of domains) {
+    const table = tables.get(LAYOUT_TABLE_OF[name] as string);
+    expect(table, name).toBeDefined();
+    expect([...(table as Map<string, string>).keys()].sort(), name).toEqual([...values].sort());
+  }
+  // 取り出せた対応表の名前の全量(字面の形を変えると取り出せなくなり、ここが赤くなる)。
+  expect([...tables.keys()].sort()).toEqual(
+    [
+      ...new Set([...Object.values(LAYOUT_TABLE_OF), ...LAYOUT_CLASS_TABLES, "LAYOUT_DEFAULTS"]),
+    ].sort(),
+  );
+  // 省略時の値(`LAYOUT_DEFAULTS`)も、パラメータ6つそれぞれの値域の中の名前である。
+  const defaults = tables.get("LAYOUT_DEFAULTS") as Map<string, string>;
+  expect([...defaults.keys()].sort()).toEqual(
+    Object.keys(LAYOUT_TABLE_OF)
+      .filter((name) => name !== "type")
+      .sort(),
+  );
+  for (const [name, value] of defaults) {
+    expect(domains.get(name)?.has(value), `${name}=${value}`).toBe(true);
+  }
+});
+
+test("(x-2) 対応表のクラスに位置指定・重ね順・座標・並べ替え・画面幅の接頭辞・at-rule・生の px が1つも無い", () => {
+  const tables = layoutTables(readFileSync(LAYOUT_TREE_PATH, "utf-8"));
+  const forbidden: [string, RegExp][] = [
+    ["位置指定", /^(static|fixed|absolute|relative|sticky)$/],
+    ["重ね順", /^-?z-/],
+    ["座標", /^-?(top|left|right|bottom|inset|start|end)(-|$)/],
+    ["並べ替え", /^-?order-/],
+    ["浮動・変形", /^(float-|clear-|-?translate|-?rotate|-?scale|transform)/],
+    // 変種(`…:`)は1つも使わない —— 画面幅の接頭辞(`sm:` / `lg:`)も、器の問い合わせ
+    // (`@…:`)も、`max-…:` / `min-…:` も、ここで全部止まる。
+    ["変種(画面幅の接頭辞を含む)", /:/],
+    ["at-rule", /@/],
+    ["生の px", /[0-9]px/],
+  ];
+  let seen = 0;
+  for (const name of LAYOUT_CLASS_TABLES) {
+    for (const value of (tables.get(name) ?? new Map<string, string>()).values()) {
+      for (const token of value.split(/\s+/).filter((part) => part !== "")) {
+        seen += 1;
+        for (const [label, pattern] of forbidden) {
+          expect(pattern.test(token), `${name} の ${token}(${label})`).toBe(false);
+        }
+      }
+    }
+  }
+  // **空で真にしない** —— 字面を1つも拾えなかったら赤くする。
+  expect(seen).toBeGreaterThan(20);
+});
+
+test("(x-3) 並べ方の木の値域は有限の名前だけで、数値・自由文字列を受ける口が無い(葉の綴りの1種を除く)", () => {
+  const node = readJson(MANIFEST_SCHEMA_PATH).$defs.layout_node;
+  expect(node.oneOf).toHaveLength(6);
+  const CHILD_SLOTS = new Set(["children", "side", "main", "start", "end"]);
+  for (const branch of node.oneOf as Any[]) {
+    expect(branch.additionalProperties === false, String(branch.properties.type.const)).toBe(true);
+    for (const [name, prop] of Object.entries(branch.properties as Record<string, Any>)) {
+      if (CHILD_SLOTS.has(name)) {
+        continue;
+      }
+      // **値は `const` か `enum` だけ**(`type: number` / `pattern` だけの string が0件)。
+      expect(prop.const !== undefined || Array.isArray(prop.enum), name).toBe(true);
+      expect(prop.type, name).toBeUndefined();
+      expect(prop.pattern, name).toBeUndefined();
+    }
+  }
+  // 画面の根のキーは `$ref` だけ(値域を二重に持たない)。
+  expect(readJson(MANIFEST_SCHEMA_PATH).$defs.view.properties.layout.$ref).toBe(
+    "#/$defs/layout_node",
+  );
 });

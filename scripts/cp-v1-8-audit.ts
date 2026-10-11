@@ -454,7 +454,8 @@ function buildIdentifierSets(manifest: JsonObject, entries: readonly Entry[]): I
   // (`id` は任意キーなので、書いていないボタンは集合に入らない)。
   const viewActionIds: string[] = [];
   for (const view of views) {
-    const groups = view.field_groups;
+    // **【`V20-M3-T01`】綴りを `field_sections` に改めた(入力フォームのまとまりも集める)。**
+    const groups = view.field_sections;
     if (isObject(groups)) {
       fieldGroupNames.push(...Object.keys(groups));
     }

@@ -432,11 +432,16 @@ describe("V18-M7-T03 (B): AI の口でも、件数の印が無ければ断り、
     expect(counts()).toEqual({ projects: 5, issues: 4, comments: 6 });
   });
 
-  test("(B-2) ④ の文面に、いちばん下の段まで数えた件数(5)と、子が居る表のIDが載っている", async () => {
+  // 【V23-M14-T02。授権 ADR-0579 §2-1 の3。D-V23-451・D-V23-465】旧の題は
+  // 「(B-2) ④ の文面に、いちばん下の段まで数えた件数(5)と、子が居る表のIDが載っている」、
+  // 旧の期待は `toContain("issues")`・`toContain("comments")`(表の ID)。 件数5は残し、表の ID を表の表示名に替えた。
+  test("(B-2) D-V23-451・D-V23-465: ④ の文面に、いちばん下の段まで数えた件数(5)と、子が居る表の表示名が載っている(表の ID は載らない)", async () => {
     const denial = await mcpDelete("keeper", "projects", parent);
     expect(denial.message).toContain("5");
-    expect(denial.message).toContain("issues");
-    expect(denial.message).toContain("comments");
+    expect(denial.message).toContain("「課題」");
+    expect(denial.message).toContain("「コメント」");
+    expect(denial.message).not.toContain("issues");
+    expect(denial.message).not.toContain("comments");
   });
 
   test("(B-3) ④ は版の印(if_match)の断りと1文字も取り違えない", async () => {
@@ -877,5 +882,52 @@ describe("V18-M7-T07b (I): AI の口でも、版の印が古い要求は1行も�
     const mask = (text: string): string => text.replaceAll(/"[0-9a-f-]{36}"/g, '"<id>"');
     expect(mask(mcp.message)).toBe(mask(http.message));
     expect(mcp.hint).toBe(http.hint);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// (M) 【V23-M14-T02】AI の口の確かめの文も使う人の言葉にする(D-V23-451・D-V23-465)
+//
+// message は HTTP と逐語で同じ新しい文(表の表示名と件数)。 手がかり(hint)は AI の口の
+// 言葉(if_match_children)で印の付け方と今の合計を言い、ヘッダの名を書かない。
+// ---------------------------------------------------------------------------
+
+describe("V23-M14-T02 (M): D-V23-451・D-V23-465 AI の口の確かめの文と手がかり", () => {
+  test("(M-1) D-V23-465: 印なしの断りの message は、HTTP と同じ新しい文(親の表の表示名・全部の件数・表ごとの件数)", async () => {
+    const denial = await mcpDelete("keeper", "projects", parent);
+    expect(denial.failed).toBe(true);
+    expect(denial.path).toBe("/if_match_children");
+    expect(denial.message).toBe(
+      "この「プロジェクト」を消すと、一緒に消える行が全部で 5 件あります(「課題」2 件、「コメント」3 件)。まとめて消してよければ、件数を確かめたうえで、もう一度削除してください。まだ1行も消していません。",
+    );
+    for (const spelling of ["projects", "issues", "comments", "If-Match", "if_match"]) {
+      expect(denial.message, spelling).not.toContain(spelling);
+    }
+  });
+
+  test("(M-2) D-V23-451: 印なしの手がかりは if_match_children の付け方と今の合計を言い、ヘッダの名を書かない", async () => {
+    const denial = await mcpDelete("keeper", "projects", parent);
+    expect(denial.hint).toBe(
+      "まとめて消すには、件数の印として if_match_children に10進の整数 5 を付けて、同じ削除をもう一度送ってください。版の印(if_match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。",
+    );
+    expect(denial.hint).not.toContain("If-Match");
+  });
+
+  test("(M-3) D-V23-465: 合わない印の断りも HTTP と同じ新しい文で、手がかりは if_match_children の言葉", async () => {
+    const denial = await mcpDelete("keeper", "projects", parent, { ifMatchChildren: 4 });
+    expect(denial.message).toBe(
+      "この「プロジェクト」と一緒に消える行の件数が、確かめた件数(4 件)から変わりました。今は全部で 5 件です(「課題」2 件、「コメント」3 件)。まだ1行も消していません。",
+    );
+    expect(denial.hint).toBe(
+      "件数の印(if_match_children)に 5 を指定して、同じ削除をもう一度送ってください。版の印(if_match)ではありません。一緒に消える行は、数えた後にも増えたり減ったりします。",
+    );
+  });
+
+  test("(M-4) 陰性: 消せない子が在るときの断りは、今日の文のまま", async () => {
+    makeRecord("comments", { body: "消せないコメント", issue: issueA, st_undeletable: true });
+    const denial = await mcpDelete("keeper", "projects", parent);
+    expect(denial.message).toBe(
+      "この行にぶら下がっている行の中に、あなたには消せないものがあります。この行は消せません。",
+    );
   });
 });

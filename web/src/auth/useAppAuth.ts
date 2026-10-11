@@ -111,7 +111,15 @@ export function useAppAuth(appId: string): UseAppAuthResult {
     setUnauthorizedHandler((failedAppId) => {
       if (failedAppId === appId) {
         requestId.current += 1;
-        setState({ status: "anonymous" });
+        // **【`V21-M4-T07` / 計画 §10-1 / 穴 `H-V21-15`】旧行の逐語(1バイトも消していない)**:
+        //   `setState({ status: "anonymous" });`
+        // **既に未ログインなら状態を同じオブジェクトのまま保つ。** 旧行は 401 のたびに新しい
+        // オブジェクトを積んで画面を描き直させ、描き直した公開画面が同じ行をまた取りに行き、
+        // また 401 を受ける —— **未ログインの公開画面が 2.5秒で約1000〜2000本撃ち続けた**
+        // (`docs/plan/v21/records/v21-m1.md` §4)。 **ログイン済みから落ちる向きは今日と同じ。**
+        setState((previous) =>
+          previous.status === "anonymous" ? previous : { status: "anonymous" },
+        );
         setJustSignedUpAsCustomer(false);
       }
     });

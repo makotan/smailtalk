@@ -181,7 +181,8 @@ describe("(T02-1) `$defs/app` は9キーで閉じ、`$defs` の総数は 29 で�
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(manifestDefs())).toHaveLength(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(manifestDefs())).toHaveLength(31);
     // **増えた1本の名前を固定する** —— 件数だけを見ると「1本消して1本足す」が素通りする。
     expect(Object.keys(manifestDefs())).toContain("role_condition");
   });
@@ -203,6 +204,11 @@ describe("(T02-1) `$defs/app` は9キーで閉じ、`$defs` の総数は 29 で�
       // 改めて答えたうえで門A を通すこと。
       // **本廃止で `roles` は8本目(最後)になった。**
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory` を末尾に足した(旧の期待値は `"roles"` で終わる8要素)。**
+      // **`ADR-0013` の3問ではなく `ADR-0466` の門A を通した増分である。** テスト名は当時の逐語のまま。
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行5)】10本目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる9要素。逐語)。**
+      "workspace",
     ]);
   });
 
@@ -245,7 +251,16 @@ describe("(T02-2) `roles[]` の要素は `id` / `name` / `rules` の3キーだ�
     // **`signup` そのものの検査は `src/kernel/role-signup-mode.test.ts` に在る** ——
     // **ここは「器が4キーで閉じていること」だけを見る**(重複させない)。
     // **テスト名の「3キー」は当時の逐語である**(テスト名は書き換えない)。
-    expect(Object.keys(items.properties as Any)).toEqual(["id", "name", "rules", "signup"]);
+    // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys(items.properties as Any)).toEqual(["id", "name", "rules", "signup"]);`
+    // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
+    expect(Object.keys(items.properties as Any)).toEqual([
+      "id",
+      "name",
+      "rules",
+      "signup",
+      "density",
+    ]);
     expect(items.additionalProperties).toBe(false);
     expect(items.required).toEqual(["id"]);
   });
@@ -325,8 +340,12 @@ describe("(T03-1) `DIFF_OPS` は 17 → 18 になり、増えたのは `set_role
   // **`set_user_kinds` を撤去したので 18 → 17。**
   // **旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);`
   // **テスト名の「18」は当時の逐語である**(テスト名は書き換えない。検査は1本も減らしていない)。
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。
+  // **テスト名の「18」は、今日偶然ふたたび実体と一致した**(テスト名は書き換えていない)。
+  // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行5)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19。
+  // **テスト名の「18」は当時の逐語である**(テスト名は書き換えない)。
   test("本数は 18 である", () => {
-    expect(DIFF_OPS).toHaveLength(17);
+    expect(DIFF_OPS).toHaveLength(19);
   });
 
   // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】**
@@ -362,9 +381,17 @@ describe("(T03-1) `DIFF_OPS` は 17 → 18 になり、増えたのは `set_role
   // **旧(逐語)**: `expect(DIFF_OPS[17]).toBe("set_roles");`
   // **テスト名の「18種目」は当時の逐語である**(テスト名は書き換えない)。
   // **「末尾である」という主張は1ミリも弱めていない**(下の1行が添字ではなく末尾で測り直す)。
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】`remember_design` が18種目(末尾)に入ったので、`set_roles` は末尾ではなくなった。**
+  // **旧(逐語)**: `expect(DIFF_OPS[DIFF_OPS.length - 1]).toBe("set_roles");` —— 末尾は `remember_design` になり、
+  // `set_roles` はその直前(17種目。添字16)である。**添字16で測る1行は1バイトも変えていない。**
+  // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行5)】`set_workspace` が19種目(末尾)に入ったので、末尾から数えた位置が1つずれた。**
+  // **旧(逐語)**: `expect(DIFF_OPS[DIFF_OPS.length - 2]).toBe("set_roles");` /
+  // `expect(DIFF_OPS[DIFF_OPS.length - 1]).toBe("remember_design");` —— **添字16で測る1行は1バイトも変えていない。**
   test("18種目は末尾の `set_roles` である", () => {
     expect(DIFF_OPS[16]).toBe("set_roles");
-    expect(DIFF_OPS[DIFF_OPS.length - 1]).toBe("set_roles");
+    expect(DIFF_OPS[DIFF_OPS.length - 3]).toBe("set_roles");
+    expect(DIFF_OPS[DIFF_OPS.length - 2]).toBe("remember_design");
+    expect(DIFF_OPS[DIFF_OPS.length - 1]).toBe("set_workspace");
   });
 
   test("19種目を足していない(部分更新・削除の op は1つも無い)", () => {
@@ -408,6 +435,10 @@ describe("(T03-2) `$defs/operation.properties` は10キーで閉じる", () => {
       "function",
       "theme",
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory` を末尾に足した(旧の期待値は `"roles"` で終わる9要素)。**
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行5)】11キー目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる10要素。逐語)。**
+      "workspace",
     ]);
   });
 
@@ -444,6 +475,12 @@ describe("(T03-2) `$defs/operation.properties` は10キーで閉じる", () => {
       "update_function",
       "remove_function",
       "set_theme",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】18本目の分岐 `remember_design` も `roles` を `false` で禁じる。**
+      // **旧の期待値は直上の `"set_theme"` で終わる16要素である(逐語)。**
+      "remember_design",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行5)】19本目の分岐 `set_workspace` も `roles` を `false` で禁じる。**
+      // **旧の期待値は直上の `"remember_design"` で終わる17要素である(逐語)。**
+      "set_workspace",
     ]);
   });
 

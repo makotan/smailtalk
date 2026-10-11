@@ -1,4 +1,20 @@
 /**
+ * **【2026-09-24。`V20-M3-T01` / `ADR-0469`】綴りを `field_groups` から `field_sections` に改めた。**
+ * **この見張りの中身は綴り(入力のキー・期待する path の綴り)だけを替え、判定を1つも緩めていない。**
+ * **下の表の `field_groups` は旧綴りの時点の記述である。** 統合後の形への打ち直しは `V20-M3-T04` の持ち分。
+ *
+ * **【2026-09-24。`V20-M3-T04` / `ADR-0469`】統合後の形を見張る形に打ち直した(旧の本文は下に残した)。**
+ * 統合で `field_sections` は**入力フォーム(`form`)でも書ける**ようになったので、同じ事故(本体の
+ * どこかが片方の枝・片方の画面種別だけを前提にしていて、`bun test` は1つも赤くならない)が
+ * **入力フォームの3経路**(`validateReferentialIntegrity` / `generateRequirementsDoc` /
+ * `FormRenderer`)でも起きうる。**下の (5)〜(7) が入力フォームの3経路を、2枝(配列 /
+ * `{ id?, fields }`)の両方で押さえる。** (0) は「見張りの前提」—— 値の枝が2本・書ける分岐が
+ * `form` と `detail_view` の2本であることを固定し、**3枝目や3つ目の画面種別が増えたら本ファイルが
+ * 赤くなって、見張りの行列(枝 × 画面種別 × 3経路)の打ち直しを求める。** 型の検出器は
+ * `NEW_SHAPE_FORM_VIEW`(`FormView` の `field_sections` に新しい形を入れる)を足した。
+ * 入力フォームの描画の検査は `FormRenderer` の `.flat()` 型の取り違え(まとまりのオブジェクトが
+ * そのまま「属するIDの集合」に入り、同じ項目が平坦な側とまとまりの側の両方に出る)を捕まえる。
+ *
  * 項目のまとまり(`field_groups`)の**値の2つの形**を、実際に通る3経路で押さえる見張り
  * (`CM-G24`。`V10-M24-T03`。`ADR-0371` / `ADR-0374` §Decision 3)。
  *
@@ -48,20 +64,22 @@
  * `src/kernel/` の**外**だけを走査するので、この import はその一覧に載らない。**
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import type { Role } from "../../web/src/api.ts";
 import { RoleProvider } from "../../web/src/auth/authz.tsx";
 import { DetailViewRenderer } from "../../web/src/views/DetailViewRenderer.tsx";
+import { FormRenderer } from "../../web/src/views/FormRenderer.tsx";
 import { applyDiff } from "./apply-diff.ts";
 import { createApp } from "./create-app.ts";
 import { KernelMetaStore } from "./meta-store.ts";
 import { validateReferentialIntegrity } from "./referential-integrity.ts";
 import { generateRequirementsDoc, type RequirementTemplateId } from "./requirements-doc.ts";
-import type { Diff, Manifest, ResourceId, ViewChanges } from "./types.ts";
+import type { Diff, FormView, Manifest, ResourceId, ViewChanges } from "./types.ts";
 
 const APP_ID = "fg-shape";
 const APP_NAME = "まとまりの形";
@@ -89,7 +107,7 @@ const OLD_SHAPE: Record<string, FieldGroupValue> = { 基本: ["f_a", "f_b"] };
  * **上の表の 2(`ViewChanges.field_groups`)を `tsc` に見せるための値。**
  * **`update_view` の経路でも新しい形が書けることを、型の上で固定する。**
  */
-const NEW_SHAPE_CHANGES: ViewChanges = { field_groups: NEW_SHAPE };
+const NEW_SHAPE_CHANGES: ViewChanges = { field_sections: NEW_SHAPE };
 
 function manifestWith(groups: Record<string, FieldGroupValue>): Manifest {
   return {
@@ -107,9 +125,30 @@ function manifestWith(groups: Record<string, FieldGroupValue>): Manifest {
           ],
         },
       ],
-      views: [{ id: VIEW_ID, type: "detail_view", table: "entries", field_groups: groups }],
+      views: [{ id: VIEW_ID, type: "detail_view", table: "entries", field_sections: groups }],
     },
   };
+}
+
+const FORM_VIEW_ID = "entry-form";
+
+/**
+ * **【`V20-M3-T04`】入力フォームの型の検出器。** `FormView` の `field_sections` に新しい形を
+ * 入れる。**`FormView` から `field_sections` が消えるか、片方の枝だけの型になれば `tsc` が赤くなる。**
+ */
+const NEW_SHAPE_FORM_VIEW: FormView = {
+  id: FORM_VIEW_ID,
+  type: "form",
+  table: "entries",
+  fields: ["f_a", "f_b", "f_c"],
+  field_sections: NEW_SHAPE,
+};
+
+/** 入力フォーム1画面だけのマニフェスト(`manifestWith` の入力フォーム版)。 */
+function formManifestWith(groups: Record<string, FieldGroupValue>): Manifest {
+  const base = manifestWith(groups);
+  base.app.views = [{ ...NEW_SHAPE_FORM_VIEW, field_sections: groups }];
+  return base;
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +294,7 @@ test("(1) 新形の中身が実際に照合されている(実在しない項目
     manifestWith({ 基本: { id: "g_basic", fields: ["zzqqxx"] } }),
   );
   expect(result.valid).toBe(false);
-  expect(pathsOf(result)[0]).toBe(`/app/views/0/field_groups/基本/0`);
+  expect(pathsOf(result)[0]).toBe(`/app/views/0/field_sections/基本/0`);
 });
 
 test("(1) 新形でも「1つの項目が属せるまとまりは1つだけ」が効く", () => {
@@ -263,7 +302,7 @@ test("(1) 新形でも「1つの項目が属せるまとまりは1つだけ」�
     manifestWith({ 基本: { fields: ["f_a"] }, 補足: { id: "g_extra", fields: ["f_a"] } }),
   );
   expect(result.valid).toBe(false);
-  expect(pathsOf(result)[0]).toBe(`/app/views/0/field_groups/補足/0`);
+  expect(pathsOf(result)[0]).toBe(`/app/views/0/field_sections/補足/0`);
 });
 
 // ---------------------------------------------------------------------------
@@ -339,14 +378,14 @@ test("(4) 旧形(配列)も validateReferentialIntegrity を通る", () => {
 
   const broken = validateReferentialIntegrity(manifestWith({ 基本: ["zzqqxx"] }));
   expect(broken.valid).toBe(false);
-  expect(pathsOf(broken)[0]).toBe(`/app/views/0/field_groups/基本/0`);
+  expect(pathsOf(broken)[0]).toBe(`/app/views/0/field_sections/基本/0`);
 });
 
 test("(4) 旧形(配列)も generateRequirementsDoc で同じ文を出す", () => {
   applyOrThrow({
     diff_id: "d-fg-3",
     intent: "名札を書かないまとまり",
-    operations: [{ op: "update_view", view: VIEW_ID, changes: { field_groups: OLD_SHAPE } }],
+    operations: [{ op: "update_view", view: VIEW_ID, changes: { field_sections: OLD_SHAPE } }],
   });
 
   expect(textsOf("screens.field_group")).toEqual([
@@ -367,3 +406,158 @@ test("(4) 旧形(配列)も DetailViewRenderer で同じ中身を出す", async 
   expect(fieldIdsOf(groups[0] as Element)).toEqual(["f_a", "f_b"]);
   expect(ungroupedFieldIds(section)).toEqual(["f_c"]);
 });
+
+// ---------------------------------------------------------------------------
+// 【`V20-M3-T04`】統合後の形の見張り(入力フォームの3経路と、見張りの前提)
+// ---------------------------------------------------------------------------
+
+/** スキーマ(`$defs/view`)を読む。 */
+function viewSchema(): {
+  properties: Record<string, { oneOf?: unknown[]; additionalProperties?: { oneOf?: unknown[] } }>;
+  allOf: {
+    if?: { properties?: { type?: { const?: string } } };
+    then?: { properties?: Record<string, unknown> };
+  }[];
+} {
+  const root = dirname(dirname(import.meta.dir));
+  return JSON.parse(readFileSync(join(root, "schemas", "manifest.schema.json"), "utf8")).$defs.view;
+}
+
+test("(0) 見張りの前提: 値の枝は2本(配列 / { id?, fields })、書ける分岐は form と detail_view の2本", () => {
+  const view = viewSchema();
+  const branches = view.properties.field_sections?.additionalProperties?.oneOf as {
+    type?: string;
+  }[];
+  // **枝が3本目を持つか1本に畳まれたら、下の (1)〜(7) の行列を打ち直すこと。**
+  expect(branches.map((branch) => branch.type)).toEqual(["array", "object"]);
+  const kinds = view.allOf
+    .map((entry) => entry.if?.properties?.type?.const)
+    .filter((kind): kind is string => kind !== undefined);
+  const writable = kinds.filter(
+    (kind) =>
+      view.allOf.find((entry) => entry.if?.properties?.type?.const === kind)?.then?.properties
+        ?.field_sections !== false,
+  );
+  // **書ける画面種別が増えたら、その種別の3経路を本ファイルに足すこと。**
+  expect(writable.sort()).toEqual(["detail_view", "form"]);
+  expect(kinds.filter((kind) => !writable.includes(kind)).sort()).toEqual([
+    "list_view",
+    "report_view",
+  ]);
+});
+
+test("(5) 入力フォーム: 新形・旧形のどちらも validateReferentialIntegrity を通る", () => {
+  for (const groups of [NEW_SHAPE, OLD_SHAPE]) {
+    const result = validateReferentialIntegrity(formManifestWith(groups));
+    expect(pathsOf(result)).toEqual([]);
+    expect(result.valid).toBe(true);
+  }
+});
+
+test("(5) 入力フォーム: 新形・旧形のどちらでも、表示項目に無いIDは拒否される(中身が照合されている)", () => {
+  const newShape = validateReferentialIntegrity(
+    formManifestWith({ 基本: { id: "g_basic", fields: ["zzqqxx"] } }),
+  );
+  expect(newShape.valid).toBe(false);
+  expect(pathsOf(newShape)[0]).toBe(`/app/views/0/field_sections/基本/0`);
+  const oldShape = validateReferentialIntegrity(formManifestWith({ 基本: ["zzqqxx"] }));
+  expect(oldShape.valid).toBe(false);
+  expect(pathsOf(oldShape)[0]).toBe(`/app/views/0/field_sections/基本/0`);
+});
+
+test("(5) 入力フォーム: 2枝を混ぜても「1つの項目が属せるまとまりは1つだけ」が効く", () => {
+  const result = validateReferentialIntegrity(
+    formManifestWith({ 基本: ["f_a"], 補足: { id: "g_extra", fields: ["f_a"] } }),
+  );
+  expect(result.valid).toBe(false);
+  expect(pathsOf(result)[0]).toBe(`/app/views/0/field_sections/補足/0`);
+});
+
+test("(6) 入力フォーム: 新形・旧形のどちらを書いても、要件定義書は同じ2種の文を出す(名札は出ない)", () => {
+  applyOrThrow({
+    diff_id: "d-fg-form-1",
+    intent: "入力フォームを足す",
+    operations: [
+      {
+        op: "add_view",
+        view: { id: FORM_VIEW_ID, type: "form", table: "entries", fields: ["f_a", "f_b", "f_c"] },
+      },
+    ],
+  });
+  const expected = {
+    group: ["画面 `entry-form` の `1` 番目の項目のまとまりの名前は 「基本」 である。"],
+    items: [
+      "画面 `entry-form` の `1` 番目の項目のまとまりは、`1` 番目の項目としてフィールド `f_a` を含む。",
+      "画面 `entry-form` の `1` 番目の項目のまとまりは、`2` 番目の項目としてフィールド `f_b` を含む。",
+    ],
+  };
+  const shapes: [string, Record<string, FieldGroupValue>][] = [
+    ["new", NEW_SHAPE],
+    ["old", OLD_SHAPE],
+  ];
+  for (const [label, groups] of shapes) {
+    applyOrThrow({
+      diff_id: `d-fg-form-${label}`,
+      intent: "入力フォームにまとまりを書く",
+      operations: [{ op: "update_view", view: FORM_VIEW_ID, changes: { field_sections: groups } }],
+    });
+    expect(textsOf("screens.field_group"), label).toEqual(expected.group);
+    expect(textsOf("screens.field_group_item"), label).toEqual(expected.items);
+    for (const statement of generateRequirementsDoc(dataRoot, APP_ID).statements) {
+      expect(statement.text, label).not.toContain("g_basic");
+    }
+  }
+});
+
+async function renderForm(manifest: Manifest): Promise<HTMLElement> {
+  const view = manifest.app.views[0];
+  if (view === undefined || view.type !== "form") {
+    throw new Error("検査の前提が崩れています(form が無い)");
+  }
+  window.history.replaceState({}, "", `/apps/${APP_ID}/views/${FORM_VIEW_ID}`);
+  const child = createElement(FormRenderer, { appId: APP_ID, manifest, view });
+  // biome-ignore lint/correctness/noChildrenProp: renderDetail と同じ理由(tsc を通すには props で渡すしかない)
+  render(createElement(RoleProvider, { role: WRITER_ROLE, children: child }));
+  await waitFor(() => expect(screen.getByTestId("view-renderer-form")).toBeDefined());
+  return screen.getByTestId("view-renderer-form");
+}
+
+/** 入力フォームの項目の枠(`.field`)の中のラベルから、項目IDを描画順に引く。 */
+function formFieldIdsOf(scope: Element): string[] {
+  return [...scope.querySelectorAll(".field label")].map(
+    (label) => label.getAttribute("for")?.replace(`${FORM_VIEW_ID}-`, "") ?? "",
+  );
+}
+
+/** `<form>` の直下に平坦に並んだ項目(まとまりの器の外)。 */
+function formUngroupedFieldIds(section: HTMLElement): string[] {
+  const form = section.querySelector("form");
+  if (form === null) {
+    throw new Error("検査の前提が崩れています(form 要素が無い)");
+  }
+  return [...form.children]
+    .filter((child) => child.classList.contains("field"))
+    .map(
+      (child) =>
+        child.querySelector("label")?.getAttribute("for")?.replace(`${FORM_VIEW_ID}-`, "") ?? "",
+    );
+}
+
+for (const [label, groups] of [
+  ["新形", NEW_SHAPE],
+  ["旧形", OLD_SHAPE],
+] as const) {
+  test(`(7) 入力フォームの描画(${label}): まとまりの中身と、平坦に並ぶ項目が詳細画面と同じに割れる`, async () => {
+    const section = await renderForm(formManifestWith(groups));
+    const sections = [...section.querySelectorAll('[data-testid="form-field-section"]')];
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.querySelector("h3")?.textContent).toBe("基本");
+    expect(formFieldIdsOf(sections[0] as Element)).toEqual(["f_a", "f_b"]);
+    // **`.flat()` 型の取り違えを捕まえる式**: まとまりに属する項目は平坦な側に出ない。
+    expect(formUngroupedFieldIds(section)).toEqual(["f_c"]);
+    // 項目は画面全体でちょうど1度ずつ出る(同じ項目が2か所に出ない)。
+    expect(formFieldIdsOf(section).sort()).toEqual(["f_a", "f_b", "f_c"]);
+    // 名札は画面に1文字も出ない。
+    expect(section.textContent ?? "").not.toContain("g_basic");
+  });
+}

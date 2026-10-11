@@ -409,7 +409,10 @@ describe("`ADR-0162`(`G-G18`)の限定7点", () => {
     // こと」であり、**減らしたのは別の決定(`V8-M29` の廃止。`set_user_kinds` を
     // 取り除いた)である。****検査は消していない。**
     // **【禁止の履行】これを「語彙が減った」と成果に書かない**(`ADR-0301` 限定10)。
-    expect(DIFF_OPS.length).toBe(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。【`V8-M16`】17 → 18(`set_roles` が18種目)。【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS.length).toBe(17);` —— 18種目 `remember_design` を足したので 17 → 18(別の決定)。
+    // **下の `VOCABULARY_SCOPE.includes(op)` の走査は1バイトも変えていない**(18種目が説明文に載っていなければ赤くなる)。
+    // **【`V22-M2-T02b` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行28】旧(逐語)**: `expect(DIFF_OPS.length).toBe(18); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。【`V8-M16`】17 → 18(`set_roles` が18種目)。【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+    expect(DIFF_OPS.length).toBe(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。【`V8-M16`】17 → 18(`set_roles` が18種目)。【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
     // **【2026-08-14。`V8-M8`。台帳 `Q-G1`。門A 本審査 = `V8-M7`】期待値を 7 → 8 へ**
     // **書き換えた。****旧行の逐語は `expect(RESOURCE_KINDS.length).toBe(7);` である。**
     // **書き換えた理由**: この行が固定していたのは「**その決定**(`G-G18` の産業中立の
@@ -702,7 +705,35 @@ describe("`ADR-0163`(`G-G19`)の限定7点", () => {
     // **当時 `2a0fae816ce5f6c5` → 今日 `68c62429d88b17c4`。****旧値を消さずに残す。**
     // **【禁止】これを「アプリの語彙が増えた」と読まない** —— **`schemas/` は1バイトも
     // 動いておらず、差分操作の種類も1つも増えていない。**
-    expect(sha(await source("scripts/kernel-export-snapshot.txt"))).toBe("68c62429d88b17c4");
+    // **【`V20-M4-T01`(2026-09-24)。上の行を1バイトも消していない】** —— **一覧の束ねるキーの読取の並びで
+    // 5件(`report.ts` 2件 / `list-group-order.ts` 3件)を公開したので、この指紋が動いた。**
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "68c62429d88b17c4"` / `Received: "156d6e1e8b5b644c"`。
+    // **値は失敗出力から写していない** —— `shasum -a 256 scripts/kernel-export-snapshot.txt` の先頭16文字を自分で打った。
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-export-snapshot.txt"))).toBe("68c62429d88b17c4");`
+    // **【`V20-M5-T04`(2026-09-24)。上の行を1バイトも消していない】** —— **並べ方の木の深さの上限
+    // `referential-integrity.ts:MAX_LAYOUT_DEPTH` を1件公開したので、この指紋が動いた**(`ADR-0462` 限定4 / `ADR-0471`)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "156d6e1e8b5b644c"` / `Received: "9a5c2b176b0b1733"`。
+    // **値は失敗出力から写していない** —— `shasum -a 256 scripts/kernel-export-snapshot.txt` の先頭16文字を自分で打った。
+    // **旧の期待値は `156d6e1e8b5b644c`。**
+    // **【`V20-M9-T02`(2026-09-25)。上の行を1バイトも消していない】** —— **テーマの参照の解決器
+    // `theme-reference.ts:resolveThemeSlots` / `theme-reference.ts:THEME_REFERENCE_MAX_DEPTH` の2件を公開したので、
+    // この指紋が動いた**(`ADR-0474` §Decision 1-5 / 限定9。門A の本審査 = 限定採用の後)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "9a5c2b176b0b1733"` / `Received: "aab86eaf07dfe5ca"`。
+    // **値は失敗出力から写していない** —— `shasum -a 256 scripts/kernel-export-snapshot.txt` の先頭16文字を自分で打った。
+    // **旧の期待値は `9a5c2b176b0b1733`。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】`types.ts:DesignMemory` / `types.ts:RememberDesignOperation` の2件を公開したので、この指紋が動いた**
+    // (`ADR-0479` §Decision 1 の 7 / `ADR-0466` 限定8 の後件)。 **先に赤の出力を見てから打ち直した** ——
+    // 逐語 `Expected: "aab86eaf07dfe5ca"` / `Received: "4d5d046182956bad"`。 **値は `shasum -a 256 scripts/kernel-export-snapshot.txt`
+    // の先頭16文字を自分で打った。** **旧の期待値は `aab86eaf07dfe5ca`。**
+    // **【2026-09-29。`V23-M1-T02` / 授権 `ADR-0512` 行53(`ADR-0510` 行9)】`ddl.ts:autoEnrollAccountIndexName` /
+    // `ddl.ts:createAutoEnrollAccountIndexSql` の2件を公開したので、この指紋が動いた**(`ADR-0497` 限定4)。
+    // 逐語 `Expected: "4d5d046182956bad"` / `Received: "c34863a3e7b98d30"`。 **値は `shasum -a 256 scripts/kernel-export-snapshot.txt`
+    // の先頭16文字を自分で打った。** **旧の期待値は `4d5d046182956bad`。**
+    // **【2026-09-29。`V23-M2-T03` / 授権 `ADR-0517` 行38(行36)】`workflow-runner.ts` のアプリの理由の3名
+    // (`isAppReason` / `markAppReason` / `takeFirstAppReason`)を公開したので、この指紋が動いた。**
+    // 逐語 `Expected: "c34863a3e7b98d30"` / `Received: "cf153a844a79d5b8"`。 **値は `shasum -a 256 scripts/kernel-export-snapshot.txt`
+    // の先頭16文字を自分で打った。** **旧の期待値は `c34863a3e7b98d30`。**
+    expect(sha(await source("scripts/kernel-export-snapshot.txt"))).toBe("cf153a844a79d5b8");
   });
 
   // **【`V5-M16`(`G-G12` / `G-G13` / `ADR-0161` + `D-V5-84`)による基準値の更新】**
@@ -1976,7 +2007,137 @@ describe("`ADR-0163`(`G-G19`)の限定7点", () => {
     // **値は失敗出力から写していない** —— **`shasum -a 256 scripts/kernel-import-snapshot.txt`
     //   の先頭16文字を自分で打って確かめた(`26dca2035da477b1`)。**
     // **`7c24aaab51faf46f` → 今日 `26dca2035da477b1`。**
-    expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("26dca2035da477b1");
+    //
+    // **【`V20-M4-T01` / `T02`(2026-09-24)。上の行を1バイトも消していない】** —— **一覧の束ねるキーを
+    // 書いても読取の応答が変わらないことを撃つ検査ファイル1本(`src/server/list-group-by-read.test.ts`)
+    // ぶん(3件)を同じ台帳に足したので、この指紋がもう一度動いた。**
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "26dca2035da477b1"` / `Received: "67024c162b3aab03"`。**1 fail**。
+    // **値は失敗出力から写していない** —— **`shasum -a 256 scripts/kernel-import-snapshot.txt`
+    //   の先頭16文字を自分で打って確かめた(`67024c162b3aab03`)。**
+    // **`26dca2035da477b1` → 今日 `67024c162b3aab03`。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("26dca2035da477b1");`
+    // **【`V20-M4-T01`(2026-09-24)。上の行を1バイトも消していない】** —— **一覧の読取の並び(製品コード 2件)と検査ファイル1本(5件)を
+    // 同じ台帳に足したので、この指紋がもう一度動いた。** 逐語 `Expected: "67024c162b3aab03"` / `Received: "8f782f16bb0d24f3"`。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("67024c162b3aab03");`
+    // **【`V20-M4-T03`(2026-09-24)。上の行を1バイトも消していない】** —— **一覧の区切りの描画のために、サーバが群の値を
+    // 応答に添える層またぎ(製品コード 1件 `listGroupKey`)と検査ファイル1本(3件)を同じ台帳に足したので、この指紋がもう一度動いた。**
+    // 逐語 `Expected: "8f782f16bb0d24f3"` / `Received: "f4cf26a874699e9e"`。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("8f782f16bb0d24f3");`
+    // **【`V20-M4-T04`(2026-09-24)。上の行を1バイトも消していない】** —— **上限と穴を撃つ検査ファイル1本(3件。製品コードの
+    // 層またぎは0件)を同じ台帳に足したので、この指紋がもう一度動いた。** 逐語 `Expected: "f4cf26a874699e9e"` / `Received: "9f852c43e0f7a314"`。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("f4cf26a874699e9e");`
+    // **【`V20-M12-T01` / `T02`(2026-09-26)。上の行を1バイトも消していない】** —— **画面の作りの点検コマンド
+    // `src/cli/lint-design.ts` が、`src/cli/validate.ts` と同じ2シンボル(`validateManifestFull` / `formatValidationErrors`)を
+    // 値として取る2行を同じ台帳に足したので、この指紋がもう一度動いた**(新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "9f852c43e0f7a314"` / `Received: "3af7203f588994c8"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`3af7203f588994c8`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("9f852c43e0f7a314");`
+    // **【`V20-M13-T01` / `T02a`(2026-09-26)。上の行を1バイトも消していない】** —— **下見の置き場 `src/server/preview-store.ts` と
+    // 写しを作り整える `src/mcp/preview.ts`(と検査2本)が、`dryRunDiff` とパスの関数を値として取る16行を同じ台帳に足したので、
+    // この指紋がもう一度動いた**(新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "3af7203f588994c8"` / `Received: "412a681d75b758aa"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`412a681d75b758aa`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("3af7203f588994c8");`
+    // **【`V20-M13-T03`(2026-09-26)。上の行を1バイトも消していない】** —— **見本のモード(`src/mcp/preview.ts` が
+    // `APP_SCOPED_KERNEL_TABLES` を値として取る1行と、検査2本 `preview-sample.test.ts` / `sample-rows.test.ts` の15行)の
+    // 16行を同じ台帳に足したので、この指紋がもう一度動いた**(新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "412a681d75b758aa"` / `Received: "2469b51790893287"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`2469b51790893287`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("412a681d75b758aa");`
+    // **【`V20-M13-T02b`(2026-09-26)。上の行を1バイトも消していない】** —— **下見の前段の検査
+    // `src/server/preview-front.test.ts` が題材を作る4行(製品は0行)を同じ台帳に足したので、この指紋がもう一度動いた**
+    // (新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "2469b51790893287"` / `Received: "9d4dea46d54a0175"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`9d4dea46d54a0175`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("2469b51790893287");`
+    // **【`V20-M13-T02c`(2026-09-26)。上の行を1バイトも消していない】** —— **下見の画面の E2E
+    // `web/e2e/preview-banner.e2e.ts` が帯の文字と地色の比を `contrastRatio` で測る1行(製品は0行)を同じ台帳に
+    // 足したので、この指紋がもう一度動いた**(新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "9d4dea46d54a0175"` / `Received: "906216bbea00d4b0"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`906216bbea00d4b0`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("9d4dea46d54a0175");`
+    // **【`V20-M13-T05` / `T04`(2026-09-26)。上の行を1バイトも消していない】** —— **下見の後始末の時計の検査
+    // `src/server/preview-sweeper.test.ts`(3行)と、本体に触らないことの5点比較 `src/server/preview-invariance.test.ts`
+    // (8行)が題材を作る11行(製品は0行)を同じ台帳に足したので、この指紋がもう一度動いた**(新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "906216bbea00d4b0"` / `Received: "a6d681e12cac17fc"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`a6d681e12cac17fc`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("906216bbea00d4b0");`
+    // **【`V20-M13` 点検の処置(2026-09-26)。上の行を1バイトも消していない】** —— **検査
+    // `src/mcp/preview.test.ts` が対象のアプリの AI の依頼と使用量の行を入れる1行(`AiCapabilityStore`。製品は0行)を
+    // 同じ台帳に足したので、この指紋がもう一度動いた**(新しい層またぎの種類は0本)。
+    // **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "a6d681e12cac17fc"` / `Received: "f4cb3cedeb7a8249"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`f4cb3cedeb7a8249`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("a6d681e12cac17fc");`
+    // **【`V20-M15-T01B`】`src/mcp/preview.ts` の2行(`appManifestPath` / `readCurrentManifest`。製品の層またぎ2件)を同じ台帳に足したので、
+    // この指紋がもう一度動いた。** **先に赤の出力を見てから打ち直した** —— 逐語 `Expected: "f4cb3cedeb7a8249"` / `Received: "87f3a34b5201e4a3"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`87f3a34b5201e4a3`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("f4cb3cedeb7a8249");`
+    // **【`V22-M2-T06`。`ADR-0487` 行28 の追補(行67 の連鎖)】新しい検査 `src/server/public-workspace-navigation.test.ts` の3行
+    // (`KernelMetaStore` / `applyManifest` / `createApp`)を同じ台帳に足したので、この指紋がもう一度動いた。** **先に赤の出力を
+    // 見てから打ち直した** —— 逐語 `Expected: "87f3a34b5201e4a3"` / `Received: "c137d60143efcec2"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`c137d60143efcec2`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("87f3a34b5201e4a3");`
+    // **【`V22-M3-T04`。`ADR-0489` 行27(行20 の連鎖)】新しい検査 `src/server/my-page-records.test.ts` の3行
+    // (`KernelMetaStore` / `applyManifest` / `createApp`)を同じ台帳に足したので、この指紋がもう一度動いた。** **先に赤の出力を
+    // 見てから打ち直した** —— 逐語 `Expected: "c137d60143efcec2"` / `Received: "10b90c1f4965eb2f"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`10b90c1f4965eb2f`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("c137d60143efcec2");`
+    // **【2026-09-29。`V23-M1-T03` / 授権 `ADR-0512` 行54(`ADR-0510` 行8)】新しいファイル `src/server/auto-enroll-backfill.ts` の2行と
+    // 検査 `src/server/auto-enroll-apply.test.ts` の7行を同じ台帳に足したので、この指紋が動いた。** **先に赤の出力を
+    // 見てから打ち直した** —— 逐語 `Expected: "10b90c1f4965eb2f"` / `Received: "b62e6409701eeb79"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`b62e6409701eeb79`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("10b90c1f4965eb2f");`
+    // **【2026-09-29。`V23-M1-T04` / 授権 `ADR-0512` 行54(`ADR-0510` 行8)】検査 `src/server/auto-enroll.test.ts` の4行を
+    // 同じ台帳に足したので、この指紋がもう一度動いた。** 逐語 `Expected: "b62e6409701eeb79"` / `Received: "690c30f7283f5ecf"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`690c30f7283f5ecf`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("b62e6409701eeb79");`
+    // **【2026-09-29。`V23-M1-T05` / 授権 `ADR-0512` 行54(`ADR-0510` 行8)】検査 `src/server/auto-enroll-unique.test.ts` の7行を
+    // 同じ台帳に足したので、この指紋がもう一度動いた。** 逐語 `Expected: "690c30f7283f5ecf"` / `Received: "2c77c91804d3e859"`。**1 fail**。
+    // **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`2c77c91804d3e859`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("690c30f7283f5ecf");`
+    // **【2026-09-29。`V23-M1-T06` / 授権 `ADR-0512` 行54(`ADR-0510` 行8)】検査 `src/server/auto-enroll-withdraw.test.ts` の4行と
+    // `src/server/auto-enroll.ts` の1行を同じ台帳に足したので、この指紋がもう一度動いた。** 逐語 `Expected: "2c77c91804d3e859"` /
+    // `Received: "2952c51829ae9dda"`。**1 fail**。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`2952c51829ae9dda`)。**
+    // **旧行の逐語**: `expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("2c77c91804d3e859");`
+    // **【2026-09-29。V23-M1-T07。授権 = `ADR-0513` 行58】旧の値を逐語で残す: `"2952c51829ae9dda"`。**
+    // 行57 で基準ファイルに last-row-admin.test.ts の9行を足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`b5f6dead457e34d8`)。**
+    // **【2026-09-29。`V23-M2-T03` / 授権 `ADR-0517` 行38(行37)】旧の値を逐語で残す: `"b5f6dead457e34d8"`。**
+    // 行37 で基準ファイルに `src/server/app.ts` の1行(`isAppReason`)を足した。 逐語 `Expected: "b5f6dead457e34d8"` /
+    // `Received: "98fccf84d3400c53"`。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`98fccf84d3400c53`)。**
+    // **【2026-09-29。`V23-M2-T03` の続き / 授権 `ADR-0519` 行75(行74)】旧の値を逐語で残す: `"98fccf84d3400c53"`。**
+    // 行74 で基準ファイルに `src/server/unique-message.test.ts` の8行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`d4f6901f4007b8da`)。**
+    // **【2026-09-29。`V23-M2-T04` / 授権 `ADR-0519` 行75(行74)】旧の値を逐語で残す: `"d4f6901f4007b8da"`。**
+    // 行74 で基準ファイルに `src/server/island-reject.test.ts` の7行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`f1852a43a6a27dd9`)。**
+    // **【2026-09-29。`V23-M2-T05` / 授権 `ADR-0519` 行75(行74)】旧の値を逐語で残す: `"f1852a43a6a27dd9"`。**
+    // 行74 で基準ファイルに `src/server/atomic-creator-grant.test.ts` の6行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`730575fd0f9e047f`)。**
+    // **【2026-09-29。`V23-M2-T06` / 授権 `ADR-0519` 行75(行74)】旧の値を逐語で残す: `"730575fd0f9e047f"`。**
+    // 行74 で基準ファイルに `src/mcp/creator-grant.test.ts` の6行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`270e514e860870e4`)。**
+    // **【2026-09-30。`V23-M4-T03` / 授権 `ADR-0527` 行2(行1)】旧の値を逐語で残す: `"270e514e860870e4"`。**
+    // 行1 で基準ファイルに新しい検査ファイル3本(`actor-entry-points*.test.ts`)の20行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`841beeed1db4cb7e`)。**
+    // **【2026-09-30。`V23-M4-T04` / 授権 `ADR-0527` 行2(行1)】旧の値を逐語で残す: `"841beeed1db4cb7e"`。**
+    // 行1 で基準ファイルに新しい検査ファイル2本(`previous-changed-now*.test.ts`)の13行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`50f4fb737ccb29f7`)。**
+    // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0527` 行2(行1)】旧の値を逐語で残す: `"50f4fb737ccb29f7"`。**
+    // 行1 で基準ファイルに新しい検査ファイル3本(`updated-by-stamp*.test.ts`)の21行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`991bef8c6c70bf6d`)。**
+    // **【2026-09-30。`V23-M4-T06` / 授権 `ADR-0527` 行2(行1)】旧の値を逐語で残す: `"991bef8c6c70bf6d"`。**
+    // 行1 で基準ファイルに新しい検査ファイル1本(`island-actor-previous.test.ts`)の8行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`ccf447b6d2246373`)。**
+    // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行45】旧の値を逐語で残す: `"ccf447b6d2246373"`。**
+    // 行45 で基準ファイルに新しい検査ファイル1本(`row-invitations.test.ts`)の6行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`762364f9269f012e`)。**
+    // **【2026-10-01。`V23-M6-T03` / 授権 `ADR-0539` 行35】旧の値を逐語で残す: `"762364f9269f012e"`。**
+    // 行35 で基準ファイルに新しい検査ファイル1本(`principal-row-entries.test.ts`)の7行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`2712bcb01cd9d050`)。**
+    // **【2026-10-01。`V23-M6-T04` / 授権 `ADR-0539` 行35】旧の値を逐語で残す: `"2712bcb01cd9d050"`。**
+    // 行35 で基準ファイルに新しい検査ファイル1本(`principal-row-write.test.ts`)の10行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`5c5cfa02c837eb31`)。**
+    // **【2026-10-01。`V23-M6-T04b` / 授権 `ADR-0539` 行35】旧の値を逐語で残す: `"5c5cfa02c837eb31"`。**
+    // 行35 で基準ファイルに新しい検査ファイル1本(`principal-row-labels.test.ts`)の5行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`03c645c193652cf6`)。**
+    // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行35】旧の値を逐語で残す: `"03c645c193652cf6"`。**
+    // 行35 で基準ファイルに新しい検査ファイル1本(`row-invite-codes.test.ts`)の5行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`e47719fa0206260a`)。**
+    // **【2026-10-01。`V23-M6-T06` / 授権 `ADR-0539` 行35】旧の値を逐語で残す: `"e47719fa0206260a"`。**
+    // 行35 で基準ファイルに新しい検査ファイル1本(`row-code-invitations.test.ts`)の5行と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`23fe68b3b2afc1d2`)。**
+    // **【2026-10-02。`V23-M8-T03` / 授権 `ADR-0545` 行210(行1)】旧の値を逐語で残す: `"23fe68b3b2afc1d2"`。**
+    // 行1 で基準ファイルに製品ファイル `src/server/auto-enroll.ts` の1行(`deleteRecord`)と経緯のコメントを足した。 **値は `shasum -a 256 scripts/kernel-import-snapshot.txt` の先頭16文字を自分で打った(`def6d509b9115b2e`)。**
+    expect(sha(await source("scripts/kernel-import-snapshot.txt"))).toBe("def6d509b9115b2e");
   });
 
   test("限定4: ADR 番号・限定番号への参照を1つも消していない", async () => {

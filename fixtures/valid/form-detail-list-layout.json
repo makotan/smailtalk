@@ -1,0 +1,82 @@
+{
+  "app": {
+    "id": "member-desk",
+    "name": "会員受付",
+    "tables": [
+      {
+        "id": "members",
+        "name": "会員",
+        "fields": [
+          { "id": "last_name", "name": "姓", "type": "text", "required": true },
+          { "id": "first_name", "name": "名", "type": "text" },
+          { "id": "email", "name": "メール", "type": "text" },
+          { "id": "postal_code", "name": "郵便番号", "type": "text" },
+          { "id": "address", "name": "住所", "type": "long_text" },
+          { "id": "joined_on", "name": "入会日", "type": "date" }
+        ]
+      },
+      {
+        "id": "visits",
+        "name": "来店",
+        "fields": [
+          { "id": "member", "name": "会員", "type": "reference", "reference_table": "members" },
+          { "id": "visited_on", "name": "来店日", "type": "date" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "member-form",
+        "type": "form",
+        "table": "members",
+        "fields": ["last_name", "first_name", "email", "postal_code", "address"],
+        "layout": {
+          "type": "stack",
+          "gap": "md",
+          "children": [
+            { "type": "switcher", "threshold": "sm", "children": ["last_name", "first_name"] },
+            "email",
+            { "type": "sidebar", "side": "postal_code", "main": "address", "side_width": "sm" },
+            { "type": "split", "start": [], "end": ["action:submit"] }
+          ]
+        }
+      },
+      { "id": "visit-form", "type": "form", "table": "visits", "fields": ["member", "visited_on"] },
+      {
+        "id": "member-detail",
+        "type": "detail_view",
+        "table": "members",
+        "fields": ["last_name", "first_name", "email", "joined_on"],
+        "actions": [
+          { "id": "record-visit", "name": "来店を記録する", "form": "visit-form", "prefill": { "field": "member" } }
+        ],
+        "layout": {
+          "type": "grid",
+          "gap": "sm",
+          "min_item": "md",
+          "children": [
+            { "type": "cluster", "gap": "xs", "justify": "start", "children": ["last_name", "first_name"] },
+            "email",
+            "joined_on",
+            "action:record-visit"
+          ]
+        }
+      },
+      {
+        "id": "member-cards",
+        "type": "list_view",
+        "table": "members",
+        "columns": ["last_name", "email", "joined_on"],
+        "preset_list_shape": "card",
+        "actions": [
+          { "id": "record-visit", "name": "来店を記録する", "form": "visit-form", "prefill": { "field": "member" } }
+        ],
+        "layout": {
+          "type": "split",
+          "start": [{ "type": "stack", "gap": "xs", "children": ["last_name", "email"] }],
+          "end": ["joined_on", "action:record-visit"]
+        }
+      }
+    ]
+  }
+}

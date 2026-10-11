@@ -603,10 +603,19 @@ function branchOf(type: string): { if: AnyObject; then?: AnyObject } | undefined
   );
 }
 
-test("(f-1) 限定1: $defs/view.properties は 31 / $defs/view_type は 4 / $defs/view_action.properties は 8", () => {
-  expect(Object.keys(viewSchema().properties as AnyObject)).toHaveLength(31);
+// **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧テスト名(逐語)**: 「(f-1) 限定1: $defs/view.properties は 31 /
+// $defs/view_type は 4 / $defs/view_action.properties は 8」。**旧値の逐語は 8。**
+// **9本目 `action_emphasis`(ボタンの強調)を足したのは本ファイルが測る決定ではない。**
+test("(f-1) 限定1: $defs/view.properties は 31 / $defs/view_type は 4 / $defs/view_action.properties は 9", () => {
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as AnyObject)).toHaveLength(31);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as AnyObject)).toHaveLength(32);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行96】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(viewSchema().properties as AnyObject)).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+  expect(Object.keys(viewSchema().properties as AnyObject)).toHaveLength(35);
   expect((defs().view_type as { enum: string[] }).enum).toHaveLength(4);
-  expect(Object.keys((defs().view_action as AnyObject).properties as AnyObject)).toHaveLength(8);
+  expect(Object.keys((defs().view_action as AnyObject).properties as AnyObject)).toHaveLength(9);
 });
 
 test("(f-2) 限定1: flow の値の形は3つのままで、4つ目のサブキーが無い(kind は2値)", () => {
@@ -710,8 +719,15 @@ test("(j-1) 限定5: 予約規約フィールドは着手前(f09cc0d)と同じ4�
   const names = [...source.matchAll(/^export const [A-Z_0-9]+ = "(st_[a-z_]+)";$/gm)].map(
     (match) => match[1],
   );
-  expect(names).toEqual(["st_owner", "st_public", "st_undeletable", "st_no_direct_create"]);
-  expect(names).toHaveLength(4);
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行8(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(names).toEqual(["st_owner", "st_public", "st_undeletable", "st_no_direct_create"]); expect(names).toHaveLength(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に `st_updated_by`・5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+  expect(names).toEqual([
+    "st_owner",
+    "st_public",
+    "st_undeletable",
+    "st_no_direct_create",
+    "st_updated_by",
+  ]);
+  expect(names).toHaveLength(5);
 });
 
 test("(j-2) 限定5: flow の値にも view のキーにも「未確定の下書き」を置く場所が1つも無い", () => {

@@ -16,7 +16,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,6 +45,7 @@ import {
 } from "../../kernel/index.ts";
 import { createServerApp } from "../../server/app.ts";
 import { seedSession } from "../../server/test-helpers.ts";
+import * as designNoticesModule from "../../shared/design-notices.ts";
 import { createMcpServer } from "../server.ts";
 
 /**
@@ -799,6 +800,125 @@ test("dry_run_diff は存在しない app_id を統一形式で断る", async ()
     }),
   );
   expect(errors[0]?.path).toBe("/app_id");
+});
+
+// --- 画面の作りの注意 `design_notices`(試す時に AI に伝える。保存は止めない)---------------
+//
+// **`dry_run_diff` の成功時、`report.design_notices` に、当てた後のマニフェストのアプリ全体の
+// 画面を点検した注意(`collectDesignNotices` の `notices`)が常に載る。** 注意が無ければ `[]`。
+// **拒否の時は今日の `{ errors }` のままで、注意の欄は無い。** 注意は適用を止めない
+// (止めるのは検証の拒否だけ)。カーネルの `dryRunDiff` の返り値は触らず、MCP の層で足す。
+
+/** 主ボタン(`action_emphasis: "primary"`)を2つ持つ詳細画面を足す差分。 */
+const twoPrimaryDetailDiff = {
+  diff_id: "d-two-primary",
+  intent: "備品の詳細画面に数量を切り替えるボタンを2つ置きたい",
+  operations: [
+    {
+      op: "add_view",
+      view: {
+        id: "items-detail",
+        type: "detail_view",
+        table: TABLE_ID,
+        actions: [
+          { set: { field: "qty", value: 1 }, name: "1にする", action_emphasis: "primary" },
+          { set: { field: "qty", value: 2 }, name: "2にする", action_emphasis: "primary" },
+        ],
+      },
+    },
+  ],
+};
+
+type DesignNoticeShape = { rule: string; view: string; path: string; count: number };
+
+test("dry_run_diff は主ボタン2つの詳細画面を作る差分に、画面の作りの注意を載せる(保存は止めない)", async () => {
+  const before = readCurrentManifest(dataRoot, APP_ID);
+  const data = okData(
+    await callTool("dry_run_diff", { app_id: APP_ID, diff: twoPrimaryDetailDiff }),
+  );
+  const report = data.report as { design_notices: DesignNoticeShape[] };
+  expect(report.design_notices).toHaveLength(1);
+  expect(report.design_notices[0]).toMatchObject({
+    rule: "multiple_primary_actions",
+    view: "items-detail",
+    path: "/app/views/1/actions",
+    count: 2,
+  });
+  // ドライランなので本体は変わっていない。
+  expect(readCurrentManifest(dataRoot, APP_ID)).toEqual(before);
+});
+
+test("dry_run_diff の注意の欄は、注意が無ければ空配列で常に在る", async () => {
+  const data = okData(
+    await callTool("dry_run_diff", {
+      app_id: APP_ID,
+      diff: {
+        diff_id: "d-plain",
+        intent: "備品に置き場所を持たせたい",
+        operations: [
+          {
+            op: "add_field",
+            table: TABLE_ID,
+            field: { id: "place", name: "置き場所", type: "text" },
+          },
+        ],
+      },
+    }),
+  );
+  const report = data.report as { design_notices: unknown[] };
+  expect(report.design_notices).toEqual([]);
+});
+
+test("dry_run_diff が拒否した差分の返事は今日どおり errors だけで、注意の欄は無い", async () => {
+  const result = await callTool("dry_run_diff", {
+    app_id: APP_ID,
+    diff: {
+      ...twoPrimaryDetailDiff,
+      diff_id: "d-two-primary-bad",
+      operations: [
+        ...twoPrimaryDetailDiff.operations,
+        { op: "add_field", table: "ghosts", field: { id: "x", name: "X", type: "text" } },
+      ],
+    },
+  });
+  expect(errorsOf(result).length).toBeGreaterThan(0);
+  expect(Object.keys(result.structuredContent ?? {})).toEqual(["errors"]);
+});
+
+test("dry_run_diff は画面の点検が例外を投げても差分の判定を失敗にせず、注意の欄を空配列で返す", async () => {
+  // 点検は拒否ではない。点検の側で何かが壊れても、「この差分は通る」という判定を
+  // `isError` に倒さない(倒すと、通る差分を AI が拒否されたと読む)。
+  // 差し替えは `spyOn` を使い、この検査の中で必ず戻す(`mock.module` は他のファイルへ漏れる)。
+  const spy = spyOn(designNoticesModule, "collectDesignNotices").mockImplementation(() => {
+    throw new Error("点検の中で壊れた");
+  });
+  try {
+    const before = readCurrentManifest(dataRoot, APP_ID);
+    const result = await callTool("dry_run_diff", { app_id: APP_ID, diff: twoPrimaryDetailDiff });
+    expect(spy).toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    const report = okData(result).report as { design_notices: unknown[]; manifest: Manifest };
+    expect(report.design_notices).toEqual([]);
+    expect(report.manifest.app.views.map((view) => view.id)).toContain("items-detail");
+    expect(readCurrentManifest(dataRoot, APP_ID)).toEqual(before);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("dry_run_diff の説明文は、注意がアプリ全体の画面についてのもので保存を止めないことを伝える", async () => {
+  const { client, close } = await connectInMemory();
+  try {
+    const listed = await client.listTools();
+    const tool = listed.tools.find((one) => one.name === "dry_run_diff");
+    const description = tool?.description ?? "";
+    expect(description).toContain("design_notices");
+    expect(description).toContain("アプリ全体の画面");
+    expect(description).toContain("保存は止めない");
+    expect(description).toContain("ユーザに聞いて");
+  } finally {
+    await close();
+  }
 });
 
 // --- 【`V10-M28-T03`】報告から認証まわりを落とす ---------------------------------------

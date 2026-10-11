@@ -54,8 +54,9 @@
  * ## 新しいレンダラーを作らない(完了条件2)
  *
  * プレビューは**製品と同じ `AppThemeScope`**(`web/src/AppWorkspace.tsx`。スロットを
- * inline style へ写す恒等写像 `themeScopeStyle` を内側で使う)と**製品と同じ `ViewHost`** で
- * 描く。**変換規則の2本目を作らない** —— 作るとプレビューと本番で当たり方が割れる。
+ * 写像 `web/src/theme-role-map.ts` で CSS 名へ写して inline style に立てる `themeScopeStyle` を
+ * 内側で使う。V20-M8 / ADR-0473)と**製品と同じ `ViewHost`** で描く。
+ * **変換規則の2本目を作らない** —— 作るとプレビューと本番で当たり方が割れる。
  */
 import { type ReactNode, useState } from "react";
 import type { Manifest, Theme, View } from "../../src/kernel/types.ts";
@@ -130,7 +131,8 @@ export function parseImportedTheme(text: string): ParsedImport {
   const trimmed = text.trim();
   if (trimmed === "") {
     return failure(
-      "取り込み提案が貼り付けられていません。25スロットの JSON を貼り付けてください。",
+      // 【V20-M9 で偽になった】旧(逐語): "取り込み提案が貼り付けられていません。25スロットの JSON を貼り付けてください。",
+      "取り込み提案が貼り付けられていません。テーマの JSON(役割の枠と、任意の生の色 palette_…)を貼り付けてください。",
       "",
       "スロットの一覧と値の形は get_manifest の出力の /app/theme と同じです。",
     );
@@ -153,15 +155,19 @@ export function parseImportedTheme(text: string): ParsedImport {
     );
   }
 
-  // ラッパの有無を見分ける。25スロットの名前はすべて `--` で始まるので、`slots` キーの
-  // 有無で一意に決まる(**中間表現を作っているのではない。置き場も1つも作っていない**。線3)。
+  // 【V20-M9 で偽になった】次の行の「25スロットの名前(役割名23件と … 2件」は V20-M8 の時点の逐語である。
+  // 今日は役割名27件と、生の色 `palette_…`(どちらにも `slots` / `origin` は無い)。
+  // ラッパの有無を見分ける。25スロットの名前(役割名23件と、名前を残した `--` で始まる2件。
+  // V20-M8 / ADR-0473)に `slots` / `origin` は無いので、`slots` キーの有無で一意に決まる
+  // (**中間表現を作っているのではない。置き場も1つも作っていない**。線3)。
   const wrapped = "slots" in raw;
   const slotsSource = wrapped ? raw.slots : raw;
   if (!isPlainObject(slotsSource)) {
     return failure(
       "slots の中身が JSON のオブジェクトではありません。",
       "/app/theme/slots",
-      "25スロットの名前と値の組を書いてください。",
+      // 【V20-M9 で偽になった】旧(逐語): "25スロットの名前と値の組を書いてください。",
+      "役割の枠(と、任意の生の色 palette_…)の名前と値の組を書いてください。",
     );
   }
 
@@ -210,7 +216,8 @@ export function parseImportedTheme(text: string): ParsedImport {
  */
 function themeImportIntent(): string {
   return (
-    "取り込みの画面で、owner が貼り付けた25スロットの提案をプレビューで確認して適用した。" +
+    // 【V20-M9 で偽になった】旧(逐語): "取り込みの画面で、owner が貼り付けた25スロットの提案をプレビューで確認して適用した。" +
+    "取り込みの画面で、owner が貼り付けたテーマの提案をプレビューで確認して適用した。" +
     "この文はブラウザが自動で組み立てた定型文であり、人間が書いた意図ではない。" +
     "どの資産のどこから取った値かは、この差分には残らない。"
   );
@@ -312,7 +319,7 @@ export function ThemeImportPanel({
         className={cn("theme-import-preface", "m-0 text-note text-muted-foreground")}
         data-testid="theme-import-preface"
       >
-        取り込み提案(25スロットの JSON)を貼り付けて、プレビューで当たった姿を見てから適用します。
+        取り込み提案(テーマの JSON)を貼り付けて、プレビューで当たった姿を見てから適用します。
         資産(ブランドガイドやスクリーンショット)を読むのは、この製品ではなく会話相手の AI か
         あなた自身です —— SmAIltalk が外部のファイルや URL を取りに行くことはありません。
         なお、この画面は AI の書き込み経路を塞いでいません。AI は apply_diff の set_theme で
@@ -330,7 +337,7 @@ export function ThemeImportPanel({
        * 形になり、`image` 型を抽出の入力にしないという線と紛れる。貼るのは文字だけである。
        */}
       <div className={cn("theme-import-field", "flex flex-col gap-s1")}>
-        <Label htmlFor="theme-import-json">取り込み提案(25スロットの JSON)</Label>
+        <Label htmlFor="theme-import-json">取り込み提案(テーマの JSON)</Label>
         <Textarea
           id="theme-import-json"
           data-testid="theme-import-json"

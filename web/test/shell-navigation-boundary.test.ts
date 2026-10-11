@@ -2503,8 +2503,189 @@ const OWNER_SCOPE_BASELINE = {
   // **【禁止】本葉を「塞いだ」「安全になった」と書かない** —— **本葉が直したのは文言だけで
   // あり、利用者にできることは1ビットも変わっていない。**
   // =====================================================================================
-  sha256: "b72b129346822ad1856d807d9184274f8170ddba7b11bb3c5e2b2980f1a7c297",
-  bytes: 421618,
+  // -------------------------------------------------------------------------------------
+  // **【2026-09-27。`V21-M2` / `ADR-0483` 授権の表 行32。】**
+  // **【旧の値。逐語で残す】** **`sha256: "b72b129346822ad1856d807d9184274f8170ddba7b11bb3c5e2b2980f1a7c297"`
+  // / `bytes: 421618`。**
+  // **【なぜ動いたか】** `V21-M2` が `owner-scope.ts` に未ログインの表ごとの読取の判定
+  // (`ADR-0482` §1-1〜§1-2b・§1-5)を足した。 **`exports` は 96 → 99**(下の3名。減った名前・
+  // 改名は0)。 `grep -cE '^export (const|function|type) ' src/server/owner-scope.ts` が **99**。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // =====================================================================================
+  // -------------------------------------------------------------------------------------
+  // **【2026-09-27。`V21-M2B` / `ADR-0483` 授権の表 行32。】**
+  // **【旧の値。逐語で残す】** **`sha256: "8444ea6ae250abdec07a7e57e522243cde277f3ec227c2ef3ca55eea0bc0c5ba"`
+  // / `bytes: 431739`。**
+  // **【なぜ動いたか】** `V21-M2B` が `owner-scope.ts` に未ログインにだけ隠す項目の集合 H(T) の判定
+  // (`ADR-0482` の `AN-G2` §2-3 / §2-4)を1本足した。 **`exports` は 99 → 100**(下の1名。減った名前・
+  // 改名は0)。 写しを作る射影は `src/server/anonymous-hidden-fields.ts`(新しいファイル)に置いた。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // =====================================================================================
+  // -------------------------------------------------------------------------------------
+  // **【2026-09-28。`V22-M3-T02` / `ADR-0491` 行47(`ADR-0489` 行47 を置き換えた授権)。】**
+  // **【旧の値。逐語で残す】** **`sha256: "8ec81a937b26068129467d51efde433548fd0b714c881aa9c2c1da64d83239c6"`
+  // / `bytes: 434821`。**
+  // **【なぜ動いたか】** `V22-M3-T02` が `owner-scope.ts` の末尾に、マイページの「自分」の条件の表の判定
+  // (`ADR-0490` §Decision 1 の行1 / `ADR-0492` §Decision 1 の行1)を追記した。 **追記だけで、既存の行は
+  // 1バイトも書き換えていない**(`ADR-0492` 式13'' が `True`)。 **`exports` は 100 → 101**(下の1名。減った名前・
+  // 改名は0)。 非 export の補助関数が1本増えた(`collectSelfConditionFields`)。
+  // `grep -cE '^export (const|function|type) ' src/server/owner-scope.ts` が **101**(着手前 **100**)。
+  // **先に赤を見た**: (c) の2本が `Expected: 434821 / Received: 438599` と、export の集合の `+ "myPageSelfConditionFields"` で
+  // 赤くなった。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない。`sha256` は赤に出ない)。
+  // =====================================================================================
+  // -------------------------------------------------------------------------------------
+  // **【2026-09-29。`V23-M1-T06` / `ADR-0510` 授権の表 行7(`ADR-0497` 限定8・限定10)。】**
+  // **【旧の値。逐語で残す】** **`sha256: "4972c966c28350250af74714c7c462a41fce0edbb3a8b1379880ea019671f3f2"`
+  // / `bytes: 438599`。**
+  // **【なぜ動いたか】** `V23-M1-T06` が `judgeGrantWrite` の名簿の書込の断り(`membership_locked`)に、本人の
+  // 名前の列だけの更新を通す例外を1つ足し、非 export の補助関数 `isOwnNameOnlyUpdate` を1本足した。
+  // **`exports` は 101 のまま**(増えた名前・減った名前・改名は0)。
+  // **先に赤を見た**: (c) の1本が `Expected: 438599 / Received: 441320` で赤くなった(export の集合の1本は緑)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // =====================================================================================
+  // -------------------------------------------------------------------------------------
+  // **【2026-09-29。`V23-M1-T07` / `ADR-0510` 授権の表 行7(`ADR-0497` 限定9・限定10)。】**
+  // **【旧の値。逐語で残す】** **`sha256: "8797fccd38289cfaa912ee78b6ba3514ec4a469848294369cbbd683ce7614632"`
+  // / `bytes: 441320`。**
+  // **【なぜ動いたか】** `V23-M1-T07` が行の最後の管理者の判定を足した: 判定値 `last_row_admin`、
+  // export 1名 `lastRowAdminVanishes`(下)、非 export の補助関数 `rowHasAdmin`、`judgeGrantWrite` と
+  // `resolveRecordWithoutGrants` の省略できる引数 `userExists`。 **`exports` は 101 → 102**(減った名前・
+  // 改名は0)。 **先に赤を見た**: (c) の2本(バイト数と、export の集合の `+ "lastRowAdminVanishes"`)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // =====================================================================================
+  // **【2026-09-29。`V23-M1-T07` の2回目(`D-V23-37` / `ADR-0513`)/ `ADR-0510` 授権の表 行7。旧の値を逐語で残す】**
+  // **`sha256: "3ebdee4d148366ea13bb6a22dd5aa195ae203bd374c8d3be7c6ccc4e6170ee7c"` / `bytes: 455191`。**
+  // 最後の管理者の判定も引き継ぎ元をたどる形にし、非 export の補助関数 `stepManaged` を足した。 **`exports` は 102 のまま。**
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た。**
+  // =====================================================================================
+  // **【2026-09-30。`V23-M4-T05` / `ADR-0525` 授権の表 行15・行16。旧の値を逐語で残す】**
+  // **`sha256: "21b7dfc58a09ba133dc014016740f08632e726b5a6e450a7c6ebe237e174e707"` / `bytes: 457641`。**
+  // **【なぜ動いたか】** 予約規約フィールドの5本目 `st_updated_by` の定数 `UPDATED_BY_FIELD` と述語
+  // `stampedUpdatedByField` を足し、`ANON_RESERVED_FIELDS`(4 → 5)と `INBOUND_STRIPPED_RESERVED_FIELDS`
+  // (3 → 4)に入れた。 **`exports` は 102 → 104**(減った名前・改名は0。`ADR-0524` 式4 の範囲)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-09-30。`V23-M4-T05` の差し戻し(`D-V23-110`)/ `ADR-0525` 授権の表 行15。旧の値を逐語で残す】**
+  // **`sha256: "76326ebc50e15c626ba20e8d39e77e82277734d82c210724aa8129ad6b84d838"` / `bytes: 460711`。**
+  // `INBOUND_STRIPPED_RESERVED_FIELDS` から `st_updated_by` を外して3本に戻し、注記を直した。 **`exports` は 104 のまま。**
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た。**
+  // **【2026-09-30。`V23-M4-T10`(独立点検の中1・軽3)/ `ADR-0525` 授権の表 行15。旧の値を逐語で残す】**
+  // **`sha256: "8f1c468de692bf90bb46431d381619207dd57b9f4ab13ee100913c89c652dc17"` / `bytes: 460667`。**
+  // `anonymousHiddenFieldIds` が押す対象の `st_updated_by` を未ログインに隠す項目に入れた(`ADR-0531` 2)。 古い本数の
+  // 注釈2か所と、`UPDATED_BY_FIELD` の上の「絞り込み・並べ替えは ID のまま」に訂正の注釈を足した。 **`exports` は 104 のまま。**
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た。**
+  // **【2026-09-30。`V23-M5-T03` / `ADR-0533` 授権の表 行37・行38・行39。旧の値を逐語で残す】**
+  // **`sha256: "878311accd546be32d0bd8901d74392b319212c4020c31dbce8c33992d304c64"` / `bytes: 462594`。**
+  // **【なぜ動いたか】** 行の招待の宣言と「出せるか・一覧と取消ができるか」を返す `rowInvitationAccess` を末尾に足した
+  // (`app.ts` に `access_control` の綴りを書かないため、宣言を読む述語をここに置いた。`D-V23-134` (1))。
+  // 名前の解決は既存の `resolveGrantedPermissionNames` を呼ぶだけで、既存の関数の本文は1バイトも変えていない。
+  // **`exports` は 104 → 105**(`Invitation` を含む1名。`ADR-0532` 式5 の範囲)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-09-30。`V23-M5-T04` / `ADR-0533` 授権の表 行37・行38・行39。旧の値を逐語で残す】**
+  // **`sha256: "e7ab2f70e1036193ebee3a896cea861977c8de119b5104e5f82a590cdba5122e"` / `bytes: 468329`。**
+  // **【なぜ動いたか】** 行の招待の承諾の判定 `judgeRowInvitationAccept` を末尾に足し(招待者を主体に、付与表への
+  // 作成と同じ関門を順に通す。`ADR-0532` §Decision 1-3)、`judgeGrantWrite` に省略できる引数
+  // `authorityPermissions`(「作成者か」の関門で照らす名前)を足した。 渡さなければ旧の式と同じ値。
+  // **`exports` は 105 → 106**(`Invitation` を含む2名目。`ADR-0532` 式5 の範囲)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-09-30。`V23-M5-T04b` / `ADR-0533` 授権の表 行37・行38。旧の値を逐語で残す】**
+  // **`sha256: "08bf42368e3546ae3e3d4c3421966f9356bd9b7f553ce15a9de586627d08112c"` / `bytes: 477868`。**
+  // **【なぜ動いたか】** 承諾で名簿のグループ欄を書き換える(`ADR-0532` §Decision 1-5)ため、
+  // `lastRowAdminVanishes` に省略できる入力 `membersAfter`(名簿の書いた後の姿)を足し、数える非 export の
+  // 補助 `rosterChangeVanishesAdmin` を足した。 渡さなければ旧の式と同じ値。 `judgeRowInvitationAccept` の
+  // 戻り値に書く値(`group`)を足した。 **`exports` は 106 のまま**(増えた名前・減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-09-30。`V23-M5-T05` / `ADR-0533` 授権の表 行37・行38。旧の値を逐語で残す】**
+  // **`sha256: "dd4da6d1bdd91401f5159f6b68b3ad507e277bd591fd558301f9131a709286a6"` / `bytes: 486526`。**
+  // **【なぜ動いたか】** 自分宛ての招待の一覧が「役割が合わない招待は返さない」(`D-V23-126`)を見るため、
+  // `rowInvitationAccess` に省略できる入力 `inviteeRoles` と戻り値 `targetMatches` を足した(合わせ方は承諾の
+  // 判定と同じ)。 渡さなければ旧と同じ値。 **`exports` は 106 のまま**(増えた名前・減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-09-30。`V23-M5-T11` の独立点検の処置 / `ADR-0533` 授権の表 行37・行38。旧の値を逐語で残す】**
+  // **`sha256: "a5e33128fd0447abe4c9dfc70244f8e173975a5c7ca76199fb3b805d9c180f3b"` / `bytes: 487778`。**
+  // **【なぜ動いたか】** 承諾で書くグループを招待者自身の名簿のグループに限る断り(`group_not_inviters`。
+  // `ADR-0537` §1)を `judgeRowInvitationAccept` に足し、自分宛ての一覧の `changes_group`(§2)のため
+  // `rowInvitationAccess` に省略できる入力 `inviteeGroup` と戻り値 `changesGroup` を足した。 2つが通る式は
+  // 非 export の補助 `rowInvitationGroupTarget` 1本。 **`exports` は 106 のまま**(増えた名前・減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6-T03` / 授権 `ADR-0539` 行26・行27。旧の値を逐語で残す】**
+  // **`sha256: "0ad3e89d3d371e869ba5122846d42ba3d485b7e5ccc71d0febeb7ec7243f5db8"` / `bytes: 492543`。**
+  // **【なぜ動いたか】** 行を相手にした付与(`grant.principal_row`)の読み替えを判定の家に1本置き(非 export の
+  // `principalRowGrantRows` と補助3本)、読取の核・出どころ・`creatable_by` の照合・付与の書込の 404 と 403 の
+  // 読み分け・親の読取の検査で使い、付与表・名簿・グループ表の見える範囲には読み替えを切った読む手を渡した。
+  // 出どころの1件に省略できる `principal` を足した。 **`exports` は 106 のまま**(増えた名前・減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6-T04` / 授権 `ADR-0539` 行26・行27・行28。旧の値を逐語で残す】**
+  // **`sha256: "4aecd2ab759cd7a75edf766404be9433b3f7fa7516712e50a0eb1b790884c93d"` / `bytes: 503796`。**
+  // **【なぜ動いたか】** 相手の行を指す欄を招待の承諾の外で書かせない述語 `principalRowWriteRefused` を1本置いて
+  // export し(全ての書込の経路が呼ぶ)、`judgeGrantWrite` に判定値 `principal_row_locked`・省略できる入力
+  // `principalRowAccepted`・相手の欄だけの行の関門 (3)(4) と、親の読取の検査を S に `via` を持つ人に落とす分岐を
+  // 足した。 **`exports` は 106 → 107**(足した名前は `principalRowWriteRefused` の1名。減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6-T04b` / 授権 `ADR-0539` 行26・行27・行28。旧の値を逐語で残す】**
+  // **`sha256: "7c631c3cc18556e07228754b9acfdbacd40c28f04df5d71c3811d65a01f5749d"` / `bytes: 511331`。**
+  // **【なぜ動いたか】** 付与表の行ごとに相手の行の代表項目だけを返す `principalRowLabels` を1本置いて export した
+  // (HTTP の一覧と1行・MCP の `list_records` が呼ぶ。代表項目の読み方は呼ぶ側から受け取る)。
+  // **`exports` は 107 → 108**(足した名前は `principalRowLabels` の1名。減った名前・改名は0。`ADR-0538` 限定3 の2名を使い切った)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行26・行27。旧の値を逐語で残す】**
+  // **`sha256: "8c0d6d467b60d8ff1f17b81ff3f9ef78a80e31c26d93ad162522305654e8a163"` / `bytes: 515186`。**
+  // **【なぜ動いたか】** `rowInvitationAccess` に省略できる入力 `inviteCode` と返り値 `codeAdmin` を足し、行の招待用コードを
+  // 見られるか(その行に `creator_permission` を直接かグループ経由で持つ人と運営。親は辿らない。S 経由は数えない)を
+  // 非公開の補助 `rowInviteCodeAccess` で答える。 **`exports` は 108 のまま**(増えた名前・減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6-T06` / 授権 `ADR-0539` 行26・行27。旧の値を逐語で残す】**
+  // **`sha256: "48b9b8e3c8454bef5de7357b839072a2a9f69636eab07cdeb0328091a2b4cea8"` / `bytes: 518889`。**
+  // **【なぜ動いたか】** コードの招待(`ADR-0538` §Decision 1-6)。 `rowInvitationAccess` に省略できる入力 `principalRow` と
+  // 返り値 `principalRowTable`・`principalRowMatches`・`principalRowHolds`・`principalRowAdmin` を、`judgeRowInvitationAccept` に
+  // 省略できる入力 `principalRow` と断りの理由2つを足した。 `creator_permission` を持つかの式を非公開の補助
+  // `holdsRowCreatorPermission` へ移し、非公開の補助 `rowCodeInvitationTarget` を足した。 **`exports` は 108 のまま**
+  // (増えた名前・減った名前・改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6-T06` の追記(決定 `D-V23-176`)/ 授権 `ADR-0539` 行26・行27。旧の値を逐語で残す】**
+  // **`sha256: "c7846cec9c008ebcac15e69b5178ad67f6dd64640e48fb9627a0c51bb43e48e0"` / `bytes: 526839`。**
+  // **【なぜ動いたか】** 同じ R と同じ S を指す付与の行が既に在れば、コードの招待を保存せず承諾も断る。
+  // `judgeRowInvitationAccept` に断りの理由 `principal_granted`、`rowInvitationAccess` の `principalRow` に省略できる入力
+  // `targetRecordId` と返り値 `principalRowGranted`、非公開の補助 `principalRowGrantExists` を足した。 **`exports` は 108 のまま**
+  // (増えた名前・減った名前・改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M6` の独立点検の処置(決定 `D-V23-177`)/ 授権 `ADR-0539` 行26・行27。旧の値を逐語で残す】**
+  // **`sha256: "4c6b2ac8ad9ad50063fc717c11d7f741a32bd6d4dbccd92392c9d5e509d1cbb9"` / `bytes: 529655`。**
+  // **【なぜ動いたか】** 相手の行の覚えの鍵に `via` を入れた(重1)。 `principalRowWriteRefused` が、前の行の相手の欄に
+  // 値があるときの守る行・利用者・グループの付け替えも断るようにし、非公開の補助 `principalRowRelinkFieldsOfGrantTable`
+  // を足した(重2)。 `principalRowLabels` が空文字を null にする(軽1)。 **`exports` は 108 のまま**
+  // (増えた名前・減った名前・改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M7-T03`(門A `ADR-0503`・`ADR-0542` §1-2)/ 授権 `ADR-0543` 行15・行16。旧の値を逐語で残す】**
+  // **`sha256: "b9c30f966c0022b3abb11f910c6d9a98efaf509d8af47546cd1f5481460a46c2"` / `bytes: 532458`。**
+  // **【なぜ動いたか】** 親の関門 `judgeCreateParentAccess` を、作成で親に書けないときだけ `create_child` で通す形に広げた。
+  // `resolveRecordAccess` に省略できる入力 `onStages`、`grantedPermissionNamesForCreate` に省略できる入力 `stageZeroOnly`、
+  // `resolveParentRowWriteAccess` の書けないときの返り値に親の行と読める・上限の書込の3つ、非公開の補助
+  // `createChildParentAllows` を足した。 **`exports` は 108 のまま**(増えた名前・減った名前・改名は0)。
+  // **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-01。`V23-M7-T05b`(門A `ADR-0542` §Decision 4-5)/ 授権 `ADR-0543` 行15・行16。旧の値を逐語で残す】**
+  // **`sha256: "e7e80a7fd5c52efe22de63f7f161cf0de3b11a44b59b88ed61eff2ecda03602e"` / `bytes: 539490`。**
+  // **【なぜ動いたか】** 行ごとの判定の5つ目のキー `create_child` を足した。 `rowGrantWriteJudge` の本体を非公開の
+  // `rowGrantWriteOnly` へ移し、宣言があるときだけ返り値に `createChild` を生やす。 (h8) の関門の呼び出しを非公開の
+  // `createParentDisplayAllows` へ移し(呼び出しは11のまま)、非公開の `createChildDisplayJudge` と型 `RowGrantWriteJudgeWithChild`、
+  // `RecordRowAccess` の任意のキー `create_child`、`recordRowAccessMap` の5つ目を足した。 **`exports` は 108 のまま**
+  // (増えた名前・減った名前・改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-04。`V23-M12-T02b`(門A `ADR-0571` §Decision 1-2・決定 `D-V23-365`)/ 授権 `ADR-0572` §2-1 の4。旧の値を逐語で残す】**
+  // **`sha256: "09cb9b92e67571b6d9052dde916b0e344bb3451e97da9d76e43312505573a5f7"` / `bytes: 545949`。**
+  // **【なぜ動いたか】** `judgeGrantWrite` の関門 (1)(どの行への付与かが決まらない)で、削除かつ実効ロールに運営ロールが
+  // あるときだけ `allowed` を返す分岐を1つ足した(判定の種類は増やしていない)。 **`exports` は動いていない**
+  // (増えた名前・減った名前・改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-04。`V23-M12-T04`(門A `ADR-0571` §Decision 1-4・決定 `D-V23-357`・`D-V23-367`・`D-V23-409`)/ 授権 `ADR-0572` §2-1 の4・
+  // `ADR-0575` §3-3 の9。旧の値を逐語で残す】**
+  // **`sha256: "87e0737e51561ccb913451cfdd72e7dda5a2ca19340e4acf2f0c2c30b9bae82c"` / `bytes: 546411`。**
+  // **【なぜ動いたか】** 変更履歴の招待の件で、結んだ相手の行の名前を見せてよいかを答える `principalNameVisibleInHistory` を
+  // 1本足した(既存の合成判定を2回呼ぶだけ。点の判定の直接の呼び出しは増やしていない)。 **`exports` は 108 → 109**(増えた名前は
+  // この1名。減った名前・改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  // **【2026-10-04。`V23-M12-T05`(門A `ADR-0571` §Decision 1-5・`ADR-0575` §Decision 1 の3・決定 `D-V23-407`・
+  // `D-V23-413` (2))/ 授権 `ADR-0572` §2-1 の4。旧の値を逐語で残す】**
+  // **`sha256: "25fa8d7fdadde0cfe384a1f41e54c986d076ed2fa5955d678e0eba55785942a7"` / `bytes: 549232`。**
+  // **【なぜ動いたか】** 判定の答え `not_creator` に断りの文を組む操作と管理の権限の宣言の名前(非公開の型
+  // `NotCreatorDetail` との交わり)、`membership_locked` に名前の欄の印 `ownNameColumn` を持たせ、非公開の補助
+  // `ownNameColumnDeclared` を足した(判定の種類は増やしていない)。 **`exports` は 109 のまま**(増えた名前・減った名前・
+  // 改名は0)。 **値は `wc -c` と `shasum -a 256` を自分で打って得た**(赤の `Received` から写していない)。
+  sha256: "b77f1ebad688cf3ba595fc408422670eddee83dab0f086a88097d173b143184f",
+  bytes: 551846,
   /** 同ファイルが公開している名前の全量(**増えても減っても改名しても赤くなる**)。 */
   exports: [
     // 【`V8-M20` / `J-G30` で**減った**1名。旧の並びをコメントで残す】
@@ -2825,6 +3006,45 @@ const OWNER_SCOPE_BASELINE = {
     // **【`V18-M7-T01`(`ADR-0444` 授権の表 行12)が足した **1名**。95 → 96】**
     // **子を数え、消せるかを問う純関数。理由と限界は直上の注記が逐語で持っている。**
     "resolveRecordDeleteCascade",
+    // **【`V21-M2`(`ADR-0483` 授権の表 行32)が足した **3名**。96 → 99】**
+    // **未ログインの表ごとの読取(`ADR-0482` の `AN-G1`)の判定の家。** 関門(`app.ts`)が呼ぶ
+    // 述語1本と、保護を外す op の拒否(`ADR-0482` §1-2b)でカーネル(`apply-diff.ts`)が呼ぶ
+    // 判定1本とその戻り値の型1本。
+    "anonymousTableReadable",
+    "AnonymousReadDiffViolation",
+    "anonymousReadDiffViolations",
+    // **【`V21-M2B`(`ADR-0483` 授権の表 行32)が足した **1名**。99 → 100】**
+    // **未ログインにだけ隠す項目の集合 H(T)(`ADR-0482` の `AN-G2`)の判定の家。** 一覧・単件・
+    // 画像の配信・`GET /public` の写し(`anonymous-hidden-fields.ts`)と合計の検査(`app.ts`)が呼ぶ。
+    "anonymousHiddenFieldIds",
+    // **【`V22-M3-T02`(`ADR-0491` 授権の表 行47)が足した **1名**。100 → 101】**
+    // **マイページの「自分の記録」の (ii)(読取の条件に「自分」がある表)の列名を返す判定。** `src/shared/my-page.ts` の
+    // `myPageTables` が呼ぶ。 **`not` の下の「自分」は数えない**(`ADR-0492`)。
+    "myPageSelfConditionFields",
+    // **【`V23-M1-T07`(`ADR-0510` 授権の表 行7。`ADR-0497` 限定10)が足した **1名**。101 → 102】**
+    // **行の最後の管理者の判定の家。** 人の操作(`judgeGrantWrite` の中)・自動処理と時刻起動
+    // (`workflow-runner.ts`)・AI の書き戻し(`ai-dispatcher.ts`)・親の行を消す連鎖(`app.ts` と
+    // AI の `delete_record`)が同じ1本を呼ぶ。
+    "lastRowAdminVanishes",
+    // **【`V23-M4-T05`(`ADR-0525` 授権の表 行16。`ADR-0524` 限定4)が足した **2名**。102 → 104】**
+    // **予約規約フィールドの5本目 `st_updated_by`(更新者)の定数と、「更新者を押す表か」の述語**
+    // (型が text で必須でない)。 表示名への差し替え(`app.ts`)とフォームの入力欄(`FormRenderer.tsx`)が呼ぶ。
+    "UPDATED_BY_FIELD",
+    "stampedUpdatedByField",
+    // **【`V23-M5-T03`(`ADR-0533` 授権の表 行39。`ADR-0532` 限定3)が足した **1名**。104 → 105】**
+    // **行の招待の宣言と、その行について出せるか・一覧と取消ができるか**(招待の口4本が呼ぶ。`app.ts`)。
+    "judgeRowInvitationAccept",
+    "rowInvitationAccess",
+    // **【`V23-M6-T04`(`ADR-0539` 授権の表 行28。`ADR-0538` 限定3)が足した **1名**。106 → 107】**
+    // **相手の行を指す欄を招待の承諾の外で書かせない述語**(画面と HTTP は `judgeGrantWrite` の中、MCP・受信口・
+    // 自動処理・島・AI の書き戻しが同じ1本を呼ぶ)。
+    "principalRowWriteRefused",
+    // **【`V23-M6-T04b`(`ADR-0539` 授権の表 行28。`ADR-0538` 限定3)が足した **1名**。107 → 108】**
+    // **付与表の行ごとの相手の名前**(相手の行の代表項目だけ。HTTP の一覧と1行・MCP の `list_records` が呼ぶ)。
+    "principalRowLabels",
+    // **【`V23-M12-T04`(`ADR-0575` §3-3 の9。`D-V23-409`)が足した **1名**。108 → 109】**
+    // **変更履歴の招待の件で、結んだ相手の行の名前を見せてよいか**(HTTP の単件の履歴だけが呼ぶ。AI の口は呼ばない)。
+    "principalNameVisibleInHistory",
   ],
 };
 

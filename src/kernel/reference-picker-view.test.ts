@@ -77,7 +77,13 @@ test("限定1: $defs/view.properties は 29 で、29キー目が reference_picke
   // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
   // 書け、集計表(`report_view`)には書けない**)。
   // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-  expect(properties).toHaveLength(31);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(31);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(32);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行68】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(properties).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+  expect(properties).toHaveLength(35);
   // **【2026-08-14。`V8-M8`。台帳 `Q-G1`】末尾は今日 `report`(29キー目)である。**
   // **旧行の逐語**: `expect(properties.at(-1)).toBe(VIEW_KEY);`
   // **`reference_pickers` が末尾から2つ目であることを、位置で今日も固定している** ——
@@ -90,13 +96,23 @@ test("限定1: $defs/view.properties は 29 で、29キー目が reference_picke
   // **末尾に `flow`(一続きの流れの中の段)が31キー目として入ったので、
   // 位置の添字を1つ後ろへずらした。****旧行の逐語**: `expect(properties.at(-3)).toBe(VIEW_KEY);`
   // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
-  expect(properties.at(-4)).toBe(VIEW_KEY);
-  expect(properties.at(-3)).toBe("report");
-  expect(properties.at(-2)).toBe("after_delete");
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】末尾に入力欄の幅 `field_width` が入ったので、
+  // 位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-4)).toBe(VIEW_KEY);`
+  // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by` が末尾に入ったので、位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-5)).toBe(VIEW_KEY);`
+  expect(properties.at(-8)).toBe(VIEW_KEY);
+  expect(properties.at(-7)).toBe("report");
+  expect(properties.at(-6)).toBe("after_delete");
   // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359` / `0360`】末尾は今日 `flow` である。**
   // **`after_delete` はもう末尾ではない** —— **上の行の添字を1つ後ろへずらし、
   // 末尾の位置をここで新しく固定した。****位置の主張を1つも緩めていない。**
-  expect(properties.at(-1)).toBe("flow");
+  expect(properties.at(-5)).toBe("flow");
+  expect(properties.at(-4)).toBe("field_width");
+  expect(properties.at(-3)).toBe("group_by");
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】末尾に並べ方の木 `layout` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値を1つも緩めていない**(旧の添字は1つ手前)。
+  expect(properties.at(-2)).toBe("layout");
+  // **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行173〜行179(撃(隠れ))/ 決定 `D-V23-205`】末尾に変更履歴の `history` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値(名前)を1つも緩めていない**(旧の添字は1つ手前。旧の末尾は `expect(properties.at(-1)).toBe("layout");`)。 新しい並びはスキーマを python で読んで確かめた。
+  expect(properties.at(-1)).toBe("history");
   expect(properties.filter((key) => key === VIEW_KEY)).toHaveLength(1);
 });
 
@@ -124,7 +140,8 @@ test("限定1: $defs は 29(増やしたのは V8-M18 の1本だけ)/ view.allOf
   // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
   // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
   // **検査は消していない。**
-  expect(Object.keys(manifest.$defs)).toHaveLength(30);
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+  expect(Object.keys(manifest.$defs)).toHaveLength(31);
   expect(Object.keys(manifest.$defs)).toContain("role_condition");
   // **【2026-08-14。`V8-M8`。台帳 `Q-G1`。門A 本審査 = `V8-M7`】期待値を 4 → 5 へ書き換えた。**
   // **旧行の逐語**: `expect(manifest.$defs.view.allOf).toHaveLength(4);`
@@ -139,7 +156,8 @@ test("限定1: $defs は 29(増やしたのは V8-M18 の1本だけ)/ view.allOf
   // アクセス権管理を使うことと、付与・グループ・メンバーの置き場所の宣言)が門A を通って
   // 増えた(`V7-M0`。判定 = 限定採用)。**`$defs` の本数28 は動いていない**(値域はインライン)。
   // **本 ADR の増分ではない。**
-  expect(Object.keys(manifest.$defs.table.properties)).toHaveLength(6);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行69】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(manifest.$defs.table.properties)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(Object.keys(manifest.$defs.table.properties)).toHaveLength(7);
   // **【`V6-M3-T02` / `K-G7` / `ADR-0290` 限定1 で 13 → 14 に更新した】** 14キー目
   // `reference_search_fields`(参照候補の「探せる項目」の、項目ごとの上書き)が門A を通って
   // 増えた(`V6-M0` 単位B。判定 = 限定採用)。**`reference` 型にだけ書けるキーである。**
@@ -148,7 +166,9 @@ test("限定1: $defs は 29(増やしたのは V8-M18 の1本だけ)/ view.allOf
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(Object.keys(manifest.$defs.field.properties)).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行22 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(Object.keys(manifest.$defs.field.properties)).toHaveLength(13);
 });
 
 test("限定1: 専用の差分操作もフィールド型もリソース種も作っていない", () => {
@@ -162,7 +182,9 @@ test("限定1: 専用の差分操作もフィールド型もリソース種も�
   // **旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);`
   // **`set_user_kinds` を撤去したので 18 → 17。**この検査が測る「参照項目の選び方に専用の op /
   // フィールド型 / リソース種を作っていないこと」は1ミリも弱めていない(下の3行が今日も測る)。
-  expect(DIFF_OPS).toHaveLength(17);
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18(別の決定)。
+  // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行18)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+  expect(DIFF_OPS).toHaveLength(19);
   expect(FIELD_TYPES).toHaveLength(9);
   // **【2026-08-14。`V8-M8`。台帳 `Q-G1`。門A 本審査 = `V8-M7`】期待値を 7 → 8 へ書き換えた。**
   // **旧行の逐語**: `expect(RESOURCE_KINDS).toHaveLength(7);`
@@ -308,7 +330,13 @@ test("(iii) view_changes.properties は 24 で、24キー目が reference_picker
   // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
   // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
   // **検査は消していない。**
-  expect(properties).toHaveLength(27);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(27);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(28);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行70】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(properties).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+  expect(properties).toHaveLength(31);
   // **【2026-08-14。`V8-M8`。台帳 `Q-G1`】末尾は今日 `report`(25キー目)である。**
   // **旧行の逐語**: `expect(properties.at(-1)).toBe(VIEW_KEY);`
   // **【2026-08-20。`V10-M1-T02` / `ADR-0359` §Decision 2】末尾は今日 `after_delete`
@@ -318,13 +346,23 @@ test("(iii) view_changes.properties は 24 で、24キー目が reference_picker
   // **末尾に `flow`(一続きの流れの中の段)が31キー目として入ったので、
   // 位置の添字を1つ後ろへずらした。****旧行の逐語**: `expect(properties.at(-3)).toBe(VIEW_KEY);`
   // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
-  expect(properties.at(-4)).toBe(VIEW_KEY);
-  expect(properties.at(-3)).toBe("report");
-  expect(properties.at(-2)).toBe("after_delete");
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】末尾に入力欄の幅 `field_width` が入ったので、
+  // 位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-4)).toBe(VIEW_KEY);`
+  // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by` が末尾に入ったので、位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-5)).toBe(VIEW_KEY);`
+  expect(properties.at(-8)).toBe(VIEW_KEY);
+  expect(properties.at(-7)).toBe("report");
+  expect(properties.at(-6)).toBe("after_delete");
   // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359` / `0360`】末尾は今日 `flow` である。**
   // **`after_delete` はもう末尾ではない** —— **上の行の添字を1つ後ろへずらし、
   // 末尾の位置をここで新しく固定した。****位置の主張を1つも緩めていない。**
-  expect(properties.at(-1)).toBe("flow");
+  expect(properties.at(-5)).toBe("flow");
+  expect(properties.at(-4)).toBe("field_width");
+  expect(properties.at(-3)).toBe("group_by");
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】末尾に並べ方の木 `layout` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値を1つも緩めていない**(旧の添字は1つ手前)。
+  expect(properties.at(-2)).toBe("layout");
+  // **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行180〜行186(撃(隠れ))/ 決定 `D-V23-205`】末尾に変更履歴の `history` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値(名前)を1つも緩めていない**(旧の添字は1つ手前。旧の末尾は `expect(properties.at(-1)).toBe("layout");`)。 新しい並びはスキーマを python で読んで確かめた。
+  expect(properties.at(-1)).toBe("history");
   expect((viewChanges.properties[VIEW_KEY] as Any).$ref).toBe(
     "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/reference_pickers",
   );

@@ -357,7 +357,8 @@ describe("V3-M9-T03 完了条件1: 1ホップを越える形が書けない(T01 
       "preset_text_preview",
       "custom_css",
       "menu_listed",
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **V4-M16-T13 / `P-G24` の (C) 側 / ADR-0093 限定2 が足した16キー目 `preset_list_shape`。**
       // **`update_view` で後から書けて、カーネルが値を実際に運ぶ**(`applyViewChanges` の
       // `list_view` 分岐。**`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは運ばれない**)。
@@ -446,6 +447,14 @@ describe("V3-M9-T03 完了条件1: 1ホップを越える形が書けない(T01 
       // **流れの名前と位置と段の種類の3つ**だけで、**参照を1ホップも辿らない。**
       // **`related` は今日も `view_changes` に無い。****主張は1ミリも緩んでいない。**
       "flow",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅 `field_width` を1行足した。** **旧の列挙はこの1行が無い形である。**
+      "field_width",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】29キー目 `group_by`(一覧の束ねるキー)が末尾に入った。** **これも「1ホップを越える形」ではない** —— **同じ一覧の表示列に在る項目を1つ名指すだけで、参照先の表の中身を1バイトも指さない。** **旧の列挙はこの1行が無い形である。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行51】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `layout` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
     expect(viewChanges.additionalProperties).toBe(false);
   });
@@ -832,7 +841,13 @@ describe("V3-M9-T03 完了条件4: `$defs/action_value` が今日と同一であ
   test("`target` / `values` / `payload` / `fallback` / `input` は今も `action_value` を共有している(式の抜け道を作っていない)", () => {
     const props = canonicalSchema("manifest.schema.json").$defs.workflow_action.properties;
     expect(props.target.$ref).toBe("#/$defs/action_value");
-    expect(props.values.additionalProperties.$ref).toBe("#/$defs/action_value");
+    /*
+     * **【`V23-M4-T02` / `SC-G13` / `ADR-0500` §Decision 5 / 授権 `ADR-0525` 行25】** `values` の器は
+     * `if/then/else` の形になり、`action_value` は `else` の側で指す(新しい5形は `then` の側だけ)。
+     * **旧の期待(逐語)**: `expect(props.values.additionalProperties.$ref).toBe("#/$defs/action_value");`。
+     * 新しい形はスキーマを検査の外の python で読んで確かめた。 他の4位置は今日どおり直接指す。
+     */
+    expect(props.values.additionalProperties.else.$ref).toBe("#/$defs/action_value");
     expect(props.payload.additionalProperties.$ref).toBe("#/$defs/action_value");
     expect(props.fallback.$ref).toBe("#/$defs/action_value");
     expect(props.input.additionalProperties.$ref).toBe("#/$defs/action_value");
@@ -938,12 +953,16 @@ describe("V3-M9-T03 完了条件5: 売り越しの破壊実験 —— D-G15 は�
     const runner = sourceText("src/kernel/workflow-runner.ts");
     expect(runner).toContain("**版(expectedVersion)は渡さない = LWW を維持する**");
     // 呼び出しの引数は5つ(第6引数 expectedVersion が無い)。
+    // **【2026-09-30。`V23-M4-T03` / 授権 `ADR-0527` 行4】旧の逐語を残す:**
+    // `"const result = updateRecord(db, manifest, action.table, target.value, values.value);"`
+    // 起点の操作者を末尾の引数で運ぶようになった(`D-V23-102`)。 **第6引数(版)は今日も `undefined`**。
     expect(runner).toContain(
-      "const result = updateRecord(db, manifest, action.table, target.value, values.value);",
+      "const result = updateRecord(\n    db,\n    manifest,\n    action.table,\n    target.value,\n    values.value,\n    undefined,\n    origin,\n  );",
     );
     // `write_back` の書き戻しも同じ(6引数目が無い)。
+    // **【同上。旧の逐語】** `"const result = updateRecord(db, manifest, targetTable, record._id, row);"`
     expect(runner).toContain(
-      "const result = updateRecord(db, manifest, targetTable, record._id, row);",
+      "const result = updateRecord(db, manifest, targetTable, record._id, row, undefined, origin);",
     );
     // ファイル全体で `expectedVersion` は**コメントに2回現れるだけ**で、引数として1度も渡らない。
     const occurrences = runner.match(/expectedVersion/g) ?? [];

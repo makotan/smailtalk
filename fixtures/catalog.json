@@ -36,6 +36,13 @@
       "description": "AI が実地で作ったマニフェストであり、3つのビューはいずれも name を持たない。整形 (インデント) 以外の改変をしてはならない"
     },
     {
+      "file": "valid/detail-action-emphasis.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "詳細画面のボタンの強調 (主・副・危険と、書かないボタン)",
+      "description": "詳細画面のボタンに action_emphasis を書いた見本。primary / secondary / danger の3値を1つずつと、書かないボタン1つを並べる。並び順の2番目を主にしている (並び順と主副は独立に選べる)。書かないボタンは副として描かれる。値の書換の形と遷移の形の両方に書けることを示す。"
+    },
+    {
       "file": "valid/diff-handover-sample.json",
       "kind": "diff",
       "expect": "valid",
@@ -190,7 +197,7 @@
       "kind": "manifest",
       "expect": "invalid",
       "name": "未知プロパティ: app.dark_mode",
-      "description": "theme は依然として語彙外である。変わったのは allowed_values に workflows が加わったことだけで、path もメッセージ断片も同じである。**workflows は required には入らない** (入れると既存マニフェストが全部 invalid になる) が、許可プロパティには入る。**期待は invalid のまま反転していない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない。****user_kinds を allowed_values から取り除いた。許可プロパティは 9 → 8 になった。****旧の allowed_values の逐語は id / name / tables / views / workflows / functions / theme / user_kinds / roles の9本である。****このファイルで allowed_values が減ったことで動くのは初めてである** —— 上の記述はすべて増えたことしか書いていない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない** —— **反転していないことがこの差し替えの要点である。",
+      "description": "theme は依然として語彙外である。変わったのは allowed_values に workflows が加わったことだけで、path もメッセージ断片も同じである。**workflows は required には入らない** (入れると既存マニフェストが全部 invalid になる) が、許可プロパティには入る。**期待は invalid のまま反転していない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない。****user_kinds を allowed_values から取り除いた。許可プロパティは 9 → 8 になった。****旧の allowed_values の逐語は id / name / tables / views / workflows / functions / theme / user_kinds / roles の9本である。****このファイルで allowed_values が減ったことで動くのは初めてである** —— 上の記述はすべて増えたことしか書いていない。**題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転していない** —— **反転していないことがこの差し替えの要点である。期待は invalid のまま反転しない。逐語)。題材 dark_mode は今日も語彙外のままであり、期待は invalid のまま反転しない。",
       "expected_errors": [
         {
           "path": "/app",
@@ -203,7 +210,9 @@
             "workflows",
             "functions",
             "theme",
-            "roles"
+            "roles",
+            "design_memory",
+            "workspace"
           ]
         }
       ]
@@ -297,7 +306,7 @@
       "kind": "diff",
       "expect": "invalid",
       "name": "語彙外: 未知の op",
-      "description": "patch_manifest を選んだのは、types.ts の DIFF_OPS の doc コメントと diff.schema.json の $defs/op_name の $comment が名指しで「足してはならない」と止めている3つ (copy_field / remove_app / patch_manifest) のうち、**他のテストが題材として使っていない唯一のもの**だからである (copy_field は ajv-error-adapter.test.ts が、remove_app は destructive-rejection.test.ts が既に使っている)。**3つの禁止 op がそれぞれ別の検査で見張られる形になり、1つが黙って語彙に入った場合に必ずどこかが赤くなる。**変わったのは allowed_values が9種から12種になったことだけで、path もメッセージ断片も同じである。題材 (patch_manifest) は依然として語彙外のまま変えていない。題材 (patch_manifest) は依然として語彙外のまま変えていない。****題材の差し替えは1度も要らなかった** —— 3つの禁止 op (copy_field / remove_app / patch_manifest) は今日も1つも語彙に入っていない。**set_user_kinds を allowed_values から取り除いた。差分操作は 18 → 17 になった。****旧の allowed_values の逐語は末尾が set_theme / set_user_kinds / set_roles の18本である。****この配列が減ったことで動くのは初めてである。****題材 (patch_manifest) は依然として語彙外のまま変えていない。",
+      "description": "patch_manifest を選んだのは、types.ts の DIFF_OPS の doc コメントと diff.schema.json の $defs/op_name の $comment が名指しで「足してはならない」と止めている3つ (copy_field / remove_app / patch_manifest) のうち、**他のテストが題材として使っていない唯一のもの**だからである (copy_field は ajv-error-adapter.test.ts が、remove_app は destructive-rejection.test.ts が既に使っている)。**3つの禁止 op がそれぞれ別の検査で見張られる形になり、1つが黙って語彙に入った場合に必ずどこかが赤くなる。**変わったのは allowed_values が9種から12種になったことだけで、path もメッセージ断片も同じである。題材 (patch_manifest) は依然として語彙外のまま変えていない。題材 (patch_manifest) は依然として語彙外のまま変えていない。****題材の差し替えは1度も要らなかった** —— 3つの禁止 op (copy_field / remove_app / patch_manifest) は今日も1つも語彙に入っていない。**set_user_kinds を allowed_values から取り除いた。差分操作は 18 → 17 になった。****旧の allowed_values の逐語は末尾が set_theme / set_user_kinds / set_roles の18本である。****この配列が減ったことで動くのは初めてである。****題材 (patch_manifest) は依然として語彙外のまま変えていない。patch_manifest は今日も語彙外である。逐語)。patch_manifest は今日も語彙外である。",
       "expected_errors": [
         {
           "path": "/operations/0/op",
@@ -319,7 +328,9 @@
             "update_function",
             "remove_function",
             "set_theme",
-            "set_roles"
+            "set_roles",
+            "remember_design",
+            "set_workspace"
           ]
         }
       ]
@@ -342,7 +353,7 @@
       "kind": "diff",
       "expect": "invalid",
       "name": "update_view で許可外プロパティを変更",
-      "description": "name は限定採用で受理側へ移ったので、例を description に差し替えてある。update_view にも19キー目 page_size (1ページに出す件数) が加わったので allowed_values の列挙に1本足した。update_view にも20キー目 preset_density (画面の詰まり具合) が加わったので allowed_values の列挙に1本足した。3種すべてに書けるキーである。本 ADR の増分ではない。2回目の審査。判定 = 限定採用)が update_view にも21キー目 after_save (保存が成立したあとに行く画面のID) を足したので allowed_values の列挙に1本足した。form 型のビューでだけ書けるキーである。本 ADR の増分ではない。4回目の審査。判定 = 限定採用)が update_view にも22キー目 sum_field (合計を出す列。list_view でだけ書ける) を足したので allowed_values の列挙に1本足した。update_view にも25キー目 report (集計表の中身。report_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも26キー目 after_delete (削除が成立したあとの行き先。detail_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも27キー目 flow (一続きの流れの中の段。list_view / form / detail_view の3種別で書け、report_view には書けない) が加わったので allowed_values の列挙に1本足した。",
+      "description": "name は限定採用で受理側へ移ったので、例を description に差し替えてある。update_view にも19キー目 page_size (1ページに出す件数) が加わったので allowed_values の列挙に1本足した。update_view にも20キー目 preset_density (画面の詰まり具合) が加わったので allowed_values の列挙に1本足した。3種すべてに書けるキーである。本 ADR の増分ではない。2回目の審査。判定 = 限定採用)が update_view にも21キー目 after_save (保存が成立したあとに行く画面のID) を足したので allowed_values の列挙に1本足した。form 型のビューでだけ書けるキーである。本 ADR の増分ではない。4回目の審査。判定 = 限定採用)が update_view にも22キー目 sum_field (合計を出す列。list_view でだけ書ける) を足したので allowed_values の列挙に1本足した。update_view にも25キー目 report (集計表の中身。report_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも26キー目 after_delete (削除が成立したあとの行き先。detail_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも27キー目 flow (一続きの流れの中の段。list_view / form / detail_view の3種別で書け、report_view には書けない) が加わったので allowed_values の列挙に1本足した。update_view にも28キー目 field_width (入力欄の幅。form でだけ書ける) が加わったので allowed_values の列挙に1本足した。update_view にも29キー目 group_by (一覧の束ねるキー。list_view でだけ書ける) が加わったので allowed_values の列挙に1本足した。画面の中の並べ方の木 layout が末尾に加わった (report_view 以外で書ける) ので allowed_values の列挙に1本足した。変更履歴の history が末尾に加わった (詳細画面だけで書ける。許される値の末尾に1つ増える)。旧の許される値は layout で終わっていた。",
       "expected_errors": [
         {
           "path": "/operations/0/changes",
@@ -362,7 +373,7 @@
             "preset_text_preview",
             "custom_css",
             "menu_listed",
-            "field_groups",
+            "field_sections",
             "preset_list_shape",
             "modal",
             "search_fields",
@@ -374,8 +385,353 @@
             "reference_pickers",
             "report",
             "after_delete",
-            "flow"
+            "flow",
+            "field_width",
+            "group_by",
+            "layout",
+            "history"
           ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/action-emphasis-out-of-range.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 詳細画面のボタンの強調の値",
+      "description": "action_emphasis に値域の外の \"loud\" を書いた。許されるのは primary / secondary / danger の3値だけである。エラーに位置・許される値・ヒントの3つが揃うことを期待に書く (ヒントの有無は src/kernel/detail-action-emphasis.test.ts が見る)。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/actions/0/action_emphasis",
+          "message_contains": "語彙にありません",
+          "allowed_values": [
+            "primary",
+            "secondary",
+            "danger"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "valid/form-detail-field-sections.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "項目のまとまり (入力フォームと詳細画面)",
+      "description": "field_sections を入力フォームと詳細画面の両方に書いた見本。まとまりの値は2つの形 (フィールドIDの配列 / 名札付きの { id, fields }) のどちらでも書ける。まとまりを書けるのは入力フォームと詳細画面の2種類だけで、一覧と集計表には書けない。【2026-09-24 時点の限界】入力フォームの描画はまだまとまりを読まない (書けるが、入力フォームの見た目は変わらない)。"
+    },
+    {
+      "file": "invalid/field-sections-on-list-view.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 一覧に項目のまとまり",
+      "description": "一覧 (list_view) に field_sections を書いた。まとまりを書けるのは入力フォームと詳細画面だけである。エラーに位置・許される値 (一覧に書けるキー。field_sections は含まない)・ヒントの3つが揃うことを期待に書く。画面の中の並べ方の木 layout が末尾に加わった (report_view 以外で書ける) ので allowed_values の列挙に1本足した。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/field_sections",
+          "message_contains": "この種別では指定できません",
+          "allowed_values": [
+            "id",
+            "type",
+            "table",
+            "name",
+            "columns",
+            "sort",
+            "filter",
+            "actions",
+            "preset_column_align",
+            "preset_column_width",
+            "preset_pager_position",
+            "preset_image_size",
+            "preset_text_preview",
+            "custom_css",
+            "menu_listed",
+            "preset_list_shape",
+            "search_fields",
+            "page_size",
+            "preset_density",
+            "sum_field",
+            "flow",
+            "group_by",
+            "layout"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/field-groups-old-spelling.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 項目のまとまりの旧綴り field_groups",
+      "description": "旧綴り field_groups を詳細画面に書いた。綴りは field_sections に統合され、旧綴りは語彙に無い (移行の手段は無い)。許される値に field_sections が在るので、書き直す先がエラーから分かる。画面の中の並べ方の木 layout が末尾に加わった (report_view 以外で書ける) ので allowed_values の列挙に1本足した。変更履歴の history が末尾に加わった (詳細画面だけで書ける。許される値の末尾に1つ増える)。旧の許される値は layout で終わっていた。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0",
+          "message_contains": "未知のプロパティ \"field_groups\" は指定できません",
+          "allowed_values": [
+            "id",
+            "type",
+            "table",
+            "name",
+            "fields",
+            "related",
+            "actions",
+            "preset_label_placement",
+            "preset_field_columns",
+            "preset_image_size",
+            "preset_text_preview",
+            "custom_css",
+            "menu_listed",
+            "field_sections",
+            "preset_density",
+            "after_save",
+            "after_delete",
+            "flow",
+            "layout",
+            "history"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/field-sections-duplicate-field.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "整合しない宣言: 1つの項目が2つのまとまりに現れる",
+      "description": "入力フォームで、同じフィールド email を2つのまとまりに書いた。1つの項目が属せるまとまりは1つだけであり、差分全体が拒否される。位置は2つ目に現れた場所を指す。許される値は付かない (候補が有限の不在IDではないため)。ヒントの有無は src/kernel/field-sections.test.ts が見る。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/field_sections/連絡先/0",
+          "message_contains": "2つのまとまり"
+        }
+      ]
+    },
+    {
+      "file": "valid/form-field-width.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "入力フォームの入力欄の幅 (3値) とまとまり",
+      "description": "入力フォームに field_width を short / medium / full の3値で書き、1項目は書かずに置く。同じ入力フォームに field_sections も書く (まとまりと幅は同じ画面に書ける)。"
+    },
+    {
+      "file": "invalid/field-width-on-detail-view.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 詳細画面に入力欄の幅",
+      "description": "詳細画面 (detail_view) に field_width を書いた。入力欄の幅を書けるのは入力フォームだけである。エラーに位置・許される値 (詳細画面に書けるキー。field_width は含まない)・ヒントの3つが揃うことを期待に書く (ヒントの有無は src/kernel/field-width.test.ts が見る)。画面の中の並べ方の木 layout が末尾に加わった (report_view 以外で書ける) ので allowed_values の列挙に1本足した。変更履歴の history が末尾に加わった (詳細画面だけで書ける。許される値の末尾に1つ増える)。旧の許される値は layout で終わっていた。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/field_width",
+          "message_contains": "この種別では指定できません",
+          "allowed_values": [
+            "id",
+            "type",
+            "table",
+            "name",
+            "fields",
+            "related",
+            "actions",
+            "preset_label_placement",
+            "preset_field_columns",
+            "preset_image_size",
+            "preset_text_preview",
+            "custom_css",
+            "menu_listed",
+            "field_sections",
+            "preset_density",
+            "after_save",
+            "after_delete",
+            "flow",
+            "layout",
+            "history"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/field-width-not-in-fields.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "整合しない宣言: 入力項目に無い項目に入力欄の幅",
+      "description": "入力フォームの fields に無い項目 note に field_width を書いた (表には在る)。入力欄として出していない項目には幅を当てる先が無いので拒否する。許される値はその入力フォームの fields である。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/field_width/note",
+          "message_contains": "入力欄の幅(field_width)",
+          "allowed_values": [
+            "postal_code",
+            "address"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "valid/list-group-by.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "一覧の束ねるキー (select / date+粒度 / boolean / reference)",
+      "description": "一覧 (list_view) に group_by をオブジェクト1つで書く。束ねられる4種 (select / date / boolean / reference) を1画面ずつ。date には granularity (month) を書き、date 以外には書かない。利用者の並べ替え (sort) と器の形 card とも同じ画面に書ける。"
+    },
+    {
+      "file": "invalid/list-group-by-on-form.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 入力フォームに束ねるキー",
+      "description": "入力フォーム (form) に group_by を書いた。エラーに位置・許される値 (入力フォームに書けるキー。group_by は含まない) が揃うことを期待に書く。画面の中の並べ方の木 layout が末尾に加わった (report_view 以外で書ける) ので allowed_values の列挙に1本足した。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/group_by",
+          "message_contains": "この種別では指定できません",
+          "allowed_values": [
+            "id",
+            "type",
+            "table",
+            "name",
+            "fields",
+            "preset_label_placement",
+            "preset_field_columns",
+            "custom_css",
+            "menu_listed",
+            "field_sections",
+            "modal",
+            "preset_density",
+            "after_save",
+            "reference_pickers",
+            "flow",
+            "field_width",
+            "layout"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/list-group-by-not-in-columns.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "整合しない宣言: 表示列に無い項目で束ねる",
+      "description": "一覧の表示列 (columns) に無い項目 category を group_by に書いた (表には在る)。表示していない項目で区切ると見出しの値が画面のどこにも無いので拒否する。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/group_by/field",
+          "message_contains": "表示列(columns)",
+          "allowed_values": [
+            "ordered_on"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/list-group-by-granularity-on-select.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "書けるが効かない組: 日付でない項目に束ね方",
+      "description": "select の項目 category に granularity を書いた。集計表と同じ規則)。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/group_by/granularity",
+          "message_contains": "date 型のフィールドだけ"
+        }
+      ]
+    },
+    {
+      "file": "valid/form-detail-list-layout.json",
+      "kind": "manifest",
+      "expect": "valid",
+      "name": "画面の中の並べ方の木 (入力フォーム・詳細画面・カードの一覧。6種)",
+      "description": "入力フォームに PRD F3 の例と同じ形 (stack の中に switcher / 葉 / sidebar / split。送信ボタンは予約名 action:submit)、詳細画面に grid と cluster と宣言ボタン (識別子 record-visit)、カードの形の一覧 (preset_list_shape: card) に split と stack を書く。6種すべてが1回以上現れ、深さは2段まで。表示項目のうち木に置かなかったもの (入力フォームは無し) は拒否しない。"
+    },
+    {
+      "file": "invalid/layout-gap-number.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 並べ方の間隔に数値",
+      "description": "並べ方の木の間隔 gap に数値 8 を書いた。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/layout/gap",
+          "message_contains": "語彙にありません",
+          "allowed_values": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/layout-gap-px.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "語彙外: 並べ方の間隔に長さ (12px)",
+      "description": "並べ方の木の間隔 gap に長さの文字列 12px を書いた。ブレークポイントや長さの数値をマニフェストに持ち込まない (PRD NF7)。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/layout/gap",
+          "message_contains": "語彙にありません",
+          "allowed_values": [
+            "xs",
+            "sm",
+            "md",
+            "lg",
+            "xl"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/layout-too-deep.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "深さ超過: 並べ方の木の4段目の節",
+      "description": "根の節を1段目として4段目に grid を書いた。深さの上限は3 (MAX_LAYOUT_DEPTH。位置は4段目の節を指す。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/layout/children/0/children/0/children/0",
+          "message_contains": "深すぎます"
+        }
+      ]
+    },
+    {
+      "file": "invalid/layout-leaf-not-in-fields.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "実在しない名前: 表示項目に無い項目を木に置く",
+      "description": "入力フォームの入力項目 (fields) に無い項目 note を木の葉に置いた (表には在る)。許される値はこの画面の表示項目である。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/layout/children/1",
+          "message_contains": "表示項目",
+          "allowed_values": [
+            "last_name",
+            "email"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "invalid/layout-duplicate-leaf.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "重複: 同じ項目を木に2回置く",
+      "description": "詳細画面の木に last_name を2回置いた。同じ葉は1回だけ。位置は2回目の葉を指す。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/layout/children/1/children/1",
+          "message_contains": "2回"
+        }
+      ]
+    },
+    {
+      "file": "invalid/layout-on-table-list.json",
+      "kind": "manifest",
+      "expect": "invalid",
+      "name": "書けるが効かない組: 表の形の一覧に並べ方の木",
+      "description": "preset_list_shape を書いていない一覧 (= 表の形) に layout を書いた。一覧で並べ方の木が効くのはカードの中だけである (メインの裁定3 / 申4)。",
+      "expected_errors": [
+        {
+          "path": "/app/views/0/layout",
+          "message_contains": "card"
         }
       ]
     }

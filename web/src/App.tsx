@@ -40,8 +40,10 @@ import { AppListPage } from "./AppListPage.tsx";
 import { AppWorkspace } from "./AppWorkspace.tsx";
 import { type AppRecord, fetchApps } from "./api.ts";
 import { type AsyncState, toValidationErrors } from "./async.ts";
+import { CompareBanner, PreviewCompareGate } from "./ComparePage.tsx";
 import { ErrorList } from "./ErrorList.tsx";
 import { RouteLink, useRoute } from "./navigation.tsx";
+import { PreviewBanner, PreviewGate } from "./PreviewBanner.tsx";
 import type { Route } from "./route.ts";
 import { resolveUiFamily } from "./ui/family.ts";
 import { Skeleton } from "./ui/surfaces.tsx";
@@ -59,10 +61,27 @@ export function App() {
   // **その宣言が当たるのは画面の作用域(`web/src/views/ViewHost.tsx` の `ViewDensityScope`)
   // であって、ここ(アプリの器)ではない。** **この行は今日と1バイトも変わっていない。**
   // **宣言を書かなかった画面は、今日どおりこのアプリ単位の系統で描かれる。**
+  // **【`V20-M11` の点検の処置(軽2)。2026-09-25。直前の1文を1バイトも消していない】** 直前の1文は、
+  // 役割に詰め具合(`app.roles[].density`)を書いたアプリでは偽である —— **その役割の人が開く、
+  // 詰め具合を書かなかった画面は、画面の作用域(`ViewDensityScope`)で役割の系統で描かれる。**
+  // **画面にも役割にも詰め具合を書かなかった画面だけが、このアプリ単位の系統で描かれる**
+  // (`ADR-0475` が `ADR-0118` 限定8 をこの形に引き直した)。**この器(上端の帯・メニュー)自体は
+  // 役割を読まず、引数なしのままである。**
   const uiFamily = resolveUiFamily();
 
   return (
     <main className="shell group/ui" data-ui-family={uiFamily}>
+      {/*
+       * **【`V20-M13-T02c` / `D-V20-45`】下見の帯は画面の上端(シェルの見出しより上)に1本だけ置く。**
+       * 下見の頭を受けたときだけ描かれる(本物のアプリ・アプリ一覧では何も描かない)。置き場の理由は
+       * `web/src/PreviewBanner.tsx` の冒頭。
+       */}
+      <PreviewBanner appId={currentAppId(route)} />
+      {/*
+       * **【`V20-M14-T01C` / `D-V20-51`】見比べの帯。** 束(`/compare` が 200)を開いたときだけ描かれる。
+       * 束の応答には下見の頭が付かないので、上の下見の帯は描かれない(同時に2本出ない)。
+       */}
+      <CompareBanner appId={currentAppId(route)} />
       {/*
        * **【V4-M15-T14】シェルのヘッダに部品体系の書体と間隔を足した。**
        * **`class="shell"` の行は1バイトも変えていない**(器の系統の当たり先である)。
@@ -189,16 +208,39 @@ function renderRoute(route: ReturnType<typeof useRoute>) {
   switch (route.kind) {
     case "app-list":
       return <AppListPage />;
+    // **【`V20-M13-T02c`】下見の期限切れ(410)を受けたら、作業画面の代わりに期限切れの画面を出す**
+    // (`PreviewGate`。下見の綴りでないアプリでは中身をそのまま描く)。
+    //
+    // **【`V20-M14-T01C`】下見の綴り(`pv-…`)の画面では、先に `/compare` を1回引く**(`PreviewCompareGate`)。
+    // 束なら見比べの画面、そうでなければ今日どおりの作業画面(1案の下見)。 下見の綴りでないアプリでは何も引かない。
     case "app":
-      return <AppWorkspace appId={route.appId} />;
+      return (
+        <PreviewGate appId={route.appId}>
+          <PreviewCompareGate appId={route.appId}>
+            {/* **【`V21-M4`】`/apps/<id>/login` の印を渡す**(`ADR-0482` §5-1)。 旧行の逐語: `<AppWorkspace appId={route.appId} />` */}
+            {/* **【`V22-M3-T05`】`/apps/<id>/my-page` の印も渡す**(`ADR-0488` §Decision 1 の 6)。 旧行の逐語: `<AppWorkspace appId={route.appId} login={route.login === true} />` */}
+            {/* **【`V23-M5-T06`】`/apps/<id>/invitations` の印も渡す**(`D-V23-129`)。 旧行は上の `V22-M3-T05` の形(`invitations` 無し)。 */}
+            <AppWorkspace
+              appId={route.appId}
+              login={route.login === true}
+              myPage={route.myPage === true}
+              invitations={route.invitations === true}
+            />
+          </PreviewCompareGate>
+        </PreviewGate>
+      );
     case "view":
       return (
-        <AppWorkspace
-          appId={route.appId}
-          viewId={route.viewId}
-          recordId={route.recordId}
-          prefill={route.prefill}
-        />
+        <PreviewGate appId={route.appId}>
+          <PreviewCompareGate appId={route.appId}>
+            <AppWorkspace
+              appId={route.appId}
+              viewId={route.viewId}
+              recordId={route.recordId}
+              prefill={route.prefill}
+            />
+          </PreviewCompareGate>
+        </PreviewGate>
       );
     case "not-found":
       return (

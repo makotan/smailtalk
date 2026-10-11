@@ -34,6 +34,11 @@
 
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
+// **【`V21-M2` / `ADR-0482` §1-2b】保護を外す op の判定は `owner-scope.ts` の1本を呼ぶ**
+// (未ログインの表ごとの読取の判定の家。**判定を2本目に書かない**)。 **先例は
+// `workflow-runner.ts` / `ai-dispatcher.ts` の `judgeOwnerScopedOp`**(カーネル → サーバの述語)。
+// **`owner-scope.ts` はカーネルから値を1つも import しないので、循環は生じない。**
+import { anonymousReadDiffViolations } from "../server/owner-scope.ts";
 import { isSystemTableId } from "../shared/system-tables.ts";
 import { applyManifest, readCurrentManifest } from "./apply-manifest.ts";
 import {
@@ -41,7 +46,11 @@ import {
   type FieldConversion,
   UNCONVERTIBLE_SAMPLE_LIMIT,
 } from "./convert.ts";
-import { quoteIdentifier } from "./ddl.ts";
+import {
+  autoEnrollAccountIndexName,
+  createAutoEnrollAccountIndexSql,
+  quoteIdentifier,
+} from "./ddl.ts";
 import type { ValidationError } from "./errors.ts";
 import { type ChangelogEntry, KernelMetaStore } from "./meta-store.ts";
 import { type MigrationPlan, planMigration } from "./migrate.ts";
@@ -58,6 +67,8 @@ import type {
   ListView,
   Manifest,
   Operation,
+  // **【`V20-M15-T01A`】18種目 `remember_design` の畳み込みが引数の型として使う。**
+  RememberDesignOperation,
   // **画面種別の4種目**(`V8-M8`。台帳 `Q-G1`)。**`applyViewChanges` の分岐が値として使う。**
   ReportView,
   // **【`V17-M5-T04`】表のIDの集合を持つのに使う型。値を1つも増やしていない。**
@@ -225,6 +236,14 @@ const CHANGE_KEYS_BY_VIEW_TYPE: Readonly<Record<View["type"], readonly (keyof Vi
     // 検証(`validateReferentialIntegrity`)が持ち、`add_view` と同じ1箇所が覆う。**
     // **判定を2箇所に住まわせない。**
     "flow",
+    // **【`V20-M4-T02` / `ADR-0470` / `ADR-0461` 限定2】一覧の束ねるキー。** **`list_view` にだけ足す** ——
+    // マニフェスト側の `allOf` の `form` / `detail_view` / `report_view` 分岐が `false` で閉じているのと
+    // 一致させる。**末尾に足した**(既存の並び = 拒否エラーの `allowed_values` の順を1つも動かさない)。**値は下の `applyViewChanges` の `list_view` 分岐が運ぶ**(片方だけでは運ばれない)。
+    "group_by",
+    // **【`V20-M5-T01` / `ADR-0471` / `ADR-0462` 限定2】画面の中の並べ方の木。** **`list_view` / `form` /
+    // `detail_view` の3種別に足す**(マニフェスト側の `allOf` の `report_view` 分岐だけが `false`)。**末尾に足した**
+    // (既存の並び = 拒否エラーの `allowed_values` の順を1つも動かさない)。**値は下の `applyViewChanges` が運ぶ。**
+    "layout",
   ],
   // **form にプリセットは1キーも足していない**(ADR-0050 §1c。form の4軸は却下1 / 保留3 で別の門)。
   // **逃げ道の参照だけは足す**(ADR-0055 改訂1)—— **プリセットが1軸も当たらない form こそ
@@ -272,6 +291,15 @@ const CHANGE_KEYS_BY_VIEW_TYPE: Readonly<Record<View["type"], readonly (keyof Vi
     // 分岐にも書くこと(片方だけだと「update_view は通るが適用後マニフェストに残らない」)。
     // **全置換である** —— 項目ごとに1本ずつ足す / 消す手段を1つも作っていない。
     "reference_pickers",
+    // **【`V20-M3-T01` / `ADR-0469` 限定5】項目のまとまり。** **`form` と `detail_view` の2種別に
+    // だけ足す**(マニフェスト側の `allOf` の `list_view` / `report_view` 分岐が `false` で閉じて
+    // いるのと一致させる)。**値は下の `applyViewChanges` の `form` 分岐が運ぶ。**
+    // **本葉の時点では入力フォームの描画はこのキーを読まない**(描画は `V20-M3-T03`)。
+    "field_sections",
+    // **【`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅。** **`form` にだけ足す** —— マニフェスト側の
+    // `allOf` の `list_view` / `detail_view` / `report_view` 分岐が `false` で閉じているのと一致させる。
+    // **値は下の `applyViewChanges` の `form` 分岐が運ぶ**(片方だけでは運ばれない)。
+    "field_width",
     // **`NV-G9` / `V10-M4-T01` / `ADR-0359` §4b 限定1・限定3 / `ADR-0360` 限定2**:
     // **一続きの流れの中の段。**
     // **`list_view` / `form` / `detail_view` の3種別に足す** —— **`report_view` には
@@ -285,6 +313,10 @@ const CHANGE_KEYS_BY_VIEW_TYPE: Readonly<Record<View["type"], readonly (keyof Vi
     // 検証(`validateReferentialIntegrity`)が持ち、`add_view` と同じ1箇所が覆う。**
     // **判定を2箇所に住まわせない。**
     "flow",
+    // **【`V20-M5-T01` / `ADR-0471` / `ADR-0462` 限定2】画面の中の並べ方の木。** **`list_view` / `form` /
+    // `detail_view` の3種別に足す**(マニフェスト側の `allOf` の `report_view` 分岐だけが `false`)。**末尾に足した**
+    // (既存の並び = 拒否エラーの `allowed_values` の順を1つも動かさない)。**値は下の `applyViewChanges` が運ぶ。**
+    "layout",
   ],
   // **画面種別の4種目**(`V8-M8`。台帳 `Q-G1`。門A 本審査 = `V8-M7`)。
   // **書けるのは4キーだけである** —— **集計表の中身(`report`)と、種別に依存しない
@@ -325,7 +357,8 @@ const CHANGE_KEYS_BY_VIEW_TYPE: Readonly<Record<View["type"], readonly (keyof Vi
     // グループ化であり別の概念である(`ADR-0092` §Decision 4 の 3)。
     // **ここに足すだけでは値が運ばれない** —— 下の `applyViewChanges` の `detail_view`
     // 分岐にも書くこと(片方だけだと「update_view は通るが適用後マニフェストに残らない」)。
-    "field_groups",
+    // **【`V20-M3-T01` / `ADR-0469`】綴りを `field_groups` から改めた。`form` にも足した(上)。**
+    "field_sections",
     // **`P-G32` の (C) 側 / `V4-M19-T03` / `ADR-0118` 限定1・限定3**: 画面の詰まり具合。
     // **3種すべてに足す**(`name` / `custom_css` / `menu_listed` と同じ)—— 詰まり具合は
     // 画面そのものの性質であり、表・入力・詳細のどれにも器が在る(当たり先の実在 = 限定6)。
@@ -379,6 +412,12 @@ const CHANGE_KEYS_BY_VIEW_TYPE: Readonly<Record<View["type"], readonly (keyof Vi
     // 検証(`validateReferentialIntegrity`)が持ち、`add_view` と同じ1箇所が覆う。**
     // **判定を2箇所に住まわせない。**
     "flow",
+    // **【`V20-M5-T01` / `ADR-0471` / `ADR-0462` 限定2】画面の中の並べ方の木。** **`list_view` / `form` /
+    // `detail_view` の3種別に足す**(マニフェスト側の `allOf` の `report_view` 分岐だけが `false`)。**末尾に足した**
+    // (既存の並び = 拒否エラーの `allowed_values` の順を1つも動かさない)。**値は下の `applyViewChanges` が運ぶ。**
+    "layout",
+    // **【`V23-M8-T02` / `D-V23-205`】変更履歴の `history` は `detail_view` にだけ足す**(一覧・入力・集計表の分岐は `schemas/` が false で閉じている)。
+    "history",
   ],
 };
 
@@ -463,6 +502,16 @@ export function foldOperations(current: Manifest, operations: Operation[]): Fold
         break;
       case "set_roles":
         foldSetRoles(manifest, operation.roles);
+        break;
+      case "remember_design":
+        // **【`V20-M15-T01A`。18種目。`ADR-0479` §Decision 2 の 4】** 失敗の形が1つも無い
+        // (`foldSetTheme` / `foldSetRoles` と同じ。対象IDを取らない)。
+        foldRememberDesign(manifest, operation.design_memory);
+        break;
+      case "set_workspace":
+        // **【`V22-M2-T02`。19種目。`ADR-0486` §Decision 1 の 4】** 失敗の形が1つも無い
+        // (`foldSetTheme` と同型。対象IDを取らない)。 役割を指す参照は畳み込んだ後の検査が見る。
+        foldSetWorkspace(manifest, operation.workspace);
         break;
       default: {
         // **網羅性チェック**(V1-M2-T07 完了条件4)。`DIFF_OPS` に op を足して
@@ -1380,7 +1429,7 @@ function foldRemoveFunction(
  * アプリへの初回適用と、既にテーマを持つアプリの差し替えが、同じ1つの形で通る。**
  * したがって `errors` を1件も積まず、引数にも取らない。
  *
- * **値の妥当性(25スロットがそろっているか / 値域 / コントラスト比)はここで見ない。**
+ * **値の妥当性(25スロットがそろっているか / 値域 / コントラスト比)はここで見ない。** 【V20-M9 で偽になった】今日そろえるのは役割の枠27個で、参照の解決(ADR-0474)もここでは見ない(validate.ts の checkTheme が見る)。
  * 見るのは `validateDiff`(差分の時点)と `validateManifestFull`(畳み込み後の
  * `"incoming"` 検証)であり、二重に持つと文面が割れる(`foldOperations` が op の
  * 妥当性を `planMigration` と二重に持たないのと同じ作法)。**拒否は「全か無か」で
@@ -1400,6 +1449,64 @@ function foldRemoveFunction(
 function foldSetTheme(manifest: Manifest, theme: Theme): void {
   manifest.app.theme = structuredClone(theme);
 }
+
+/**
+ * **19種目 `set_workspace` の畳み込み**(`V22-M2-T02`。`ADR-0486` §Decision 1 の 4)。純粋関数
+ * ({@link foldOperations} が渡す写しだけを書き換える)。
+ *
+ * - アプリの `workspace` を**丸ごと差し替える**(部分更新ではない。前の `by_role` は残らない)。
+ * - **空の器(`{}`)なら `app.workspace` のキーごと消す** —— 定義は宣言前と1バイトも違わない状態に戻る
+ *   (空の器を定義に残さない。設計図の `minProperties: 1` と同じ向き)。
+ *
+ * **失敗の形が1つも無い**(`foldSetTheme` と同型)ので `errors` を引数に取らない。 **役割を指す参照
+ * (宣言済みの役割だけ・`anonymous` を書けない・重複・役割を宣言していないアプリ)はここで見ない** ——
+ * 見るのは畳み込んだ後の `validateManifestFull`(`referential-integrity.ts`)である。 **物理スキーマへの影響は
+ * ゼロであり、`migrate.ts` は段を1つも生まない。**
+ */
+// **【`V22-M2-T02`】引数の型は `App` から引く**(`types.ts` の `Workspace` は export していない。公開エクスポートを増やさない)。
+//
+// **【`V22-M3-T02`。`ADR-0488` §Decision 2(`MP-G4`。ユーザ決定 `D-V22-21`)による改訂。上の「丸ごと差し替える」
+// 「空の器なら消す」は今日の正ではない。旧の本体の逐語は次のとおり】**
+//   旧: `if (Object.keys(workspace).length === 0) { delete manifest.app.workspace; return; }`
+//   旧: `manifest.app.workspace = structuredClone(workspace);`
+// **今日: 直下のキーごとに置き換える。** 書かなかったキーは残す。 **値が `null` ならそのキーを消す。**
+// **すべてのキーが消えたら `app.workspace` のキーごと消す**(定義は宣言前と1バイトも違わない)。
+// **空の `{}` は設計図が断る**(`minProperties 1`)ので、ここに届いたら何も変えない。 キーの並びは設計図の並び
+// (`navigation` → `my_page`)にそろえる(書いた順で定義の並びが揺れないように)。
+function foldSetWorkspace(
+  manifest: Manifest,
+  workspace: Extract<Operation, { op: "set_workspace" }>["workspace"],
+): void {
+  const merged: Record<string, unknown> = { ...(manifest.app.workspace ?? {}) };
+  for (const [key, value] of Object.entries(workspace)) {
+    if (value === null) {
+      delete merged[key];
+    } else if (value !== undefined) {
+      merged[key] = structuredClone(value);
+    }
+  }
+  const ordered: Record<string, unknown> = {};
+  for (const key of WORKSPACE_KEY_ORDER) {
+    if (Object.hasOwn(merged, key)) {
+      ordered[key] = merged[key];
+    }
+  }
+  for (const key of Object.keys(merged)) {
+    if (!Object.hasOwn(ordered, key)) {
+      ordered[key] = merged[key];
+    }
+  }
+  if (Object.keys(ordered).length === 0) {
+    delete manifest.app.workspace;
+    return;
+  }
+  manifest.app.workspace = ordered as NonNullable<Manifest["app"]["workspace"]>;
+}
+
+/** `app.workspace` の直下のキーの並び(設計図 `$defs/app/properties/workspace` の並び。`V22-M3-T02`)。 */
+// **【`V23-M5-T02`。`ADR-0532` §Decision 1-1】3つ目 `invitations` を末尾に足した。** 旧(逐語):
+// `const WORKSPACE_KEY_ORDER = ["navigation", "my_page"] as const;`
+const WORKSPACE_KEY_ORDER = ["navigation", "my_page", "invitations"] as const;
 
 /*
  * ============================================================================
@@ -1599,6 +1706,79 @@ function foldSetRoles(manifest: Manifest, roles: RoleDeclaration[]): void {
   manifest.app.roles = structuredClone(roles);
 }
 
+/**
+ * **選んだ記録の上限**(`V20-M15-T01A`。`ADR-0479` §Decision 2 の 4-1 / ユーザ決定 `D-V20-60`)。
+ *
+ * **export しない。** **設計図 `$defs/app/properties/design_memory/properties/choices` の
+ * `maxItems` と同じ値でなければならない** —— 検査はこの定数を読まずに振る舞いで固定する
+ * (`src/kernel/design-memory.test.ts` の限定4。設計図の `maxItems` を読み、その数+1件を畳むと
+ * `maxItems` 件になり、落ちたのが最古の1件であること)。 **2箇所に焼いた数が黙ってずれない。**
+ */
+const DESIGN_MEMORY_CHOICES_MAX = 20;
+
+/**
+ * **18種目 `remember_design` の畳み込み**(`V20-M15-T01A`。`ADR-0479` §Decision 2 の 4)。純粋関数
+ * ({@link foldOperations} が渡す写しだけを書き換える)。
+ *
+ * 1. `choice` が在れば `app.design_memory.choices` の**末尾**に足す。 **上限を超えたら先頭(最も古い)
+ *    から落として上限件にする**(`D-V20-60`)。 **落ちるのは変更の一部であり、元に戻すと戻る。**
+ * 2. `patterns` が在れば**丸ごと置き換える**。 **空配列なら `patterns` のキーを消す**(`D-V20-58` の「外す」)。
+ *    **`patterns` を省いた操作は型に1バイトも触らない**(型は選んだ記録の上限で消えない)。
+ * 3. 畳んだ後に `choices` も `patterns` も無ければ `design_memory` のキーを消す(空の器を残さない)。
+ * 4. 同じ差分に2本あれば、{@link foldOperations} が先頭から順に呼ぶ。
+ *
+ * **失敗の形が1つも無い**(対象IDを取らない)ので `errors` を引数に取らない。 **値の妥当性
+ * (字数・改行・件数・重複)はここで見ない** —— 見るのは `validateDiff` と畳み込み後の
+ * `validateManifestFull` である。 **物理スキーマへの影響はゼロであり、`migrate.ts` は段を1つも生まない。**
+ */
+function foldRememberDesign(
+  manifest: Manifest,
+  value: RememberDesignOperation["design_memory"],
+): void {
+  const current = manifest.app.design_memory;
+  const choices = current?.choices === undefined ? [] : [...current.choices];
+  let patterns = current?.patterns;
+  if (value.choice !== undefined) {
+    choices.push(structuredClone(value.choice));
+    if (choices.length > DESIGN_MEMORY_CHOICES_MAX) {
+      choices.splice(0, choices.length - DESIGN_MEMORY_CHOICES_MAX);
+    }
+  }
+  if (value.patterns !== undefined) {
+    patterns = value.patterns.length === 0 ? undefined : [...value.patterns];
+  }
+  const next: NonNullable<Manifest["app"]["design_memory"]> = {};
+  if (choices.length > 0) {
+    next.choices = choices;
+  }
+  if (patterns !== undefined && patterns.length > 0) {
+    next.patterns = patterns;
+  }
+  if (next.choices === undefined && next.patterns === undefined) {
+    delete manifest.app.design_memory;
+    return;
+  }
+  manifest.app.design_memory = next;
+}
+
+/**
+ * **履歴を取っている表(`history: true`)の、表か項目の ID を付け替える差分を断る文**(`V23-M8-T13` / `D-V23-232`)。
+ * 画面に出る名前は変えられること、付け替えたければ先に表の `history` を外すこと、外して付け替えると前の履歴は
+ * 読めなくなることを伝える。
+ */
+function historyRenameError(path: string, subject: string, nextId: string): ValidationError {
+  return {
+    path,
+    message:
+      `${subject}を "${nextId}" に変更できません。この表は変更履歴を残している(history: true)ため、` +
+      `ID を変えると、それより前の行の変更履歴が読めなくなります。`,
+    hint:
+      `画面に出る名前を変えたいだけなら、ID ではなく name を変えてください。` +
+      `ID を変えたいときは、先に表の history を外してください(同じ差分の前の操作で外してもかまいません)。` +
+      `外してから ID を変えると、それより前の履歴は、history を戻しても読めません。`,
+  };
+}
+
 function foldChangeTable(
   manifest: Manifest,
   tableId: string,
@@ -1663,8 +1843,18 @@ function foldChangeTable(
   if (changes.access_control !== undefined) {
     table.access_control = structuredClone(changes.access_control);
   }
+  // **【`V23-M8-T02` / `D-V23-205`】表の `history` を運ぶ**(外すのは false を書く。false が残る)。
+  if (changes.history !== undefined) {
+    table.history = changes.history;
+  }
   const nextId = changes.id;
   if (nextId === undefined || nextId === tableId) {
+    return;
+  }
+  // **【`V23-M8-T13` / `D-V23-232`】履歴を取っている表の ID は付け替えない**(付け替えると、それより前の
+  // 行の変更履歴が黙って読めなくなる)。 `history` は上で先に運ぶので、同じ op か前の op で外していれば通る。
+  if (table.history === true) {
+    errors.push(historyRenameError(`${path}/changes/id`, `テーブル "${tableId}" の ID`, nextId));
     return;
   }
   if (manifest.app.tables.some((t) => t.id === nextId)) {
@@ -1765,6 +1955,29 @@ function foldChangeTable(
   }
 }
 
+type LayoutTree = NonNullable<FormView["layout"]>;
+/**
+ * **並べ方の木の中の項目の葉 `fromId` を `toId` へ写す**(`V20-M5-T01` / `ADR-0471`)。
+ * **ボタンの葉(`action:<名前>`)は動かさない**(名前は項目IDではない)。木の形は1つも変えない。
+ * 局所ヘルパである(新しい export は作らない)。
+ */
+function renameLayoutLeaf(node: LayoutTree, fromId: string, toId: string): LayoutTree {
+  const child = (value: LayoutTree | string): LayoutTree | string =>
+    typeof value === "string"
+      ? value === fromId
+        ? toId
+        : value
+      : renameLayoutLeaf(value, fromId, toId);
+  switch (node.type) {
+    case "sidebar":
+      return { ...node, side: child(node.side), main: child(node.main) };
+    case "split":
+      return { ...node, start: node.start.map(child), end: node.end.map(child) };
+    default:
+      return { ...node, children: node.children.map(child) };
+  }
+}
+
 function foldChangeField(
   manifest: Manifest,
   tableId: string,
@@ -1794,6 +2007,17 @@ function foldChangeField(
     return;
   }
   const nextId = changes.id;
+  // **【`V23-M8-T13` / `D-V23-232`】履歴を取っている表の項目の ID は付け替えない**(表の付け替えと同じ理由)。
+  if (nextId !== undefined && nextId !== fieldId && table.history === true) {
+    errors.push(
+      historyRenameError(
+        `${path}/changes/id`,
+        `テーブル "${tableId}" のフィールド "${fieldId}" の ID`,
+        nextId,
+      ),
+    );
+    return;
+  }
   if (nextId !== undefined && nextId !== fieldId && table.fields.some((f) => f.id === nextId)) {
     errors.push({
       path: `${path}/changes/id`,
@@ -1924,6 +2148,18 @@ function foldChangeField(
   if (nextId === undefined || nextId === fieldId) {
     return;
   }
+  // --- §5d: 未ログインに隠す項目の並びを追随させる(`V21-M2B`。`ADR-0482` §2-5 の改名)---
+  // **追随させないと、改名しただけで隠していた項目が未ログインに見える**(漏れる向き)うえ、
+  // 実在の検査(`referential-integrity.ts`)がこの rename を拒否する。
+  // **対象はこの表を名指しした規則だけ**(別の表の同名の項目は別の項目である)。
+  // **役割を問わずに見るが、並びを書けるのは未ログインの表の規則だけである**(スキーマ)。
+  for (const role of manifest.app.roles ?? []) {
+    for (const rule of role.rules ?? []) {
+      if (rule.table === table.id && rule.hidden_fields !== undefined) {
+        rule.hidden_fields = rule.hidden_fields.map((id) => (id === fieldId ? nextId : id));
+      }
+    }
+  }
   /**
    * 列ごとのプリセットのマップ(`{<field_id>: 段階値}`)のキーだけを新IDへ写す。
    * **値の型ごとに書き分けないための局所ヘルパである**(新しい export は作らない
@@ -1972,6 +2208,15 @@ function foldChangeField(
       if (view.preset_column_width !== undefined) {
         view.preset_column_width = renamePresetMapKey(view.preset_column_width);
       }
+      // **【`V20-M4-T02` / `ADR-0470`】一覧の束ねるキーも項目を名指しする** —— `field` だけを新IDへ写す
+      // (粒度は1バイトも変えない)。追随させないと、区切った一覧があるだけで rename が参照整合性で拒否される。
+      if (view.group_by !== undefined && view.group_by.field === fieldId) {
+        view.group_by = { ...view.group_by, field: nextId };
+      }
+      // **【`V20-M5-T01` / `ADR-0471`】並べ方の木の項目の葉も写す**(ボタンの葉 `action:<名前>` は動かさない)。
+      if (view.layout !== undefined) {
+        view.layout = renameLayoutLeaf(view.layout, fieldId, nextId);
+      }
       continue;
     }
     /*
@@ -2000,6 +2245,17 @@ function foldChangeField(
     }
     if (view.fields !== undefined) {
       view.fields = view.fields.map((id) => (id === fieldId ? nextId : id));
+    }
+    // **【`V20-M3-T02`】入力欄の幅(`field_width`)もキーがフィールドIDの対応表である** ——
+    // 一覧の列ごとのプリセットと同じ理由で、キーだけを新IDへ写す(値は1バイトも変えない)。
+    // 追随させないと、幅を1つ書いた入力フォームがあるだけで rename が参照整合性で拒否される。
+    if (view.type === "form" && view.field_width !== undefined) {
+      view.field_width = renamePresetMapKey(view.field_width);
+    }
+    // **【`V20-M5-T01` / `ADR-0471`】並べ方の木の項目の葉も、同じ理由で新IDへ写す**(入力フォーム・詳細画面)。
+    // 追随させないと、木を1つ書いた画面があるだけで rename が参照整合性で拒否される。
+    if ((view.type === "form" || view.type === "detail_view") && view.layout !== undefined) {
+      view.layout = renameLayoutLeaf(view.layout, fieldId, nextId);
     }
     /*
      * **【V4-M20-T01 / T02】操作起点が**この画面の対象テーブル**を指す2箇所を追随させる。**
@@ -2052,6 +2308,20 @@ function foldChangeField(
   for (const workflow of manifest.app.workflows ?? []) {
     const triggersOnThisTable =
       workflow.trigger.type !== "schedule" && workflow.trigger.table === table.id;
+    /*
+     * **【`V23-M4-T02` / `D-V23-99` / `ADR-0524` §Decision 1-6】`changed_fields` の項目名も追随させる。**
+     * `changed_fields` は `on_update` のトリガー元の表のフィールドIDである。 追随させないと、
+     * 書いたワークフローがあるだけで rename が参照整合性で拒否される。
+     */
+    if (
+      workflow.trigger.type === "on_update" &&
+      workflow.trigger.table === table.id &&
+      workflow.trigger.changed_fields !== undefined
+    ) {
+      workflow.trigger.changed_fields = workflow.trigger.changed_fields.map((id) =>
+        id === fieldId ? nextId : id,
+      );
+    }
     for (const action of workflow.actions) {
       // `run_function` はフィールドID を1つも参照しない(参照するのは function / output_table
       //  = テーブル・関数の resource_id であって、フィールドではない。ADR-0024)。
@@ -2099,8 +2369,24 @@ function foldChangeField(
       for (const [key, value] of Object.entries(refs)) {
         refs[key] = renameRecordReference(value, fieldId, nextId);
       }
+      // (d) **【`V23-M4-T02` / `D-V23-99`】`values` の値の `$previous.<フィールドID>` も、
+      //     `$record.<フィールドID>` と同じくトリガー元テーブルのフィールドIDである。** 書けるのは
+      //     `values` だけ(`payload` / `input` はスキーマが断る)なので、`values` にだけ当てる。
+      if (action.action === "create_record" || action.action === "update_record") {
+        for (const [key, value] of Object.entries(action.values)) {
+          action.values[key] = renamePreviousReference(value, fieldId, nextId);
+        }
+      }
     }
   }
+}
+
+/**
+ * `$previous.<フィールドID>` を1つ書き換える(`V23-M4-T02`)。 **完全一致で判定する**
+ * ({@link renameRecordReference} と同じ理由。前方一致だと `$previous.score_x` を壊す)。
+ */
+function renamePreviousReference(value: string, fieldId: string, nextId: string): string {
+  return value === `$previous.${fieldId}` ? `$previous.${nextId}` : value;
 }
 
 /** `values` のキーだけを差し替える(値と並び順はそのまま)。 */
@@ -2188,12 +2474,28 @@ function buildChangedField(from: Field, changes: FieldChanges): Field {
    * **前進で `false` に戻せる**(限定11。実測は `field-hide-when-empty.test.ts`)。
    */
   const hideWhenEmpty = changes.hide_when_empty ?? from.hide_when_empty;
+  /*
+   * **`V23-M2-T02` / `ADR-0498` §Decision 1・限定3**: 一意違反の文言(`unique_message`)を運ぶ。
+   *
+   * **`unique` と同型に引き継ぐ** —— 指定があればそれを、無ければ元の値を引き継ぐ。
+   * **`null` を書くと外れる**(`set_workspace` の `my_page` / `navigation` と同じ作法)。
+   * 外した後はキーごと積まないので、定義が書く前と1バイトも違わない。
+   * **型で落とさない**(`unique` と同じく全型に書けるため)。 **`unique` を外して文言が残る
+   * 形はここでは断らない** —— 適用後マニフェストの参照整合性検査(`referential-integrity.ts`)
+   * が差分全体を拒否する(`D-V23-56`)。
+   */
+  const inheritedUniqueMessage = "unique_message" in from ? from.unique_message : undefined;
+  const uniqueMessage =
+    changes.unique_message === null
+      ? undefined
+      : (changes.unique_message ?? inheritedUniqueMessage);
   // **V4-M10-T07 / ADR-0078**: `unique` の値域が `boolean | "owner"` に広がった。
   const base: {
     id: string;
     name: string;
     required?: boolean;
     unique?: boolean | "owner";
+    unique_message?: string;
     unit?: string;
     hide_when_empty?: boolean;
   } = {
@@ -2205,6 +2507,9 @@ function buildChangedField(from: Field, changes: FieldChanges): Field {
   }
   if (unique !== undefined) {
     base.unique = unique;
+  }
+  if (uniqueMessage !== undefined) {
+    base.unique_message = uniqueMessage;
   }
   if (unit !== undefined) {
     base.unit = unit;
@@ -2387,6 +2692,22 @@ function applyViewChanges(view: View, changes: ViewChanges): View {
     if (changes.sum_field !== undefined) {
       next.sum_field = changes.sum_field;
     }
+    /*
+     * **【`V20-M4-T02` / `ADR-0470`】一覧の束ねるキーを、ここで実際に運ぶ。** **キー単位の全置換である。**
+     * 表示列に在るか・型の4種・粒度の要否はここで見ない —— 適用後マニフェストを見る
+     * `validateReferentialIntegrity` が持つ(`add_view` と同じ1箇所。判定を2箇所に住まわせない)。
+     */
+    if (changes.group_by !== undefined) {
+      next.group_by = changes.group_by;
+    }
+    /*
+     * **【`V20-M5-T01` / `ADR-0471`】並べ方の木を、ここで実際に運ぶ。** **キー単位の全置換である。**
+     * 葉の実在・重複・深さ・一覧はカードだけ・まとまりと両方は不可 はここで見ない —— 適用後マニフェストを見る
+     * `validateReferentialIntegrity` が持つ(`add_view` と同じ1箇所。判定を2箇所に住まわせない)。
+     */
+    if (changes.layout !== undefined) {
+      next.layout = changes.layout;
+    }
     // **【V4-M19-T03 / `P-G32` の (C) 側 / `ADR-0118` 限定1】画面の詰まり具合を、ここで実際に運ぶ。**
     // **`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは値が運ばれない** —— この分岐に書かないと
     // 「`update_view` は通るが適用後のマニフェストに残らない」状態になる(上のコメントが
@@ -2504,6 +2825,23 @@ function applyViewChanges(view: View, changes: ViewChanges): View {
       next.reference_pickers = changes.reference_pickers;
     }
     /*
+     * **【`V20-M3-T01` / `ADR-0469` 限定5】項目のまとまりを、ここで実際に運ぶ。**
+     * **`detail_view` 分岐と同じくキー単位の差し替えである。** 整合(同じIDが2つのまとまりに
+     * 現れない / `fields` に無いIDを書かない)はここで見ない —— 適用後マニフェストを見る
+     * `validateReferentialIntegrity` が持つ。
+     */
+    if (changes.field_sections !== undefined) {
+      next.field_sections = changes.field_sections;
+    }
+    /*
+     * **【`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅を、ここで実際に運ぶ。** **キー単位の全置換である。**
+     * キーが `fields` に在るかはここで見ない —— 適用後マニフェストを見る
+     * `validateReferentialIntegrity` が持つ(`add_view` と同じ1箇所)。
+     */
+    if (changes.field_width !== undefined) {
+      next.field_width = changes.field_width;
+    }
+    /*
      * **【`V10-M4-T01` / `NV-G9` / `ADR-0359` §4b 限定1・限定3】一続きの流れの中の段を、
      * ここで実際に運ぶ。**
      * **`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは値が運ばれない** —— この分岐に書かないと
@@ -2516,6 +2854,14 @@ function applyViewChanges(view: View, changes: ViewChanges): View {
      */
     if (changes.flow !== undefined) {
       next.flow = changes.flow;
+    }
+    /*
+     * **【`V20-M5-T01` / `ADR-0471`】並べ方の木を、ここで実際に運ぶ。** **キー単位の全置換である。**
+     * 葉の実在・重複・深さ・一覧はカードだけ・まとまりと両方は不可 はここで見ない —— 適用後マニフェストを見る
+     * `validateReferentialIntegrity` が持つ(`add_view` と同じ1箇所。判定を2箇所に住まわせない)。
+     */
+    if (changes.layout !== undefined) {
+      next.layout = changes.layout;
     }
     return next;
   }
@@ -2572,8 +2918,9 @@ function applyViewChanges(view: View, changes: ViewChanges): View {
   // **整合(同じIDが2つのまとまりに現れない / `fields` に無いIDを書かない)はここで見ない** ——
   // **適用後マニフェストを見る `validateReferentialIntegrity` が持つ**(`add_view` の経路も
   // 同じ1箇所で覆うため。限定5)。
-  if (changes.field_groups !== undefined) {
-    next.field_groups = changes.field_groups;
+  // **【`V20-M3-T01` / `ADR-0469`】綴りを `field_groups` から `field_sections` に改めた。**
+  if (changes.field_sections !== undefined) {
+    next.field_sections = changes.field_sections;
   }
   // **【V4-M19-T03 / `P-G32` の (C) 側 / `ADR-0118` 限定1】画面の詰まり具合を、ここで実際に運ぶ。**
   // **`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは値が運ばれない** —— この分岐に書かないと
@@ -2659,6 +3006,15 @@ function applyViewChanges(view: View, changes: ViewChanges): View {
    */
   if (changes.flow !== undefined) {
     next.flow = changes.flow;
+  }
+  // **【`V20-M5-T01` / `ADR-0471`】並べ方の木を、ここで実際に運ぶ。** **キー単位の全置換である**(判定は
+  // 適用後マニフェストを見る `validateReferentialIntegrity` の1箇所が持つ)。
+  if (changes.layout !== undefined) {
+    next.layout = changes.layout;
+  }
+  // **【`V23-M8-T02` / `D-V23-205`】詳細画面の `history` を運ぶ。**
+  if (changes.history !== undefined) {
+    next.history = changes.history;
   }
   return next;
 }
@@ -3025,7 +3381,53 @@ function collectRoleConditionNotices(
   return notices;
 }
 
-export function applyDiff(dataRoot: string, appId: string, diff: unknown): ApplyDiffResult {
+/** 保護の理由の、書いた人に向けた言い方(`ADR-0482` §1-2b の拒否の文言に使う)。 */
+const ANONYMOUS_PROTECTION_WORDS: Readonly<Record<string, string>> = {
+  st_public: "公開の印(st_public)",
+  st_owner: "所有者の項目(st_owner)",
+  access_control: "行ごとのアクセス権管理の宣言",
+  access_registry: "付与・利用者・グループの表としての宣言",
+  self_condition: "読取規則の条件の「自分」",
+};
+
+/**
+ * **未ログインの表ごとの読取の保護を外す差分について、拒否の理由を組む**(`V21-M2`。非 export)。
+ *
+ * **判定は `owner-scope.ts` の `anonymousReadDiffViolations` 1本である** —— ここは文言だけ。
+ */
+function anonymousReadDiffErrors(before: Manifest, after: Manifest): ValidationError[] {
+  return anonymousReadDiffViolations(before, after).map((violation) => {
+    const removed = violation.removed
+      .map((reason) => ANONYMOUS_PROTECTION_WORDS[reason] ?? reason)
+      .join("・");
+    return {
+      path: "/app/roles",
+      message:
+        `表 "${violation.table}" は未ログインの人に閉じていました(${removed})が、` +
+        `この差分でその守りが外れます。未ログインの人の役割(anonymous)にこの表の読取規則が` +
+        `残っているので、適用すると、ログインしていない人がこの表の行を読めるようになります。`,
+      hint:
+        `先に(同じ差分の set_roles でもかまいません)未ログインの人の役割(anonymous)の規則から` +
+        `表 "${violation.table}" を外してください。未ログインの人に見せてよい表なら、規則を外して` +
+        `から守りを外し、改めて規則を書いてください。状態は一切変更していません。`,
+    };
+  });
+}
+
+export function applyDiff(
+  dataRoot: string,
+  appId: string,
+  diff: unknown,
+  /**
+   * **【`V23-M1-T03`。`ADR-0510` §Decision 1 の1】** `afterMigrate` は、差分の適用と同じ
+   * トランザクションの最後に呼ぶ後段(名簿の埋め戻し)。 本体は `src/server` に在り、
+   * 差分を当てる2つの口(`POST /diffs` と `apply_diff`)だけが渡す。 カーネルは中身を知らない。
+   * 省略したとき(`dry_run_diff` ほか)は後段を呼ばない。
+   */
+  options?: {
+    afterMigrate?: (db: Database, next: Manifest, previous?: Manifest) => ValidationError[];
+  },
+): ApplyDiffResult {
   // --- 0. 未完了適用の巻き戻し(V1-M1-T04) ---
   // **前回がクラッシュで死んでいたら、その残骸の上に積まない。** 正常時は
   // 進行中マーカーが無いので、この呼び出しはファイルを1つも開かない(副作用ゼロ)。
@@ -3055,6 +3457,14 @@ export function applyDiff(dataRoot: string, appId: string, diff: unknown): Apply
         .map(annotateAppliedManifestError)
         .map((error) => annotateNoCascade(error, patch.operations)),
     };
+  }
+
+  // --- 【`V21-M2` / `ADR-0482` §1-2b】未ログインの表ごとの読取の保護を外す op の拒否 ---
+  // **前後の差だけを見る**(保護の状態を変えない差分は止めない。`D-V8-66` の問題を起こさない)。
+  // **スナップショットより前**なので、拒否時に何も変わらない。 `dry_run_diff` も同じ判定になる。
+  const anonymousErrors = anonymousReadDiffErrors(current, next);
+  if (anonymousErrors.length > 0) {
+    return { valid: false, errors: anonymousErrors };
   }
 
   // 語彙で表現できる差分かも先に確かめる。applyManifest も同じ検査をするが、
@@ -3087,6 +3497,41 @@ export function applyDiff(dataRoot: string, appId: string, diff: unknown): Apply
     const uniqueErrors = checkUniqueBackfills(dataRoot, appId, planned.uniqueChecks);
     if (uniqueErrors.length > 0) {
       return { valid: false, errors: uniqueErrors };
+    }
+  }
+
+  // --- 名簿への自動登録の宣言が新しく入る名簿の、既存の重複(`V23-M1-T02`。拒否7)------------
+  // **`ADR-0497` 限定2 の拒否7(`ADR-0038` 限定6 と同型)。** 宣言した名簿の `account` 列には
+  // 一意索引を張るので、既に重複があれば索引を張れない。 差分全体を断り、重複の件数を出す。
+  // 上の後付け unique と同じく、スナップショットより前に読むだけで1バイトも書かない。
+  const newlyEnrolled = autoEnrollAccountColumns(next).filter(
+    (target) =>
+      !autoEnrollAccountColumns(current).some(
+        (before) => before.table === target.table && before.account === target.account,
+      ),
+  );
+  if (newlyEnrolled.length > 0) {
+    const duplicateErrors = checkAutoEnrollDuplicates(dataRoot, appId, newlyEnrolled);
+    if (duplicateErrors.length > 0) {
+      return { valid: false, errors: duplicateErrors };
+    }
+  }
+
+  // --- 付与表の相手の行の列に値が残っているのに、行を相手にした付与を宣言する(`V23-M6-T02`)------
+  // **`ADR-0538` §1-1・決定 `D-V23-162`。** 相手の行の列(`grant.principal_row.column`)に値のある付与の行は、
+  // 行の招待の承諾でだけ作れる。 宣言の前に書かれた値を、宣言した日から付与として効かせないため、
+  // 値の残る列への宣言は差分全体を断る。 上の自動登録の重複と同じく、スナップショットより前に読むだけで
+  // 1バイトも書かない。 **`principal_row` を新しく宣言しない差分では、DB を1度も開かない。**
+  const newlyPrincipal = principalRowColumns(next).filter(
+    (target) =>
+      !principalRowColumns(current).some(
+        (before) => before.table === target.table && before.column === target.column,
+      ),
+  );
+  if (newlyPrincipal.length > 0) {
+    const residueErrors = checkPrincipalRowResidue(dataRoot, appId, newlyPrincipal);
+    if (residueErrors.length > 0) {
+      return { valid: false, errors: residueErrors };
     }
   }
 
@@ -3159,9 +3604,33 @@ export function applyDiff(dataRoot: string, appId: string, diff: unknown): Apply
       // --- 3 + 4. マニフェスト更新とマイグレーション ---
       // operations を渡す。渡さないと `applyManifest` は v0 の additive 判定を行い、
       // 破壊的な差分をここで拒否してしまう(モジュール `migrate.ts` 冒頭の設計判断)。
-      const applied = applyManifest(dataRoot, appId, next, patch.operations);
+      // **【`V23-M1-T03`】名簿の `account` 列の一意索引の張り外しを、同じトランザクションの
+      // 後段の先頭で行い、続けて呼び手の後段(埋め戻し)を呼ぶ。** 張るのは宣言した名簿だけ。
+      // 表の作り直し(型の変更)で索引は消えるので、宣言が続いている名簿にも毎回張り直す
+      // (`IF NOT EXISTS`)。 宣言が消えた名簿の索引は外す(行は残す)。
+      const enrollTargets = autoEnrollAccountColumns(next);
+      const droppedTargets = autoEnrollAccountColumns(current).filter(
+        (before) =>
+          !enrollTargets.some(
+            (target) => target.table === before.table && target.account === before.account,
+          ),
+      );
+      const applied = applyManifest(dataRoot, appId, next, patch.operations, (db, manifest) => {
+        for (const dropped of droppedTargets) {
+          // 名前は `ddl.ts` と同じ理由で `quoteIdentifier` に通さない(表と列は検査済みの ID)。
+          db.exec(
+            `DROP INDEX IF EXISTS "${autoEnrollAccountIndexName(dropped.table, dropped.account)}"`,
+          );
+        }
+        for (const target of enrollTargets) {
+          db.exec(createAutoEnrollAccountIndexSql(target.table, target.account));
+        }
+        // 【V23-M9 D-V23-236】前の定義も渡す(埋め戻しは対象の組が増えたときだけ)。
+        return options?.afterMigrate?.(db, manifest, current) ?? [];
+      });
       if (!applied.valid) {
         // 事前検証を通っている以上ここには来ない想定。来た場合も状態を確実に戻す。
+        // **【`V23-M1-T03` 追記。上の1行を消していない】後段(埋め戻し)が断ったときは、ここに来る。**
         rollback(dataRoot, appId, snapshot.name);
         endApply(dataRoot, appId);
         return { valid: false, errors: applied.errors };
@@ -3256,6 +3725,162 @@ function tableHasColumn(db: Database, tableId: string, column: string): boolean 
     .query<{ name: string }, []>(`PRAGMA table_info(${quoteIdentifier(tableId)})`)
     .all()
     .some((row) => row.name === column);
+}
+
+/**
+ * **名簿への自動登録を宣言した名簿の表と `account` 列**(`V23-M1`。`ADR-0510` §Decision 1 の5)。
+ *
+ * 宣言の綴りを読むのはこのファイルだけにする(`ddl.ts`・`migrate.ts` へは表と列の名前だけを
+ * 渡す)。 同じ名簿の表を2つの宣言が指すときは1つにまとめる(`path` は最初の宣言)。
+ * `V23-M1-T03` から、拒否7 の重複の検査と、一意索引の張り外しの両方がこれを使う。
+ *
+ * **【`V23-M1-T13` の訂正。上の文を消していない】** 「宣言の綴りを読むのはこのファイルだけ」は今日の正ではない。
+ * `V23-M1-T08` から、`src/kernel/records.ts` の `ensureRosterIndex` も、書込の直前に索引を遅延で張るため
+ * 名簿の宣言(`accessControlOf` を通して)を読む(`ADR-0516` §Decision 3)。 `ddl.ts`・`migrate.ts` が
+ * 表と列の名前だけを受け取ることは今日も真である。
+ */
+function autoEnrollAccountColumns(
+  manifest: Manifest,
+): { table: string; account: string; path: string }[] {
+  const out: { table: string; account: string; path: string }[] = [];
+  manifest.app.tables.forEach((table, tableIndex) => {
+    // **`enabled: true` の宣言だけを数える**(`enabled: false` は宣言していない表と同じ扱い)。
+    if (table.access_control?.enabled !== true) {
+      return;
+    }
+    const members = table.access_control.members;
+    if (members?.auto_enroll === undefined) {
+      return;
+    }
+    if (out.some((seen) => seen.table === members.table && seen.account === members.account)) {
+      return;
+    }
+    out.push({
+      table: members.table,
+      account: members.account,
+      path: `/app/tables/${tableIndex}/access_control/members/auto_enroll`,
+    });
+  });
+  return out;
+}
+
+/**
+ * **行を相手にした付与を宣言した付与表と、相手の行の列**(`V23-M6-T02`。`ADR-0538` §1-1)。
+ * **`enabled: true` の宣言だけを数える**(`enabled: false` は宣言していない表と同じ扱い。有効にした差分で数える)。
+ */
+function principalRowColumns(
+  manifest: Manifest,
+): { table: string; column: string; path: string }[] {
+  const out: { table: string; column: string; path: string }[] = [];
+  manifest.app.tables.forEach((table, tableIndex) => {
+    if (table.access_control?.enabled !== true) {
+      return;
+    }
+    const grant = table.access_control.grant;
+    if (grant.principal_row === undefined) {
+      return;
+    }
+    out.push({
+      table: grant.table,
+      column: grant.principal_row.column,
+      path: `/app/tables/${tableIndex}/access_control/grant/principal_row`,
+    });
+  });
+  return out;
+}
+
+/** 読取専用で開いて、付与表の相手の行の列に値の入った行を数える(`D-V23-162`)。 */
+function checkPrincipalRowResidue(
+  dataRoot: string,
+  appId: string,
+  targets: readonly { table: string; column: string; path: string }[],
+): ValidationError[] {
+  const path = appDbPath(dataRoot, appId);
+  if (!existsSync(path)) {
+    return [];
+  }
+  const db = new Database(path, { readonly: true });
+  try {
+    const errors: ValidationError[] = [];
+    for (const target of targets) {
+      if (!tableHasColumn(db, target.table, target.column)) {
+        // 同じ差分で新設する表・列。 行が無いので値も無い。
+        continue;
+      }
+      const col = quoteIdentifier(target.column);
+      const found = db
+        .query<{ n: number }, []>(
+          `SELECT COUNT(*) AS "n" FROM ${quoteIdentifier(target.table)} ` +
+            `WHERE ${col} IS NOT NULL AND ${col} <> ''`,
+        )
+        .get();
+      const count = found?.n ?? 0;
+      if (count === 0) {
+        continue;
+      }
+      errors.push({
+        path: target.path,
+        message:
+          `付与を記録する表 "${target.table}" の項目 "${target.column}"(付与の相手の行)に、値の入った行が ${count} 件残っています。` +
+          "付与の相手の行は、相手の行の管理者が招待を承諾したときだけ書かれるものなので、すでに入っている値のまま宣言することはできません。",
+        hint:
+          "先に delete_record でその行を消すか、update_record でその項目を空にしてから、改めて同じ差分を送ってください。" +
+          "状態は一切変更していません。",
+      });
+    }
+    return errors;
+  } finally {
+    db.close();
+  }
+}
+
+/** 拒否7 の本体。 読取専用で開いて、`account` 列の非 null の重複を数える。 */
+function checkAutoEnrollDuplicates(
+  dataRoot: string,
+  appId: string,
+  targets: readonly { table: string; account: string; path: string }[],
+): ValidationError[] {
+  const path = appDbPath(dataRoot, appId);
+  if (!existsSync(path)) {
+    return [];
+  }
+  const db = new Database(path, { readonly: true });
+  try {
+    const errors: ValidationError[] = [];
+    for (const target of targets) {
+      if (!tableHasColumn(db, target.table, target.account)) {
+        // 同じ差分で新設する表・列。 行が無いので重複も無い。
+        continue;
+      }
+      const col = quoteIdentifier(target.account);
+      const dupes = db
+        .query<{ value: string | number; n: number }, []>(
+          `SELECT ${col} AS "value", COUNT(*) AS "n" FROM ${quoteIdentifier(target.table)} ` +
+            `WHERE ${col} IS NOT NULL GROUP BY ${col} HAVING COUNT(*) > 1 ORDER BY ${col}`,
+        )
+        .all();
+      if (dupes.length === 0) {
+        continue;
+      }
+      const shown = dupes.slice(0, UNCONVERTIBLE_SAMPLE_LIMIT);
+      const samples = shown.map((d) => `${JSON.stringify(d.value)}(${d.n} 件)`).join(" / ");
+      const omitted = dupes.length - shown.length;
+      const tail = omitted > 0 ? ` ほか ${omitted} 種` : "";
+      errors.push({
+        path: target.path,
+        message:
+          `利用者の表 "${target.table}" に名簿への自動登録を宣言できません。` +
+          `項目 "${target.account}" に同じ利用者のIDを持つ行が複数あります: ${samples}${tail}。` +
+          `自動登録を宣言した名簿では、1人につき1行しか持てません。`,
+        hint:
+          "先に update_record / delete_record で重複した行を1人1行に直してから、改めて同じ差分を送ってください。" +
+          "状態は一切変更していません。",
+      });
+    }
+    return errors;
+  } finally {
+    db.close();
+  }
 }
 
 function checkUniqueBackfills(

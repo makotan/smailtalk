@@ -1,3 +1,5 @@
+// **【`V22-M3-T02`。`ADR-0488` 限定11】持ち主が分かる表を決める1本を呼ぶ**(判定を2本目に書かない)。
+import { myPageTables } from "../shared/my-page.ts";
 import { isSystemTableId, SYSTEM_TABLES } from "../shared/system-tables.ts";
 import { convertValue } from "./convert.ts";
 // **`D-V8-126`(`V8-M9`)。** **すべての表が持つシステム列の綴りを、ここで宣言し直さない**
@@ -15,6 +17,7 @@ import { MAX_FILTER_DEPTH } from "./records.ts";
 import type {
   Field,
   FieldType,
+  FormView,
   FunctionInput,
   Manifest,
   ResourceId,
@@ -122,6 +125,20 @@ function walkRoleCondition(
     walkRoleCondition(node.not, `${path}/not`, depth + 1, visit);
   }
 }
+
+/**
+ * **画面の中の並べ方の木(`layout`)の深さの上限**(`V20-M5-T01` / `ADR-0462` 限定4 / `ADR-0471`)。
+ *
+ * **根の節が1段目である。** 4段目の節を含む木は、差分全体を拒否する(下の `checkLayout`)。
+ * **葉(項目・ボタンの名前)は段に数えない。**
+ *
+ * **絞り込みの木の上限(`records.ts` の `MAX_FILTER_DEPTH`)を共有しない** —— 条文が
+ * 「上限の値はカーネルに1本だけ置き、3 ちょうどにする」「絞り込みの木の上限を1バイトも動かさない」と
+ * 決めた(`ADR-0462` 限定4)。2つの上限が同じ製品に並ぶことは同 ADR が代償として引き受けている。
+ * **スキーマ(`$defs/layout_node`)は `$ref` の自己参照で任意段を許し、有限性の歯止めはここに置く**
+ * (`$defs/filter_node` と同じ作法)。
+ */
+export const MAX_LAYOUT_DEPTH = 3;
 
 export function validateReferentialIntegrity(manifest: Manifest): ValidationResult {
   const errors: ValidationError[] = [];
@@ -366,6 +383,35 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
       }
     });
 
+    /*
+     * --- 一意違反の文言(unique_message)は unique を持つ列にだけ書ける ----------
+     *
+     * **`V23-M2-T02` / `ADR-0498` §Decision 1・限定3 / 決定 `D-V23-56`。** `unique` が無いか
+     * `false` の列に書くと、書けるが効かない宣言になるので拒否する。 **`change_field` で
+     * `unique` を外して文言が残る形も、ここで拒否される**(本関数は適用後マニフェストを見るので、
+     * `add_field` / `add_table` / `change_field` の全経路を1箇所で覆う。上の類型3b と同じ置き場)。
+     * 長さ(文字で 1〜200)と型(文字列)はスキーマが見る。
+     */
+    table.fields.forEach((field, fieldIndex) => {
+      if (field.unique_message === undefined) {
+        return;
+      }
+      if (field.unique === true || field.unique === "owner") {
+        return;
+      }
+      errors.push({
+        path: `/app/tables/${tableIndex}/fields/${fieldIndex}/unique_message`,
+        message:
+          `フィールド "${field.id}" は unique が ${field.unique === undefined ? "書かれていない" : "false"} ので、` +
+          `unique_message(一意違反の文言)を持てません。` +
+          `unique_message を書けるのは unique が true か "owner" のフィールドだけです。`,
+        allowed_values: ["true", '"owner"'],
+        hint:
+          `一意にしたいのであれば、同じ差分で unique を true か "owner" にしてください。` +
+          `一意をやめるのであれば、同じ change_field で unique_message に null を書いて外してください。`,
+      });
+    });
+
     // --- 類型3: reference 型の参照先テーブルが実在するか --------------------
     table.fields.forEach((field, fieldIndex) => {
       if (field.type !== "reference") {
@@ -551,6 +597,235 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
       });
     };
 
+    /*
+     * --- 類型15: 詳細画面の項目のまとまり `field_groups`(`P-G17` の (C) 側。ADR-0092)------
+     *
+     * **detail_view にだけ許した宣言**(schema が list_view / form では `field_groups:false`)。
+     * ここで検査するのは **限定5**「整合しない宣言は差分全体を拒否する」であり、
+     * **置き場をここにしたのは適用後マニフェストを見るからである** ——
+     * **`add_view` の経路も `update_view` の経路も、この1箇所で覆える。**
+     *
+     * 1. **同じフィールドIDが2つのまとまりに現れたら拒否する。**(まとまりの中の重複は
+     *    schema の `uniqueItems` が既に弾いているので、ここが見るのは**跨いだ**重複である。)
+     * 2. **その画面に無いIDを書いても拒否する。**
+     *
+     * **照合先は2通りある。** **`detail_view.fields` は任意である**(未指定 =
+     * 「テーブル定義順の全項目」= `web/src/views/DetailViewRenderer.tsx` の `fields`)ので:
+     * - **`fields` を書いた画面** …… 照合先は**その `fields`** である。`fields` に無い項目は
+     *   そもそも描かれないので、まとまりに入れても当たり先が無い(= 黙って効かない)。
+     * - **`fields` を書いていない画面** …… 照合先は**対象テーブルのフィールド**である。
+     *
+     * **`fields` 自体の実在照合は上の類型2 が既に済ませている**ので、ここでは二重に言わない
+     * (`fields` が壊れている差分は、どちらの経路でも既に拒否されている)。
+     *
+     * **`related` の子一覧には当たらない**(限定8)—— 子テーブルのフィールドは照合先に
+     * 1つも入らない。
+     *
+     * **path はまとまりの名前と配列の添字を指す。** **まとまりの名前は表示名であって
+     * `resource_id` ではない**ので、`/` も `~` も含みうる —— RFC 6901 のエスケープを掛ける
+     * (フィールドIDを指す既存の path はエスケープ不要だが、ここは形が違う)。
+     */
+    /*
+     * **【`V20-M3-T01` / `ADR-0469` 限定6】綴りを `field_groups` から `field_sections` に改め、
+     * 入力フォーム(`form`)にも書けるようにした。** **判定を1箇所に保つため、着手前は
+     * `detail_view` の分岐の中に在った本文をこのクロージャに移し、`form` と `detail_view` の
+     * 2分岐から呼ぶ**(本文の判定は1文字も変えていない。変えたのは綴り・照合先の引数・
+     * `fields` に無いIDのヒントの画面種別の言い方だけ)。上の「detail_view にだけ許した宣言」は
+     * 旧綴りの時点の記述である。
+     */
+    const checkFieldSections = (
+      sections: Record<string, ResourceId[] | { id?: ResourceId; fields: ResourceId[] }>,
+      viewFields: ResourceId[] | undefined,
+    ): void => {
+      /** RFC 6901: `~` → `~0`、`/` → `~1`(順序を逆にすると `/` が二重に化ける)。 */
+      const escapePointer = (token: string): string =>
+        token.replaceAll("~", "~0").replaceAll("/", "~1");
+      /** 照合先(限定5 の2場合分け)。 */
+      const scope = viewFields ?? fieldIds;
+      /** 既に現れたフィールドID → 最初に現れたまとまりの名前。 */
+      const seen = new Map<ResourceId, string>();
+      for (const [groupName, group] of Object.entries(sections)) {
+        /*
+         * **【`CM-G24` / `V10-M24-T03`】まとまりの値は2形ある**(`ADR-0371`)——
+         * **配列そのもの**か、**名札を持つ `{ id?, fields }`**。**照合するのは中身だけ**で、
+         * **名札は1度も読まない**(名札の一意は `V10-M24-T05` が別に見る)。
+         * **path は着手前と1バイトも変わらない** —— 添字はどちらの形でも `fields` の添字である。
+         */
+        const memberIds = Array.isArray(group) ? group : group.fields;
+        memberIds.forEach((fieldId, memberIndex) => {
+          const path = `${base}/field_sections/${escapePointer(groupName)}/${memberIndex}`;
+          if (!scope.includes(fieldId)) {
+            errors.push({
+              path,
+              message: `ビュー "${view.id}" の項目のまとまり(field_sections)に指定されたフィールド "${fieldId}" は、この画面の表示項目にありません。`,
+              allowed_values: scope,
+              hint:
+                viewFields === undefined
+                  ? `テーブル "${table.id}" に実在するフィールドIDを指定するか、先に add_field でフィールドを追加してください。`
+                  : `この画面(${view.type})の表示項目(fields)に書いたフィールドIDを指定するか、先に fields へ追加してください。`,
+            });
+            return;
+          }
+          const first = seen.get(fieldId);
+          if (first !== undefined) {
+            errors.push({
+              path,
+              /*
+               * **`allowed_values` は付けない。**候補が有限の「不在ID」ではないからである
+               * (先例は下の類型のワークフロー側)。**行き先は hint が示す。**
+               */
+              message: `ビュー "${view.id}" の項目のまとまり(field_sections)で、フィールド "${fieldId}" が2つのまとまり("${first}" と "${groupName}")の両方に現れています。`,
+              hint: "1つの項目が属せるまとまりは1つだけです。どちらかのまとまりから外してください。",
+            });
+            return;
+          }
+          seen.set(fieldId, groupName);
+        });
+      }
+
+      /*
+       * --- 類型5(補遺): 項目のまとまりの名札の重複(`CM-G31`。`V10-M24-T05` /
+       *     `ADR-0371` 限定1〜限定6)----------------------------------------------
+       *
+       * **一意の範囲は「1つの画面の中」だけである** —— **別の画面には同じ名札を書ける。**
+       * **すぐ上の「同じフィールドIDが2つのまとまりに現れたら拒否する」(`ADR-0092`
+       * 限定5)とは別の検査である** —— **上は中身(フィールドID)を、ここは名札を見る。**
+       *
+       * **旧形(配列そのもの)は名札を持てない**ので、数える対象に1件も入らない
+       * (`ADR-0371` が足したのは新形 `{ id?, fields }` の `id` だけである)。
+       * **新形でも名札を書いていないまとまりは1件も拒否しない**(名札は任意 = 限定1)。
+       *
+       * **path はまとまりの名前を指す** —— **上と同じ RFC 6901 のエスケープを掛ける。**
+       */
+      const groupAnchors = Object.entries(sections).flatMap(([groupName, group]) =>
+        Array.isArray(group) || group.id === undefined
+          ? []
+          : [{ id: group.id, path: `${base}/field_sections/${escapePointer(groupName)}/id` }],
+      );
+      collectDuplicates(
+        groupAnchors.map((anchor) => anchor.id),
+        (index, id) => {
+          const anchor = groupAnchors[index];
+          if (anchor === undefined) {
+            return;
+          }
+          errors.push({
+            path: anchor.path,
+            message: `ビュー "${view.id}" の項目のまとまり(field_sections)の名札 "${id}" が、同じ画面の中で重複しています。`,
+            hint: "1つの画面の中では、まとまりの名札は一意である必要があります。どちらかに別の名札を付けるか、片方の名札を消してください(別の画面には同じ名札を書けます)。",
+          });
+        },
+      );
+    };
+
+    /*
+     * --- 類型2f: 画面の中の並べ方の木 `layout`(`V20-M5-T01` / `ADR-0462` 限定4 / `ADR-0471`)------
+     *
+     * **スキーマで表せないものを1箇所で判定する**(入力フォーム・詳細画面・一覧の3分岐から呼ぶ。
+     * `checkFieldSections` と同じ作法で、判定を分岐ごとに書き分けない):
+     *
+     * 1. **深さ** —— 根の節が1段目。`MAX_LAYOUT_DEPTH`(3)を超える段の節を拒否する。
+     *    **超えた節の下は歩かない**(同じ原因で下の葉のエラーを重ねて出さない)。
+     * 2. **項目の葉の実在** —— その画面の表示項目(`scope`)に在ること。表に在るだけでは足りない
+     *    (表示していない項目は木に置いても当たり先が無い)。
+     * 3. **ボタンの葉の実在** —— `"action:<名前>"` の名前が `actionNames` に在ること
+     *    (その画面の宣言ボタンの `id`。入力フォームだけ予約名 `submit` が1つ加わる)。
+     * 4. **同じ葉を2回置かない**(項目でもボタンでも)。**位置は2回目の葉を指す。**
+     *
+     * **参照されなかった表示項目は拒否しない**(描画が末尾に縦に積む。注意の器は作らない = `D-V20-15`)。
+     * **書ける値の一覧(`allowed_values`)は、指し先が有限の一覧のときだけ付ける**(実在しない名前)。
+     * 重複と深さには付けない(直し方が「外す」であって、選ぶ候補が無い)。**拒否は「全か無か」である。**
+     */
+    type LayoutNodeShape = NonNullable<FormView["layout"]>;
+    const checkLayout = (
+      layout: LayoutNodeShape,
+      scope: readonly ResourceId[],
+      scopeLabel: string,
+      actionNames: readonly string[],
+    ): void => {
+      const seenLeaves = new Set<string>();
+      const actionCandidates = actionNames.map((name) => `action:${name}`);
+      const visitChild = (child: LayoutNodeShape | string, path: string, depth: number): void => {
+        if (typeof child !== "string") {
+          visitNode(child, path, depth);
+          return;
+        }
+        if (child.startsWith("action:")) {
+          if (!actionCandidates.includes(child)) {
+            errors.push({
+              path,
+              message: `ビュー "${view.id}" の並べ方の木(layout)に置いたボタン "${child}" は、この画面にありません。`,
+              allowed_values: [...actionCandidates],
+              hint:
+                view.type === "form"
+                  ? '入力フォームで木に置けるボタンは送信ボタンの "action:submit" だけです(取消ボタンはありません)。'
+                  : 'この画面の actions に識別子(id)を書いたボタンを "action:<識別子>" の形で置いてください。識別子を書いていないボタンと、組込のボタン(編集・削除など)は木に置けません。',
+            });
+            return;
+          }
+        } else if (!scope.includes(child)) {
+          errors.push({
+            path,
+            message: `ビュー "${view.id}" の並べ方の木(layout)に置いた項目 "${child}" は、この画面の表示項目(${scopeLabel})にありません。`,
+            allowed_values: [...scope],
+            hint: `この画面の表示項目(${scopeLabel})に在るフィールドIDを置くか、先に表示項目へ追加してください。ボタンを置くときは "action:<ボタンの識別子>" と書きます。`,
+          });
+          return;
+        }
+        if (seenLeaves.has(child)) {
+          errors.push({
+            path,
+            message: `ビュー "${view.id}" の並べ方の木(layout)に "${child}" が2回置かれています。`,
+            hint: "同じ項目・同じボタンを木に置けるのは1回だけです。どちらか一方を外してください。",
+          });
+          return;
+        }
+        seenLeaves.add(child);
+      };
+      const visitNode = (node: LayoutNodeShape, path: string, depth: number): void => {
+        if (depth > MAX_LAYOUT_DEPTH) {
+          errors.push({
+            path,
+            message: `ビュー "${view.id}" の並べ方の木(layout)の入れ子が深すぎます(深さの上限 ${MAX_LAYOUT_DEPTH} 段。根の節が1段目)。`,
+            hint: `この節の子を1つ上の段の節へ移すなどして、入れ子を ${MAX_LAYOUT_DEPTH} 段までにしてください(${MAX_LAYOUT_DEPTH + 1} 段目の節は書けません)。`,
+          });
+          return;
+        }
+        switch (node.type) {
+          case "sidebar":
+            visitChild(node.side, `${path}/side`, depth + 1);
+            visitChild(node.main, `${path}/main`, depth + 1);
+            return;
+          case "split":
+            for (const [index, child] of node.start.entries()) {
+              visitChild(child, `${path}/start/${index}`, depth + 1);
+            }
+            for (const [index, child] of node.end.entries()) {
+              visitChild(child, `${path}/end/${index}`, depth + 1);
+            }
+            return;
+          default:
+            for (const [index, child] of node.children.entries()) {
+              visitChild(child, `${path}/children/${index}`, depth + 1);
+            }
+        }
+      };
+      visitNode(layout, `${base}/layout`, 1);
+    };
+    /** その画面の宣言ボタンのうち、識別子(`id`)を書いたものの名前。 */
+    const declaredActionIds = (actions: readonly unknown[] | undefined): string[] =>
+      (actions ?? [])
+        .map((action) => (action as { id?: unknown }).id)
+        .filter((id): id is string => typeof id === "string");
+    /** 同じ画面に項目のまとまりと並べ方の木の両方を書いたときの拒否(入力フォーム・詳細画面)。 */
+    const rejectLayoutWithSections = (): void => {
+      errors.push({
+        path: `${base}/layout`,
+        message: `ビュー "${view.id}" に項目のまとまり(field_sections)と並べ方の木(layout)の両方が書かれています。同じ画面にはどちらか一方しか書けません。`,
+        hint: "見出し付きのまとまりで並べるなら field_sections、縦・横・脇組みなどの並べ方を決めるなら layout の、どちらか一方だけを書いてください(木の中に見出し付きのまとまりは置けません)。",
+      });
+    };
+
     if (view.type === "list_view") {
       // --- 類型2: columns のフィールドIDが実在するか -------------------------
       view.columns.forEach((columnId, columnIndex) => {
@@ -721,6 +996,97 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
         }
       }
 
+      /*
+       * --- 類型2e: 一覧の束ねるキー `group_by`(`V20-M4-T02` / `ADR-0470` §Decision 3)-------------
+       *
+       * **スキーマで表せない4点を1箇所で判定する**(集計表の束ねるキー = 類型18 と同じ規則・同じ文面の作法):
+       * (1) `field` がこの一覧の**表示列(`columns`)**に在るか(表に在るだけでは足りない ——
+       *     表示していない項目で区切ると、見出しの値が画面のどこにも無い) /
+       * (2) 型が select / reference / boolean / date の4種か(集計表の `groupableTypes` と同じ集合) /
+       * (3) date に `granularity` が在るか / (4) date 以外に `granularity` が無いか。
+       * **`_id` はスキーマの `$defs/resource_id` の pattern が先に止める**(ここまで届かない)。
+       *
+       * **書ける値の一覧(`allowed_values`)は「表示列のうち束ねられる型の項目」を表示列の順で出す**(NF4)。
+       * **拒否は「全か無か」である**(`ADR-0047` 限定9)。
+       *
+       * **【決めていないこと。隠さない】役割の規則が名指しした項目を指せるかは `ADR-0470` が決めていない**
+       * (同 ADR の「この条文が塞がないもの」の3)。**本類型は名指しを見ない**(集計表の類型18 は見る)。
+       *
+       * **【2026-09-24 訂正。上の2行を消していない】`V20-M4-T07`(点検 `T06` の指摘1 へのメインの裁定)で決めた** ——
+       * **役割の規則が名指しした項目は書けない**(集計表の類型18・`search_fields`・`sum_field` と同じ側。
+       * 述語は同じ `namedByRoleRules`)。**書ける値の一覧に名指しした項目を出さない**(どの拒否でも)。
+       * 後から `set_roles` で名指ししたときも、畳み込み後のマニフェストがここを通るので差分全体が拒否される
+       * (`sum_field` / 集計表の `group_by` と同じ)。読取の壁(`src/server/app.ts` の 400)はそのまま残す。
+       */
+      if (view.group_by !== undefined) {
+        const groupBy = view.group_by;
+        const path = `${base}/group_by`;
+        const listGroupableTypes: readonly string[] = ["select", "reference", "boolean", "date"];
+        const groupableColumns = view.columns.filter((columnId) => {
+          const candidate = table.fields.find((f) => f.id === columnId);
+          return (
+            candidate !== undefined &&
+            listGroupableTypes.includes(candidate.type) &&
+            !namedByRoleRules(table.id, candidate.id)
+          );
+        });
+        const field = table.fields.find((candidate) => candidate.id === groupBy.field);
+        if (!view.columns.includes(groupBy.field) || field === undefined) {
+          errors.push({
+            path: `${path}/field`,
+            message: `ビュー "${view.id}" の束ねるキー(group_by)に指定されたフィールド "${groupBy.field}" は、この一覧の表示列(columns)にありません。`,
+            allowed_values: [...groupableColumns],
+            hint: "この一覧の表示列(columns)に在る select / reference / boolean / date のフィールドを指定するか、先に columns へ追加してください(表示していない項目で区切ると、見出しの値が画面のどこにもありません)。",
+          });
+        } else if (namedByRoleRules(table.id, groupBy.field)) {
+          errors.push({
+            path: `${path}/field`,
+            message: `ビュー "${view.id}" の束ねるキー(group_by)に指定されたフィールド "${groupBy.field}" は、役割の規則が名指ししている項目です。名指しされた項目では束ねられません。`,
+            allowed_values: [...groupableColumns],
+            hint: "役割の規則(app の roles)が名指ししていない select / reference / boolean / date のフィールドを指定してください(見出しに出る群の値そのものが項目の値なので、隠した項目の値が読めてしまうためです)。",
+          });
+        } else if (!listGroupableTypes.includes(field.type)) {
+          errors.push({
+            path: `${path}/field`,
+            message: `ビュー "${view.id}" の束ねるキー(group_by)に指定されたフィールド "${groupBy.field}" は ${field.type} 型です。束ねられるのは select / reference / boolean / date だけです。`,
+            allowed_values: [...groupableColumns],
+            hint: "select / reference / boolean / date のフィールドを指定してください(自由入力・数・ファイルは、束ねても1行1群になるか意味が定まりません)。",
+          });
+        } else if (field.type === "date" && groupBy.granularity === undefined) {
+          errors.push({
+            path,
+            message: `ビュー "${view.id}" の束ねるキー(group_by)に date 型のフィールド "${groupBy.field}" を指定したときは、束ね方(granularity)を必ず書いてください。`,
+            allowed_values: ["day", "week", "month"],
+            hint: "day / week / month のいずれかを granularity に書いてください(書かないと日付が1つ違うだけで別の群になります。週は月曜始まりです)。",
+          });
+        } else if (field.type !== "date" && groupBy.granularity !== undefined) {
+          errors.push({
+            path: `${path}/granularity`,
+            message: `束ね方(granularity)を書けるのは date 型のフィールドだけです。ビュー "${view.id}" の束ねるキーの "${groupBy.field}" は ${field.type} 型です。`,
+            hint: "granularity を削除するか、date 型のフィールドを指定してください(date 以外に束ね方を書いても当たり先がありません)。",
+          });
+        }
+      }
+
+      /*
+       * **類型2f(並べ方の木)。** **一覧で効くのはカードの中だけである** —— 画面自身に
+       * `preset_list_shape: "card"` を書いていない一覧(省略 = 表)に書くと拒否する
+       * (書けるが効かない組み合わせを作らない = `ADR-0086` 限定4)。**アプリの既定の形は見ない**
+       * (`ADR-0466` の既定の形は未実装。メインの裁定の申4)。表の形のときは葉を歩かない(原因は1つ)。
+       * 形を table に変える `update_view` も、畳み込み後のマニフェストがここを通るので同じく拒否される。
+       */
+      if (view.layout !== undefined) {
+        if (view.preset_list_shape !== "card") {
+          errors.push({
+            path: `${base}/layout`,
+            message: `ビュー "${view.id}" は一覧の形がカード(preset_list_shape: "card")ではないので、並べ方の木(layout)を書けません。`,
+            hint: 'この一覧に preset_list_shape: "card" を書くか、layout を外してください(並べ方の木が効くのはカードの中だけです。preset_list_shape を書かない一覧は表の形です)。',
+          });
+        } else {
+          checkLayout(view.layout, view.columns, "columns", declaredActionIds(view.actions));
+        }
+      }
+
       for (const [presetKey, label] of [
         ["preset_column_align", "列の寄せ(preset_column_align)"],
         ["preset_column_width", "列の幅(preset_column_width)"],
@@ -742,6 +1108,45 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
           missingField(`${base}/fields/${fieldIndex}`, fieldId, "入力項目(fields)");
         }
       });
+      // **【`V20-M3-T01` / `ADR-0469` 限定6】項目のまとまり。** **詳細画面と同じ1箇所
+      // (`checkFieldSections`)で判定する** —— 同じIDが2つのまとまりに現れたら拒否、`fields` に
+      // 無いIDを書いても拒否(入力フォームの `fields` は必須なので、照合先は常にその `fields`)。
+      if (view.field_sections !== undefined) {
+        checkFieldSections(view.field_sections, view.fields);
+      }
+      // **類型2f(並べ方の木)。** 照合先は入力項目(`fields`)。**置けるボタンは予約名 `submit`
+      // (送信ボタン)の1つだけ**(入力フォームには宣言ボタンを書けず、取消ボタンは無い)。
+      // **まとまりと両方は書けない**(メインの裁定5)。
+      if (view.layout !== undefined) {
+        if (view.field_sections !== undefined) {
+          rejectLayoutWithSections();
+        } else {
+          checkLayout(view.layout, view.fields, "fields", ["submit"]);
+        }
+      }
+      /*
+       * --- 類型2d: 入力欄の幅 `field_width`(`V20-M3-T02` / `ADR-0460` 限定4)-----------------
+       *
+       * **キーがフィールドIDの対応表である** —— 類型2b(列ごとのプリセット)・類型2c
+       * (`reference_pickers`)と同じ形の穴を持つ: スキーマはキーの「形」しか見ない。
+       * **照合先はこの入力フォームの `fields` である**(表に在るだけでは足りない) ——
+       * 入力欄として出していない項目に幅を書くと、当たり先が無いので「書けるが効かない
+       * 組み合わせ」になる(`ADR-0086` 限定4)。類型2b / 2c が `columns` / `fields` 掲載を
+       * 要求しないのとはここが違う(**新しいキーでは同じ穴を作らない**)。
+       * **拒否は「全か無か」である。** エラーはキーごとに出す(1往復で全部直せるように)。
+       */
+      if (view.field_width !== undefined) {
+        for (const fieldId of Object.keys(view.field_width)) {
+          if (!view.fields.includes(fieldId)) {
+            errors.push({
+              path: `${base}/field_width/${fieldId}`,
+              message: `ビュー "${view.id}" の入力欄の幅(field_width)に指定されたフィールド "${fieldId}" は、この画面の入力項目(fields)にありません。`,
+              allowed_values: [...view.fields],
+              hint: "この入力フォームの入力項目(fields)に書いたフィールドIDを指定するか、先に fields へ追加してください(入力欄として出していない項目には幅を当てる先がありません)。",
+            });
+          }
+        }
+      }
       /*
        * --- 類型16: 保存後の行き先 `after_save`(`E-G34`。`V4-M20-T04` / ADR-0102 限定8)---
        *
@@ -1455,114 +1860,24 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
         }
       }
 
-      /*
-       * --- 類型15: 詳細画面の項目のまとまり `field_groups`(`P-G17` の (C) 側。ADR-0092)------
-       *
-       * **detail_view にだけ許した宣言**(schema が list_view / form では `field_groups:false`)。
-       * ここで検査するのは **限定5**「整合しない宣言は差分全体を拒否する」であり、
-       * **置き場をここにしたのは適用後マニフェストを見るからである** ——
-       * **`add_view` の経路も `update_view` の経路も、この1箇所で覆える。**
-       *
-       * 1. **同じフィールドIDが2つのまとまりに現れたら拒否する。**(まとまりの中の重複は
-       *    schema の `uniqueItems` が既に弾いているので、ここが見るのは**跨いだ**重複である。)
-       * 2. **その画面に無いIDを書いても拒否する。**
-       *
-       * **照合先は2通りある。** **`detail_view.fields` は任意である**(未指定 =
-       * 「テーブル定義順の全項目」= `web/src/views/DetailViewRenderer.tsx` の `fields`)ので:
-       * - **`fields` を書いた画面** …… 照合先は**その `fields`** である。`fields` に無い項目は
-       *   そもそも描かれないので、まとまりに入れても当たり先が無い(= 黙って効かない)。
-       * - **`fields` を書いていない画面** …… 照合先は**対象テーブルのフィールド**である。
-       *
-       * **`fields` 自体の実在照合は上の類型2 が既に済ませている**ので、ここでは二重に言わない
-       * (`fields` が壊れている差分は、どちらの経路でも既に拒否されている)。
-       *
-       * **`related` の子一覧には当たらない**(限定8)—— 子テーブルのフィールドは照合先に
-       * 1つも入らない。
-       *
-       * **path はまとまりの名前と配列の添字を指す。** **まとまりの名前は表示名であって
-       * `resource_id` ではない**ので、`/` も `~` も含みうる —— RFC 6901 のエスケープを掛ける
-       * (フィールドIDを指す既存の path はエスケープ不要だが、ここは形が違う)。
-       */
-      if (view.field_groups !== undefined) {
-        /** RFC 6901: `~` → `~0`、`/` → `~1`(順序を逆にすると `/` が二重に化ける)。 */
-        const escapePointer = (token: string): string =>
-          token.replaceAll("~", "~0").replaceAll("/", "~1");
-        /** 照合先(限定5 の2場合分け)。 */
-        const scope = view.fields ?? fieldIds;
-        /** 既に現れたフィールドID → 最初に現れたまとまりの名前。 */
-        const seen = new Map<ResourceId, string>();
-        for (const [groupName, group] of Object.entries(view.field_groups)) {
-          /*
-           * **【`CM-G24` / `V10-M24-T03`】まとまりの値は2形ある**(`ADR-0371`)——
-           * **配列そのもの**か、**名札を持つ `{ id?, fields }`**。**照合するのは中身だけ**で、
-           * **名札は1度も読まない**(名札の一意は `V10-M24-T05` が別に見る)。
-           * **path は着手前と1バイトも変わらない** —— 添字はどちらの形でも `fields` の添字である。
-           */
-          const memberIds = Array.isArray(group) ? group : group.fields;
-          memberIds.forEach((fieldId, memberIndex) => {
-            const path = `${base}/field_groups/${escapePointer(groupName)}/${memberIndex}`;
-            if (!scope.includes(fieldId)) {
-              errors.push({
-                path,
-                message: `ビュー "${view.id}" の項目のまとまり(field_groups)に指定されたフィールド "${fieldId}" は、この画面の表示項目にありません。`,
-                allowed_values: scope,
-                hint:
-                  view.fields === undefined
-                    ? `テーブル "${table.id}" に実在するフィールドIDを指定するか、先に add_field でフィールドを追加してください。`
-                    : `この detail_view の表示項目(fields)に書いたフィールドIDを指定するか、先に fields へ追加してください。`,
-              });
-              return;
-            }
-            const first = seen.get(fieldId);
-            if (first !== undefined) {
-              errors.push({
-                path,
-                /*
-                 * **`allowed_values` は付けない。**候補が有限の「不在ID」ではないからである
-                 * (先例は下の類型のワークフロー側)。**行き先は hint が示す。**
-                 */
-                message: `ビュー "${view.id}" の項目のまとまり(field_groups)で、フィールド "${fieldId}" が2つのまとまり("${first}" と "${groupName}")の両方に現れています。`,
-                hint: "1つの項目が属せるまとまりは1つだけです。どちらかのまとまりから外してください。",
-              });
-              return;
-            }
-            seen.set(fieldId, groupName);
-          });
+      // **類型15(項目のまとまり)の判定は、上の `checkFieldSections` 1箇所に在る**(入力フォームと共有)。
+      if (view.field_sections !== undefined) {
+        checkFieldSections(view.field_sections, view.fields);
+      }
+      // **類型2f(並べ方の木)。** 照合先は `checkFieldSections` と同じ2通り(`fields` を書いた画面は
+      // その `fields`、書いていない画面は対象テーブルの全項目)。置けるボタンは宣言ボタンの `id`。
+      // **組込のボタン(編集・削除)は置けない**(マニフェスト上に名前が無い)。**まとまりと両方は書けない。**
+      if (view.layout !== undefined) {
+        if (view.field_sections !== undefined) {
+          rejectLayoutWithSections();
+        } else {
+          checkLayout(
+            view.layout,
+            view.fields ?? fieldIds,
+            view.fields === undefined ? `テーブル "${table.id}" の全項目` : "fields",
+            declaredActionIds(view.actions),
+          );
         }
-
-        /*
-         * --- 類型5(補遺): 項目のまとまりの名札の重複(`CM-G31`。`V10-M24-T05` /
-         *     `ADR-0371` 限定1〜限定6)----------------------------------------------
-         *
-         * **一意の範囲は「1つの画面の中」だけである** —— **別の画面には同じ名札を書ける。**
-         * **すぐ上の「同じフィールドIDが2つのまとまりに現れたら拒否する」(`ADR-0092`
-         * 限定5)とは別の検査である** —— **上は中身(フィールドID)を、ここは名札を見る。**
-         *
-         * **旧形(配列そのもの)は名札を持てない**ので、数える対象に1件も入らない
-         * (`ADR-0371` が足したのは新形 `{ id?, fields }` の `id` だけである)。
-         * **新形でも名札を書いていないまとまりは1件も拒否しない**(名札は任意 = 限定1)。
-         *
-         * **path はまとまりの名前を指す** —— **上と同じ RFC 6901 のエスケープを掛ける。**
-         */
-        const groupAnchors = Object.entries(view.field_groups).flatMap(([groupName, group]) =>
-          Array.isArray(group) || group.id === undefined
-            ? []
-            : [{ id: group.id, path: `${base}/field_groups/${escapePointer(groupName)}/id` }],
-        );
-        collectDuplicates(
-          groupAnchors.map((anchor) => anchor.id),
-          (index, id) => {
-            const anchor = groupAnchors[index];
-            if (anchor === undefined) {
-              return;
-            }
-            errors.push({
-              path: anchor.path,
-              message: `ビュー "${view.id}" の項目のまとまり(field_groups)の名札 "${id}" が、同じ画面の中で重複しています。`,
-              hint: "1つの画面の中では、まとまりの名札は一意である必要があります。どちらかに別の名札を付けるか、片方の名札を消してください(別の画面には同じ名札を書けます)。",
-            });
-          },
-        );
       }
 
       /*
@@ -2552,18 +2867,52 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
           // 存在しない列への値は (2) の射程外(ADR-0029)。型不整合だけを見る。
           continue;
         }
-        const valueJsType = staticActionValueType(value, triggerTable, referenceableById);
+        const valueJsType = staticActionValueType(
+          value,
+          triggerTable,
+          referenceableById,
+          workflow.trigger.type === "on_update",
+        );
         if (valueJsType === undefined) {
           // 静的に型を確定できない(schedule の $record.=類型7 が報告済み、
-          // または `$record.<トリガー元に無い列>`=射程外)。
+          // または `$record.<トリガー元に無い列>`=射程外、
+          // または `on_update` の外の `$previous.`・トリガー元に無い列の `$previous.`=類型10b が報告済み)。
           continue;
         }
         const destJsType = fieldTypeToJsType(destField.type);
+        /*
+         * **【`V23-M4-T10` / `ADR-0531` 3】`$actor.*` の書き込み先は文字の項目(text・long_text)だけ。**
+         * 操作者の id・ログイン名・役割は、date・select・reference・image・file の値として正しくなることが
+         * 無い(適用で通すと、実行のたびに値の検証で落ちる。独立点検の中3)。 **互換表(`ADR-0029`)の
+         * セルは動かさない** —— `$actor.*` を string とする `staticActionValueType` はそのままで、
+         * 新しい参照の枝の中でだけ見る。 number・boolean の項目は下の型の不整合が今日どおり断る。
+         */
+        if (
+          value.startsWith("$actor.") &&
+          destJsType === "string" &&
+          destField.type !== "text" &&
+          destField.type !== "long_text"
+        ) {
+          errors.push({
+            path: `${actionBase}/values/${escapePointerToken(key)}`,
+            message:
+              `ワークフロー "${workflow.id}" のアクションが "${key}" に書こうとしている値(参照 "${value}"。` +
+              `操作した人の id・ログイン名・役割の文字列)は、書き込み先のフィールド "${key}"` +
+              `(テーブル "${action.table}")の ${destField.type} 型の値になりません。` +
+              `このワークフローは発火しても毎回レコードの書き込みで弾かれ、1件も書けません(適用時に拒否します)。`,
+            hint:
+              `操作した人を残す項目は text か long_text 型にしてください` +
+              `(書き込み先のフィールド "${key}" の型を変えるか、text の項目を別に足してそこへ書く)。`,
+          });
+          continue;
+        }
         if (valueJsType === destJsType) {
           // 型整合。date/select/reference の値レベル制約は per-record なので実行時に委ねる。
           continue;
         }
-        const valueDesc = value.startsWith(RECORD_REFERENCE_PREFIX)
+        // **【`V23-M4-T02`】`$` で始まる値は参照である**(`values` の器が受ける形は、`$record` の2形と
+        // `$actor` / `$previous` / `$now` の5形だけ。それ以外はスキーマが既に断っている)。
+        const valueDesc = value.startsWith("$")
           ? `参照 "${value}"`
           : `固定の文字列 ${JSON.stringify(value)}`;
         errors.push({
@@ -2586,6 +2935,76 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
         });
       }
     });
+
+    /*
+     * --- 類型10b: 更新前の値 `$previous.<項目ID>` と `changed_fields`(`V23-M4-T02`)----------
+     * (`SC-G13` / `SC-G14` / `ADR-0500` §Decision 1-1・1-2 / `ADR-0524` §Decision 1-3)
+     *
+     * **字面の検査ではない**(5形の字面はスキーマの `values` の器が見る。`ADR-0013` 限定15)。
+     * 見るのは、トリガーの種別との組み合わせと、項目の実在だけである。
+     *
+     * 1. `$previous.<項目ID>` は **`on_update` のワークフローでだけ**解決できる(更新前の行が在るのは
+     *    更新だけ)。`on_create` / `schedule` / `manual` では理由つきで断る(受け入れ基準2)。
+     * 2. `$previous.<項目ID>` の項目は**トリガー元の表に実在する**こと。
+     * 3. `changed_fields` の項目は**トリガー元の表に実在する**こと(スキーマが `on_update` の外を断る)。
+     *
+     * どれも「valid なのに永久に動かないワークフロー」を作らせないための検査で、類型7 と同じ
+     * カテゴリである。**トリガー元の表が無いこと**は類型6 が報告するので、ここは二重に出さない。
+     */
+    const previousSourceTable =
+      workflow.trigger.table === undefined
+        ? undefined
+        : referenceableById.get(workflow.trigger.table);
+    const previousSourceFieldIds = previousSourceTable?.fields.map((field) => field.id);
+    workflow.actions.forEach((action, actionIndex) => {
+      if (action.action !== "create_record" && action.action !== "update_record") {
+        return;
+      }
+      const actionBase = `${base}/actions/${actionIndex}`;
+      for (const [key, value] of Object.entries(action.values)) {
+        if (!value.startsWith(PREVIOUS_REFERENCE_PREFIX)) {
+          continue;
+        }
+        const path = `${actionBase}/values/${escapePointerToken(key)}`;
+        if (workflow.trigger.type !== "on_update") {
+          errors.push({
+            path,
+            message:
+              `ワークフロー "${workflow.id}" は ${workflow.trigger.type} で動くので、更新前の行がありません。` +
+              `"${key}" に指定した "${value}"(更新前の値)は解決できません` +
+              `(更新前の値を読めるのは trigger が on_update のワークフローだけです)。`,
+            hint:
+              `trigger を on_update に変えるか、"${key}" の値を更新前の値でないもの` +
+              `("$record.<フィールドID>" や固定の文字列)に書き換えてください。`,
+          });
+          continue;
+        }
+        const fieldId = value.slice(PREVIOUS_REFERENCE_PREFIX.length);
+        if (previousSourceFieldIds !== undefined && !previousSourceFieldIds.includes(fieldId)) {
+          errors.push({
+            path,
+            message:
+              `ワークフロー "${workflow.id}" の "${key}" に指定した "${value}" は、` +
+              `トリガー元のテーブル "${workflow.trigger.table}" に無いフィールド "${fieldId}" を指しています。`,
+            allowed_values: previousSourceFieldIds,
+            hint: `"$previous.<フィールドID>" には、トリガー元のテーブルに実在するフィールドIDを書いてください(更新前の値を読むのはトリガー元の行です)。`,
+          });
+        }
+      }
+    });
+    if (workflow.trigger.type === "on_update" && previousSourceFieldIds !== undefined) {
+      (workflow.trigger.changed_fields ?? []).forEach((fieldId, fieldIndex) => {
+        if (previousSourceFieldIds.includes(fieldId)) {
+          return;
+        }
+        errors.push({
+          path: `${base}/trigger/changed_fields/${fieldIndex}`,
+          message: `ワークフロー "${workflow.id}" の changed_fields に指定した "${fieldId}" は、トリガー元のテーブル "${workflow.trigger.table}" に無いフィールドです。`,
+          allowed_values: previousSourceFieldIds,
+          hint: "changed_fields には、トリガー元のテーブルに実在するフィールドIDを書いてください(そのどれかの値が変わった更新でだけ発火します)。",
+        });
+      });
+    }
 
     /*
      * --- 類型11: アクションの実行条件 `when`(EC-G5 条件分岐。ADR-0036)-----------
@@ -3072,6 +3491,106 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
   }
 
   /*
+   * --- 類型18: メニューの位置の役割ごとの上書きが指す役割(`V22-M2-T02`。`ADR-0486` §Decision 1 の 5。
+   *     台帳 `MN-G2`。ユーザ決定 `D-V22-9` / `D-V22-10` / `D-V22-13`)-----------------------------
+   *
+   * **`app.workspace.navigation.by_role[].role` を、畳み込んだ後の定義に対して見る。** 先例は上の類型17
+   * (アクセス権管理)の項目11 `creatable_by_roles`(宣言済みの役割名だけを書ける)である。
+   *
+   * **断るのは4形。どれも差分全体を断る**(「全か無か」。`ADR-0047` 限定9):
+   *
+   *  1. **役割を宣言していないアプリで `by_role` を書いた** —— 上書きする相手が1つも無い
+   *     (「書けるが黙って効かない」宣言を作らない)。 **このときは要素ごとの拒否を重ねない**(1件だけ返す)。
+   *  2. **`role` が `anonymous`** —— 未ログインはアプリの既定に従う(`D-V22-10`。未ログイン専用の指定は作らない)。
+   *     **`anonymous` を役割として宣言したアプリでも断る。**
+   *  3. **`role` が `app.roles[].id` に無い。** **`set_roles` で役割を消す・ID を変える差分は、ここで断られる**
+   *     (`D-V22-13`)—— 畳み込んだ後の定義を見るので、同じ差分で `set_workspace` も直せば通る。 案内の文言はそれを言う。
+   *  4. **同じ役割が2回出てくる** —— 並びで勝ち負けを決めない(`ADR-0008` 限定2)。 2回目以降を名指しする。
+   *
+   * **位置の値(`side` / `top`)と、キーの閉じ方は設計図が見る**(ここでは見ない)。
+   */
+  const workspaceByRole = manifest.app.workspace?.navigation?.by_role;
+  if (Array.isArray(workspaceByRole)) {
+    const byRolePath = "/app/workspace/navigation/by_role";
+    const declaredRoles = manifest.app.roles ?? [];
+    if (declaredRoles.length === 0) {
+      errors.push({
+        path: byRolePath,
+        message:
+          "役割(roles)を宣言していないアプリでは、メニューの位置を役割ごとに上書きする by_role を書けません(上書きする相手の役割がありません)。",
+        hint: "set_roles で役割を宣言してから by_role を書くか、by_role を消してアプリの既定(placement)だけを書いてください。",
+      });
+    } else {
+      // **示す許可値は宣言済みの役割から `anonymous` を除いたもの**(宣言順)。
+      const selectableRoleIds = unique(
+        declaredRoles.map((role) => role.id).filter((id) => id !== "anonymous"),
+      );
+      const declaredRoleIdSet = new Set(declaredRoles.map((role) => role.id));
+      const seenRoleIds = new Set<string>();
+      workspaceByRole.forEach((entry, index) => {
+        const roleId = entry?.role;
+        if (typeof roleId !== "string") {
+          return;
+        }
+        const path = `${byRolePath}/${index}/role`;
+        if (roleId === "anonymous") {
+          errors.push({
+            path,
+            message:
+              '役割 "anonymous"(ログインしていない人)にはメニューの位置を上書きできません。ログインしていない人には、アプリの既定(placement)が使われます。',
+            allowed_values: selectableRoleIds,
+            hint: "ログインしていない人の位置を変えたいときは、アプリの既定(navigation.placement)を変えてください。by_role に書けるのは、アプリが宣言した役割(roles)のうち anonymous 以外です。",
+          });
+          return;
+        }
+        if (!declaredRoleIdSet.has(roleId)) {
+          errors.push({
+            path,
+            message: `役割 "${roleId}" は宣言されていません(宣言されているのは ${selectableRoleIds
+              .map((id) => `"${id}"`)
+              .join(" / ")} です)。`,
+            allowed_values: selectableRoleIds,
+            hint: "メニューの位置を上書きできるのは、アプリが宣言した役割(roles)だけです。set_roles で役割を消す・ID を変えるときは、同じ差分で set_workspace も直してください(by_role からその役割を外すか、新しい ID に書き換える)。",
+          });
+          return;
+        }
+        if (seenRoleIds.has(roleId)) {
+          errors.push({
+            path,
+            message: `役割 "${roleId}" が by_role に2回あります。同じ役割のメニューの位置は1回しか書けません。`,
+            hint: "どちらか一方を消してください(by_role の並びで勝ち負けは決まりません)。",
+          });
+          return;
+        }
+        seenRoleIds.add(roleId);
+      });
+    }
+  }
+
+  /*
+   * --- 類型18b: マイページの宣言が指す表・列・画面(`V22-M3-T02`。`ADR-0488` §Decision 1 の 3。
+   *     台帳 `MP-G1` / `MP-G2`。ユーザ決定 `D-V22-4` / `D-V22-17` / `D-V22-18`)-----------------------
+   *
+   * **`app.workspace.my_page` を、畳み込んだ後の定義に対して見る**(上の類型18 の隣)。 断るもの:
+   *
+   *  1. 実在しない表・列・画面を指している
+   *  2. 同じものが2回出てくる(2回目を名指しする)、または `exclude` と `include` の両方に出てくる
+   *  3. `include` した表の持ち主が既に自動で分かる、または `exclude` した表の持ち主が自動では分からない
+   *     (「自動で分かる」の判定は `src/shared/my-page.ts` の `myPageTables` 1本に任せる。限定11)
+   *  4. `owner_field` が `text` 型でない、または `required` である(`D-V22-17`)
+   *  5. `views` に `detail_view` が入っている(開くには行が要る)
+   *
+   * **畳み込んだ後の定義を見るので、`remove_table` / `remove_field` / `remove_view` / `change_field` /
+   * `set_roles` で指し先が消える・壊れる差分は、ここで差分全体が断られる**(`D-V22-13` と同じ扱い)。
+   * 同じ差分で `set_workspace` も直せば通る。 案内の文言はそれを言う。 **誤りは全部まとめて返す。**
+   * **キーの閉じ方・空の配列は設計図が見る**(ここでは見ない)。
+   */
+  const myPage = manifest.app.workspace?.my_page;
+  if (myPage !== undefined && myPage !== null && typeof myPage === "object") {
+    errors.push(...myPageReferenceErrors(manifest));
+  }
+
+  /*
    * --- 類型16: 役割の規則が指す先の実在(`V8-M17`。台帳 `J-G6` / `J-G7` / `J-G8` /
    *     `J-G9`)—— **`D-V8-66` で撤去した(2026-08-10)** ---------------------------
    *
@@ -3128,7 +3647,36 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
    * 広げてもいない。**
    *
    * **【正直に書く】ここは宣言の整合だけを見る。** **判定の実装は1バイトも無い。**
+   *
+   * **【`V21-M2B`。`ADR-0482` の `AN-G2` §2-5】未ログインに隠す項目(`hidden_fields`)の参照整合を
+   * 同じ走査に足した。** 見るのは2つだけである:
+   *
+   *  1. **実在** —— 規則の表が実在するとき、並びの各項目はその表に実在しなければならない。
+   *     **隠した項目を消す `remove_field` もここで拒否される**(判定は差分全体を畳んだ後の
+   *     マニフェストで行うので、同じ差分の `set_roles` で外していれば通る。op の順序に依らない)。
+   *     **表が実在しないとき(`D-V8-66` で残る規則)は見ない**(上の `when` と同じ扱い)。
+   *  2. **条件との組** —— 未ログインの規則の条件(`when`)が、同じ表の隠す項目(和集合)を
+   *     名指ししていたら拒否する(返る行の数から隠した値が推せるため)。
+   *
+   * **改名の追随は `apply-diff.ts` の `foldChangeField` の側にある**(ここは畳んだ後を見るだけ)。
    */
+  // **【`V21-M2B`】未ログインの要素の、表ごとの隠す項目の和集合**(`ADR-0482` §2-4)。
+  const anonymousHiddenByTable = new Map<string, Set<string>>();
+  for (const role of manifest.app.roles ?? []) {
+    if (role.id !== "anonymous") {
+      continue;
+    }
+    for (const rule of role.rules ?? []) {
+      if (rule.target !== "table" || rule.table === undefined || rule.hidden_fields === undefined) {
+        continue;
+      }
+      const set = anonymousHiddenByTable.get(rule.table) ?? new Set<string>();
+      for (const fieldId of rule.hidden_fields) {
+        set.add(fieldId);
+      }
+      anonymousHiddenByTable.set(rule.table, set);
+    }
+  }
   (manifest.app.roles ?? []).forEach((role, roleIndex) => {
     (role.rules ?? []).forEach((rule, ruleIndex) => {
       const rulePath = `/app/roles/${roleIndex}/rules/${ruleIndex}`;
@@ -3137,6 +3685,25 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
        * **見つからなければ `undefined` のまま進む** —— **拒否理由を1件も積まない。**
        */
       const targetTable = rule.table === undefined ? undefined : referenceableById.get(rule.table);
+      // **【`V21-M2B`】隠す項目の実在**(`ADR-0482` §2-5 の1)。
+      if (targetTable !== undefined && rule.hidden_fields !== undefined) {
+        rule.hidden_fields.forEach((fieldId, fieldIndex) => {
+          if (targetTable.fields.some((candidate) => candidate.id === fieldId)) {
+            return;
+          }
+          errors.push({
+            path: `${rulePath}/hidden_fields/${fieldIndex}`,
+            message: `役割 "${role.id}" の規則の隠す項目(hidden_fields)が指すフィールド "${fieldId}" はテーブル "${targetTable.id}" に存在しません。`,
+            allowed_values: targetTable.fields.map((candidate) => candidate.id),
+            hint: `テーブル "${targetTable.id}" に実在するフィールドIDを指定してください。隠した項目を消す(remove_field)ときは、同じ差分の set_roles で hidden_fields から外してください(外さずに消すと、同じIDで作り直したときに黙って隠れ直すため拒否しています)。`,
+          });
+        });
+      }
+      // **【`V21-M2B`】未ログインの規則の条件が名指ししてよいのは、同じ表の隠していない項目だけ。**
+      const hiddenForCondition =
+        role.id === "anonymous" && rule.table !== undefined
+          ? anonymousHiddenByTable.get(rule.table)
+          : undefined;
       /*
        * --- 類型16(補遺): 役割の規則の条件 `when`(`V8-M18`。台帳 `J-G14` / `J-G15`)---
        *
@@ -3176,6 +3743,13 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
               allowed_values: targetTable.fields.map((candidate) => candidate.id),
               hint: `条件から見えるのは、判定している行の項目の値と、要求している人の識別子だけです。テーブル "${targetTable.id}" に実在するフィールドIDを指定してください。`,
             });
+          } else if (hiddenForCondition?.has(field.id)) {
+            // **【`V21-M2B`】`ADR-0482` §2-5 の「`when` との組」。**
+            errors.push({
+              path: `${path}/field`,
+              message: `未ログインの規則の条件が指すフィールド "${node.field}" は、テーブル "${targetTable.id}" の未ログインに隠す項目(hidden_fields)に入っています。`,
+              hint: "隠した項目を条件に使うと、返る行の数から隠した値が推せてしまいます。条件から外すか、hidden_fields から外してください。",
+            });
           }
           return true;
         });
@@ -3214,6 +3788,26 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
       : [{ input: declared, path: `${base}/input` }];
 
     for (const { input, path } of inputs) {
+      /*
+       * **【`V23-M4-T02` / `SC-G15` / `ADR-0524` §Decision 1-4】`source: "previous"`(更新前の行)は、
+       * `on_update` のワークフローの `run_function` からだけ受ける**(`ADR-0083` 限定4 の作法。
+       * 下の `via` の「トリガー元レコードが無い発火」と同じく、呼ぶワークフローの側を見る)。
+       * `source: "actor"` はどの発火にも操作した人が在るので断らない。
+       */
+      if (input.source === "previous") {
+        for (const workflow of workflows) {
+          if (!workflowCallsFunction(workflow, fn.id) || workflow.trigger.type === "on_update") {
+            continue;
+          }
+          errors.push({
+            path: `${path}/source`,
+            message:
+              `関数 "${fn.id}" の入力は previous(更新前の行)ですが、これを呼ぶワークフロー "${workflow.id}" は ` +
+              `${workflow.trigger.type} で動くので、更新前の行がありません(更新前の行が在るのは on_update だけです)。`,
+            hint: "この関数を呼ぶワークフローの trigger を on_update にするか、入力の source を record などに変えてください。",
+          });
+        }
+      }
       // `input` の参照は table か view のどちらか一方だけである(source=record は参照無し)。
       if (input.source === "table" && !referenceableById.has(input.table)) {
         errors.push({
@@ -3589,6 +4183,97 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
         "権限を渡す相手のグループ",
       );
     }
+    // --- 項目14: 行を相手にした付与(`grant.principal_row`)------------------------------
+    //
+    // **【`V23-M6-T02`。`SC-G20` / `ADR-0538` §1-1。決定 `D-V23-149`・`D-V23-162`・`D-V23-172`】**
+    // 付与の相手に別の表 S の行を書く宣言。 **畳み込んだ後の定義に対して見るので、後から来る差分
+    // (指す列を消す・S の `access_control` を外す・S の名簿の表を替える・S の付与に `principal_row` を
+    // 足す)も同じ検査で断られる。** `via` が空は設計図(`minItems: 1`)が先に断る。
+    // 付与表の相手の列に値の残る行への宣言は DB を見るので、ここではなく `apply-diff.ts` が断る。
+    // **`principal_row` を書かない宣言では、この枝は1件も誤りを立てない。**
+    const principalRow = asRecord(grant?.principal_row);
+    if (principalRow !== undefined) {
+      const principalBase = `${base}/grant/principal_row`;
+      const principalTable = resolveDeclaredTable(
+        principalRow.table,
+        `${principalBase}/table`,
+        "付与の相手の行の表",
+      );
+      // (1)(2) 相手の列が付与表の reference 項目で、相手の行の表を指していること。
+      requireReferenceTo(
+        resolveDeclaredField(
+          grantTable,
+          principalRow.column,
+          `${principalBase}/column`,
+          "付与の相手の行",
+        ),
+        principalTable?.id,
+        `${principalBase}/column`,
+        "付与の相手の行",
+      );
+      if (principalTable !== undefined) {
+        const principalDeclared = asRecord(
+          (principalTable as unknown as { access_control?: unknown }).access_control,
+        );
+        const principalEnabled = principalDeclared?.enabled === true;
+        // (4) 相手の行の表が、守る表そのもの。
+        if (principalTable.id === table.id) {
+          errors.push({
+            path: `${principalBase}/table`,
+            message: "付与の相手の行の表として、この表そのものを指しています。",
+            hint: "相手の行の表(principal_row の table)には、この表とは別の表を指定してください。",
+          });
+        } else if (!principalEnabled) {
+          // (3) 相手の行の表にアクセス権管理(enabled)が無い。
+          errors.push({
+            path: `${principalBase}/table`,
+            message: `付与の相手の行の表 "${principalTable.id}" は、行ごとのアクセス権管理(access_control)を有効にしていません。相手の行に誰が属するかを決められません。`,
+            hint: `表 "${principalTable.id}" にも access_control を宣言し、enabled を true にしてください。外したいときは、先にこの表の principal_row を外してください。`,
+          });
+        } else {
+          // (6) via の名前が相手の行の表の権限にあること。
+          const principalPermissionIds = (
+            Array.isArray(principalDeclared?.permissions) ? principalDeclared.permissions : []
+          )
+            .map((permission) => asRecord(permission)?.id)
+            .filter((id): id is string => typeof id === "string");
+          const via = Array.isArray(principalRow.via) ? principalRow.via : [];
+          via.forEach((name, index) => {
+            if (typeof name === "string" && !principalPermissionIds.includes(name)) {
+              errors.push({
+                path: `${principalBase}/via/${index}`,
+                message: `付与の相手の行の権限として指定された "${name}" が、表 "${principalTable.id}" の権限にありません。`,
+                allowed_values: principalPermissionIds,
+                hint: `表 "${principalTable.id}" の access_control で宣言した権限名(permissions の id)を書いてください。`,
+              });
+            }
+          });
+          // (7) 名簿が同じ表であること(相手の行の名簿の行を、この表の付与の相手として読むため)。
+          const principalMembers = asRecord(principalDeclared?.members);
+          const principalMembersTable =
+            typeof principalMembers?.table === "string" ? principalMembers.table : undefined;
+          if (principalMembersTable !== membersTableId) {
+            errors.push({
+              path: `${principalBase}/table`,
+              message: `付与の相手の行の表 "${principalTable.id}" の名簿の表(${
+                principalMembersTable === undefined ? "宣言なし" : `"${principalMembersTable}"`
+              })が、この表の名簿の表(${
+                membersTableId === undefined ? "宣言なし" : `"${membersTableId}"`
+              })と違います。名簿が違うと、相手の行に属する人をこの表の付与の相手として扱えません。`,
+              hint: "相手の行の表とこの表で、access_control の members に同じ名簿の表を宣言してください。",
+            });
+          }
+          // (8) 相手の行の表の側にも principal_row がある(たどれるのは1段だけ)。
+          if (asRecord(asRecord(principalDeclared?.grant)?.principal_row) !== undefined) {
+            errors.push({
+              path: `${principalBase}/table`,
+              message: `付与の相手の行の表 "${principalTable.id}" も、付与の相手に別の表の行を書く宣言(principal_row)を持っています。たどれるのは1段だけです。`,
+              hint: `表 "${principalTable.id}" の側の principal_row を外すか、この表の principal_row を外してください。`,
+            });
+          }
+        }
+      }
+    }
     if (members !== undefined) {
       requireFieldType(
         resolveDeclaredField(
@@ -3613,6 +4298,65 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
           `${base}/members/group`,
           "利用者が属するグループ",
         );
+      }
+    }
+
+    // --- 項目12: 名簿への自動登録(`members.auto_enroll`)-----------------------------
+    //
+    // **【`V23-M1-T02`。`SC-G1` / `ADR-0497` 限定2】計画 M1-A の拒否1〜3 をここで見る。**
+    // 拒否4(同じ名簿を指す宣言の食い違い)はこの繰り返しの後ろで、拒否7(既存の重複)は
+    // `apply-diff.ts` で見る。 拒否5・6 は畳み込んだ後の定義をここで見る結果として断られる
+    // (`set_roles` で役割を消す・`remove_field` / `change_field` で列が消える・型が変わる)。
+    //  1. `roles` の要素が `app.roles[].id` に無い、または `anonymous` である
+    //  2. `name` が名簿の表に実在する text 列でない、または `account`・`group` の列と同じ
+    //  3. `account` の列が text 型でない —— 上の項目3(`requireFieldType`)が既に断る
+    const autoEnroll = asRecord(members?.auto_enroll);
+    if (autoEnroll !== undefined) {
+      const autoEnrollBase = `${base}/members/auto_enroll`;
+      const declaredRoleIds = (manifest.app.roles ?? [])
+        .map((role) => role.id)
+        .filter((id) => id !== "anonymous");
+      const declaredRoleIdSet = new Set(declaredRoleIds);
+      const enrollRoles = Array.isArray(autoEnroll.roles) ? autoEnroll.roles : [];
+      enrollRoles.forEach((roleId, index) => {
+        if (typeof roleId !== "string" || declaredRoleIdSet.has(roleId)) {
+          return;
+        }
+        errors.push({
+          path: `${autoEnrollBase}/roles/${index}`,
+          message:
+            roleId === "anonymous"
+              ? '役割 "anonymous"(ログインしていない人)は、名簿へ自動で入れる役割に書けません(ログインしていない人には利用者のIDがありません)。'
+              : `役割 "${roleId}" は宣言されていません(宣言されているのは ${declaredRoleIds
+                  .map((id) => `"${id}"`)
+                  .join(" / ")} です)。`,
+          allowed_values: unique(declaredRoleIds),
+          hint: "名簿へ自動で入れる役割は、アプリが宣言した役割(roles)の中から選んでください。役割を消す・名前を変えるときは、同じ差分で change_table も直して、この一覧から外してください。",
+        });
+      });
+      if (autoEnroll.name !== undefined) {
+        const namePath = `${autoEnrollBase}/name`;
+        const nameField = resolveDeclaredField(
+          membersTable,
+          autoEnroll.name,
+          namePath,
+          "ログイン名",
+        );
+        if (nameField !== undefined) {
+          if (nameField.type !== "text") {
+            errors.push({
+              path: namePath,
+              message: `名簿へ自動で入れるときにログイン名を入れる項目 "${nameField.id}" は、文字の項目でなければなりません(今は${FIELD_TYPE_LABEL[nameField.type]}の項目です)。`,
+              hint: "text の項目を指してください。項目の型を変える・項目を消すときは、同じ差分で change_table も直して、この設定から外してください。",
+            });
+          } else if (nameField.id === members?.account || nameField.id === members?.group) {
+            errors.push({
+              path: namePath,
+              message: `名簿へ自動で入れるときにログイン名を入れる項目 "${nameField.id}" は、ログインアカウントの項目・グループの項目とは別の項目でなければなりません。`,
+              hint: "ログイン名だけを入れる text の項目を別に作って、そちらを指してください。",
+            });
+          }
+        }
       }
     }
 
@@ -3851,6 +4595,91 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
       });
     }
 
+    // --- 項目14: 子の表に行を作れる権限(`create_child`。`V23-M7-T02`)--------------------
+    //
+    // **`ADR-0542` §Decision 1-1(`D-V23-182`・`D-V23-191`)の5形を、ここ1箇所で見る。**
+    // 子の表が無い / 子の `inherit_from` のどれもこの表を指す参照でない / 子が付与表・名簿表・
+    // グループ表(どれかの宣言が名指しした表。`enabled` を問わない)/ `restrictive: true` の要素に
+    // 書いた(上限の要素は作る権限を配れない)/ この表自身を書いた。
+    // **後から来る差分**(子の表や親の参照を消す・`inherit_from` から外す・別の宣言が子の表を
+    // 付与表等として指す・`restrictive` を足す)は、適用後の定義全体をこの同じ検査が見るので
+    // 同じ形で断られる。 文面のヒントで「先に create_child から外す」ことを伝える(計画 §26-6 中6)。
+    // **`create_child` を書かない定義では1件も足さない**(下の `return`)。
+    const specialTableIds = new Set<string>();
+    for (const other of tables) {
+      const otherDeclaration = asRecord(
+        (other as unknown as { access_control?: unknown }).access_control,
+      );
+      for (const key of ["grant", "members", "groups"] as const) {
+        const pointed = asRecord(otherDeclaration?.[key])?.table;
+        if (typeof pointed === "string") {
+          specialTableIds.add(pointed);
+        }
+      }
+    }
+    const createChildHint = "先にこの権限名の create_child から子の表を外してください。";
+    permissions.forEach((permission, permissionIndex) => {
+      const entry = permission as { create_child?: unknown; restrictive?: unknown } | null;
+      const children = entry?.create_child;
+      if (!Array.isArray(children)) {
+        return;
+      }
+      if (entry?.restrictive === true) {
+        errors.push({
+          path: `${base}/permissions/${permissionIndex}/create_child`,
+          message: "絞る側(restrictive)の権限名には、子の表に行を作れる指定を書けません。",
+          hint: `絞る側の符号を外すか、${createChildHint}`,
+        });
+      }
+      children.forEach((childId, childIndex) => {
+        const path = `${base}/permissions/${permissionIndex}/create_child/${childIndex}`;
+        if (typeof childId !== "string") {
+          return;
+        }
+        if (childId === table.id) {
+          errors.push({
+            path,
+            message: `表 "${childId}" 自身を、子の表として書くことはできません。`,
+            hint: createChildHint,
+          });
+          return;
+        }
+        const child = tables.find((candidate) => candidate?.id === childId);
+        if (child === undefined) {
+          errors.push({
+            path,
+            message: `子の表 "${childId}" はありません。`,
+            hint: createChildHint,
+          });
+          return;
+        }
+        const childDeclaration = asRecord(
+          (child as unknown as { access_control?: unknown }).access_control,
+        );
+        const childInherit = Array.isArray(childDeclaration?.inherit_from)
+          ? (childDeclaration.inherit_from as unknown[])
+          : [];
+        const pointsHere = childInherit.some((fieldId) => {
+          const field = child.fields?.find((candidate) => candidate?.id === fieldId);
+          return field?.type === "reference" && field.reference_table === table.id;
+        });
+        if (!pointsHere) {
+          errors.push({
+            path,
+            message: `子の表 "${childId}" は、この表を親として辿っていません(inherit_from がこの表を指していません)。`,
+            hint: `子の表の inherit_from に、この表を参照する項目を書いてください。${createChildHint}`,
+          });
+        }
+        if (specialTableIds.has(childId)) {
+          errors.push({
+            path,
+            message: `表 "${childId}" は付与・名簿・グループを記録する表なので、子の表として書けません。`,
+            hint: createChildHint,
+          });
+        }
+      });
+    });
+
     // --- 項目11: 根の表に行を作れる役割(`creatable_by_roles`)-------------------------
     //
     // **`AC-G10` / `ADR-0412`(門A・限定採用)の限定3 を、ここ1箇所で見る。**
@@ -3913,6 +4742,140 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
       });
     }
 
+    // --- 項目13: 行の招待(`invitations`)---------------------------------------------
+    //
+    // **【`V23-M5-T02`。`SC-G17` / `ADR-0532` §Decision 1-1。決定 `D-V23-119` / `D-V23-133` 軽5】**
+    // 断るもの(どれも差分全体を断る。「全か無か」):
+    //
+    //  1. `by` / `grantable` の要素が `permissions[].id` に無い(役割名を書いても断る)。
+    //  2. `target_roles` の要素が `app.roles[].id` に無い(権限名を書いても断る)。
+    //  3. `group_from` が、この表の項目に無い / reference でない / グループの表(`groups.table`)を指さない /
+    //     `members.group` が宣言されていない(承諾で名簿のグループ欄に書く値が決まらない)。
+    //  4. 付与表に、決まった列(`grant.target` / `member` / `group` / `permission`)の外の必須の項目がある
+    //     (承諾で付与の行を作れない。`D-V23-133` 軽5)。
+    //
+    // **`enabled: false` でも形は検査する**(類型17 の doc の作法どおり)。 **置き忘れ(`workspace.invitations`)
+    // の拒否だけは `enabled: true` の表に限る**(下の「項目13 の続き」)。
+    // **`group_from` は項目名の付け替えに追随しない** —— `grant` / `members` / `groups` の列の指しと同じ扱いである。
+    const invitations = asRecord(declaration.invitations);
+    if (invitations !== undefined) {
+      const invitationsBase = `${base}/invitations`;
+      for (const key of ["by", "grantable"] as const) {
+        const names = Array.isArray(invitations[key]) ? (invitations[key] as unknown[]) : [];
+        names.forEach((name, index) => {
+          if (typeof name !== "string" || seenPermissionIds.has(name)) {
+            return;
+          }
+          errors.push({
+            path: `${invitationsBase}/${key}/${index}`,
+            message: `権限名 "${name}" は宣言されていません(宣言されているのは ${permissionIds
+              .map((id) => `"${id}"`)
+              .join(" / ")} です)。`,
+            allowed_values: unique(permissionIds),
+            hint:
+              key === "by"
+                ? "招待を出せる権限は、この表で宣言した権限名(permissions の id)の中から選んでください。役割名は書けません。"
+                : "招待で渡せる権限は、この表で宣言した権限名(permissions の id)の中から選んでください。役割名は書けません。",
+          });
+        });
+      }
+      const targetRoles = Array.isArray(invitations.target_roles)
+        ? (invitations.target_roles as unknown[])
+        : [];
+      // **【`V23-M5-T03`。決定 `D-V23-136`】`anonymous` は宣言していても断る**(未ログインの人は招待を
+      // 受け取れない。名簿の自動登録の `roles` と同じ扱い)。 旧の2行(逐語):
+      //     const invitationRoleIds = (manifest.app.roles ?? []).map((role) => role.id);
+      //     const invitationRoleIdSet = new Set(invitationRoleIds);
+      const invitationRoleIds = (manifest.app.roles ?? [])
+        .map((role) => role.id)
+        .filter((id) => id !== "anonymous");
+      const invitationRoleIdSet = new Set(invitationRoleIds);
+      targetRoles.forEach((roleId, index) => {
+        if (typeof roleId !== "string" || invitationRoleIdSet.has(roleId)) {
+          return;
+        }
+        errors.push({
+          path: `${invitationsBase}/target_roles/${index}`,
+          message:
+            roleId === "anonymous"
+              ? '役割 "anonymous"(ログインしていない人)は、招待を受けられる役割に書けません(ログインしていない人は招待を受け取れません)。'
+              : `役割 "${roleId}" は宣言されていません(宣言されているのは ${invitationRoleIds
+                  .map((id) => `"${id}"`)
+                  .join(" / ")} です)。`,
+          allowed_values: unique(invitationRoleIds),
+          hint: "招待を受けられる立場は、アプリが宣言した役割(roles の id)の中から選んでください。権限名は書けません。",
+        });
+      });
+      const groupFrom = invitations.group_from;
+      if (typeof groupFrom === "string") {
+        const groupFromPath = `${invitationsBase}/group_from`;
+        const field = table.fields.find((candidate) => candidate.id === groupFrom);
+        if (field === undefined) {
+          errors.push({
+            path: groupFromPath,
+            message: `招待の group_from に指定された項目 "${groupFrom}" が、表 "${table.id}" にありません。`,
+            allowed_values: unique(
+              table.fields
+                .filter((candidate) => candidate.type === "reference")
+                .map((candidate) => candidate.id),
+            ),
+            hint: "group_from には、この表の参照(reference)の項目のうち、グループの表を指す項目の ID を書いてください。",
+          });
+        } else if (groupsTableId === undefined) {
+          errors.push({
+            path: groupFromPath,
+            message: `招待の group_from を書けるのは、グループの表(access_control の groups)を宣言した表だけです(表 "${table.id}" はグループの表を宣言していません)。`,
+            hint: "groups でグループの表を宣言するか、group_from を消してください。",
+          });
+        } else if (field.type !== "reference" || field.reference_table !== groupsTableId) {
+          errors.push({
+            path: groupFromPath,
+            message: `招待の group_from に指定された項目 "${groupFrom}" は、グループの表 "${groupsTableId}" を参照する項目でなければなりません(今は${
+              field.type === "reference"
+                ? ` "${field.reference_table}" を参照しています`
+                : `${FIELD_TYPE_LABEL[field.type]}の項目です`
+            })。`,
+            allowed_values: unique(
+              table.fields
+                .filter(
+                  (candidate) =>
+                    candidate.type === "reference" && candidate.reference_table === groupsTableId,
+                )
+                .map((candidate) => candidate.id),
+            ),
+            hint: "承諾したとき、この項目の値が名簿の所属グループ欄に書かれます。グループの表を指す参照の項目を書いてください。",
+          });
+        }
+        if (field !== undefined && members?.group === undefined) {
+          errors.push({
+            path: groupFromPath,
+            message:
+              "招待の group_from を書けるのは、名簿の所属グループ欄(access_control の members の group)を宣言した表だけです(書く先の欄がありません)。",
+            hint: "members に group を宣言するか、group_from を消してください。",
+          });
+        }
+      }
+      if (grantTable !== undefined) {
+        const fixedColumns = new Set(
+          [grant?.target, grant?.member, grant?.group, grant?.permission].filter(
+            (id): id is string => typeof id === "string",
+          ),
+        );
+        const extraRequired = grantTable.fields
+          .filter((field) => field.required === true && !fixedColumns.has(field.id))
+          .map((field) => field.id);
+        if (extraRequired.length > 0) {
+          errors.push({
+            path: invitationsBase,
+            message: `付与を記録する表 "${grantTable.id}" に、招待の承諾では埋められない必須の項目 ${extraRequired
+              .map((id) => `"${id}"`)
+              .join(" / ")} があるため、この表に招待を宣言できません。`,
+            hint: "承諾で作る付与の行は、対象の行・相手・権限名だけを書きます。その項目の必須を外すか、招待の宣言を消してください。",
+          });
+        }
+      }
+    }
+
     // --- 項目7: グループの中にグループを入れない(`Z-G8`)-----------------------------
     //
     // **禁じるのはグループ表 → グループ表だけである。** **利用者の表 → グループの表
@@ -3969,6 +4932,76 @@ export function validateReferentialIntegrity(manifest: Manifest): ValidationResu
         });
       }
     }
+  });
+
+  // --- 項目12 の続き(拒否4): 同じ名簿の表を指す宣言どうしで `auto_enroll` が食い違う --------
+  //
+  // **【`V23-M1-T02`。`SC-G1` / `ADR-0497` 限定2】** 片方だけが書くのは許す(書いた側の
+  // 中身が名簿の表の中身になる)。 両方が書いて中身が違えば、後ろの宣言を断る。
+  const autoEnrollByMembersTable = new Map<string, { json: string; tableId: string }>();
+  tables.forEach((table, tableIndex) => {
+    const raw = (table as unknown as { access_control?: unknown }).access_control;
+    const members = asRecord(asRecord(raw)?.members);
+    const autoEnroll = members?.auto_enroll;
+    if (typeof members?.table !== "string" || asRecord(autoEnroll) === undefined) {
+      return;
+    }
+    const json = JSON.stringify(autoEnroll);
+    const seen = autoEnrollByMembersTable.get(members.table);
+    if (seen === undefined) {
+      autoEnrollByMembersTable.set(members.table, { json, tableId: table.id });
+      return;
+    }
+    if (seen.json !== json) {
+      errors.push({
+        path: `/app/tables/${tableIndex}/access_control/members/auto_enroll`,
+        message: `利用者の表 "${members.table}" への自動登録の設定が、表 "${seen.tableId}" と表 "${table.id}" で食い違っています。同じ利用者の表を指すなら、自動登録の設定は同じ中身にしてください。`,
+        hint: "どちらか一方だけに書くか、両方を同じ中身にしてください。",
+      });
+    }
+  });
+
+  // --- 項目13 の続き: 招待を宣言した表があるのに受け取り画面が無い(置き忘れ)----------------
+  //
+  // **【`V23-M5-T02`。`ADR-0532` §Decision 1-1。決定 `D-V23-119` / `D-V23-10`】** 畳み込んだ後の定義に対して
+  // 1本で見る。 **数えるのは `enabled: true` の表だけ**(`enabled: false` は宣言していない表と同じ扱い)。
+  // **`set_workspace` の `invitations: null` で消す差分も、表に招待が残っていればここで断られる。**
+  if (manifest.app.workspace?.invitations === undefined) {
+    const declaring = tables
+      .filter((table) => {
+        const raw = asRecord((table as unknown as { access_control?: unknown }).access_control);
+        return raw?.enabled === true && asRecord(raw.invitations) !== undefined;
+      })
+      .map((table) => table.id);
+    if (declaring.length > 0) {
+      errors.push({
+        path: "/app/workspace/invitations",
+        message: `表 ${declaring
+          .map((id) => `"${id}"`)
+          .join(
+            " / ",
+          )} が行の招待(access_control の invitations)を宣言していますが、アプリに招待の受け取り画面(workspace の invitations)がありません。招待された人が招待を見つけられません。`,
+        hint: '表に招待を足す・受け取り画面を消す差分でこの誤りが出たときは、同じ差分で set_workspace も直してください(例: {"op": "set_workspace", "workspace": {"invitations": {"label": "招待"}}})。受け取り画面を消したいときは、先に表の招待の宣言を消してください。',
+      });
+    }
+  }
+
+  // --- 変更履歴の宣言(`V23-M8-T02` / `D-V23-205`): 詳細画面の history は、表の history を前提にする ---------------------
+  // 2つの形を同じ1本で断る: 画面に history: true を書いたのに表が history: true でない / 後から来る差分で、
+  // history: true の詳細画面が残っている表の history を外す。 文面は「先に画面の history を外す」を伝える。
+  views.forEach((view, viewIndex) => {
+    if (view.type !== "detail_view" || view.history !== true) {
+      return;
+    }
+    const table = tables.find((candidate) => candidate.id === view.table);
+    if (table === undefined || table.history === true) {
+      return;
+    }
+    errors.push({
+      path: `/app/views/${viewIndex}/history`,
+      message: `画面 "${view.id}" は変更履歴を出す(history: true)と書いていますが、表 "${view.table}" は変更履歴を残すと宣言していません(表の history が true でない)。`,
+      hint: `表 "${view.table}" に history: true を書いてください。表の history を外したいときは、先に画面 "${view.id}" の history を外してください。`,
+    });
   });
 
   return errors.length > 0 ? invalid(errors) : valid();
@@ -4031,6 +5064,9 @@ const RESERVED_GROUP_BY_NAMES: readonly string[] = [
   "st_public",
   "st_undeletable",
   "st_no_direct_create",
+  // **【`V23-M4-T05`】予約規約フィールドの5本目 `st_updated_by`(更新者)の写し**(`owner-scope.ts` の
+  // `UPDATED_BY_FIELD`)。 束ねると更新した人の ID が群の見出しとして出てしまうため、他の4本と同じく断る。
+  "st_updated_by",
 ];
 
 /** 型の名前を利用者の言葉にする(エラー文言に型の綴りだけを出さないため)。 */
@@ -4062,6 +5098,12 @@ const FIELD_TYPE_LABEL: Record<FieldType, string> = {
  * **番号は3度目もずれる。定数名で引き直すこと。**
  */
 const RECORD_REFERENCE_PREFIX = "$record.";
+
+/**
+ * 更新前の値への参照の接頭辞(`V23-M4-T02` / `SC-G13` / `ADR-0500` §Decision 1-1)。
+ * `values` の器が受ける形は `$previous.<項目ID>` の1形だけ(スキーマが完全一致で閉じている)。
+ */
+const PREVIOUS_REFERENCE_PREFIX = "$previous.";
 
 /**
  * リテラル target が受ける UUID 形(EC-G13 / ADR-0040 D2-a 選択肢A)。
@@ -4170,7 +5212,31 @@ function staticActionValueType(
   value: string,
   triggerTable: ResourceId | undefined,
   referenceableById: Map<ResourceId, Table>,
+  /**
+   * **【`V23-M4-T02`】`$previous.<列>` を解決できる発火(`on_update`)か。** 解決できない発火の
+   * `$previous.` は類型10b が理由つきで報告するので、ここは undefined を返して二重に出さない。
+   */
+  previousAvailable = false,
 ): "string" | "number" | "boolean" | undefined {
+  /*
+   * **【`V23-M4-T02` / `ADR-0500` §Decision 1-1 / `ADR-0524` §Decision 1-2】** 操作した人
+   * (`$actor.id` / `$actor.login` / `$actor.role`)と今の時刻(`$now`)は string として扱う
+   * (`date` 列は string に畳まれるので `$now` は `date` 列へ書ける)。 更新前の値
+   * (`$previous.<列>`)はトリガー元のその列の型として扱う(`$record.<列>` と同じ)。
+   * **互換表(`ADR-0029`)のセルは1つも動かさない。**
+   */
+  if (value.startsWith("$actor.") || value === "$now") {
+    return "string";
+  }
+  if (value.startsWith(PREVIOUS_REFERENCE_PREFIX)) {
+    if (!previousAvailable || triggerTable === undefined) {
+      return undefined;
+    }
+    const previousType = referenceableById
+      .get(triggerTable)
+      ?.fields.find((field) => field.id === value.slice(PREVIOUS_REFERENCE_PREFIX.length))?.type;
+    return previousType === undefined ? undefined : fieldTypeToJsType(previousType);
+  }
   if (!value.startsWith(RECORD_REFERENCE_PREFIX)) {
     return "string"; // リテラル(固定文字列)は必ず string。
   }
@@ -4230,6 +5296,191 @@ function valueSuggestion(destJsType: "string" | "number" | "boolean"): string {
  */
 function escapePointerToken(token: string): string {
   return token.replaceAll("~", "~0").replaceAll("/", "~1");
+}
+
+/**
+ * 類型18b の案内の共通の末尾(`V22-M3-T02`)。 連鎖で断られたときに直し方を言う。
+ *
+ * **【`V22-M3-T08a` 軽-6】列を足す差分(`add_field` で `st_owner` を足すと、`include` した表の持ち主が自動で分かる
+ * ようになって断られる)と、表の ID を変える差分(`change_table`)を列挙に足した。**
+ * **旧(逐語)**: `"表・列・画面を消す・ID を変える・列を必須にする・役割の規則を変える差分でこの誤りが出たときは、同じ差分で set_workspace も直してください(マイページの宣言からその名前を外すか、新しい名前に書き換える)。"`
+ */
+const MY_PAGE_CASCADE_HINT =
+  "表・列・画面を消す・ID を変える(表の ID を変える change_table を含む)・列を足す(add_field で st_owner を足す)・列を必須にする・役割の規則を変える差分でこの誤りが出たときは、同じ差分で set_workspace も直してください(マイページの宣言からその名前を外すか、新しい名前に書き換える)。";
+
+/**
+ * **類型18b の本体**(`V22-M3-T02`。`ADR-0488` §Decision 1 の 3)。 マイページの宣言が指す表・列・画面の誤りを
+ * 全部まとめて返す。 「持ち主が自動で分かる表」は `myPageTables` に `my_page: {}` を渡した答え((i) と (ii))である。
+ */
+function myPageReferenceErrors(manifest: Manifest): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const myPage = manifest.app.workspace?.my_page ?? {};
+  const base = "/app/workspace/my_page";
+  const tables = manifest.app.tables ?? [];
+  const tableIds = tables.map((table) => table.id);
+  const automatic = myPageTables({
+    ...manifest,
+    app: { ...manifest.app, workspace: { my_page: {} } },
+  }).map((entry) => entry.table);
+  const automaticSet = new Set(automatic);
+  const addable = tableIds.filter((id) => !automaticSet.has(id));
+  const quote = (ids: readonly string[]) => ids.map((id) => `"${id}"`).join(" / ");
+
+  const exclude = Array.isArray(myPage.tables?.exclude) ? myPage.tables.exclude : [];
+  const excludedSeen = new Set<string>();
+  exclude.forEach((tableId, index) => {
+    if (typeof tableId !== "string") {
+      return;
+    }
+    const path = `${base}/tables/exclude/${index}`;
+    if (excludedSeen.has(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" が exclude に2回あります。同じ表は1回だけ書いてください。`,
+        hint: "どちらか一方を消してください。",
+      });
+      return;
+    }
+    excludedSeen.add(tableId);
+    if (!tableIds.includes(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" はありません。exclude に書けるのは、持ち主が自動で分かる表(${automatic.length === 0 ? "今はありません" : quote(automatic)})だけです。`,
+        allowed_values: automatic,
+        hint: MY_PAGE_CASCADE_HINT,
+      });
+      return;
+    }
+    if (!automaticSet.has(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" は持ち主が自動では分からないので、もともと自分の記録に載りません。exclude に書けるのは、持ち主が自動で分かる表(個人の持ち主の列 st_owner を持つ表と、読取の規則の条件に「自分」がある表)だけです。`,
+        allowed_values: automatic,
+        hint: `exclude から "${tableId}" を消してください。${MY_PAGE_CASCADE_HINT}`,
+      });
+    }
+  });
+
+  const include = Array.isArray(myPage.tables?.include) ? myPage.tables.include : [];
+  const includedSeen = new Set<string>();
+  include.forEach((entry, index) => {
+    const tableId = entry?.table;
+    if (typeof tableId !== "string") {
+      return;
+    }
+    const path = `${base}/tables/include/${index}/table`;
+    if (!tableIds.includes(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" はありません。include に書けるのは、持ち主が自動では分からない表(${addable.length === 0 ? "今はありません" : quote(addable)})です。`,
+        allowed_values: addable,
+        hint: MY_PAGE_CASCADE_HINT,
+      });
+      return;
+    }
+    if (excludedSeen.has(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" が exclude と include の両方にあります。外すか足すかのどちらか一方だけを書いてください。`,
+        allowed_values: addable,
+        hint: "exclude と include のどちらかから消してください。",
+      });
+      return;
+    }
+    if (automaticSet.has(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" は持ち主が既に自動で分かるので、足さなくても自分の記録に載ります。include に書けるのは、持ち主が自動では分からない表だけです。`,
+        allowed_values: addable,
+        hint: `include から "${tableId}" を消してください。${MY_PAGE_CASCADE_HINT}`,
+      });
+      return;
+    }
+    if (includedSeen.has(tableId)) {
+      errors.push({
+        path,
+        message: `表 "${tableId}" が include に2回あります。同じ表は1回だけ書いてください(持ち主の列を2つ書くことはできません)。`,
+        hint: "どちらか一方を消してください。",
+      });
+      return;
+    }
+    includedSeen.add(tableId);
+    const ownerFieldId = entry.owner_field;
+    if (typeof ownerFieldId !== "string") {
+      return;
+    }
+    const fields = tables.find((table) => table.id === tableId)?.fields ?? [];
+    const candidates = fields
+      .filter((field) => field.type === "text" && field.required !== true)
+      .map((field) => field.id);
+    const ownerPath = `${base}/tables/include/${index}/owner_field`;
+    const field = fields.find((candidate) => candidate.id === ownerFieldId);
+    if (field === undefined) {
+      errors.push({
+        path: ownerPath,
+        message: `表 "${tableId}" に列 "${ownerFieldId}" はありません。持ち主の列に書けるのは、text 型で必須でない列(${candidates.length === 0 ? "今はありません" : quote(candidates)})です。`,
+        allowed_values: candidates,
+        hint: MY_PAGE_CASCADE_HINT,
+      });
+      return;
+    }
+    if (field.type !== "text") {
+      errors.push({
+        path: ownerPath,
+        message: `列 "${ownerFieldId}" は ${field.type} 型です。持ち主の列は、ログインIDがそのまま入る text 型の列だけです(持ち主の判定は文字列の一致で行うため)。`,
+        allowed_values: candidates,
+        hint: MY_PAGE_CASCADE_HINT,
+      });
+      return;
+    }
+    if (field.required === true) {
+      errors.push({
+        path: ownerPath,
+        message: `列 "${ownerFieldId}" は必須(required)です。持ち主の列は必須でない text 型の列だけです(持ち主が空の行を自分の記録に入れないため)。`,
+        allowed_values: candidates,
+        hint: MY_PAGE_CASCADE_HINT,
+      });
+    }
+  });
+
+  const views = Array.isArray(myPage.views) ? myPage.views : [];
+  const allViews = manifest.app.views ?? [];
+  const openable = allViews.filter((view) => view.type !== "detail_view").map((view) => view.id);
+  const viewsSeen = new Set<string>();
+  views.forEach((viewId, index) => {
+    if (typeof viewId !== "string") {
+      return;
+    }
+    const path = `${base}/views/${index}`;
+    if (viewsSeen.has(viewId)) {
+      errors.push({
+        path,
+        message: `画面 "${viewId}" が views に2回あります。同じ画面は1回だけ書いてください。`,
+        hint: "どちらか一方を消してください。",
+      });
+      return;
+    }
+    viewsSeen.add(viewId);
+    const view = allViews.find((candidate) => candidate.id === viewId);
+    if (view === undefined) {
+      errors.push({
+        path,
+        message: `画面 "${viewId}" はありません。views に書けるのは、このアプリの detail_view 以外の画面(${openable.length === 0 ? "今はありません" : quote(openable)})です。`,
+        allowed_values: openable,
+        hint: MY_PAGE_CASCADE_HINT,
+      });
+      return;
+    }
+    if (view.type === "detail_view") {
+      errors.push({
+        path,
+        message: `画面 "${viewId}" は detail_view です。detail_view は開くのに行が要るので、マイページの開くボタンには並べられません。`,
+        allowed_values: openable,
+        hint: `views から "${viewId}" を消すか、その表の list_view を書いてください。`,
+      });
+    }
+  });
+  return errors;
 }
 
 /** 出現順を保ったまま重複を取り除く。 */

@@ -68,11 +68,16 @@ test("限定1: $defs/field.properties は 11 で、11キー目は emphasis で�
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行17 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   // **【`V8-M20-T01` / 台帳 `J-G27` / `J-G28` / `ADR-0301` で見る位置を2つ手前へ直した】**
   // **8キー目だった `audience` と9キー目だった `writable_by` が廃止されたので、それより後ろの
   // キーの添字が2つずつ繰り上がった。****期待値を緩めていない。**
-  expect(properties[8]).toBe("emphasis");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行17】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[8]`。**
+  expect(properties[9]).toBe("emphasis");
 });
 
 test("限定1 / 限定5: theme 25・25 が1つも動いていない", () => {
@@ -116,8 +121,12 @@ test("限定1 / 限定5: theme 25・25 が1つも動いていない", () => {
   //   **上の8つの【】が書き残した「20 → 28 の経緯」は、中央では追えない。**
   //   **どの決定がこの語彙を動かしたかは、ここでは分からなくなった**(`ADR-0250` §Decision 5 の (1))。
   // **新しい色スロットを1つも作らない**(限定5)。
-  expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(25);
-  expect(manifest.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(23);
+  expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(manifest.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(manifest.$defs.theme.required).toHaveLength(23);
+  expect(manifest.$defs.theme.required).toHaveLength(27);
 });
 
 // 【`V7-M1-T02`】**テスト名の「4」を「6」へ是正した。** 旧: 「限定1: $defs/table.properties 4 も動いていない」。
@@ -162,7 +171,8 @@ test("限定1: $defs/table.properties 6 も動いていない", () => {
   // **【`V7-M1-T01` / `Z-G2` で 5 → 6 に更新した】** 6キー目 `access_control`(この表で
   // アクセス権管理を使うことと、付与・グループ・メンバーの置き場所の宣言)が門A を通って
   // 増えた(`V7-M0`。判定 = 限定採用)。**本 ADR の増分ではない。**
-  expect(Object.keys(readSchema("manifest.schema.json").$defs.table.properties)).toHaveLength(6);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行20】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(readSchema("manifest.schema.json").$defs.table.properties)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(Object.keys(readSchema("manifest.schema.json").$defs.table.properties)).toHaveLength(7);
 });
 
 // --- (b) 限定2: 型・リソース種・差分操作を1つも動かさない --------------------------------
@@ -581,11 +591,16 @@ test("限定8: field_changes.properties は 10 で、10キー目は emphasis で
   // **【`V8-M20-T01` / 台帳 `J-G28` / 手続きは `ADR-0301` で 13 → 12 に更新した】** 8個目だった
   // `writable_by` が**廃止された**(判定 = 廃止)。**差し替えは差分操作 `set_roles` の全体差し替え
   // であり、`change_field` に相当する部分更新は面に1つも無い。****旧値の逐語は 13。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行17 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   // **【`V8-M20-T01` / 台帳 `J-G28` / `ADR-0301` で見る位置を1つ手前へ直した】** **8個目だった
   // `writable_by` が廃止されたので、それより後ろのキーの添字が1つずつ繰り上がった。**
   // **期待値を緩めていない。**
-  expect(properties[8]).toBe("emphasis");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行17】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[8]`。**
+  expect(properties[9]).toBe("emphasis");
   // **定義を二重に持たない**(manifest 側を `$ref` する。`unit` / `unique` と同じ作法)。
   expect((readSchema("diff.schema.json").$defs.field_changes.properties.emphasis as Any).$ref).toBe(
     "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/field/properties/emphasis",

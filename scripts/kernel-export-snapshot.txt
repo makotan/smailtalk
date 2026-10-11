@@ -263,6 +263,9 @@
 # (限定1)・システムテーブル / 予約名(限定2)・schemas/(限定3)は1つも動いておらず、
 # src/shared/system-tables.ts は1バイトも変更していない。書き込み経路も持たない(限定4)。
 # 件数: 278(V1-M6-T05 時点の実測 264 → V1-M8-T02 で +14)
+# 更新: V23-M1-T02(2026-09-29)。**2件増え、0件減った。** ddl.ts の autoEnrollAccountIndexName /
+# createAutoEnrollAccountIndexSql(名簿への自動登録を宣言した名簿の account 列に張る一意索引の名前と文)。
+# 門A = ADR-0497(SC-G2 = 限定採用。限定4)/ 授権 = ADR-0510 §Decision 8 の行9(ddl.ts の export を2名まで)。
 ajv-error-adapter.ts:toValidationErrors
 app-id.ts:APP_ID_FALLBACK
 app-id.ts:generateAppId
@@ -300,8 +303,10 @@ create-app.ts:emptyManifest
 ddl.ts:SYSTEM_COLUMNS
 ddl.ts:SYSTEM_COLUMN_NAMES
 ddl.ts:addColumnSql
+ddl.ts:autoEnrollAccountIndexName
 ddl.ts:applyManifestDdl
 ddl.ts:columnDefinition
+ddl.ts:createAutoEnrollAccountIndexSql
 ddl.ts:createTableSql
 ddl.ts:dropColumnSql
 ddl.ts:dropTableSql
@@ -1163,3 +1168,61 @@ meta-store.ts:CommentVisibility
 # が持つ**(本命の口とフォールバックの口の両方を、本物の推論を1度も呼ばずに撃っている)。
 workflow-runner.ts:accessJudgmentApplies
 workflow-runner.ts:judgeAutomationWrite
+#
+# 更新: `V20-M4-T01`(2026-09-24)。**5件増え、0件減った。** 増分は一覧の束ねるキーの**読取の並び**
+# (メインの裁定 案A。条文 = `ADR-0470` / `ADR-0461`、`ADR-0339` 限定7)である。
+#   report.ts            2件(truncateToGranularity = 日付の丸めの1本 / compareGroupValue = 群の値の比較。
+#                        **どちらも既に在った関数であり、`export` を1語ずつ足しただけである** ——
+#                        **丸めを2本目にしないために、一覧の並びがこの1本を呼ぶ**)。
+#   list-group-order.ts  3件(parseListGroupBy = 読取の引数の値域の検査 / listGroupKey = 1行の群の値 /
+#                        orderRowsByListGroup = 群の値を第1キーにした安定ソート)。
+# **【正直に書く】** **`report.ts` の型の節には「公開識別子を1つも増やさない」(`v8-m11.md` §1-0c の決定4。
+#   集計表の並べ替えについての決定)が書かれている** —— **本更新はその向きに反して2件を公開した。**
+#   **根拠はメインの裁定(「truncateToGranularity を export して再利用。丸めは1本のまま」)であり、
+#   この5つの識別子を名指しした ADR は本更新の時点では無い。**
+# **赤いまま走らせた出力の `added` が名指しした5行だけを足した**(記録 `docs/plan/v20/records/v20-m4-t01.md`)。
+list-group-order.ts:listGroupKey
+list-group-order.ts:orderRowsByListGroup
+list-group-order.ts:parseListGroupBy
+report.ts:compareGroupValue
+report.ts:truncateToGranularity
+#
+# 更新: `V20-M5-T04`(2026-09-24)。**1件増え、0件減った。** 増分は画面の中の並べ方の木の**深さの上限**である
+# (条文 = `ADR-0462` 限定4「上限の値はカーネルに1本だけ置き、3 ちょうどにする」/ `ADR-0471` §Decision 3 の1。
+# export するのはメインの裁定の申11)。
+#   referential-integrity.ts  1件(MAX_LAYOUT_DEPTH = 3。根の節が1段目。絞り込みの木の MAX_FILTER_DEPTH は共有しない)。
+# **`ADR-0456` 限定3「深さの上限を名乗る公開の識別子は7本を超えない」の内側である**(今日の5本 + 本件で6本)。
+# **`ADR-0471` を書いた後に更新した。** **赤いまま走らせた出力の `added` が名指しした1行だけを足した**
+# (記録 `docs/plan/v20/records/v20-m5-t04.md`)。
+referential-integrity.ts:MAX_LAYOUT_DEPTH
+#
+# 更新: `V20-M9-T02`(2026-09-25)。**2件増え、0件減った。** 増分はテーマの生の色への参照(`$palette_<名前>`)の
+# **解決器**である(条文 = `ADR-0474` §Decision 1-5「export は `resolveThemeSlots` と `THEME_REFERENCE_MAX_DEPTH` の
+# 2つちょうど」/ 限定9)。
+#   theme-reference.ts  2件(resolveThemeSlots = 規則 R1〜R5 の純関数。`checkTheme` が `incoming` のときだけ呼ぶ /
+#                       THEME_REFERENCE_MAX_DEPTH = 3。参照をたどってよい回数)。
+# **`ADR-0474` の門A 本審査(限定採用。本文末尾の「門A の本審査の結果」節)の後に更新した**(冒頭の逐語
+# 「審査より先にこのファイルを更新してはならない」/ `ADR-0456` 限定5)。
+# **`ADR-0456` 限定3「深さの上限を名乗る公開の識別子は7本を超えない」の上限いっぱいである**(今日の6本 + 本件で7本)。
+# **赤いまま走らせた出力の `added` が名指しした2行だけを足した**(記録 `docs/plan/v20/records/v20-m9-t02.md`)。
+theme-reference.ts:THEME_REFERENCE_MAX_DEPTH
+theme-reference.ts:resolveThemeSlots
+#
+# 更新: `V20-M15-T01A`(2026-09-26)。**2件増え、0件減った。** 増分は18種目の差分操作 `remember_design` の型2本
+# —— `DesignMemory`(`app.design_memory` の器)と `RememberDesignOperation` —— だけである
+# (条文 = `ADR-0479` §Decision 1 の 7「`DesignMemory` と `RememberDesignOperation` を export する」/
+# `ADR-0466` 限定8 の後件。門A = `ADR-0466`(`DS-S22` = 限定採用))。 先例は `RoleDeclaration` / `SetRolesOperation`。
+# **関数は1本も export していない**(`foldRememberDesign` と上限の定数 `DESIGN_MEMORY_CHOICES_MAX` は `apply-diff.ts` の内部)。
+# **`RESOURCE_KINDS`=8 / `FIELD_TYPES`=9 は1つも動いていない。`DIFF_OPS` は 17 → 18 である。**
+# **`ADR-0479` を書いた後に更新した。** **赤いまま走らせた出力の `added` が名指しした2行だけを足した**
+# (記録 `docs/plan/v20/records/v20-m15-t01a.md`)。
+types.ts:DesignMemory
+types.ts:RememberDesignOperation
+#
+# 更新: `V23-M2-T03`(2026-09-29)。**3件増え、0件減った。** 増分は `workflow-runner.ts` の「アプリの理由」の3名 ——
+# 印を付ける `markAppReason`・印を問う `isAppReason`・連鎖の受け皿から取り出す `takeFirstAppReason`
+# (`ADR-0498`・決定 `D-V23-52`・`D-V23-54`。授権 `ADR-0517` §Decision 9 の行36「3名まで」)。
+# **赤いまま走らせた出力の `added` が名指しした3行だけを足した**(記録 `docs/plan/v23/records/v23-m2-t03.md`)。
+workflow-runner.ts:isAppReason
+workflow-runner.ts:markAppReason
+workflow-runner.ts:takeFirstAppReason

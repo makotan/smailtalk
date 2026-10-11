@@ -805,6 +805,11 @@ describe("限定3 の新しい不変条件($defs/operation.properties は6キー
       // 消していない —— **本件は門A の本審査(限定採用)を通したうえで足した増分である。**
       // ここが11 になったら、それは門A を通らない増分が入った合図である。
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory`。** 直上の1行は制定時の文であり消していない ——
+      // **本件は門A を通したうえで `ADR-0013` §4c の3問に答えて足した増分である。** 旧の期待値は `"roles"` で終わる9要素。
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行13)】11キー目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる10要素。逐語)。 ここが12 になったら門A を通らない増分が入った合図である。**
+      "workspace",
     ]);
   });
 
@@ -869,6 +874,10 @@ describe("限定3 の新しい不変条件($defs/operation.properties は6キー
         "function",
         "theme",
         "roles",
+        // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory` を全既存17分岐で禁止したので末尾に1件足した(旧は `"roles"` で終わる7要素)。**
+        "design_memory",
+        // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行13)】11キー目 `workspace` を全既存18分岐で禁止したので末尾に1件足した(旧は `"design_memory"` で終わる8要素。逐語)。**
+        "workspace",
       ]);
     }
   });
@@ -1139,7 +1148,19 @@ describe("V3-M10-T01 / ADR-0063: 増分の限定(schema 側)", () => {
      * (`ADR-0064` §Consequences / `v3-m10.md` §2a-3)。`for_each` 等を足すとここが赤くなる
      * (`web/test/shell-navigation-boundary.test.ts:203` と同じことを、より近い場所で言う)。
      */
-    expect(Object.keys(trigger.properties).sort()).toEqual(["at", "older_than", "table", "type"]);
+    /*
+     * **【`V23-M4-T02` / `SC-G14` / `ADR-0500` 限定5 / 授権 `ADR-0525` 行30】** 5キー目 `changed_fields`
+     * (`on_update` だけで書ける)を足した。 **旧の期待(逐語)**:
+     * `expect(Object.keys(trigger.properties).sort()).toEqual(["at", "older_than", "table", "type"]);`。
+     * 新しい値はスキーマを検査の外の python で読んで得た。 種別の enum は4値のまま(下の検査)。
+     */
+    expect(Object.keys(trigger.properties).sort()).toEqual([
+      "at",
+      "changed_fields",
+      "older_than",
+      "table",
+      "type",
+    ]);
     expect(trigger.additionalProperties).toBe(false);
     expect(trigger.required).toEqual(["type"]);
     /*
@@ -1256,7 +1277,19 @@ describe("V3-M10-T02 / ADR-0064 限定1: 足すキーは older_than 1つだけ(�
      *   (`ADR-0064` §Consequences / `v3-m10.md` §2a-3)。
      */
     const trigger = canonicalSchema("manifest.schema.json").$defs.workflow_trigger as Any;
-    expect(Object.keys(trigger.properties).sort()).toEqual(["at", "older_than", "table", "type"]);
+    /*
+     * **【`V23-M4-T02` / `SC-G14` / `ADR-0500` 限定5 / 授権 `ADR-0525` 行31】** 5キー目 `changed_fields`
+     * (`on_update` だけで書ける)を足した。 **旧の期待(逐語)**:
+     * `expect(Object.keys(trigger.properties).sort()).toEqual(["at", "older_than", "table", "type"]);`。
+     * 新しい値はスキーマを検査の外の python で読んで得た。 種別の enum は4値のまま(下の検査)。
+     */
+    expect(Object.keys(trigger.properties).sort()).toEqual([
+      "at",
+      "changed_fields",
+      "older_than",
+      "table",
+      "type",
+    ]);
     expect(trigger.additionalProperties).toBe(false);
     expect(trigger.required).toEqual(["type"]);
     /*

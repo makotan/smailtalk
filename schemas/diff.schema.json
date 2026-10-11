@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://smailtalk.dev/schemas/diff.schema.json",
   "title": "SmAIltalk 差分パッチ",
-  "description": "マニフェストへの変更を表す差分パッチ。op は additive 4種 (add_table / add_field / add_view / update_view)、V1-M1 / ADR-0010 で追加した破壊的4種 (remove_field / remove_table / change_table / change_field)、ADR-0012 で追加した remove_view の計9種。破壊的4種は既存の定義とデータを実際に変更・削除し、変換できない値が1件でもあれば差分全体が拒否される (部分適用はしない)。remove_view は画面定義を1つ取り除くだけで、テーブル・フィールド・レコードを1バイトも変えない (だから変換不能値の規則は適用されない)。",
+  "description": "マニフェストへの変更を表す差分パッチ。op は additive 4種 (add_table / add_field / add_view / update_view)、V1-M1 / ADR-0010 で追加した破壊的4種 (remove_field / remove_table / change_table / change_field)、ADR-0012 で追加した remove_view の計9種。破壊的4種は既存の定義とデータを実際に変更・削除し、変換できない値が1件でもあれば差分全体が拒否される (部分適用はしない)。remove_view は画面定義を1つ取り除くだけで、テーブル・フィールド・レコードを1バイトも変えない (だから変換不能値の規則は適用されない)。【2026-09-27 訂正。直前の文を消していない】冒頭の「計9種」は今日は偽である —— op は今日18種である(全量は $defs/op_name の enum)。【2026-09-28 訂正。直前の文を消していない】直前の「op は今日18種である」も今日は偽である —— op は今日19種である(19種目は set_workspace。全量は $defs/op_name の enum)。",
   "type": "object",
   "required": ["diff_id", "intent", "operations"],
   "additionalProperties": false,
@@ -28,8 +28,8 @@
   },
   "$defs": {
     "op_name": {
-      "description": "操作の種別。additive 4種・破壊的4種・remove_view・ワークフロー3種・関数3種・set_theme・set_roles の計17種。",
-      "$comment": "ADR-0010 §1 / 限定1 と ADR-0012 §4 / 限定1。remove_view は ADR-0012 が ADR-0007 の門A を正面から通した op である (判定は限定採用)。ここに remove_app / patch_manifest / copy_field 等を「同じ理由で」足してはならない —— remove_view が通ったことはそれらの理由にならない。足すなら門A を改めて通し、個別 ADR を書くこと。【ADR-0013 による改訂】末尾3種 (add_workflow / update_workflow / remove_workflow) を足して12種になった。**ADR-0010 限定1 の「5つだけ」は「8つだけ」に改まる** (ADR-0013 限定2)。**run_workflow / pause_workflow / enable_workflow を「同じ理由で」足してはならない** —— 手動実行を通したくなったときの追加関門は ADR-0013 §4a。【ADR-0024 による改訂】末尾3種 (add_function / update_function / remove_function) を足して15種になった。**run_function の diff op 版・pause_function・enable_function を「同じ理由で」足してはならない** (ADR-0024 限定9。手動実行の追加関門は §4a)。この enum は src/kernel/types.ts の DIFF_OPS と**同順・同内容**でなければならない (validate.test.ts が1対1対応を機械的に固定している)。【ADR-0047 による改訂】末尾に set_theme を足して16種になった (V3-M1-T03 / D-G2。ADR-0007 門A 本審査 = 限定採用)。**テーマの部分更新・削除・複製の op を「同じ理由で」足してはならない** (ADR-0047 限定3 / §3a 5 —— 全体差し替えで表せないことを1つ示せなければ、限定3 を破る根拠にならない)。【ADR-0248 による改訂】末尾に set_user_kinds を足して17種になった (V5-M17b / ユーザ決定 D-V5-87。ADR-0007 門A 本審査 = 限定採用)。**利用者の種類の部分更新・削除の op を「同じ理由で」足してはならない** (ADR-0248 限定1 / 限定2 / 限定3 / §3a —— 全体差し替えで表せないことを1つ示せなければ、限定を破る根拠にならない)。**set_theme が通ったことは set_user_kinds の理由ではなく、set_user_kinds が通ったことは18種目の理由にならない。**【V8-M16-T03 による改訂 —— 上の記述は制定時の事実であり、消さずに残す。**とりわけ「set_user_kinds が通ったことは18種目の理由にならない。」の逐語を消していない**】末尾に set_roles を足して18種になった (台帳 J-G1b / ユーザ決定 D-V8-31。ADR-0007 門A 本審査 = 限定採用)。**理由は set_user_kinds が通ったことではない** —— 役割の宣言は予約4語 (owner / editor / viewer / anonymous) を主体として書ける必要があり、user_kinds はその4語を1語も書けない (items.id の not: { enum: [...] } が塞いでいる) ので、既存 op の転用では目的が達成できない。**役割の部分更新・削除・付与の op を「同じ理由で」足してはならない** (全体差し替え1本に閉じる。set_theme / set_user_kinds と同型)。**19種目の理由にはならない。****【2026-08-11 追記 (V8-M29 第2波。台帳 T-G11。判定値 = 廃止。ADR-0301 限定8 の履行)。上の本文を1バイトも消していない】** **set_user_kinds を enum から取り除いた。18 → 17 になった。** **上の本文にある set_user_kinds への言及 (ADR-0248 による改訂の段落・「set_theme が通ったことは set_user_kinds の理由ではなく、set_user_kinds が通ったことは18種目の理由にならない。」の逐語・V8-M16-T03 の段落) は、制定時の事実であって今日の正ではない。1バイトも書き換えていない。** **【何が代わりに担うか (同 限定2)】set_roles である —— どちらも「app に1つしか無い宣言を丸ごと差し替える」同型の op であり、対象IDを取らない。担い手を失う機能は本 op については0件である (書き込む先の app.user_kinds が同じ差分で消えるため、この op だけを残すことはできない)。** **【禁止の履行 (同 限定9 / 限定10)】set_roles を足したことと set_user_kinds を取り除いたことを差し引きして書かない。**",
+      "description": "操作の種別。additive 4種・破壊的4種・remove_view・ワークフロー3種・関数3種・set_theme・set_roles・remember_design・set_workspace の計19種。",
+      "$comment": "ADR-0010 §1 / 限定1 と ADR-0012 §4 / 限定1。remove_view は ADR-0012 が ADR-0007 の門A を正面から通した op である (判定は限定採用)。ここに remove_app / patch_manifest / copy_field 等を「同じ理由で」足してはならない —— remove_view が通ったことはそれらの理由にならない。足すなら門A を改めて通し、個別 ADR を書くこと。【ADR-0013 による改訂】末尾3種 (add_workflow / update_workflow / remove_workflow) を足して12種になった。**ADR-0010 限定1 の「5つだけ」は「8つだけ」に改まる** (ADR-0013 限定2)。**run_workflow / pause_workflow / enable_workflow を「同じ理由で」足してはならない** —— 手動実行を通したくなったときの追加関門は ADR-0013 §4a。【ADR-0024 による改訂】末尾3種 (add_function / update_function / remove_function) を足して15種になった。**run_function の diff op 版・pause_function・enable_function を「同じ理由で」足してはならない** (ADR-0024 限定9。手動実行の追加関門は §4a)。この enum は src/kernel/types.ts の DIFF_OPS と**同順・同内容**でなければならない (validate.test.ts が1対1対応を機械的に固定している)。【ADR-0047 による改訂】末尾に set_theme を足して16種になった (V3-M1-T03 / D-G2。ADR-0007 門A 本審査 = 限定採用)。**テーマの部分更新・削除・複製の op を「同じ理由で」足してはならない** (ADR-0047 限定3 / §3a 5 —— 全体差し替えで表せないことを1つ示せなければ、限定3 を破る根拠にならない)。【ADR-0248 による改訂】末尾に set_user_kinds を足して17種になった (V5-M17b / ユーザ決定 D-V5-87。ADR-0007 門A 本審査 = 限定採用)。**利用者の種類の部分更新・削除の op を「同じ理由で」足してはならない** (ADR-0248 限定1 / 限定2 / 限定3 / §3a —— 全体差し替えで表せないことを1つ示せなければ、限定を破る根拠にならない)。**set_theme が通ったことは set_user_kinds の理由ではなく、set_user_kinds が通ったことは18種目の理由にならない。**【V8-M16-T03 による改訂 —— 上の記述は制定時の事実であり、消さずに残す。**とりわけ「set_user_kinds が通ったことは18種目の理由にならない。」の逐語を消していない**】末尾に set_roles を足して18種になった (台帳 J-G1b / ユーザ決定 D-V8-31。ADR-0007 門A 本審査 = 限定採用)。**理由は set_user_kinds が通ったことではない** —— 役割の宣言は予約4語 (owner / editor / viewer / anonymous) を主体として書ける必要があり、user_kinds はその4語を1語も書けない (items.id の not: { enum: [...] } が塞いでいる) ので、既存 op の転用では目的が達成できない。**役割の部分更新・削除・付与の op を「同じ理由で」足してはならない** (全体差し替え1本に閉じる。set_theme / set_user_kinds と同型)。**19種目の理由にはならない。****【2026-08-11 追記 (V8-M29 第2波。台帳 T-G11。判定値 = 廃止。ADR-0301 限定8 の履行)。上の本文を1バイトも消していない】** **set_user_kinds を enum から取り除いた。18 → 17 になった。** **上の本文にある set_user_kinds への言及 (ADR-0248 による改訂の段落・「set_theme が通ったことは set_user_kinds の理由ではなく、set_user_kinds が通ったことは18種目の理由にならない。」の逐語・V8-M16-T03 の段落) は、制定時の事実であって今日の正ではない。1バイトも書き換えていない。** **【何が代わりに担うか (同 限定2)】set_roles である —— どちらも「app に1つしか無い宣言を丸ごと差し替える」同型の op であり、対象IDを取らない。担い手を失う機能は本 op については0件である (書き込む先の app.user_kinds が同じ差分で消えるため、この op だけを残すことはできない)。** **【禁止の履行 (同 限定9 / 限定10)】set_roles を足したことと set_user_kinds を取り除いたことを差し引きして書かない。**【ADR-0479 による改訂 (V20-M15-T01A。門A = ADR-0466 = DS-S22 の限定採用) —— 上の記述は制定時の事実であり、消さずに残す】末尾に remember_design を足して18種になった (選んだ案の記録を1件足す / アプリの型を丸ごと差し替える。空配列で型を全部外す)。**19種目を足さない** (ADR-0466 限定1 / 越えてはならない線) —— 型や記録を消す手段も18種目の中 (patterns の空配列 / 選んだ記録の上限20の自動の脱落) で担う。**選んだ記録の部分更新・削除の op を「同じ理由で」足してはならない。****remember_design が通ったことは19種目の理由にならない。****description の旧文 (逐語)**: 「操作の種別。additive 4種・破壊的4種・remove_view・ワークフロー3種・関数3種・set_theme・set_roles の計17種。」【ADR-0486 による改訂 (V22-M2-T02。門A = MN-G1 / MN-G2 の限定採用) —— 上の記述は制定時の事実であり、消さずに残す】末尾に set_workspace を足して19種になった (アプリのメニューの位置 workspace を丸ごと差し替える。{} で宣言を消す)。**ADR-0466 限定1・ADR-0302 限定5・ADR-0454 限定12 の「19種目を足さない」と、上の ADR-0479 の改訂の「19種目を足さない」は、ADR-0486 が引き直した。** **置き換えとなる新しい不変条件: DIFF_OPS は19種で閉じる。20種目を足してはならない。**最初の18種の名前と順序は1つも動かしていない (ADR-0486 限定3)。**メニューの位置の部分更新・削除・役割ごとの付け外しの op を「同じ理由で」足してはならない。****set_workspace が通ったことは20種目の理由にならない。****description の旧文 (逐語)**: 「操作の種別。additive 4種・破壊的4種・remove_view・ワークフロー3種・関数3種・set_theme・set_roles・remember_design の計18種。」",
       "type": "string",
       "enum": [
         "add_table",
@@ -48,11 +48,13 @@
         "update_function",
         "remove_function",
         "set_theme",
-        "set_roles"
+        "set_roles",
+        "remember_design",
+        "set_workspace"
       ]
     },
     "table_changes": {
-      "description": "change_table で変更できる範囲。id (リネーム) / name (表示名) / representative_field (参照されたときに表示に出す列) / reference_search_fields (参照されたときに探す対象にする列) / access_control (この表でアクセス権管理を使うことの宣言) の5キーだけを変更でき、1件以上指定する必要がある。ただし representative_field は今日このキーが効かない (受理はされるが値が適用後マニフェストに残らない)。reference_search_fields と access_control は効く (値が残る)。",
+      "description": "change_table で変更できる範囲。id (リネーム) / name (表示名) / representative_field (参照されたときに表示に出す列) / reference_search_fields (参照されたときに探す対象にする列) / access_control (この表でアクセス権管理を使うことの宣言) の5キーだけを変更でき、1件以上指定する必要がある。ただし representative_field は今日このキーが効かない (受理はされるが値が適用後マニフェストに残らない)。reference_search_fields と access_control は効く (値が残る)。【2026-10-02 追記】6キー目 history (この表への書込を変更履歴に残すか。真偽値。値が残る) が加わったので、今日は6キーである。history: true の詳細画面が残っている表の history を外す差分は適用時に断られる (先に画面の history を外す)。",
       "$comment": "ADR-0010 限定2: キーは列挙固定 (id / name の2つ)。additionalProperties: false と minProperties: 1 を必ず付ける。「ついでに」キーを足さないこと。",
       "type": "object",
       "minProperties": 1,
@@ -79,12 +81,15 @@
           "$comment": "Z-G37 (V7-M1-T03。限定表は ADR-0293(docs/adr/0293-change-table-access-control.md)の限定表10行。決定の正は docs/plan/v7/records/v7-m0.md §5-1 と §5-3 の (b)。門A の本審査 (同 §6) を通って**限定採用**された増分である)。**5つ目のキーである。****置き換えとなる新しい不変条件: $defs/table_changes のキーは5つ。6つ目のキーを足してはならない。****本キーは引き直しの連鎖の4代目である** —— ADR-0010 限定2 (キーは id / name の2つ) を ADR-0080 限定3/4 が 2 → 3 へ、ADR-0290 (限定11) が 3 → 4 へ引き直し、**本件が 4 → 5 へ引き直す。****上の representative_field / reference_search_fields の $comment を1バイトも書き換えていない** —— **とりわけ「置き換えとなる新しい不変条件: 5つ目のキーを足してはならない。」の逐語を消していない** (ADR-0084 が ADR-0055 に対して採り、ADR-0290 が ADR-0080 に対して採った作法と同型。**本文を書き換えず、新しい側が引き直す**)。**ADR-0010 / ADR-0080 / ADR-0290 の本文も1バイトも書き換えていない** (V7-M1-T07 が双方向に入れた (ADR-0010 / ADR-0080 / ADR-0290))。**【representative_field と違い、値は実際に運ばれる】** —— カーネルの foldChangeTable (src/kernel/apply-diff.ts) が本キーを運び、**値が適用後マニフェストに残る。****representative_field は同じ table_changes に在りながら値が運ばれない** (受理されるが残らない) —— **その穴を本キーでは踏まない。**実測は src/kernel/apply-diff.test.ts の V7-M1-T03 群 (change_table / add_table / enabled: false へ戻す / 丸ごと差し替える の4経路をディスクの適用後マニフェストで測っている)。**全置換である** —— 書いたオブジェクトがそのまま新しい値になり、中の1本だけを足す / 消す op を1つも作っていない。**書かない change_table は既存の宣言を1バイトも触らない。****前進では外せない** —— 外すには undo で戻すか remove_table + add_table で作り直す (enabled: false は『宣言していない表』と同じ扱いなので、止めるだけならこれで足りる)。**定義は manifest 側の $defs/table/properties/access_control をそのまま $ref する** (値域の定義を二重に持たない。**新しい $defs を1つも作らない**)。**view_changes に同じキーを1本も足していない。****【正直に書く】指した表・列の実在も型も、今日は1つも検査していない** (V7-M1-T05 の担当)。**指している列を remove_field で消しても今日は通り、宣言は消えた列を指したまま残る。****指している表を change_table でリネームしても、本キーは追随しない** (ビューの table や reference_table と違う)。**【正直に書く】判定の実装は今日1バイトも無い** —— **この宣言を後から書いても、行の読取・書込・削除のふるまいは今日どおりである。****DIFF_OPS は17のままである。**",
           "description": "この表でアクセス権管理を使うことの宣言を、すでに使っている表に後から付ける (または丸ごと書き換える)。値の形は add_table のときと同じで、書いた内容がそのまま新しい宣言になる (全置換)。値は適用後マニフェストに残る。enabled: false を書けば、宣言を残したまま止められる。**今日はこの宣言を書いても行の見え方・書き換え方は1つも変わらない (判定の実装は後のマイルストーン)。**",
           "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/table/properties/access_control"
+        },
+        "history": {
+          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/table/properties/history"
         }
       }
     },
     "field_changes": {
-      "description": "change_field で変更できる範囲。id / name / type / options / required / reference_table / unique / unit / emphasis / hide_when_empty / reference_picker / reference_search_fields のみ変更でき、1件以上指定する必要がある。",
-      "$comment": "ADR-0010 限定2: キーは列挙固定。型変換の可否は §5b のマトリクス、制約の変更は §5c が定める。変換できない値が1行でもあれば差分全体が拒否される (限定7: 拒否のみ。null 化・デフォルト値は実装しない)。**EC-G8 (ADR-0038) で unique を1つ足して7つになった** —— unique を false→true にする後付け時に既存重複があれば差分全体が拒否される (変換不能値と同型。ADR-0010 限定7)。unique は DDL 制約にせずアプリ層の書込時検査で担保する (単一列のみ・複合ユニークは書けない)。 **【`V8-M20`。台帳 `J-G28`(判定 = 廃止)。手続きは `ADR-0301`】このキー(`writable_by`)は廃止された。** **代わりに担うのは `app.roles[].rules` の「役割 x 対象 x できること」である** —— **対象(項目)x 書込**(差し替えは差分操作 `set_roles`。全体差し替えであり、部分更新の op は無い)。 **`ADR-0301` 限定8「撤去したキーの $comment を消して終わりにしない。新しい $comment を隣に置き、『このキーは廃止された。代わりに何が担うか』を書く」に従って置いた。** **既存の $comment の文字は1バイトも書き換えず、末尾に追記している。** **【正直に書く。代わりが立つ範囲は同じではない】** 旧層のこのキーは「キーは在るが値が運ばれない」= **書けるが効かない**状態だった。**面には change_field に相当する部分更新が1つも無く、set_roles の全体差し替えだけである。**",
+      "description": "change_field で変更できる範囲。id / name / type / options / required / reference_table / unique / unit / emphasis / hide_when_empty / reference_picker / reference_search_fields のみ変更でき、1件以上指定する必要がある。【2026-09-29 訂正。上の文を1バイトも書き換えていない】上の列挙は今日の全量ではない。今日はこれに unique_message を加えた13キーを変更できる(unique_message は null を書くと外れる)。",
+      "$comment": "ADR-0010 限定2: キーは列挙固定。型変換の可否は §5b のマトリクス、制約の変更は §5c が定める。変換できない値が1行でもあれば差分全体が拒否される (限定7: 拒否のみ。null 化・デフォルト値は実装しない)。**EC-G8 (ADR-0038) で unique を1つ足して7つになった** —— unique を false→true にする後付け時に既存重複があれば差分全体が拒否される (変換不能値と同型。ADR-0010 限定7)。unique は DDL 制約にせずアプリ層の書込時検査で担保する (単一列のみ・複合ユニークは書けない)。 **【`V8-M20`。台帳 `J-G28`(判定 = 廃止)。手続きは `ADR-0301`】このキー(`writable_by`)は廃止された。** **代わりに担うのは `app.roles[].rules` の「役割 x 対象 x できること」である** —— **対象(項目)x 書込**(差し替えは差分操作 `set_roles`。全体差し替えであり、部分更新の op は無い)。 **`ADR-0301` 限定8「撤去したキーの $comment を消して終わりにしない。新しい $comment を隣に置き、『このキーは廃止された。代わりに何が担うか』を書く」に従って置いた。** **既存の $comment の文字は1バイトも書き換えず、末尾に追記している。** **【正直に書く。代わりが立つ範囲は同じではない】** 旧層のこのキーは「キーは在るが値が運ばれない」= **書けるが効かない**状態だった。**面には change_field に相当する部分更新が1つも無く、set_roles の全体差し替えだけである。** **【2026-09-29 追記(V23-M2-T02 / ADR-0498)。上の文と description は1バイトも書き換えていない】** **13個目のキー unique_message を足した。** description の列挙「id / name / ... / reference_search_fields のみ変更でき」は今日の全量ではない —— 今日変更できるのは、その列挙に unique_message を加えた13キーである。**unique_message だけは null を書くと外れる** (他のキーに外す書き方は今日も無い)。",
       "type": "object",
       "minProperties": 1,
       "additionalProperties": false,
@@ -116,6 +121,16 @@
           "description": "一意制約 (単一列)。true = テーブル全体で一意 / \"owner\" = 同じ持ち主 (st_owner) の中だけで一意 (V4-M10-T07 / ADR-0078)。false 以外にする後付けでは、そのスコープの中に既存の重複値があれば差分全体が拒否される (部分適用しない。ADR-0038 / ADR-0010 限定7)。",
           "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/field/properties/unique"
         },
+        "unique_message": {
+          "$comment": "FR-6 (V23-M2-T02 / ADR-0498 §Decision 1・限定1)。**13個目のキーである。**既存の作法 (ADR-0080 限定3 / ADR-0086 限定8 / ADR-0090 / ADR-0119 / ADR-0288 / ADR-0290)「既存フィールドに後から付けられない形にしない」に従って置いた。**値は実際に運ばれる** —— カーネルの buildChangedField (src/kernel/apply-diff.ts) が unique_message を運ぶ。**null を書くと外れる** (set_workspace の my_page / navigation と同じ作法。外すと定義が書く前と1バイトも違わない。実測は src/kernel/unique-message-declaration.test.ts の (D) 群)。**unique を外して本キーが残る形は、適用後マニフェストの参照整合性検査が差分全体を拒否する** (D-V23-56)。**型を変える差分でも落ちない** (unique と同じく全型に書けるため)。**定義は manifest 側の $defs/field/properties/unique_message をそのまま $ref する** (値域の定義を二重に持たない)。",
+          "description": "unique の検査に当たったときに返す文言 (1〜200文字)。unique が true か \"owner\" の列にだけ書ける。null を書くと外れる。",
+          "anyOf": [
+            {
+              "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/field/properties/unique_message"
+            },
+            { "type": "null" }
+          ]
+        },
         "unit": {
           "$comment": "E-G14 / F-9 (V4-M10-T46 / ADR-0086 限定8)。**9つ目のキーである。**限定8 の逐語「change_field で後から書ける。audience の穴を新しいキーで踏み直さない (ADR-0080 限定3 と同じ精神)」に従って置いた。**【上の writable_by と違い、値は実際に運ばれる】** —— カーネルの buildChangedField (src/kernel/apply-diff.ts) が unit を運ぶ。**ADR-0086 の限定表は src/kernel/ への差分を1つも禁じていない** (ADR-0076 限定7 とここが違う) ので、**『キーは在るが効かない』状態を作っていない。**実測は src/kernel/field-value-unit.test.ts の (c) 群。**number 型のフィールドにだけ書ける (限定4)** —— 適用後マニフェストの構造検証 (manifest 側の allOf) が他の7型で false にしており、**書いたら差分全体を拒否する。****ただし『unit を書かずに型を number から別の型へ変える』差分では、引き継いだ unit は落ちる** —— これは options (select) / reference_table (reference) が既に採っている作法と同じであり、**その差分は unit を1文字も書いていない**ので「書けるが効かない」ではない (判断の記録は docs/plan/v4/records/v4-m10-t47.md §5-3)。**audience を field_changes に足すことは ADR-0086 の射程外である。****定義は manifest 側の $defs/field/properties/unit をそのまま $ref する** (値域の定義を二重に持たない。unique と同じ作法)。",
           "description": "number の値の単位 (円 / 点 / 個 など)。number 型のフィールドにだけ書ける (他の型に書くと差分全体が拒否される)。change_field で後から書けて、値は適用後マニフェストに残る。",
@@ -144,7 +159,7 @@
     },
     "view_changes": {
       "$comment": "**V3-M2-T01 / D-G4 (ADR-0050 限定1)。**画面ごとの見せ方 (プリセット) 7キーを足した。**軸ごとに独立したキーにしてある** —— 1キーにまとめると applyViewChanges (キー単位の全置換) の下で「1軸だけ書いた update_view が他の軸を黙って既定へ戻す」ことになり、憲法6 (できないことは正直に言う) が禁じる形になる (ADR-0050 §2 (c))。**定義は manifest 側の $defs/view/properties をそのまま $ref する** —— 値域の定義を二重に持たない (F-1 name の作法)。**8つ目を足す提案は ADR-0050 §3a 3 の門A を通すこと。**",
-      "description": "update_view で変更できる範囲。name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / custom_css / menu_listed / field_groups / preset_list_shape / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers の24キーだけを変更でき、1件以上指定する必要がある。どのキーがどのビュー種別で書けるかはマニフェスト側の定義に従う (種別に合わないキーはキー単位で拒否される)。【2026-08-14 追記 (V8-M8)】25キー目 report (集計表の中身) が加わったので、今日は25キーである。report を書けるのは type が report_view の画面だけである。【2026-08-20 追記 (V10-M1-T02 / NV-G4 / ADR-0359)】26キー目 after_delete (削除が成立したあとの行き先) が加わったので、今日は26キーである。after_delete を書けるのは type が detail_view の画面だけで、行き先にできるのは一覧画面 (list_view) か集計表 (report_view) だけである。【2026-08-20 追記 (V10-M4-T01 / NV-G9 / ADR-0359 / ADR-0360)】27キー目 flow (一続きの流れの中の段) が加わったので、今日は27キーである。flow を書けるのは type が form / list_view / detail_view の画面で、集計表 (report_view) には書けない。段の種類 (kind) に confirm (確認の段) を書けるのは detail_view だけである。",
+      "description": "update_view で変更できる範囲。name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / custom_css / menu_listed / field_sections / preset_list_shape / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers の24キーだけを変更でき、1件以上指定する必要がある。どのキーがどのビュー種別で書けるかはマニフェスト側の定義に従う (種別に合わないキーはキー単位で拒否される)。【2026-08-14 追記 (V8-M8)】25キー目 report (集計表の中身) が加わったので、今日は25キーである。report を書けるのは type が report_view の画面だけである。【2026-08-20 追記 (V10-M1-T02 / NV-G4 / ADR-0359)】26キー目 after_delete (削除が成立したあとの行き先) が加わったので、今日は26キーである。after_delete を書けるのは type が detail_view の画面だけで、行き先にできるのは一覧画面 (list_view) か集計表 (report_view) だけである。【2026-08-20 追記 (V10-M4-T01 / NV-G9 / ADR-0359 / ADR-0360)】27キー目 flow (一続きの流れの中の段) が加わったので、今日は27キーである。flow を書けるのは type が form / list_view / detail_view の画面で、集計表 (report_view) には書けない。段の種類 (kind) に confirm (確認の段) を書けるのは detail_view だけである。【2026-09-24 追記 (V20-M3-T02)】28キー目 field_width (入力欄の幅) が加わったので、今日は28キーである。field_width を書けるのは type が form の画面だけで、値は short / medium / full のいずれか。【2026-09-24 追記 (V20-M4-T02 / ADR-0470)】29キー目 group_by (一覧の束ねるキー) が加わったので、今日は29キーである。group_by を書けるのは type が list_view の画面だけで、値は {field, granularity?} のオブジェクト1つ。表示列 (columns) に在ること・型 (select / reference / boolean / date)・粒度の要否は適用時に判定される。差分側の group_by は manifest 側の定義を $ref する1行だけであり、$comment も置いていない (ADR-0470 限定3 の式5 が1行ちょうどを要求する)。【2026-09-24 追記 (V20-M5-T01 / ADR-0471)】30キー目 layout (画面の中の並べ方の木) が加わったので、今日は30キーである。layout を書けるのは type が form / detail_view / list_view の画面で (集計表には書けない)、一覧では画面自身に preset_list_shape: card を書いたときだけ書ける。葉の実在・重複・深さ (根を1段目として3段まで)・項目のまとまり (field_sections) と両方は書けないことは適用時に判定される。差分側の layout は manifest 側の定義を $ref する1行だけである (ADR-0471 限定5 の式5)。【2026-10-02 追記】31キー目 history (行の変更履歴を詳細画面に出すか) が加わったので、今日は31キーである。history を書けるのは type が detail_view の画面だけで、その画面の表が history: true を宣言していなければ適用時に断られる。",
       "type": "object",
       "minProperties": 1,
       "additionalProperties": false,
@@ -194,9 +209,9 @@
           "$comment": "E-G12 (V4-M10-T45 / ADR-0084 限定6)。**14キー目である。**上の custom_css の $comment が『14キー目を足してはならない』と書いたのは ADR-0055 改訂1 の時点の不変条件であり、**それを引き直したのは ADR-0084 の側である** (custom_css の $comment を1バイトも書き換えていない)。限定6 の逐語「update_view で後から書ける。audience の穴を新しいキーで踏み直さない (ADR-0080 限定3 と同じ精神)」に従って置いた。**【ADR-0076 / ADR-0080 と違い、値は実際に運ばれる】** —— カーネルの applyViewChanges (src/kernel/apply-diff.ts) が name と同じ場所で menu_listed を運ぶ。**ADR-0084 の限定表は src/kernel/ への差分を1つも禁じていないので、『キーは在るが効かない』状態を作っていない** (実測は src/kernel/view-menu-listing.test.ts の (b) 群)。**したがって add_view でも update_view でも書ける。****audience / related / actions を view_changes に足すことは ADR-0084 の射程外である** —— それらは今日も update_view で書けない。**定義は manifest 側の $defs/view/properties/menu_listed をそのまま $ref する** (値域の定義を二重に持たない。name / custom_css と同じ作法)。**$defs/operation.properties は8キーのままである。**",
           "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/menu_listed"
         },
-        "field_groups": {
-          "$comment": "P-G17 の (C) 側 (V4-M16-T12 / ADR-0092 限定1・限定2・限定5・限定9)。**15キー目である。**上の custom_css の $comment が『14キー目を足してはならない』と書いたのは ADR-0055 改訂1 の時点の不変条件であり、それを引き直したのは ADR-0084 の側である。**上の menu_listed の $comment が『14キー目である』と書いているのは今日も真である** —— **15キー目を足したのは ADR-0092 の側であって、既存の2つの $comment を1バイトも書き換えていない** (ADR-0084 が ADR-0055 に対して採った作法と同型)。**【ADR-0076 / ADR-0080 と違い、値は実際に運ばれる】** —— カーネルの applyViewChanges (src/kernel/apply-diff.ts) が detail_view 分岐で field_groups を運び、CHANGE_KEYS_BY_VIEW_TYPE.detail_view にも入っている (**片方だけでは値が運ばれない。両方要る**)。**ADR-0092 の限定表は src/kernel/ への差分を1つも禁じていないので、『キーは在るが効かない』状態を作っていない** (実測は src/kernel/detail-field-grouping.test.ts の (i) 群)。**detail_view でだけ書ける (限定2)** —— list_view / form を対象にした update_view は CHANGE_KEYS_BY_VIEW_TYPE が拒否し、manifest 側の allOf の list_view / form 分岐も false で閉じている。**整合しない宣言 (同じIDが2つのまとまりに現れる / fields に無いID) は差分全体を拒否する (限定5)** —— 判定は適用後マニフェストを見る validateReferentialIntegrity にあるので、add_view と update_view の両経路を1箇所で覆う。**拒否は『全か無か』である** (ADR-0047 限定9)。**キーを消す手段は無い (限定9)** —— update_view は書かなかったキーを『触らない』と解釈するので、外すには undo で戻すか remove_view + add_view で作り直す (プリセット7キー / custom_css / menu_listed と同じ性質)。**audience / related / actions を view_changes に足すことは ADR-0092 の射程外である。****定義は manifest 側の $defs/view/properties/field_groups をそのまま $ref する** (値域の定義を二重に持たない。name / custom_css / menu_listed と同じ作法)。**$defs/operation.properties は8キーのままである。**",
-          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/field_groups"
+        "field_sections": {
+          "$comment": "【V20-M3-T01 / ADR-0469 / ADR-0460 限定2。2026-09-24】綴りを field_groups から field_sections に改めた (本数は15キー目の位置のまま据え置き)。書ける種別は入力フォームと詳細画面の2つ (apply-diff.ts の CHANGE_KEYS_BY_VIEW_TYPE)。以下は旧綴りの時点の記述であり、1バイトも書き換えていない。P-G17 の (C) 側 (V4-M16-T12 / ADR-0092 限定1・限定2・限定5・限定9)。**15キー目である。**上の custom_css の $comment が『14キー目を足してはならない』と書いたのは ADR-0055 改訂1 の時点の不変条件であり、それを引き直したのは ADR-0084 の側である。**上の menu_listed の $comment が『14キー目である』と書いているのは今日も真である** —— **15キー目を足したのは ADR-0092 の側であって、既存の2つの $comment を1バイトも書き換えていない** (ADR-0084 が ADR-0055 に対して採った作法と同型)。**【ADR-0076 / ADR-0080 と違い、値は実際に運ばれる】** —— カーネルの applyViewChanges (src/kernel/apply-diff.ts) が detail_view 分岐で field_groups を運び、CHANGE_KEYS_BY_VIEW_TYPE.detail_view にも入っている (**片方だけでは値が運ばれない。両方要る**)。**ADR-0092 の限定表は src/kernel/ への差分を1つも禁じていないので、『キーは在るが効かない』状態を作っていない** (実測は src/kernel/detail-field-grouping.test.ts の (i) 群)。**detail_view でだけ書ける (限定2)** —— list_view / form を対象にした update_view は CHANGE_KEYS_BY_VIEW_TYPE が拒否し、manifest 側の allOf の list_view / form 分岐も false で閉じている。**整合しない宣言 (同じIDが2つのまとまりに現れる / fields に無いID) は差分全体を拒否する (限定5)** —— 判定は適用後マニフェストを見る validateReferentialIntegrity にあるので、add_view と update_view の両経路を1箇所で覆う。**拒否は『全か無か』である** (ADR-0047 限定9)。**キーを消す手段は無い (限定9)** —— update_view は書かなかったキーを『触らない』と解釈するので、外すには undo で戻すか remove_view + add_view で作り直す (プリセット7キー / custom_css / menu_listed と同じ性質)。**audience / related / actions を view_changes に足すことは ADR-0092 の射程外である。****定義は manifest 側の $defs/view/properties/field_groups をそのまま $ref する** (値域の定義を二重に持たない。name / custom_css / menu_listed と同じ作法)。**$defs/operation.properties は8キーのままである。**",
+          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/field_sections"
         },
         "preset_list_shape": {
           "$comment": "P-G24 の (C) 側 (V4-M16-T13 / ADR-0093 限定1・限定2・限定8・限定10)。**16キー目である。**上の custom_css の $comment が『14キー目を足してはならない』と書いたのは ADR-0055 改訂1 の時点の不変条件であり、それを引き直したのは ADR-0084 の側である。**上の menu_listed の $comment が『14キー目である』と書いていることも、field_groups の $comment が『15キー目である』と書いていることも今日も真である** —— **16キー目を足したのは ADR-0093 の側であって、既存の3つの $comment を1バイトも書き換えていない** (ADR-0084 が ADR-0055 に対して採った作法と同型)。**【ADR-0076 / ADR-0080 と違い、値は実際に運ばれる】** —— カーネルの applyViewChanges (src/kernel/apply-diff.ts) が list_view 分岐で preset_list_shape を運び、CHANGE_KEYS_BY_VIEW_TYPE.list_view にも入っている (**片方だけでは値が運ばれない。両方要る**)。**ADR-0093 の限定表は src/kernel/ への差分を1つも禁じていないので、『キーは在るが効かない』状態を作っていない** (実測は src/kernel/list-view-shape.test.ts の (j) 群)。**list_view でだけ書ける (限定2)** —— detail_view / form を対象にした update_view は CHANGE_KEYS_BY_VIEW_TYPE が拒否し、manifest 側の allOf の form / detail_view 分岐も false で閉じている。**値域は table / card の2値だけである (限定3)** —— 3値目を書いた差分は拒否される。**【正直に書く】card と preset_column_align / preset_column_width を同じ差分で書いても拒否されない (限定8)** —— **カードには列が無いので効かないが、機械では止めていない** (止めるには型とプリセットの対応検査が要り、それは今日この製品に1つも無い)。**効かないことは src/mcp/vocabulary.ts に明記してある** —— 『書けるが効かない』を黙って作らないことだけを義務にしている。**キーを消す手段は無い (限定10)** —— update_view は書かなかったキーを『触らない』と解釈するので、外すには undo で戻すか remove_view + add_view で作り直す (他の preset_ / custom_css / menu_listed / field_groups と同じ性質)。**audience / related / actions を view_changes に足すことは ADR-0093 の射程外である。****定義は manifest 側の $defs/view/properties/preset_list_shape をそのまま $ref する** (値域の定義を二重に持たない。name / custom_css / menu_listed / field_groups と同じ作法)。**$defs/operation.properties は8キーのままである。**",
@@ -245,12 +260,25 @@
         "flow": {
           "$comment": "`NV-G9` 一続きの流れの中の段を、後から差し替えられるようにする(`V10-M4-T01` / `ADR-0359` §4b 限定1・限定3 / §Decision 2)。**27キー目である。****上の `after_delete` の `$comment` が『置き換えとなる新しい不変条件: 28キー目を足してはならない。』と書き、その中で『27キー目は `flow` であり、その実装は `V10-M4` の担当である』と名指しで予告していた** —— **本キーはその27キー目そのものである。****その `$comment` を1バイトも書き換えていない**(`ADR-0084` が `ADR-0055` に対して、`ADR-0172` が `ADR-0104` に対して、`ADR-0289` が `ADR-0172` に対して採った作法と同型)。**置き換えとなる新しい不変条件: 28キー目を足してはならない。****`after_delete` が置いた線をそのまま引き継ぐ**(`ADR-0359` は差分側の本数の不変条件を1つも書いていないので、マニフェスト側 §5 の数え方を移した線である)。**28キー目を足す提案には、`ADR-0007` の門A を新規に通し、`ADR-0359` と同格の個別 ADR を新規に書くことを課す。****値は実際に運ばれる** —— カーネルの `applyViewChanges`(`src/kernel/apply-diff.ts`)が本キーを運び、`CHANGE_KEYS_BY_VIEW_TYPE` の `list_view` / `form` / `detail_view` の3種別にも入っている(**片方だけでは値が運ばれない。両方要る**)。実測は `src/kernel/view-flow.test.ts` の (T01-g) 群。**書けるのは `form` / `list_view` / `detail_view` の3種別だけである** —— `report_view` を対象にした `update_view` は `CHANGE_KEYS_BY_VIEW_TYPE` が拒否し、manifest 側の `allOf` の `report_view` 分岐も `false` で閉じている(**受付表とマニフェスト検証を一致させてある**)。**確認の段を置ける種別(`detail_view` だけ)と、位置の重複・欠番は、ここでは1つも判定しない** —— **前者は manifest 側の `allOf` が、後者は畳み込み後のマニフェスト検証(`validateReferentialIntegrity`)が持ち、`add_view` の経路も `update_view` の経路も同じ1箇所が覆う。****判定を2箇所に住まわせない。****拒否は「全か無か」である**(`ADR-0047` 限定9)。**キーを消す手段は無い** —— `update_view` は書かなかったキーを「触らない」と解釈するので、外すには別の値に差し替えるか、undo で戻すか、`remove_view` + `add_view` で作り直す(`after_save` / `after_delete` / `report` と同じ性質)。**定義は manifest 側の `$defs/view/properties/flow` をそのまま `$ref` する**(値域の定義を二重に持たない。`report` / `after_save` / `after_delete` / `custom_css` と同じ作法。**`#/$defs/resource_id` と書くと差分スキーマの側に解決先が無く、参照が解けなくなる** —— **絶対 URI で参照すれば、`flow.id` の中の `#/$defs/resource_id` も manifest 側を基準に解ける**)。**`$defs/operation.properties` に1キーも足していない。**",
           "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/flow"
+        },
+        "field_width": {
+          "$comment": "【V20-M3-T02 / ADR-0460 限定4〜限定7。2026-09-24】入力欄の幅を、後から差し替えられるようにする。**28キー目である。****上の after_delete / flow の $comment が『28キー目を足してはならない』と書いた線は、門A の本審査 (V20-M0 の DS-S4。判定 = 限定採用。条文 = ADR-0460) を通って越えた。その $comment を1バイトも書き換えていない。差分側の上限は ADR-0454 の総則 (view_changes の properties は30キーを超えない) が持つ。****書けるのは form の1種別だけである** —— list_view / detail_view / report_view を対象にした update_view は CHANGE_KEYS_BY_VIEW_TYPE が拒否し、manifest 側の allOf の3分岐も false で閉じている (受付表とマニフェスト検証を一致させてある)。**値は実際に運ばれる** —— applyViewChanges (src/kernel/apply-diff.ts) の form 分岐が運ぶ (片方だけでは運ばれない。両方要る)。**全置換である** —— 項目ごとに1本ずつ足す / 消す手段を1つも作っていない。**キーを消す手段は無い** (外すには undo か remove_view + add_view)。キーが入力フォームの fields に在るかは畳み込み後のマニフェスト検証 (validateReferentialIntegrity) が持つ。**定義は manifest 側の $defs/view/properties/field_width をそのまま $ref する** (値域の定義を二重に持たない)。**$defs/operation.properties に1キーも足していない。**",
+          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/field_width"
+        },
+        "group_by": {
+          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/group_by"
+        },
+        "layout": {
+          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/layout"
+        },
+        "history": {
+          "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/history"
         }
       }
     },
     "operation": {
       "description": "1つの操作。op ごとに必要な属性が異なる。",
-      "$comment": "allOf の前半4分岐は v0 からの additive 4種、続く4分岐は ADR-0010 が追加した破壊的4種、最後の1分岐は ADR-0012 が追加した remove_view である。**いずれの追加でも $defs/operation.properties にキーを1つも足さず、既存分岐の false 宣言を1バイトも書き換えていない** (ADR-0010 限定3 / §1(c) / ADR-0012 限定2)。remove_view は既存の view キーを再利用する (update_view が既にIDの文字列として使っている)。この性質が破れる設計案は、その時点で限定3 を破る提案である。**この不変条件は src/kernel/validate.test.ts の「差分スキーマの operation は、op を足してもキーが増えない (限定3)」が機械的に固定している。** なお allOf の各要素には if / then / else 以外のキーを置かないこと —— ajv-error-adapter.ts の resolveAllowedProperties が「解釈できない分岐」として諦め、未知プロパティのエラーから allowed_values が消える (V1-M1-T03 で実際に踏んだ)。【ADR-0013 / V1-M2-T07 による改訂注 —— 上の記述は制定時の事実であり、消さずに残す】**T07 でこの不変条件は破られた。**ADR-0013 §4c の追加関門3問 (問1: 既存キーの転用で目的が達成できないことをキーの意味の数で示せるか / 問2: 書き換える既存分岐の false 宣言を名指しで全件列挙しているか / 問3: 限定3 が無くなったあとに何がその位置を占めるのか) を通したうえで、**6キー目 workflow を足した。**view キーの転用 (却下案2) を採ると view の意味が2つから4つになり、:131 の description が破綻する —— 隠れた語彙拡張は見える語彙拡張より悪い、というのが破った根拠である。**false 宣言を書き足した既存分岐は、数ではなく名指しで全9件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view。**それ以外の false 宣言は1バイトも書き換えていない。**置き換えとなる新しい不変条件 (ADR-0013 限定3): $defs/operation.properties は op / table / field / view / changes / workflow の6キーで閉じる。7キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に答えたうえで門A を通すこと。**workflow キーの意味も2義に閉じる** (add_workflow / update_workflow では定義そのもの、remove_workflow では対象のID)。3義目を入れてはならない。【ADR-0024 / V1-M6 による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0024 §4c の追加関門3問を通したうえで、7キー目 function を足した。**false 宣言を書き足した既存分岐は数ではなく名指しで全12件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow。それ以外の false 宣言は1バイトも変えていない。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function の7キーで閉じる。8キー目を足してはならない。**【ADR-0047 / V3-M1-T03 による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0047 §4c の追加関門3問 (ADR-0013 §4c と同じ3問) を通したうえで、8キー目 theme を足した。**false 宣言を書き足した既存分岐は数ではなく名指しで全15件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function。それ以外の false 宣言は1バイトも変えていない。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme の8キーで閉じる。9キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通すこと (ADR-0047 §3a 8)。**theme キーの意味は1義に閉じる** (set_theme では常に差し替えるテーマそのもの。テーマは app に1つしか無いので対象IDを取らない)。2義目を入れてはならない。**なおこの不変条件は3代続けて破られている** (ADR-0010 限定3「新しいキーを1つも足さない」→ ADR-0013 の6キー目 workflow → ADR-0024 の7キー目 function → ADR-0047 の8キー目 theme)。手続き (破るたびに §4c の3問に答え、新しい不変条件を置く) は3代守られているが、破られている事実そのものは ADR-0047 §2 (c) に不利な材料として計上してある。function キーの意味も2義に閉じる (add_function / update_function では定義そのもの、remove_function では対象のID)。3義目を入れてはならない。【ADR-0248 / V5-M17b による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0248 §4c が ADR-0013 §4c の追加関門3問 (ADR-0013 §4c / ADR-0024 §4c / ADR-0047 §4c と同じ3問) を通したうえで、9キー目 user_kinds を足した。**false 宣言を書き足した既存分岐は数ではなく名指しで全16件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme。それ以外の false 宣言は1バイトも変えていない。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / user_kinds の9キーで閉じる。10キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通すこと (ADR-0248 §3a 4)。**user_kinds キーの意味は1義に閉じる** (set_user_kinds では常に差し替える宣言そのもの。宣言は app に1つしか無いので対象IDを取らない)。2義目を入れてはならない。【V8-M16-T03 による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0013 §4c の追加関門3問 (ADR-0013 §4c / ADR-0024 §4c / ADR-0047 §4c / ADR-0248 §4c と同じ3問) に答えたうえで、10キー目 roles を足した** (台帳 J-G1b / ユーザ決定 D-V8-31。ADR-0007 門A 本審査 = 限定採用)。**問1 の答え**: user_kinds の転用では目的が達成できない —— 役割は予約4語 (owner / editor / viewer / anonymous) を主体として書けなければ成立しないが、user_kinds の items.id は not: { enum: [\"owner\",\"editor\",\"viewer\",\"anonymous\"] } でその4語をすべて塞いでいる。転用は「キーの意味を1つ増やす」ではなく「既存キーの禁止を解く」ことになり、user_kinds の値域そのものを壊す (D-V8-31 は予約が今日どおり効くことを要求している)。**問2 の答え**: false 宣言を書き足した既存分岐は数ではなく名指しで全17件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme / set_user_kinds。それ以外の false 宣言は1バイトも変えていない。**問3 の答え**: **置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / user_kinds / roles の10キーで閉じる。11キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通すこと。**roles キーの意味は1義に閉じる** (set_roles では常に差し替える宣言そのもの。役割の一覧は app に1つしか無いので対象IDを取らない)。2義目を入れてはならない。",
+      "$comment": "allOf の前半4分岐は v0 からの additive 4種、続く4分岐は ADR-0010 が追加した破壊的4種、最後の1分岐は ADR-0012 が追加した remove_view である。**いずれの追加でも $defs/operation.properties にキーを1つも足さず、既存分岐の false 宣言を1バイトも書き換えていない** (ADR-0010 限定3 / §1(c) / ADR-0012 限定2)。remove_view は既存の view キーを再利用する (update_view が既にIDの文字列として使っている)。この性質が破れる設計案は、その時点で限定3 を破る提案である。**この不変条件は src/kernel/validate.test.ts の「差分スキーマの operation は、op を足してもキーが増えない (限定3)」が機械的に固定している。** なお allOf の各要素には if / then / else 以外のキーを置かないこと —— ajv-error-adapter.ts の resolveAllowedProperties が「解釈できない分岐」として諦め、未知プロパティのエラーから allowed_values が消える (V1-M1-T03 で実際に踏んだ)。【ADR-0013 / V1-M2-T07 による改訂注 —— 上の記述は制定時の事実であり、消さずに残す】**T07 でこの不変条件は破られた。**ADR-0013 §4c の追加関門3問 (問1: 既存キーの転用で目的が達成できないことをキーの意味の数で示せるか / 問2: 書き換える既存分岐の false 宣言を名指しで全件列挙しているか / 問3: 限定3 が無くなったあとに何がその位置を占めるのか) を通したうえで、**6キー目 workflow を足した。**view キーの転用 (却下案2) を採ると view の意味が2つから4つになり、:131 の description が破綻する —— 隠れた語彙拡張は見える語彙拡張より悪い、というのが破った根拠である。**false 宣言を書き足した既存分岐は、数ではなく名指しで全9件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view。**それ以外の false 宣言は1バイトも書き換えていない。**置き換えとなる新しい不変条件 (ADR-0013 限定3): $defs/operation.properties は op / table / field / view / changes / workflow の6キーで閉じる。7キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に答えたうえで門A を通すこと。**workflow キーの意味も2義に閉じる** (add_workflow / update_workflow では定義そのもの、remove_workflow では対象のID)。3義目を入れてはならない。【ADR-0024 / V1-M6 による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0024 §4c の追加関門3問を通したうえで、7キー目 function を足した。**false 宣言を書き足した既存分岐は数ではなく名指しで全12件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow。それ以外の false 宣言は1バイトも変えていない。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function の7キーで閉じる。8キー目を足してはならない。**【ADR-0047 / V3-M1-T03 による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0047 §4c の追加関門3問 (ADR-0013 §4c と同じ3問) を通したうえで、8キー目 theme を足した。**false 宣言を書き足した既存分岐は数ではなく名指しで全15件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function。それ以外の false 宣言は1バイトも変えていない。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme の8キーで閉じる。9キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通すこと (ADR-0047 §3a 8)。**theme キーの意味は1義に閉じる** (set_theme では常に差し替えるテーマそのもの。テーマは app に1つしか無いので対象IDを取らない)。2義目を入れてはならない。**なおこの不変条件は3代続けて破られている** (ADR-0010 限定3「新しいキーを1つも足さない」→ ADR-0013 の6キー目 workflow → ADR-0024 の7キー目 function → ADR-0047 の8キー目 theme)。手続き (破るたびに §4c の3問に答え、新しい不変条件を置く) は3代守られているが、破られている事実そのものは ADR-0047 §2 (c) に不利な材料として計上してある。function キーの意味も2義に閉じる (add_function / update_function では定義そのもの、remove_function では対象のID)。3義目を入れてはならない。【ADR-0248 / V5-M17b による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0248 §4c が ADR-0013 §4c の追加関門3問 (ADR-0013 §4c / ADR-0024 §4c / ADR-0047 §4c と同じ3問) を通したうえで、9キー目 user_kinds を足した。**false 宣言を書き足した既存分岐は数ではなく名指しで全16件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme。それ以外の false 宣言は1バイトも変えていない。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / user_kinds の9キーで閉じる。10キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通すこと (ADR-0248 §3a 4)。**user_kinds キーの意味は1義に閉じる** (set_user_kinds では常に差し替える宣言そのもの。宣言は app に1つしか無いので対象IDを取らない)。2義目を入れてはならない。【V8-M16-T03 による改訂 —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0013 §4c の追加関門3問 (ADR-0013 §4c / ADR-0024 §4c / ADR-0047 §4c / ADR-0248 §4c と同じ3問) に答えたうえで、10キー目 roles を足した** (台帳 J-G1b / ユーザ決定 D-V8-31。ADR-0007 門A 本審査 = 限定採用)。**問1 の答え**: user_kinds の転用では目的が達成できない —— 役割は予約4語 (owner / editor / viewer / anonymous) を主体として書けなければ成立しないが、user_kinds の items.id は not: { enum: [\"owner\",\"editor\",\"viewer\",\"anonymous\"] } でその4語をすべて塞いでいる。転用は「キーの意味を1つ増やす」ではなく「既存キーの禁止を解く」ことになり、user_kinds の値域そのものを壊す (D-V8-31 は予約が今日どおり効くことを要求している)。**問2 の答え**: false 宣言を書き足した既存分岐は数ではなく名指しで全17件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme / set_user_kinds。それ以外の false 宣言は1バイトも変えていない。**問3 の答え**: **置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / user_kinds / roles の10キーで閉じる。11キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通すこと。**roles キーの意味は1義に閉じる** (set_roles では常に差し替える宣言そのもの。役割の一覧は app に1つしか無いので対象IDを取らない)。2義目を入れてはならない。【ADR-0479 による改訂 (V20-M15-T01A) —— 上の記述は制定時の事実であり、消さずに残す】**ADR-0013 §4c の追加関門3問に答えたうえで、10キー目 design_memory と18本目の分岐 remember_design を足した** (門A = ADR-0466 = DS-S22 の限定採用。ユーザ決定 D-V20-56〜D-V20-64)。**問1 の答え** (既存キーの転用で目的が達成できないことを、キーの意味の数で示せるか): 転用の候補は theme と roles である (どちらも app に1つしか無い器を対象にし、対象IDを取らない)。theme は「set_theme で差し替えるテーマそのもの」、roles は「set_roles で差し替える役割の宣言そのもの」で、どちらも1義に閉じている。**どちらかに選んだ記録と型を入れると、そのキーの意味は1つから2つになり、名前が中身と一致しなくなる** —— ADR-0013 が view キーの転用を却下した理由 (意味が2つから4つになる) がそのまま跳ね返る。**ただし design_memory キー自身は2面を持つ** (「1義」とは書かない): (a) 選んだ記録の追記 (choice) と (b) 型の丸ごとの置き換え (patterns) である。**2面は中のキー (choice / patterns) で分かれ、どちらも app に1つしか無い器 (app.design_memory) を対象にし、対象IDを取らない。****問2 の答え** (書き換える既存分岐の false 宣言が名指しで全件列挙されているか): \"design_memory\": false を末尾に書き足した既存分岐は、数ではなく名指しで全17件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme / set_roles。**それ以外の false 宣言は1バイトも書き換えていない** (ADR-0466 限定7)。**問3 の答え** (限定が無くなったあとに何がその位置を占めるのか): **置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / roles / design_memory の10キーで閉じる。11キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通し、ADR-0466 と同格の個別 ADR を新規に書くこと。【ADR-0486 による改訂 (V22-M2-T02。門A = MN-G1 / MN-G2 の限定採用) —— 上の記述は制定時の事実であり、消さずに残す】**上の「10キーで閉じる。11キー目を足してはならない」は ADR-0486 が引き直した。** 11キー目 workspace を ADR-0013 §4c の3問に答えたうえで足した (答えは properties.workspace の $comment)。**置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / roles / design_memory / workspace の11キーで閉じる。12キー目を足してはならない。**既存18分岐すべての then.properties の末尾に \"workspace\": false を書き足し、それ以外の false 宣言を1バイトも書き換えていない。**この不変条件は7代続けて破られている** (本決定の workspace を加えて)。",
       "type": "object",
       "required": ["op"],
       "additionalProperties": false,
@@ -285,6 +313,14 @@
         "roles": {
           "$comment": "V8-M16-T03 が ADR-0013 §4c の追加関門3問を通して足した10キー目 (台帳 J-G1b / ユーザ決定 D-V8-31)。**11キー目を足してはならない。**意味は1義に閉じる —— 役割の一覧は app に1つしか無いので対象IDを取らず、set_roles では常に「差し替える宣言そのもの」である (theme / user_kinds と同型。workflow / function が2義に閉じているのに対し、こちらは1義である)。2義目を入れると、view キーの転用 (ADR-0013 却下案2) を却下した理由がそのまま自分に跳ね返る。形の限定は set_roles の分岐側で行う (table / field / view / changes / workflow / function / theme / user_kinds と同じ扱い)。**値域は1バイトも持たない** —— 分岐側で manifest.schema.json の $defs/app/properties/roles を $ref するだけである。**なおこの不変条件は5代続けて破られている** (ADR-0010 限定3「新しいキーを1つも足さない」→ ADR-0013 の6キー目 workflow → ADR-0024 の7キー目 function → ADR-0047 の8キー目 theme → ADR-0248 の9キー目 user_kinds → 本決定の10キー目 roles)。手続き (破るたびに §4c の3問に答え、新しい不変条件を置く) は5代守られているが、破られている事実そのものは不利な材料として計上する。**【2026-08-11 追記 (V8-M29 第2波。台帳 T-G9a / T-G11。判定値 = 廃止。ADR-0301 限定8 が要求する『撤去したキーの $comment を消して終わりにせず、新しい $comment を隣に置く』の履行)。上の本文を1バイトも消していない】** **本キーの直前に在った9キー目 user_kinds を廃止した。$defs/operation.properties は 10 → 9 になった。****あわせて set_user_kinds の分岐 (allOf) を1つ取り除き、18 → 17 になった。****残る17分岐に書いてあった \"user_kinds\": false の宣言17件も、指し先を失うので取り除いた** (キーそのものが $defs/operation.properties から消え、additionalProperties: false が同じことを担う)。**上の本文にある user_kinds への言及 (『theme / user_kinds と同型』『table / field / view / changes / workflow / function / theme / user_kinds と同じ扱い』『ADR-0248 の9キー目 user_kinds』) は、制定時の事実であって今日の正ではない。1バイトも書き換えていない。****【何が代わりに担うか (同 限定2)】本キー (roles) である —— 意味は1義、値域は manifest.schema.json の $defs/app/properties/roles を $ref するだけ、という点まで同型である。****【担い手が無いもの (同 限定6 の ④)】立場の一覧そのものを書き込む手段。set_roles は app.roles を差し替えるだけで、app.user_kinds を1バイトも読まない。**",
           "description": "set_roles で差し替える役割の宣言 (1〜12件)。"
+        },
+        "design_memory": {
+          "$comment": "V20-M15-T01A が ADR-0013 §4c の追加関門3問を通して足した10キー目 (ADR-0479 §Decision 2 / 8-2。門A = ADR-0466 = DS-S22 の限定採用。ユーザ決定 D-V20-56〜D-V20-64)。形の限定は remember_design の分岐側で行う (theme / roles と同じ扱い)。**値域は1バイトも持たない** —— 分岐側で manifest.schema.json の $defs/app/properties/design_memory の choices/items と patterns/items を $ref するだけである (値域の正を manifest 側の1箇所にする)。**問1 の答え** (既存キーの転用で目的が達成できないことを、キーの意味の数で示せるか): 転用の候補は theme と roles である (どちらも app に1つしか無い器を対象にし、対象IDを取らない)。theme は「set_theme で差し替えるテーマそのもの」、roles は「set_roles で差し替える役割の宣言そのもの」で、どちらも1義に閉じている。**どちらかに選んだ記録と型を入れると、そのキーの意味は1つから2つになり、名前が中身と一致しなくなる** —— ADR-0013 が view キーの転用を却下した理由 (意味が2つから4つになる) がそのまま跳ね返る。**ただし design_memory キー自身は2面を持つ** (「1義」とは書かない): (a) 選んだ記録の追記 (choice) と (b) 型の丸ごとの置き換え (patterns) である。**2面は中のキー (choice / patterns) で分かれ、どちらも app に1つしか無い器 (app.design_memory) を対象にし、対象IDを取らない。****問2 の答え** (書き換える既存分岐の false 宣言が名指しで全件列挙されているか): \"design_memory\": false を末尾に書き足した既存分岐は、数ではなく名指しで全17件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme / set_roles。**それ以外の false 宣言は1バイトも書き換えていない** (ADR-0466 限定7)。**問3 の答え** (限定が無くなったあとに何がその位置を占めるのか): **置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / roles / design_memory の10キーで閉じる。11キー目を足してはならない。**足す提案は ADR-0013 §4c の3問に改めて答えたうえで門A を通し、ADR-0466 と同格の個別 ADR を新規に書くこと。**なおこの不変条件は6代続けて破られている** (ADR-0010 限定3 → workflow → function → theme → user_kinds → roles → 本決定の design_memory)。手続き (破るたびに §4c の3問に答え、新しい不変条件を置く) は守っているが、破られている事実そのものは不利な材料として計上する。",
+          "description": "remember_design で、選んだ案の記録を1件足す (choice) / アプリの型を丸ごと差し替える (patterns。空配列で型を全部外す)。"
+        },
+        "workspace": {
+          "$comment": "V22-M2-T02 が ADR-0013 §4c の追加関門3問を通して足した11キー目 (ADR-0486 §Decision 1 / 2。門A = MN-G1 / MN-G2 の限定採用。ユーザ決定 D-V22-1 / D-V22-9 / D-V22-10 / D-V22-13)。形の限定は set_workspace の分岐側で行う (theme / roles / design_memory と同じ扱い)。**値域は1バイトも持たない** —— 分岐側で manifest.schema.json の $defs/app/properties/workspace/properties/navigation を $ref する (値域の正を manifest 側の1箇所にする)。**分岐側の器だけは manifest 側の workspace を $ref せずに書く** —— manifest 側は minProperties 1 で空の器を断るが、set_workspace は {} を「宣言を消す」として受ける必要があるためである (中のキーは navigation の1つで閉じる点は同じ)。**問1 の答え** (既存キーの転用で目的が達成できないことを、キーの意味の数で示せるか): 転用の候補は theme (set_theme) と roles (set_roles) と design_memory (remember_design) である。3つとも app に1つしか無い器を丸ごと差し替える / 足す形で、対象の ID を取らない。**theme に入れると「テーマ」が配色とメニューの位置の2義になり、配色を差し替えるたびに位置が消える** (ADR-0458 限定1 がテーマの中を3キーで閉じている)。**roles の要素に入れると「役割の宣言」が役割とアプリの既定の2つの主語を持ち、役割を1つも宣言していないアプリで既定を書けない** (ADR-0464 限定1 が要素の6キー目を止めている)。**design_memory は「選んだ記録と型」で、描画を1つも決めないことが意味の一部である** —— 描画を決める宣言を入れると、その1文が偽になる。**3つとも意味が1つから2つになる。****問2 の答え** (書き換える既存分岐の false 宣言が名指しで全件列挙されているか): \"workspace\": false を末尾に書き足した既存分岐は、数ではなく名指しで全18件である: add_table / add_field / add_view / update_view / remove_field / remove_table / change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow / add_function / update_function / remove_function / set_theme / set_roles / remember_design。**それ以外の false 宣言は1バイトも書き換えていない。****問3 の答え** (限定が無くなったあとに何がその位置を占めるのか): **置き換えとなる新しい不変条件: $defs/operation.properties は op / table / field / view / changes / workflow / function / theme / roles / design_memory / workspace の11キーで閉じる。12キー目を足してはならない。$defs/app は10キーで閉じる。11本目のキーを足してはならない。DIFF_OPS は19種で閉じる。20種目を足してはならない。**足す提案は ADR-0013 §4c の3問に答えたうえで門A を通し、ADR-0486 と同格の個別 ADR を新規に書くこと。【ADR-0488 による改訂 (V22-M3-T02。MP-G4。ユーザ決定 D-V22-21)】上の「分岐側の器だけは manifest 側の workspace を $ref せずに書く —— set_workspace は {} を「宣言を消す」として受ける必要がある」は今日の正ではない。**分岐側の器は minProperties 1 で空の {} を断り、中は navigation / my_page の2キーで閉じ、値はどちらも「manifest 側の値域への $ref」か null の2択 (anyOf) である** (ADR-0488 限定3・4 / ADR-0490 §Decision 1 の行4)。**直下のキーごとの置き換え**: 書かなかったキーは残り、null はそのキーを消し、すべて消えると app.workspace のキーごと消える。器を manifest 側の workspace に $ref しないのは、manifest 側が null を受けない (null は差分の中だけの「消す」) ためである。",
+          "description": "set_workspace で置き換える作業画面の枠の宣言 (navigation / my_page / invitations)。書いたキーだけを置き換え、書かなかったキーは残る。値を null にするとそのキーを消す。空の {} は断る (何も変えない指示なので)。"
         }
       },
       "allOf": [
@@ -306,7 +342,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -330,7 +368,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -352,7 +392,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -374,7 +416,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -398,7 +442,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -420,7 +466,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -442,7 +490,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -466,7 +516,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -488,7 +540,9 @@
               "workflow": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -510,7 +564,9 @@
               "changes": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -532,7 +588,9 @@
               "changes": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -561,7 +619,9 @@
               "changes": false,
               "function": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -583,7 +643,9 @@
               "changes": false,
               "workflow": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -605,7 +667,9 @@
               "changes": false,
               "workflow": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -634,7 +698,9 @@
               "changes": false,
               "workflow": false,
               "theme": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -656,7 +722,9 @@
               "changes": false,
               "workflow": false,
               "function": false,
-              "roles": false
+              "roles": false,
+              "design_memory": false,
+              "workspace": false
             }
           }
         },
@@ -678,7 +746,100 @@
               "changes": false,
               "workflow": false,
               "function": false,
-              "theme": false
+              "theme": false,
+              "design_memory": false,
+              "workspace": false
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "op": { "const": "remember_design" } },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["design_memory"],
+            "properties": {
+              "design_memory": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "choice": {
+                    "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/app/properties/design_memory/properties/choices/items"
+                  },
+                  "patterns": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "uniqueItems": true,
+                    "items": {
+                      "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/app/properties/design_memory/properties/patterns/items"
+                    }
+                  }
+                }
+              },
+              "table": false,
+              "field": false,
+              "view": false,
+              "changes": false,
+              "workflow": false,
+              "function": false,
+              "theme": false,
+              "roles": false,
+              "workspace": false
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "properties": { "op": { "const": "set_workspace" } },
+            "required": ["op"]
+          },
+          "then": {
+            "required": ["workspace"],
+            "properties": {
+              "workspace": {
+                "type": "object",
+                "additionalProperties": false,
+                "minProperties": 1,
+                "properties": {
+                  "navigation": {
+                    "anyOf": [
+                      {
+                        "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/app/properties/workspace/properties/navigation"
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "my_page": {
+                    "anyOf": [
+                      {
+                        "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/app/properties/workspace/properties/my_page"
+                      },
+                      { "type": "null" }
+                    ]
+                  },
+                  "invitations": {
+                    "anyOf": [
+                      {
+                        "$ref": "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/app/properties/workspace/properties/invitations"
+                      },
+                      { "type": "null" }
+                    ]
+                  }
+                }
+              },
+              "table": false,
+              "field": false,
+              "view": false,
+              "changes": false,
+              "workflow": false,
+              "function": false,
+              "theme": false,
+              "roles": false,
+              "design_memory": false
             }
           }
         }

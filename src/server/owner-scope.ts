@@ -708,6 +708,43 @@ export function isDirectCreateSuppressed(table: Table): boolean {
   return noDirectCreateField(table) !== undefined;
 }
 
+// --- 更新者(`st_updated_by`。`V23-M4-T05` / 門A `ADR-0500`・`ADR-0524`)-------------------
+//
+// **予約規約フィールドの5本目**(`ADR-0077` 限定2 の門を `ADR-0500`・`ADR-0524` が通った)。
+// **型が text で必須でない `st_updated_by` を持つ表では、行の作成と更新のたびに、プラットフォームが
+// 起点の操作者の id を押す**(`D-V23-98`)。 **押すのはカーネルの `records.ts` の作成と更新の1か所**
+// (カーネルは `src/server/` の定数を import しないので、綴りと3条件はそちらに写しで持つ)。
+// 受信口・時刻起動・起点の無い呼び出しは空文字(`D-V23-91`・`D-V23-105`)。 送信内容・フォーム・
+// 自動処理の `values`・島の op に書かれた値は捨てる。 **判定には使わない**(`ADR-0500` 限定19)。
+//
+// **読取では表示名に差し替える**(`D-V23-92`)。 **差し替えるのは今日 `st_owner` を差し替えている
+// HTTP の一覧・単件の2経路だけ**(`D-V23-105`。MCP の読取・集計表は `st_owner` と同じく差し替えない)。
+// 未ログインの読み手には伏せる({@link ANON_RESERVED_FIELDS})。 絞り込み・並べ替えは ID のまま。
+// **【2026-09-30 訂正(`V23-M4-T10` / `ADR-0531` 2)。上の一文を消していない】** 「ID のまま」はログインした
+// 読み手だけである。 未ログインの読み手の絞り込み・並べ替えは、存在しない項目と同じ 400
+// ({@link anonymousHiddenFieldIds} が押す対象の `st_updated_by` を H に入れる)。
+//
+// **受信口で捨てる一覧({@link INBOUND_STRIPPED_RESERVED_FIELDS})には入れない**(3本のまま。裁定 `D-V23-110`)。
+// 入れると、この列を持たない表への受信で、送信内容に `st_updated_by` があると今日の 400(「存在しません」)が
+// 201 に変わる(宣言の無いアプリの挙動が変わる。`ADR-0500` 限定20)。 **押す対象の列を持つ表では、カーネル
+// (`records.ts`)が送信内容の値を捨てて空文字を押す**ので、受信口の側に条件は要らない。 **したがって
+// `ANON_RESERVED_FIELDS` との差は、今日は `st_owner` と `st_updated_by` の2本である**(授権 `ADR-0529`)。
+
+/** 更新者を表すフィールドの id(規約)。**予約規約フィールドの5本目**(`V23-M4`)。 */
+export const UPDATED_BY_FIELD = "st_updated_by";
+
+/**
+ * テーブルが「更新者を押す表」なら、その宣言フィールド(`st_updated_by`)を返す。
+ * 条件は id===`st_updated_by` かつ type==="text" かつ required!==true(`personalOwnerField` と同型)。
+ * 満たさなければ undefined —— **型が text でないか必須なら、ただの項目である**(押さない・
+ * 捨てない・表示名にしない・入力欄も今日どおり)。
+ */
+export function stampedUpdatedByField(table: Table): Field | undefined {
+  return table.fields.find(
+    (field) => field.id === UPDATED_BY_FIELD && field.type === "text" && field.required !== true,
+  );
+}
+
 // --- アクセス権管理の宣言を「規約として認識する」(`Z-G2`〜`Z-G7` / V7-M1-T04)-----------
 //
 // **`st_*` の予約規約フィールドを1本も増やさない**(`v7-m0.md` §5-3 の逐語「**v7 が足す
@@ -1868,6 +1905,445 @@ function walkAccessInheritance(params: {
   return { kind: "completed" };
 }
 
+// =====================================================================================
+// **【`V23-M6-T03`】行を相手にした付与(`access_control.grant.principal_row`)の読み替え**
+// (`ADR-0538` §Decision 1-2・1-3。決定 `D-V23-150`・`D-V23-151`・`D-V23-161`・`D-V23-165`)。
+//
+// **形**: 付与の行を判定に渡す**手前**で、「行 S を相手にした付与」を「S に `via` を持つ利用者の
+// 名簿の行を相手にした付与」に読み替えて**足す**(先例 {@link grantsWithExistingGroups})。
+// **{@link judgeRecordAccess} の入力6本も {@link resolveGrantedPermissionNames} の本文も変えない。**
+// **元の付与の行はそのまま残す** —— 相手の列とグループの列が空の行は、今日どおり誰にも解けない。
+//
+// **使うのは行の中身の判定だけ**(読取の核・出どころ・親の読取の検査・付与の書込の 404 と 403 の
+// 読み分け・`creatable_by` の照合)。 **管理の判定(作成者か・最後の管理者・招待の発行権と管理権・
+// 作成者付与の下見・付与表と名簿とグループ表の見える範囲)には使わない**(`D-V23-146`)。
+// =====================================================================================
+
+/** 守る表の `grant.principal_row`(`column` と `table` が揃っているときだけ)。 */
+function principalRowOf(
+  manifest: Manifest,
+  tableId: string,
+): { column: string; table: string; via: readonly string[] } | undefined {
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const principal = declared?.grant?.principal_row;
+  const column = nonEmptyString(principal?.column);
+  const principalTable = nonEmptyString(principal?.table);
+  if (principal === undefined || column === undefined || principalTable === undefined) {
+    return undefined;
+  }
+  const via = Array.isArray(principal.via)
+    ? principal.via.filter((name): name is string => nonEmptyString(name) !== undefined)
+    : [];
+  return { column, table: principalTable, via };
+}
+
+/**
+ * **S 側の解決の覚え**(要求1回あたり S の1行につき1回。`ADR-0538` §1-2)。
+ * **鍵は読む手そのもの** —— 読む手は要求ごとに作り直される(`app.ts` の `memoizedRowReaders`・
+ * MCP と自動処理の読む手も呼ぶたびに作る)ので、覚えも要求をまたがない。
+ */
+const principalRowHoldMemo = new WeakMap<object, Map<string, boolean>>();
+
+/**
+ * **読み替えを切った読む手の印**(`D-V23-165`)。 付与表・名簿・グループ表の見える範囲は、
+ * この印の付いた読む手で今日の規則のまま解く({@link judgeRecordPopulation} の `access_registry` の枝)。
+ */
+const principalRowOffReaders = new WeakSet<object>();
+
+function withoutPrincipalRows(
+  readRows: (tableId: string) => readonly Record<string, unknown>[],
+): (tableId: string) => readonly Record<string, unknown>[] {
+  const off = (tableId: string) => readRows(tableId);
+  principalRowOffReaders.add(off);
+  return off;
+}
+
+/**
+ * **S の行に、その人が `via` のどれかを持つか。** **S の行への直接の付与とグループ経由の付与だけ**
+ * (S の親も S 側の `principal_row` も辿らない。S 側の `restrictive` は見ない)。
+ * **S の行が無い・S の表の宣言が無い(壊れている・切られている)ときは持たない**(閉じる側)。
+ * **S 側の読みは引き継ぎの行数の数えに入れない**(`D-V23-151`。辿りの外で読む)。
+ */
+function holdsPrincipalRow(params: {
+  manifest: Manifest;
+  principal: { table: string; via: readonly string[] };
+  recordId: string;
+  actor: string;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): boolean {
+  const { manifest, principal, recordId, actor, readRows } = params;
+  let memo = principalRowHoldMemo.get(readRows);
+  if (memo === undefined) {
+    memo = new Map();
+    principalRowHoldMemo.set(readRows, memo);
+  }
+  // **【独立点検の処置(重1)】鍵に `via` を入れる**(同じ S を `via` の違う2つの守る表が指すと、1つの要求の
+  // 中で答えを取り違えるため)。 旧の式(逐語): `const key = JSON.stringify([principal.table, recordId, actor]);`
+  const key = JSON.stringify([principal.table, recordId, actor, principal.via]);
+  const hit = memo.get(key);
+  if (hit !== undefined) {
+    return hit;
+  }
+  let held = false;
+  const sTable = tablesOf(manifest).find((candidate) => candidate?.id === principal.table);
+  const sDeclared = sTable === undefined ? undefined : accessControlOf(sTable);
+  const sSources = recordAccessSourceTables(manifest, principal.table);
+  if (
+    sDeclared !== undefined &&
+    sSources?.grantTable !== undefined &&
+    principal.via.length > 0 &&
+    readRows(principal.table).some((row) => nonEmptyString(row?._id) === recordId)
+  ) {
+    const names = resolveGrantedPermissionNames({
+      declared: sDeclared,
+      recordId,
+      actor,
+      grantRows: grantsWithExistingGroups({
+        manifest,
+        tableId: principal.table,
+        grantRows: readRows(sSources.grantTable),
+        groupRows: sSources.groupTable === undefined ? [] : readRows(sSources.groupTable),
+      }),
+      memberRows: sSources.memberTable === undefined ? [] : readRows(sSources.memberTable),
+    });
+    held = names !== undefined && principal.via.some((name) => names.has(name));
+  }
+  memo.set(key, held);
+  return held;
+}
+
+/** 読み替えた付与の行に付ける印(経由した S の行の ID)。 出どころの「行経由」の印に使う。 */
+const PRINCIPAL_ROW_MARK = "__principal_row";
+
+/**
+ * **付与の行の読み替え**(判定に渡す手前の1か所。上の節の注)。
+ * **`principal_row` の無い表・この行を指して相手の列に値のある付与が1件も無いときは、同じ配列を
+ * そのまま返し、S 側の表を1本も読まない。** 読み替えるのは**この行(`row`)を指す付与だけ**である。
+ */
+function principalRowGrantRows(params: {
+  manifest: Manifest;
+  tableId: string;
+  row: Record<string, unknown>;
+  actorId: string | null;
+  grantRows: readonly Record<string, unknown>[];
+  memberRows: readonly Record<string, unknown>[];
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): readonly Record<string, unknown>[] {
+  const { manifest, tableId, grantRows, memberRows, readRows } = params;
+  if (principalRowOffReaders.has(readRows)) {
+    return grantRows;
+  }
+  const principal = principalRowOf(manifest, tableId);
+  const actor = nonEmptyString(params.actorId);
+  const targetRecordId = nonEmptyString(params.row?._id);
+  if (principal === undefined || actor === undefined || targetRecordId === undefined) {
+    return grantRows;
+  }
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const targetField = nonEmptyString(declared?.grant?.target);
+  const memberField = nonEmptyString(declared?.grant?.member);
+  const groupField = nonEmptyString(declared?.grant?.group);
+  const accountField = nonEmptyString(declared?.members?.account);
+  if (targetField === undefined || memberField === undefined || accountField === undefined) {
+    return grantRows;
+  }
+  const viaRow = grantRows.filter(
+    (grant) =>
+      grant?.[targetField] === targetRecordId &&
+      nonEmptyString(grant?.[principal.column]) !== undefined,
+  );
+  if (viaRow.length === 0) {
+    return grantRows;
+  }
+  const own = memberRows
+    .filter((member) => member?.[accountField] === actor)
+    .map((member) => nonEmptyString(member?._id))
+    .filter((id): id is string => id !== undefined);
+  if (own.length === 0) {
+    return grantRows;
+  }
+  const extra: Record<string, unknown>[] = [];
+  for (const grant of viaRow) {
+    const recordId = nonEmptyString(grant?.[principal.column]) as string;
+    if (!holdsPrincipalRow({ manifest, principal, recordId, actor, readRows })) {
+      continue;
+    }
+    for (const memberId of own) {
+      extra.push({
+        ...grant,
+        [principal.column]: null,
+        [memberField]: memberId,
+        ...(groupField === undefined ? {} : { [groupField]: null }),
+        [PRINCIPAL_ROW_MARK]: recordId,
+      });
+    }
+  }
+  return extra.length === 0 ? grantRows : [...grantRows, ...extra];
+}
+
+/**
+ * **この付与表で、相手の行を指す欄**(どこかの表の `grant.principal_row.column`。その表の付与表がこの表のとき)。
+ * 宣言が無ければ空配列。
+ */
+function principalRowColumnsOfGrantTable(manifest: Manifest, grantTableId: string): string[] {
+  const columns: string[] = [];
+  for (const table of tablesOf(manifest)) {
+    const declared = accessControlOf(table);
+    if (declared === undefined || nonEmptyString(declared.grant?.table) !== grantTableId) {
+      continue;
+    }
+    const principal = principalRowOf(manifest, table.id);
+    if (principal !== undefined && !columns.includes(principal.column)) {
+      columns.push(principal.column);
+    }
+  }
+  return columns;
+}
+
+/**
+ * **【独立点検の処置(重2)】この付与表で、行の付け替えに当たる欄**(相手の行を宣言した表の `grant.target`・
+ * `grant.member`・`grant.group`)。 宣言が無ければ空配列。
+ */
+function principalRowRelinkFieldsOfGrantTable(manifest: Manifest, grantTableId: string): string[] {
+  const fields: string[] = [];
+  for (const table of tablesOf(manifest)) {
+    const declared = accessControlOf(table);
+    if (
+      declared === undefined ||
+      nonEmptyString(declared.grant?.table) !== grantTableId ||
+      principalRowOf(manifest, table.id) === undefined
+    ) {
+      continue;
+    }
+    for (const field of [declared.grant?.target, declared.grant?.member, declared.grant?.group]) {
+      const id = nonEmptyString(field);
+      if (id !== undefined && !fields.includes(id)) {
+        fields.push(id);
+      }
+    }
+  }
+  return fields;
+}
+
+/**
+ * **【`V23-M6-T04`】相手の行を指す欄を、招待の承諾の外で書かせない述語**(`ADR-0538` §Decision 1-4。
+ * 決定 `D-V23-145`・`D-V23-152`・`D-V23-162`・`D-V23-173`)。 **判定の家の1本であり、全ての書込の経路が呼ぶ**
+ * (画面と HTTP は {@link judgeGrantWrite} の中・MCP・受信口・自動処理・島・AI の書き戻し)。
+ *
+ * **真(断る)になるのは、付与表への作成・更新で、相手の欄に値が新しく入る・値が変わる・値が消えるとき。**
+ * 値が変わらない更新(欄を送らない・同じ値を送る)と削除は通す。 `output_table` の全置換は行を作り直すので
+ * 作成として渡す(相手の欄に値があれば断る)。
+ *
+ * - `values`: 作成は送られた値。 更新は送られた値か、既存の行に重ねた値(どちらでも答えは同じ)。
+ * - `before`: 更新の前の行を返す関数。 **相手の欄を送った更新のときだけ呼ぶ**(他では読まない)。
+ * - `accepted`: **招待の承諾の器だけが真を渡す**(相手の欄を書ける唯一の経路。`T06`)。
+ *
+ * **`principal_row` を宣言していないアプリ・付与表でない表では、何も読まずに偽を返す**(今日と1ビットも同じ)。
+ */
+export function principalRowWriteRefused(params: {
+  manifest: Manifest;
+  tableId: string;
+  op: GrantWriteOp;
+  values: Record<string, unknown>;
+  before?: (() => Record<string, unknown> | undefined) | undefined;
+  accepted?: boolean | undefined;
+}): boolean {
+  const { manifest, tableId, op, values } = params;
+  if (op === "delete" || params.accepted === true) {
+    return false;
+  }
+  const columns = principalRowColumnsOfGrantTable(manifest, tableId);
+  if (columns.length === 0) {
+    return false; // **宣言の無い付与表・付与表でない表は何も読まない。**
+  }
+  let previousRow: Record<string, unknown> | undefined;
+  let previousRead = false;
+  for (const column of columns) {
+    if (!Object.hasOwn(values, column)) {
+      continue; // **送っていない欄は変わらない。**
+    }
+    const next = nonEmptyString(values[column]);
+    if (op === "create") {
+      if (next !== undefined) {
+        return true;
+      }
+      continue;
+    }
+    if (!previousRead) {
+      previousRow = params.before?.();
+      previousRead = true;
+    }
+    if (next !== nonEmptyString(previousRow?.[column])) {
+      return true;
+    }
+  }
+  // **【独立点検の処置(重2)。決定 `D-V23-177`】前の行の相手の欄に値があれば、守る行(`target`)・利用者
+  // (`member`)・グループ(`group`)の付け替えも断る**(相手の欄を変えずに守る行だけを付け替えると、承諾なしに
+  // 新しい守る行と相手の行の関係ができるため)。 付け替えは「前の値がある欄の値が変わる・消える」こと。
+  // 空の欄に値を書き足す更新は、両方の欄の行の断り(400)に任せる。 権限の欄だけの更新と削除は通す。
+  if (op !== "update") {
+    return false;
+  }
+  const relinked = principalRowRelinkFieldsOfGrantTable(manifest, tableId).filter((field) =>
+    Object.hasOwn(values, field),
+  );
+  if (relinked.length === 0) {
+    return false; // **送っていない欄は変わらない**(前の行を読まない)。
+  }
+  if (!previousRead) {
+    previousRow = params.before?.();
+    previousRead = true;
+  }
+  if (!columns.some((column) => nonEmptyString(previousRow?.[column]) !== undefined)) {
+    return false;
+  }
+  return relinked.some((field) => {
+    const previous = nonEmptyString(previousRow?.[field]);
+    return previous !== undefined && nonEmptyString(values[field]) !== previous;
+  });
+}
+
+/**
+ * **【`V23-M6-T04b`】相手の名前の見せ方**(`ADR-0538` §Decision 1-7。決定 `D-V23-147`・`D-V23-156`・
+ * `D-V23-165`・`D-V23-173`)。 **付与表の行ごとに、相手の行(S)の代表項目の値を1つだけ返す**
+ * (返す行と同じ順・同じ長さ)。 付与の一覧・1行・MCP の `list_records` が呼ぶ。
+ *
+ * - **`rows` は呼ぶ側が今日の規則で読めると決めた付与の行**(返す行。射影の後)である。 付与表の見える範囲は
+ *   ここで1行も広げない(`accessRegistryVisibleIds` は不変)。 S 経由の人には付与の行がそもそも見えない(`D-V23-165`)。
+ * - **見せるのは S の代表項目1つだけ**(`representative` は呼ぶ側の読み方。宣言があればそれ、無ければ最初の
+ *   `text`)。 S の行を今日の規則で読めない人にも見える(`ADR-0299` の Z-G18 の2つ目の例外)。 S のそれ以外の項目は返さない。
+ * - **`null` になるのは**: 相手の欄が空の行(利用者・グループへの付与)/ S の行が無い / S に代表項目が無い /
+ *   代表項目が見る人の役割の規則で隠れる(別の項目を繰り上げない。招待の一覧と同じ扱い)。
+ * - **`tableId` がどの表の `grant.principal_row` の付与表でもなければ `undefined` を返し、S を1行も読まない**
+ *   (呼ぶ側は応答にキーを出さない。`principal_row` を書かないアプリの応答は1バイトも変わらない)。
+ * - S の1行につき読むのは1回(同じ S の行を指す付与が何行あっても)。
+ */
+export function principalRowLabels(params: {
+  manifest: Manifest;
+  tableId: string;
+  rows: readonly Record<string, unknown>[];
+  roles: ActorRoles;
+  subject: string | null;
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  representative: (table: Table) => { readonly id: string } | undefined;
+}): (string | null)[] | undefined {
+  const { manifest, tableId, rows } = params;
+  const targets: { column: string; table: string }[] = [];
+  for (const table of tablesOf(manifest)) {
+    const declared = accessControlOf(table);
+    if (declared === undefined || nonEmptyString(declared.grant?.table) !== tableId) {
+      continue;
+    }
+    const principal = principalRowOf(manifest, table.id);
+    if (
+      principal !== undefined &&
+      !targets.some(
+        (target) => target.column === principal.column && target.table === principal.table,
+      )
+    ) {
+      targets.push({ column: principal.column, table: principal.table });
+    }
+  }
+  if (targets.length === 0) {
+    return undefined;
+  }
+  const memo = new Map<string, string | null>();
+  const labelOf = (sTableId: string, recordId: string): string | null => {
+    const sTable = tablesOf(manifest).find((candidate) => candidate?.id === sTableId);
+    const field = sTable === undefined ? undefined : params.representative(sTable);
+    if (sTable === undefined || field === undefined) {
+      return null;
+    }
+    const row = params.readRow(sTableId, recordId);
+    if (row === undefined) {
+      return null;
+    }
+    const projected = projectForRoleFields({
+      manifest,
+      table: sTable,
+      row,
+      roles: params.roles,
+      subject: params.subject,
+    });
+    const value = Object.hasOwn(projected, field.id) ? projected[field.id] : undefined;
+    // **【独立点検の処置(軽1)】空文字は null**(招待の一覧と受け取り画面の `principal_label` と同じ扱い)。
+    // 旧の式(逐語): `return typeof value === "string" ? value : null;`
+    return typeof value === "string" && value !== "" ? value : null;
+  };
+  return rows.map((row) => {
+    for (const target of targets) {
+      const recordId = nonEmptyString(row?.[target.column]);
+      if (recordId === undefined) {
+        continue;
+      }
+      const key = JSON.stringify([target.table, recordId]);
+      if (!memo.has(key)) {
+        memo.set(key, labelOf(target.table, recordId));
+      }
+      return memo.get(key) ?? null;
+    }
+    return null;
+  });
+}
+
+/**
+ * **【`V23-M12-T04`】変更履歴の招待の件で、結んだ相手の行(S)の名前を見せてよいか**(門A `ADR-0571` §Decision 1-4 の2・
+ * 決定 `D-V23-357`・`D-V23-367`・`D-V23-410`。 `D-V23-409` で、既存の export では組めなかったので足した1本。 授権 `ADR-0575` §3-3)。
+ *
+ * 真になるのは次の3つだけ(どれでもなければ偽 = 呼ぶ側は行の鍵のまま出す):
+ * 1. 運営ロール(付与・名簿・グループの表を全件読める人と同じ。{@link REGISTRY_READ_BYPASS_ROLES})。
+ * 2. 履歴の行(R)を、相手の行を経由しない道(直接の付与・グループ経由の付与・引き継ぎ)で読める人 = その行の人
+ *    (組織のオーナーとメンバー)。 読み替えを切った読む手で {@link resolveCombinedRecordAccess} を解く
+ *    ({@link judgeRecordPopulation} の `access_registry` の枝が付与の表の見える範囲を決めるのと同じ答え)。
+ * 3. S の行そのものを今日の規則で読める人(評価機関の専門家には自分の評価機関。 S の行が無ければ偽)。
+ *
+ * - **名前以外は何も決めない・返さない**(返すのは真偽だけ。 名前は呼ぶ側が代表項目1つを読む)。
+ * - 上限に当たった(`limit_exceeded`)ときは偽(見せない側に倒す。 読取そのものの答えは変えない)。
+ * - **新しい判定の式を持たない**: 既存の合成判定を2回呼ぶだけで、点の判定を新しく直接は呼ばない。
+ */
+export function principalNameVisibleInHistory(params: {
+  manifest: Manifest;
+  tableId: string;
+  recordId: string;
+  principal: { readonly tableId: string; readonly recordId: string };
+  actorId: string | null;
+  roles: ActorRoles;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+}): boolean {
+  const { manifest, actorId, roles, readRows, readRow } = params;
+  if (declaredMatchesRoles(REGISTRY_READ_BYPASS_ROLES, roles)) {
+    return true;
+  }
+  const reads = (
+    tableId: string,
+    recordId: string,
+    rowsOf: (tableId: string) => readonly Record<string, unknown>[],
+  ): boolean => {
+    const row = readRow(tableId, recordId);
+    if (row === undefined) {
+      return false;
+    }
+    const resolution = resolveCombinedRecordAccess({
+      manifest,
+      tableId,
+      row,
+      actorId,
+      roles,
+      sources: recordAccessSourceTables(manifest, tableId),
+      readRows: rowsOf,
+      readRow,
+    });
+    return resolution.kind === "verdict" && resolution.verdict.read;
+  };
+  return (
+    reads(params.tableId, params.recordId, withoutPrincipalRows(readRows)) ||
+    reads(params.principal.tableId, params.principal.recordId, readRows)
+  );
+}
+
 export function resolveRecordAccess(params: {
   manifest: Manifest;
   tableId: string;
@@ -1875,6 +2351,12 @@ export function resolveRecordAccess(params: {
   actorId: string | null;
   readRows: (tableId: string) => readonly Record<string, unknown>[];
   readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **【`V23-M7-T03`】上限を当てる前の2段を受け取る**(`ADR-0542` §1-2 の (1)。`D-V23-187`・`D-V23-190`)。
+   * **親の関門の `create_child` の枝だけが渡す**(上限が親の行の書込を止めているかを知るため)。
+   * **渡さなければ着手前と1バイトも変わらない**(答えも読みも変えない。辿り終えた後に1度呼ぶだけ)。
+   */
+  onStages?: (stages: RecordAccessStages) => void;
 }): RecordAccessResolution {
   const { manifest, tableId, row, actorId, readRows, readRow } = params;
 
@@ -1912,7 +2394,17 @@ export function resolveRecordAccess(params: {
     visit: (step) => {
       // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32` / `V7-M3-T05`)
       // —— **段0 と親で違う整え方をしない**(限定3: 各段で適用する規則は同一)。
-      const grantRows = step.grantRows;
+      // **【`V23-M6-T03`】行を相手にした付与の読み替え**(上の節。`principal_row` の無い表では
+      // 同じ配列がそのまま返る)。 **その後ろの整え(`grantsWithExistingGroups`)は今日のまま。**
+      const grantRows = principalRowGrantRows({
+        manifest,
+        tableId: step.tableId,
+        row: step.row,
+        actorId,
+        grantRows: step.grantRows,
+        memberRows: step.memberRows,
+        readRows,
+      });
       // **【`V17-M10B-T06`】各段で呼ぶのは今日も同じ1本である** ——
       // **{@link judgeRecordAccess} が内側で通るのと**まったく同じ**
       // {@link recordAccessStages} を呼び、混ぜる前の2段のまま受け取る。**
@@ -1939,6 +2431,8 @@ export function resolveRecordAccess(params: {
     return walked;
   }
 
+  // **【`V23-M7-T03`】上限を当てる前の2段を、求めた側にだけ渡す**(上の `onStages`)。
+  params.onStages?.(stages);
   // **辿り終えてから、関門を1度だけ掛ける**(`ADR-0430` (δ))。
   return { kind: "verdict", verdict: applyRecordAccessUpperBound(stages) };
 }
@@ -2223,7 +2717,15 @@ export function resolveRecordDeleteCascade(params: {
  * 落ちて、運営者には「取り残しは無い」と読めてしまう)。
  */
 type RecordOrphanResolution =
-  | { readonly kind: "orphan"; readonly orphan: boolean }
+  | {
+      readonly kind: "orphan";
+      readonly orphan: boolean;
+      /**
+       * **【`V23-M1-T07`。`SC-G6` / `ADR-0497` 限定12】並ぶ理由**(`userExists` を渡したときだけ)。
+       * `no_grants` = どの段にも付与が無い / `no_admin` = 付与はあるが、どの段にも管理者がいない。
+       */
+      readonly reason?: "no_grants" | "no_admin";
+    }
   | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" };
 
 /**
@@ -2262,8 +2764,16 @@ export function resolveRecordWithoutGrants(params: {
   row: Record<string, unknown>;
   readRows: (tableId: string) => readonly Record<string, unknown>[];
   readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **【`V23-M1-T07`。`SC-G6` / `D-V23-16`・`D-V23-30`】利用者IDが実在するか。** 渡したときだけ、
+   * 母集団を「付与0件の行、または管理者0人の行」に広げ、理由を返す。 管理者は行そのものと
+   * 引き継ぎ元のどの段で数えてもよい(どこかの段に1人でもいれば並べない。`ADR-0511` §Decision 1)。
+   * `creator_permission` を宣言しない段は、付与が1件でもあれば「管理できる人がいる」とみなす
+   * (今日の判定のまま)。
+   */
+  userExists?: (userId: string) => boolean;
 }): RecordOrphanResolution {
-  const { manifest, tableId, row, readRows, readRow } = params;
+  const { manifest, tableId, row, readRows, readRow, userExists } = params;
 
   // **宣言していない表 / `enabled: false` の表は、この口の母集団に1行も入らない**
   // (オプトイン。`Z-G19` 限定5)。
@@ -2272,6 +2782,7 @@ export function resolveRecordWithoutGrants(params: {
   }
 
   let orphan = true;
+  let adminless = true;
   const walked = walkAccessInheritance({
     manifest,
     tableId,
@@ -2279,6 +2790,10 @@ export function resolveRecordWithoutGrants(params: {
     readRows,
     readRow,
     visit: (step) => {
+      // **【`V23-M1-T07`】この段に管理者がいるか**(`userExists` を渡したときだけ数える)。
+      if (userExists !== undefined && adminless && stepManaged(manifest, step, userExists)) {
+        adminless = false;
+      }
       // **どの段でも同じ突き合わせを当てる**(限定3: 各段で適用する規則は同一)——
       // **1段でも付与が在れば、その行は「誰にも見えない行」ではない。**
       // **相手が誰かは1ミリも見ていない** —— **他人への付与でも、運営自身への付与でも、
@@ -2298,7 +2813,15 @@ export function resolveRecordWithoutGrants(params: {
   if (walked.kind === "limit_exceeded") {
     return walked;
   }
-  return { kind: "orphan", orphan };
+  if (userExists === undefined) {
+    return { kind: "orphan", orphan };
+  }
+  if (orphan) {
+    return { kind: "orphan", orphan: true, reason: "no_grants" };
+  }
+  return adminless
+    ? { kind: "orphan", orphan: true, reason: "no_admin" }
+    : { kind: "orphan", orphan };
 }
 
 // --- 「どの付与行が効いて読み書きができるのか」を返す1本(`AC-G24`。V17-M6-T04)---------
@@ -2340,6 +2863,11 @@ export type RecordAccessSourceEntry = {
   readonly depth: number;
   /** **引き継ぎで通った親の行**(段0 では `null`)。 */
   readonly through: { readonly table: string; readonly record_id: string } | null;
+  /**
+   * **【`V23-M6-T03`】行経由の印**(`D-V23-161`)。 **行を相手にした付与(`principal_row`)で届いた
+   * ときだけ在り、経由した相手の行(S)を指す。** 直接・グループ経由の付与には付かない(キーが無い)。
+   */
+  readonly principal?: { readonly table: string; readonly record_id: string };
 };
 
 /**
@@ -2495,12 +3023,23 @@ export function resolveRecordAccessSources(params: {
         }
         // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32`)——
         // **{@link resolveRecordAccess} が各段で通すのとまったく同じ整え方である。**
+        // **【`V23-M6-T03`】行を相手にした付与は、調べる人(`subjectActorId`)について読み替えてから
+        // 1本ずつ渡す**(読取の核と同じ1本)。 読み替えた行には経由した S の行の印が付く。
         const grantRows = grantsWithExistingGroups({
           manifest,
           tableId: step.tableId,
-          grantRows: step.grantRows,
+          grantRows: principalRowGrantRows({
+            manifest,
+            tableId: step.tableId,
+            row: step.row,
+            actorId: subjectActorId,
+            grantRows: step.grantRows,
+            memberRows: step.memberRows,
+            readRows,
+          }),
           groupRows: step.groupRows,
         });
+        const stepPrincipal = principalRowOf(manifest, step.tableId);
         for (const grantRow of grantRows) {
           // **【新しい判定式を1行も書かない】** —— **同じ {@link judgeRecordAccess} に、
           // 付与行を**1本だけ**渡して呼び直す。** **返った動詞がそのまま `grants` になる。**
@@ -2522,6 +3061,7 @@ export function resolveRecordAccessSources(params: {
             continue;
           }
           const stepRecordId = nonEmptyString(step.row?._id);
+          const principalRecordId = nonEmptyString(grantRow?.[PRINCIPAL_ROW_MARK]);
           collected.push({
             table: grantTableId,
             record_id: grantRecordId,
@@ -2533,6 +3073,9 @@ export function resolveRecordAccessSources(params: {
               step.depth === 0 || stepRecordId === undefined
                 ? null
                 : { table: step.tableId, record_id: stepRecordId },
+            ...(stepPrincipal !== undefined && principalRecordId !== undefined
+              ? { principal: { table: stepPrincipal.table, record_id: principalRecordId } }
+              : {}),
           });
         }
       },
@@ -2951,6 +3494,12 @@ function grantedPermissionNamesForCreate(params: {
   actorId: string | null;
   readRows: (tableId: string) => readonly Record<string, unknown>[];
   readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **【`V23-M7-T03`】段0(親の行そのもの)の名前だけを集める**(`ADR-0542` §1-2 の (2)。`D-V23-183`)。
+   * **`create_child` の照合だけが真を渡す** —— 先祖の段の同じ綴りの名前で `create_child` を満たさせない。
+   * **省けば着手前と1バイトも変わらない**(`creatable_by` の照合は今日の集合のまま。`D-V23-191`)。
+   */
+  stageZeroOnly?: boolean;
 }):
   | { readonly kind: "names"; readonly names: ReadonlySet<string> }
   | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" } {
@@ -2968,6 +3517,10 @@ function grantedPermissionNamesForCreate(params: {
     readRows,
     readRow,
     visit: (step) => {
+      // **【`V23-M7-T03`】段0 だけを見るときは、先祖の段を数えない**(上の `stageZeroOnly`)。
+      if (params.stageZeroOnly === true && step.depth !== 0) {
+        return;
+      }
       const table = tablesOf(manifest).find((candidate) => candidate?.id === step.tableId);
       const declared = table === undefined ? undefined : accessControlOf(table);
       const recordId = nonEmptyString(step.row?._id);
@@ -2980,10 +3533,20 @@ function grantedPermissionNamesForCreate(params: {
         declared,
         recordId,
         actor,
+        // **【`V23-M6-T03`】`creatable_by` の照合は S 経由の名前も数える**(`D-V23-161`。
+        // 子の行を作るのは中身の書込である)。
         grantRows: grantsWithExistingGroups({
           manifest,
           tableId: step.tableId,
-          grantRows: step.grantRows,
+          grantRows: principalRowGrantRows({
+            manifest,
+            tableId: step.tableId,
+            row: step.row,
+            actorId: actor,
+            grantRows: step.grantRows,
+            memberRows: step.memberRows,
+            readRows,
+          }),
           groupRows: step.groupRows,
         }),
         memberRows: step.memberRows,
@@ -3274,9 +3837,21 @@ function resolveParentRowWriteAccess(params: {
   verb?: "write" | "delete";
 }):
   | { readonly kind: "writable"; readonly row: Record<string, unknown> }
-  | { readonly kind: "unwritable" }
+  | {
+      readonly kind: "unwritable";
+      /**
+       * **【`V23-M7-T03`】書けなかった親の行と、上限を当てた後の `read`、上限の2段目の `write`**
+       * (`ADR-0542` §1-2 の (1))。 **親の行が実在したときだけ載る。** 親の関門の `create_child` の枝が
+       * 親の行を2度読まずに使う(`D-V23-183`)。 **呼び出し側の分岐は1本も増やしていない**(`kind` は同じ)。
+       */
+      readonly row?: Record<string, unknown>;
+      readonly read?: boolean;
+      readonly boundWrite?: boolean;
+    }
   | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" } {
   const { manifest, parentTableId, parentRecordId, actorId, readRows, readRow } = params;
+  // **【`V23-M7-T03`】上限の2段目の `write`**(符号を持つ付与が無ければ真。下の `onStages` で受け取る)。
+  let boundWrite = true;
   // **【`V18-M6-T01` が足した1行。既定は今日のままである】**
   const verb = params.verb ?? "write";
   const parentRow = readRow(parentTableId, parentRecordId);
@@ -3290,6 +3865,9 @@ function resolveParentRowWriteAccess(params: {
     actorId,
     readRows,
     readRow,
+    onStages: (stages) => {
+      boundWrite = stages.upperBound.write;
+    },
   });
   if (resolution.kind === "limit_exceeded") {
     return resolution;
@@ -3299,9 +3877,69 @@ function resolveParentRowWriteAccess(params: {
   // **`verb` を省いた呼び出し(= 新しい親)では `resolution.verdict.write` と
   // **同じ式**である** —— **新しい親に要求する動詞を1ビットも変えていない。**
   if (!resolution.verdict[verb]) {
-    return { kind: "unwritable" };
+    // **【`V23-M7-T03` が書き換えた1行。旧を逐語で残す】旧**: `return { kind: "unwritable" };`
+    // **`kind` は同じである** —— 足したのは `create_child` の枝が使う材料だけ(読みは1本も増えていない)。
+    return { kind: "unwritable", row: parentRow, read: resolution.verdict.read, boundWrite };
   }
   return { kind: "writable", row: parentRow };
+}
+
+/**
+ * **親の行で `create_child` によりこの子の表に作れるか**(`V23-M7-T03`。`ADR-0542` §1-2。
+ * 決定 `D-V23-181`・`D-V23-183`・`D-V23-187`・`D-V23-190`)。 **作成で、新しい親に書けないときだけ呼ばれる。**
+ *
+ * - **宣言を先に見る** —— 親の表の宣言で `create_child` にこの子の表を含む権限名が1つも無ければ、
+ *   **何も読まずに偽**(`create_child` を書かないアプリで読みの本数を1本も変えない)。
+ * - **子の表が付与表・名簿表・グループ表なら偽**(適用時の検査を通り抜けた定義への重ね)。
+ * - **(1)** 親の行を、上限を当てた後に読め、かつ上限が書込を止めていない(面の規則は今日の関門と同じく見ない)。
+ * - **(2)** 親の行そのもの(段0)で、その権限名のどれかを持つ(行を相手にした付与の読み替えは今日の部品のまま通る)。
+ * - **(3)** `creatable_by` は呼び出し側が今日の照合のまま重ねる。
+ *
+ * **親の行は呼び出し側が読んだものを使う**(2度読まない)。 **非 `export`**(`owner-scope.ts` の公開の名前を増やさない)。
+ */
+function createChildParentAllows(params: {
+  manifest: Manifest;
+  parentTableId: string;
+  parentRow: Record<string, unknown>;
+  parentRead: boolean;
+  parentBoundWrite: boolean;
+  tableId: string;
+  actorId: string | null;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+}): boolean | { readonly kind: "limit_exceeded"; readonly limit: "depth" | "rows" } {
+  const { manifest, parentTableId, parentRow, tableId, actorId, readRows, readRow } = params;
+  const parentTable = tablesOf(manifest).find((candidate) => candidate?.id === parentTableId);
+  const parentDeclared = parentTable === undefined ? undefined : accessControlOf(parentTable);
+  const childNames = (Array.isArray(parentDeclared?.permissions) ? parentDeclared.permissions : [])
+    .filter(
+      (permission) =>
+        permission?.restrictive !== true &&
+        Array.isArray(permission?.create_child) &&
+        permission.create_child.includes(tableId),
+    )
+    .map((permission) => permission.id);
+  if (childNames.length === 0 || isAccessRegistryTable(manifest, tableId)) {
+    return false;
+  }
+  // (1) 上限を当てた後に読める・上限が書込を止めていない。
+  if (!params.parentRead || !params.parentBoundWrite) {
+    return false;
+  }
+  // (2) 段0 だけの名前(先祖の段の同じ綴りは数えない)。
+  const granted = grantedPermissionNamesForCreate({
+    manifest,
+    tableId: parentTableId,
+    row: parentRow,
+    actorId,
+    readRows,
+    readRow,
+    stageZeroOnly: true,
+  });
+  if (granted.kind === "limit_exceeded") {
+    return granted;
+  }
+  return childNames.some((name) => granted.names.has(name));
 }
 
 /**
@@ -3558,10 +4196,43 @@ export function judgeCreateParentAccess(params: {
     if (parentAccess.kind === "limit_exceeded") {
       return parentAccess;
     }
-    if (parentAccess.kind !== "writable") {
-      return { kind: "denied" };
+    // **【`V23-M7-T03` が書き換えた3行。旧を逐語で残す。1バイトも消していない】**
+    // **旧**:
+    //   `if (parentAccess.kind !== "writable") {`
+    //   `  return { kind: "denied" };`
+    //   `}`
+    //   `const parentRow = parentAccess.row;`
+    // **作成(`previous` が無い)で新しい親に書けないときだけ、親の行で `create_child` を持てば通す**
+    // (`ADR-0542` §1-2。{@link createChildParentAllows})。 **付け替え・空の親から付ける更新は今日どおり
+    // `denied`**(`D-V23-178`)。 **偽なら答えは今日どおり `denied`**(答えの種類を増やさない)。
+    let parentRow: Record<string, unknown>;
+    let viaCreateChild = false;
+    if (parentAccess.kind === "writable") {
+      parentRow = parentAccess.row;
+    } else {
+      if (previous !== undefined || parentAccess.row === undefined) {
+        return { kind: "denied" };
+      }
+      const allows = createChildParentAllows({
+        manifest,
+        parentTableId,
+        parentRow: parentAccess.row,
+        parentRead: parentAccess.read === true,
+        parentBoundWrite: parentAccess.boundWrite === true,
+        tableId,
+        actorId,
+        readRows,
+        readRow,
+      });
+      if (allows === false) {
+        return { kind: "denied" };
+      }
+      if (allows !== true) {
+        return allows;
+      }
+      parentRow = parentAccess.row;
+      viaCreateChild = true;
     }
-    const parentRow = parentAccess.row;
     if (creatableBy === undefined || creatableBy.length === 0) {
       continue;
     }
@@ -3577,6 +4248,12 @@ export function judgeCreateParentAccess(params: {
       return granted;
     }
     if (!creatableBy.some((name) => typeof name === "string" && granted.names.has(name))) {
+      // **【`V23-M7-T03`】`create_child` で通った人には `missing_named_permission` を返さない** ——
+      // その文「元になる行を書き換えられますが」が偽になる(この人は親の行に書けない)。 今日どおり `denied`
+      // (`ADR-0542` §1-2 の (3)。答えの種類を増やさない)。
+      if (viaCreateChild) {
+        return { kind: "denied" };
+      }
       // **【`V15-M6B-T03`。消した1行は逐語でここに残す】**
       // **旧(逐語)**: `return { kind: "denied" };`
       // **ここは `"denied"` ではない。** **この人は親の行に書ける**
@@ -3635,6 +4312,15 @@ export function isCreatorGrantReachable(verdict: RecordAccessVerdict): boolean {
 export type GrantWriteOp = "create" | "update" | "delete";
 
 /**
+ * **【`V23-M12-T05`。`D-V23-407`・`D-V23-413` (2)・`ADR-0575` §Decision 1 の3】`not_creator` が持つ、断りの文を組む値**
+ * (非 export。答えの型では交わりの型で1行に書く —— `ADR-0497` 式6 が答えの型を最初の「;改行」まで読むため)。
+ * - `op`: 断った書込の種類(文の動詞を分ける)。
+ * - `authorityNames`: 照らした管理の権限(`creator_permission`、`authorityPermissions` を渡されたらその並び)の
+ *   宣言の名前。 宣言の名が無い ID は ID のまま。 0個なら運営者だけが書ける文になる。
+ */
+type NotCreatorDetail = { readonly op: GrantWriteOp; readonly authorityNames: readonly string[] };
+
+/**
  * 付与表への書込1件に対する判定の結果。
  *
  * - `allowed` … 通す。
@@ -3650,7 +4336,8 @@ export type GrantWriteOp = "create" | "update" | "delete";
 export type GrantWriteVerdict =
   | { readonly kind: "allowed" }
   | { readonly kind: "invisible_target"; readonly tableId: string; readonly recordId: string }
-  | { readonly kind: "not_creator" }
+  // **【`V23-M12-T05`】旧の1行(逐語)**: `  | { readonly kind: "not_creator" }`
+  | ({ readonly kind: "not_creator" } & NotCreatorDetail)
   | { readonly kind: "self" }
   | { readonly kind: "unknown_holder" }
   | { readonly kind: "no_target" }
@@ -3663,6 +4350,28 @@ export type GrantWriteVerdict =
       readonly kind: "membership_locked";
       readonly tableId: string;
       readonly role: "member" | "group";
+      /**
+       * **【`V23-M12-T05`。`D-V23-407`・`D-V23-413` (2)】名簿が自動登録で本人の名前の欄を宣言している**
+       * (断りの文を替える。 名簿の表のときだけ付く。 グループの表と、名前の欄を宣言しない名簿には付かない)。
+       */
+      readonly ownNameColumn?: true;
+    }
+  /**
+   * **【`V23-M1-T07`。`SC-G5` / `ADR-0497` 限定9】行の最後の管理者の付与を外す書込(409)。**
+   * 付与表の行の削除・更新の後に、付与先の行の管理者(`creator_permission` を付与表の行で直接
+   * 持つ、実在する利用者)が1人以上から0人になるとき。 **運営ロールは例外**(`D-V23-15`)。
+   * 判定は {@link lastRowAdminVanishes} 1本。
+   */
+  | { readonly kind: "last_row_admin" }
+  /**
+   * **【`V23-M6-T04`。`ADR-0538` §Decision 1-4】相手の行を指す欄(`principal_row`)の書込を断る。**
+   * - `acceptance_only` … 招待の承諾の外で、相手の欄に値が新しく入る・変わる・消える(403)。
+   *   判定は {@link principalRowWriteRefused} 1本。 **運営ロールも例外にしない。**
+   * - `mixed_holder` … 相手の欄と `member`・`group` を同じ行に持つ(400)。
+   */
+  | {
+      readonly kind: "principal_row_locked";
+      readonly reason: "acceptance_only" | "mixed_holder";
     };
 
 /**
@@ -3719,6 +4428,544 @@ function membershipTableRole(manifest: Manifest, tableId: string): "member" | "g
 }
 
 /**
+ * **本人が、自動登録の名簿の自分の行の、名前の列だけを変える更新か**(`V23-M1-T06`。`SC-G4`。
+ * `docs/adr/0497-auto-enroll-and-last-row-admin.md` 限定8。非 export)。
+ *
+ * 真になるのは、次を全部満たすときだけである。
+ *  1. 更新である(作成・削除は真にならない)
+ *  2. 表が、名前の列(`auto_enroll.name`)を宣言した名簿である
+ *  3. 更新前の行の `account` も、更新後の姿の `account` も、要求者の ID と等しい
+ *  4. 名前の列の外の列が、更新前と1つも変わらない
+ *
+ * `values` は {@link judgeGrantWrite} の約束どおり「既存行に送られた値を重ねたもの」である。
+ */
+function isOwnNameOnlyUpdate(params: {
+  manifest: Manifest;
+  tableId: string;
+  op: GrantWriteOp;
+  values: Record<string, unknown>;
+  actorId: string | null;
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+}): boolean {
+  const { manifest, tableId, op, values, readRow } = params;
+  const actor = nonEmptyString(params.actorId);
+  if (op !== "update" || actor === undefined) {
+    return false;
+  }
+  let roster: { account: string; name: string } | undefined;
+  for (const table of tablesOf(manifest)) {
+    const members = accessControlOf(table)?.members;
+    const account = nonEmptyString(members?.account);
+    const name = nonEmptyString(members?.auto_enroll?.name);
+    if (nonEmptyString(members?.table) === tableId && account !== undefined && name !== undefined) {
+      roster = { account, name };
+      break;
+    }
+  }
+  const recordId = nonEmptyString(values._id);
+  const table = tablesOf(manifest).find((candidate) => candidate.id === tableId);
+  if (roster === undefined || recordId === undefined || table === undefined) {
+    return false;
+  }
+  const existing = readRow(tableId, recordId);
+  if (existing === undefined || existing[roster.account] !== actor) {
+    return false;
+  }
+  if (values[roster.account] !== actor) {
+    return false;
+  }
+  const same = (a: unknown, b: unknown): boolean =>
+    JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const nameColumn = roster.name;
+  return table.fields.every(
+    (field) => field.id === nameColumn || same(values[field.id], existing[field.id]),
+  );
+}
+
+/**
+ * **行1件に管理者が1人以上いるか**(`V23-M1-T07`。`SC-G5`・`SC-G6`。`ADR-0497` §Decision 1。非 export)。
+ *
+ * 管理者 = その行に `creator_permission` の名前の権限を、付与表の行で**直接**(メンバー欄で名指し
+ * されるか、グループ欄で名指しされたグループに属するか)持つ人のうち、名簿の行の `account` が
+ * **実在する利用者**である人。 相手解決は {@link resolveGrantedPermissionNames} 1本(2本目の
+ * 判定を作らない)。 利用者の実在は呼び出し側が渡す関数で問う(本ファイルは `_auth_*` を読まない。
+ * `ADR-0497` 限定11)。
+ *
+ * @param params.grantRows {@link grantsWithExistingGroups} を通した付与表の行。
+ * @returns 宣言が `creator_permission` か `members.account` を持たないなら `undefined`
+ *   (管理者という考えが無い)。
+ */
+function rowHasAdmin(params: {
+  declared: AccessControlDeclaration;
+  recordId: string;
+  grantRows: readonly Record<string, unknown>[];
+  memberRows: readonly Record<string, unknown>[];
+  userExists: (userId: string) => boolean;
+}): boolean | undefined {
+  const { declared, recordId, grantRows, memberRows, userExists } = params;
+  const creatorName = nonEmptyString(declared.creator_permission);
+  const accountField = nonEmptyString(declared.members?.account);
+  if (creatorName === undefined || accountField === undefined) {
+    return undefined;
+  }
+  const targeting = grantsTargetingRecord({ declared, recordId, grantRows });
+  if (targeting === undefined || targeting.length === 0) {
+    return false;
+  }
+  // 候補は「付与が名指しした名簿の行」と「付与が名指ししたグループに属する名簿の行」だけに絞る
+  // (全員を1人ずつ問わない)。 最後に効くかどうかは {@link resolveGrantedPermissionNames} が決める。
+  const memberField = nonEmptyString(declared.grant?.member);
+  const groupField = nonEmptyString(declared.grant?.group);
+  const memberGroupField = nonEmptyString(declared.members?.group);
+  const heldMembers = new Set<string>();
+  const heldGroups = new Set<string>();
+  for (const grant of targeting) {
+    const member = memberField === undefined ? undefined : nonEmptyString(grant?.[memberField]);
+    const group = groupField === undefined ? undefined : nonEmptyString(grant?.[groupField]);
+    if (member !== undefined) {
+      heldMembers.add(member);
+    }
+    if (group !== undefined) {
+      heldGroups.add(group);
+    }
+  }
+  const candidates = new Set<string>();
+  for (const member of memberRows) {
+    const id = nonEmptyString(member?._id);
+    const group =
+      memberGroupField === undefined ? undefined : nonEmptyString(member?.[memberGroupField]);
+    if (
+      (id !== undefined && heldMembers.has(id)) ||
+      (group !== undefined && heldGroups.has(group))
+    ) {
+      const account = nonEmptyString(member?.[accountField]);
+      if (account !== undefined) {
+        candidates.add(account);
+      }
+    }
+  }
+  for (const account of candidates) {
+    if (!userExists(account)) {
+      continue;
+    }
+    const names = resolveGrantedPermissionNames({
+      declared,
+      recordId,
+      actor: account,
+      grantRows: targeting,
+      memberRows,
+    });
+    if (names?.has(creatorName)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * **付与表の行を書き換える・消すと、付与先の行の管理者が1人以上から0人になるか**
+ * (`V23-M1-T07`。`SC-G5`。`ADR-0497` §Decision 1・限定9・限定10、`ADR-0510` §Decision 2・4)。
+ *
+ * **判定の家はこの1本である。** 人の操作({@link judgeGrantWrite} の中)・自動処理と時刻起動
+ * (`workflow-runner.ts` の包み)・AI の書き戻し(`ai-dispatcher.ts`)・親の行を消す連鎖
+ * (HTTP の `DELETE` と AI の `delete_record`)が、同じこの関数を呼ぶ。 **誰が書くかは問わない**
+ * (運営の例外は人の操作の側だけが持つ)。 付与表でない表だけが渡ったら、行を1件も読まずに偽を返す。
+ *
+ * - `removed` … 消える行(付与表の行も、付与先の行も入れてよい)。 **付与先の行が同じ連鎖で
+ *   消えるなら、その行は数えない**(`D-V23-28`)。
+ * - `replaced` … 付与表1つについて、書いた**後**の全行(更新・全置換)。
+ *
+ * **既に管理者0人の行は断らない**(回復の経路を塞がない)。 **付与先の行が既に無い付与**
+ * (消えた行を指す付与)も数えない。 管理者の数え方は {@link rowHasAdmin}(`creator_permission` を
+ * 宣言しない表では管理者という考えが無いので、断らない)。
+ *
+ * **【`D-V23-37`】行そのものの直接の管理者が0人になっても、書いた後の姿で引き継ぎ元のどこかの段に
+ * 管理できる人がいれば断らない**(回復の一覧と同じ数え方。{@link stepManaged})。 引き継ぎの上限に
+ * 当たったら断る。
+ *
+ * @param params.readRows 表IDを渡すと、その表の**全行**を返す関数(書く**前**の姿)。
+ * @param params.userExists 利用者IDが実在するか(`_auth_users` を読むのは呼び出し側)。
+ *
+ * 【2026-09-30。`V23-M5-T04b` の追記。上の説明を消していない】`membersAfter` を足した
+ * (`ADR-0532` §Decision 1-5。決定 `D-V23-125`)。 名簿の表1つについて、書いた**後**の全行を渡すと、
+ * 名簿の行が替わった(グループ欄・`account` の書き換え)ことで管理者が1人以上から0人になる行が
+ * あるかも数える。 **渡さなければ、今日の式と同じ値を返す**(この追記の前の本文は1行も通り道を
+ * 変えていない)。 export の名前は増やさない。
+ */
+export function lastRowAdminVanishes(params: {
+  manifest: Manifest;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  userExists: (userId: string) => boolean;
+  removed?: readonly { readonly tableId: string; readonly recordId: string }[];
+  replaced?: {
+    readonly grantTableId: string;
+    readonly afterRows: readonly Record<string, unknown>[];
+  };
+  /**
+   * **【`V23-M5-T04b`】名簿の表1つについて、書いた後の全行**(承諾で名簿のグループ欄を書き換えるときだけ
+   * 渡す)。 その名簿を宣言した表ごとに、替わった名簿の行が付与で名指しされている(メンバー欄か、前後の
+   * グループ欄)行を数え直す。
+   */
+  membersAfter?: {
+    readonly memberTableId: string;
+    readonly afterRows: readonly Record<string, unknown>[];
+  };
+  /**
+   * **人の操作として呼ぶときだけ渡す、書く人の実効ロール集合。** 運営ロールなら断らない
+   * (`D-V23-15`)。 **自動処理・時刻起動・AI の書き戻しは渡さない**(主体を問わず断る。`D-V23-14`)。
+   */
+  role?: ActorRoles;
+}): boolean {
+  const { manifest, readRows, userExists } = params;
+  if (params.role !== undefined && declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, params.role)) {
+    return false;
+  }
+  const removed = params.removed ?? [];
+  const keyOf = (tableId: string, recordId: string): string => JSON.stringify([tableId, recordId]);
+  const gone = new Set(removed.map((entry) => keyOf(entry.tableId, entry.recordId)));
+  const grantTableIds = new Set<string>();
+  for (const entry of removed) {
+    if (isGrantTable(manifest, entry.tableId)) {
+      grantTableIds.add(entry.tableId);
+    }
+  }
+  if (params.replaced !== undefined && isGrantTable(manifest, params.replaced.grantTableId)) {
+    grantTableIds.add(params.replaced.grantTableId);
+  }
+  // **【`V23-M5-T04b`】名簿の後の姿を渡されたときだけ**、名簿の書き換えで管理者が消えるかを先に数える
+  // (渡さなければこの枝は通らず、下の今日の式だけが走る)。
+  if (params.membersAfter !== undefined && rosterChangeVanishesAdmin(params, params.membersAfter)) {
+    return true;
+  }
+  if (grantTableIds.size === 0) {
+    return false;
+  }
+  // **書いた「後」の姿を読む口**(`D-V23-37`。引き継ぎ元をたどるときに使う)。 替わった付与表は
+  // 後の行を返し、消える行(`removed`)はどの表からも除く。
+  const afterCache = new Map<string, readonly Record<string, unknown>[]>();
+  const readRowsAfter = (tableId: string): readonly Record<string, unknown>[] => {
+    let rows = afterCache.get(tableId);
+    if (rows === undefined) {
+      const base =
+        params.replaced?.grantTableId === tableId ? params.replaced.afterRows : readRows(tableId);
+      rows = base.filter((row) => {
+        const id = nonEmptyString(row?._id);
+        return id === undefined || !gone.has(keyOf(tableId, id));
+      });
+      afterCache.set(tableId, rows);
+    }
+    return rows;
+  };
+  const readRowAfter = (tableId: string, recordId: string): Record<string, unknown> | undefined =>
+    readRowsAfter(tableId).find((row) => nonEmptyString(row?._id) === recordId);
+  for (const grantTableId of grantTableIds) {
+    const before = readRows(grantTableId);
+    const after = readRowsAfter(grantTableId);
+    // **書込で変わった付与の行**(前にあって後に無い・中身が違う)だけを見る。
+    const afterById = new Map<string, string>();
+    for (const row of after) {
+      const id = nonEmptyString(row?._id);
+      if (id !== undefined) {
+        afterById.set(id, JSON.stringify(row));
+      }
+    }
+    const changed = before.filter((row) => {
+      const id = nonEmptyString(row?._id);
+      return id === undefined || afterById.get(id) !== JSON.stringify(row);
+    });
+    if (changed.length === 0) {
+      continue;
+    }
+    for (const table of tablesOf(manifest)) {
+      const declared = accessControlOf(table);
+      if (declared === undefined || declared.grant?.table !== grantTableId) {
+        continue;
+      }
+      const targetField = nonEmptyString(declared.grant?.target);
+      if (targetField === undefined || nonEmptyString(declared.creator_permission) === undefined) {
+        continue;
+      }
+      const targets = new Set<string>();
+      for (const row of changed) {
+        const target = nonEmptyString(row?.[targetField]);
+        if (target !== undefined && !gone.has(keyOf(table.id, target))) {
+          targets.add(target);
+        }
+      }
+      if (targets.size === 0) {
+        continue;
+      }
+      const existing = new Map<string, Record<string, unknown>>();
+      for (const row of readRows(table.id)) {
+        const id = nonEmptyString(row?._id);
+        if (id !== undefined) {
+          existing.set(id, row);
+        }
+      }
+      const groupTableId = nonEmptyString(declared.groups?.table);
+      const groupRows = groupTableId === undefined ? [] : readRows(groupTableId);
+      const memberTableId = nonEmptyString(declared.members?.table);
+      const memberRows = memberTableId === undefined ? [] : readRows(memberTableId);
+      const beforeGrants = grantsWithExistingGroups({
+        manifest,
+        tableId: table.id,
+        grantRows: before,
+        groupRows,
+      });
+      const afterGrants = grantsWithExistingGroups({
+        manifest,
+        tableId: table.id,
+        grantRows: after,
+        groupRows,
+      });
+      for (const recordId of targets) {
+        if (!existing.has(recordId)) {
+          continue;
+        }
+        const had = rowHasAdmin({
+          declared,
+          recordId,
+          grantRows: beforeGrants,
+          memberRows,
+          userExists,
+        });
+        if (had !== true) {
+          continue;
+        }
+        const has = rowHasAdmin({
+          declared,
+          recordId,
+          grantRows: afterGrants,
+          memberRows,
+          userExists,
+        });
+        if (has !== false) {
+          continue;
+        }
+        // **【`D-V23-37`】行そのものの直接の管理者は0人になる。** 回復の一覧と同じく引き継ぎ元を
+        // たどり、書いた後の姿でどこかの段に管理できる人がいれば断らない({@link stepManaged})。
+        // **引き継ぎの上限に当たって数え切れないときは断る**(安全側)。
+        let managed = false;
+        const walked = walkAccessInheritance({
+          manifest,
+          tableId: table.id,
+          row: existing.get(recordId) as Record<string, unknown>,
+          readRows: readRowsAfter,
+          readRow: readRowAfter,
+          visit: (step) => {
+            if (!managed && stepManaged(manifest, step, userExists)) {
+              managed = true;
+            }
+          },
+        });
+        if (walked.kind === "limit_exceeded" || !managed) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * **名簿の行を書き換えると、管理者が1人以上から0人になる行があるか**(`V23-M5-T04b`。非 export。
+ * `ADR-0532` §Decision 1-5。決定 `D-V23-125`・`D-V23-135` (1))。 {@link lastRowAdminVanishes} が
+ * `membersAfter` を渡されたときだけ呼ぶ。
+ *
+ * - 見るのは、その名簿を `members.table` に宣言し、`creator_permission` を持つ表だけ。
+ * - 数え直す行は、替わった名簿の行(前にあって後に無い・中身が違う)を、付与のメンバー欄で名指しするか、
+ *   その行の前後のグループ欄の値を付与のグループ欄で名指しする付与が指す行。
+ * - 管理者の数え方は {@link rowHasAdmin}(書く前は前の名簿、書いた後は後の名簿で数える。付与は同じ)。
+ *   **既に管理者0人の行は断らない。** 行そのものの管理者が0人になっても、書いた後の姿で引き継ぎ元の
+ *   どこかの段に管理できる人がいれば断らない(`D-V23-37`。{@link stepManaged})。 上限に当たったら断る。
+ * - **誰が書くかは問わない**(運営の例外は `role` を渡した呼び出しの側だけが持つ)。
+ */
+function rosterChangeVanishesAdmin(
+  params: {
+    manifest: Manifest;
+    readRows: (tableId: string) => readonly Record<string, unknown>[];
+    userExists: (userId: string) => boolean;
+  },
+  membersAfter: {
+    readonly memberTableId: string;
+    readonly afterRows: readonly Record<string, unknown>[];
+  },
+): boolean {
+  const { manifest, readRows, userExists } = params;
+  const { memberTableId } = membersAfter;
+  const memberBefore = readRows(memberTableId);
+  const afterById = new Map<string, Record<string, unknown>>();
+  for (const row of membersAfter.afterRows) {
+    const id = nonEmptyString(row?._id);
+    if (id !== undefined) {
+      afterById.set(id, row);
+    }
+  }
+  const changedMembers = memberBefore.filter((row) => {
+    const id = nonEmptyString(row?._id);
+    return id === undefined || JSON.stringify(afterById.get(id)) !== JSON.stringify(row);
+  });
+  if (changedMembers.length === 0) {
+    return false;
+  }
+  const readRowsAfter = (tableId: string): readonly Record<string, unknown>[] =>
+    tableId === memberTableId ? membersAfter.afterRows : readRows(tableId);
+  const readRowAfter = (tableId: string, recordId: string): Record<string, unknown> | undefined =>
+    readRowsAfter(tableId).find((row) => nonEmptyString(row?._id) === recordId);
+  for (const table of tablesOf(manifest)) {
+    const declared = accessControlOf(table);
+    if (declared === undefined || nonEmptyString(declared.members?.table) !== memberTableId) {
+      continue;
+    }
+    const grantTableId = nonEmptyString(declared.grant?.table);
+    const targetField = nonEmptyString(declared.grant?.target);
+    if (
+      grantTableId === undefined ||
+      targetField === undefined ||
+      nonEmptyString(declared.creator_permission) === undefined
+    ) {
+      continue;
+    }
+    const memberField = nonEmptyString(declared.grant?.member);
+    const groupField = nonEmptyString(declared.grant?.group);
+    const memberGroupField = nonEmptyString(declared.members?.group);
+    const touchedMembers = new Set<string>();
+    const touchedGroups = new Set<string>();
+    for (const row of changedMembers) {
+      const id = nonEmptyString(row?._id);
+      if (id !== undefined) {
+        touchedMembers.add(id);
+      }
+      if (memberGroupField !== undefined) {
+        const before = nonEmptyString(row?.[memberGroupField]);
+        const after = id === undefined ? undefined : afterById.get(id)?.[memberGroupField];
+        for (const group of [before, nonEmptyString(after)]) {
+          if (group !== undefined) {
+            touchedGroups.add(group);
+          }
+        }
+      }
+    }
+    const groupTableId = nonEmptyString(declared.groups?.table);
+    const grants = grantsWithExistingGroups({
+      manifest,
+      tableId: table.id,
+      grantRows: readRows(grantTableId),
+      groupRows: groupTableId === undefined ? [] : readRows(groupTableId),
+    });
+    const targets = new Set<string>();
+    for (const grant of grants) {
+      const member = memberField === undefined ? undefined : nonEmptyString(grant?.[memberField]);
+      const group = groupField === undefined ? undefined : nonEmptyString(grant?.[groupField]);
+      if (
+        (member !== undefined && touchedMembers.has(member)) ||
+        (group !== undefined && touchedGroups.has(group))
+      ) {
+        const target = nonEmptyString(grant?.[targetField]);
+        if (target !== undefined) {
+          targets.add(target);
+        }
+      }
+    }
+    if (targets.size === 0) {
+      continue;
+    }
+    const existing = new Map<string, Record<string, unknown>>();
+    for (const row of readRows(table.id)) {
+      const id = nonEmptyString(row?._id);
+      if (id !== undefined) {
+        existing.set(id, row);
+      }
+    }
+    for (const recordId of targets) {
+      const row = existing.get(recordId);
+      if (row === undefined) {
+        continue;
+      }
+      const had = rowHasAdmin({
+        declared,
+        recordId,
+        grantRows: grants,
+        memberRows: memberBefore,
+        userExists,
+      });
+      if (had !== true) {
+        continue;
+      }
+      const has = rowHasAdmin({
+        declared,
+        recordId,
+        grantRows: grants,
+        memberRows: membersAfter.afterRows,
+        userExists,
+      });
+      if (has !== false) {
+        continue;
+      }
+      let managed = false;
+      const walked = walkAccessInheritance({
+        manifest,
+        tableId: table.id,
+        row,
+        readRows: readRowsAfter,
+        readRow: readRowAfter,
+        visit: (step) => {
+          if (!managed && stepManaged(manifest, step, userExists)) {
+            managed = true;
+          }
+        },
+      });
+      if (walked.kind === "limit_exceeded" || !managed) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * **引き継ぎを辿る1段に、管理できる人がいるか**(`V23-M1-T07`。`D-V23-30`・`D-V23-37`。非 export)。
+ *
+ * 管理者({@link rowHasAdmin})が1人でもいれば真。 `creator_permission` を宣言しない段は、その段を
+ * 指す付与が1件でもあれば真(今日の回復の一覧の判定のまま)。 回復の一覧
+ * ({@link resolveRecordWithoutGrants})と最後の管理者の判定({@link lastRowAdminVanishes})が
+ * 同じこの1本を使う。
+ */
+function stepManaged(
+  manifest: Manifest,
+  step: AccessInheritanceStep,
+  userExists: (userId: string) => boolean,
+): boolean {
+  const stepTable = tablesOf(manifest).find((candidate) => candidate?.id === step.tableId);
+  const stepDeclared = stepTable === undefined ? undefined : accessControlOf(stepTable);
+  const stepRecordId = nonEmptyString(step.row?._id);
+  if (stepDeclared === undefined || stepRecordId === undefined) {
+    return false;
+  }
+  const has = rowHasAdmin({
+    declared: stepDeclared,
+    recordId: stepRecordId,
+    grantRows: grantsWithExistingGroups({
+      manifest,
+      tableId: step.tableId,
+      grantRows: step.grantRows,
+      groupRows: step.groupRows,
+    }),
+    memberRows: step.memberRows,
+    userExists,
+  });
+  return (
+    has ??
+    !isRecordWithoutGrants({
+      manifest,
+      tableId: step.tableId,
+      row: step.row,
+      grantRows: step.grantRows,
+    })
+  );
+}
+
+/**
  * **付与表への `create` / `update` / `delete` を、付与が指す行への権限で絞る**(`Z-G5`)。
  *
  * **`undefined` を返したら、その表は付与表として名指しされていない** —— **呼び出し側は
@@ -3751,6 +4998,25 @@ export function judgeGrantWrite(params: {
   role: ActorRoles;
   readRows: (tableId: string) => readonly Record<string, unknown>[];
   readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **【`V23-M1-T07`。`ADR-0497` 限定9・限定11】利用者IDが実在するか。** 渡したときだけ、行の
+   * 最後の管理者の判定(`last_row_admin`)を掛ける。 **親の行を消す連鎖の子1件ずつの判定は
+   * 渡さない**(連鎖は全体を1度に数える。`ADR-0510` §Decision 4)。
+   */
+  userExists?: (userId: string) => boolean;
+  /**
+   * **【`V23-M5-T04`。`ADR-0532` §Decision 1-3・決定 `D-V23-131`・`D-V23-133` 重2】「作成者か」の関門で
+   * 照らす権限名。** 渡したときだけ、`creator_permission` 1本の代わりに、この名前のどれかを持つかを見る
+   * (行の招待の承諾が、招待の宣言の `by` を渡す)。 **渡さなければ着手前と1バイトも同じ**(`creator_permission`)。
+   * 持つかどうかの解き方(行への直接の付与とグループ経由。親はたどらない)と、他の関門は1つも変えない。
+   */
+  authorityPermissions?: readonly string[];
+  /**
+   * **【`V23-M6-T04`。`ADR-0538` §Decision 1-4】招待の承諾の器だけが真を渡す**(コードの招待の承諾。`T06`)。
+   * 相手の行を指す欄を書ける唯一の経路である。 **渡さなければ、相手の欄に値が入る・変わる書込を断る**
+   * ({@link principalRowWriteRefused})。 `principal_row` を宣言していない表では何も変わらない。
+   */
+  principalRowAccepted?: boolean;
 }): GrantWriteVerdict | undefined {
   const { manifest, tableId, op, values, actorId, role, readRows, readRow } = params;
 
@@ -3782,10 +5048,20 @@ export function judgeGrantWrite(params: {
   //  3. **`account` 列と `group` 列だけを見るのではなく、表そのものを止めている** ——
   //     **メンバー表に別の列(表示名など)を持たせているアプリでは、その列も運営しか
   //     書けなくなる。** **非対称を作らない側に倒した。**
+  // **【`V23-M1-T06`。`SC-G4` / `ADR-0497` 限定8】例外は1つだけ** —— 自動登録で名前の列を
+  // 宣言した名簿で、本人の行の、名前の列だけを変える更新を通す({@link isOwnNameOnlyUpdate})。
+  // 作成・削除・他の列・他人の行は今日どおり断る。
   {
     const membership = membershipTableRole(manifest, tableId);
-    if (membership !== undefined && !declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, role)) {
-      return { kind: "membership_locked", tableId, role: membership };
+    if (
+      membership !== undefined &&
+      !declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, role) &&
+      !isOwnNameOnlyUpdate({ manifest, tableId, op, values, actorId, readRow })
+    ) {
+      // **【`V23-M12-T05`。`D-V23-407`】旧の1行(逐語)**: `return { kind: "membership_locked", tableId, role: membership };`
+      return membership === "member" && ownNameColumnDeclared(manifest, tableId)
+        ? { kind: "membership_locked", tableId, role: membership, ownNameColumn: true }
+        : { kind: "membership_locked", tableId, role: membership };
     }
   }
 
@@ -3822,6 +5098,12 @@ export function judgeGrantWrite(params: {
     break;
   }
   if (target === undefined || declared === undefined) {
+    // **【`V23-M12-T02b`。`D-V23-365`・`ADR-0571` §Decision 1-2】対象の行が消えた付与の行は、運営者だけが
+    // 消せる。** 削除で、実効ロールに運営ロールがあれば通す(判定の種類は増やさない)。 作成・更新と
+    // 運営者以外の削除は今日どおり `no_target`。
+    if (op === "delete" && declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, role)) {
+      return { kind: "allowed" };
+    }
     return { kind: "no_target" };
   }
 
@@ -3854,25 +5136,96 @@ export function judgeGrantWrite(params: {
             memberRows,
           });
     const creatorName = nonEmptyString(declared.creator_permission);
-    const isCreator = names !== undefined && creatorName !== undefined && names.has(creatorName);
+    // **【`V23-M5-T04`】旧の式(逐語)**:
+    //   `const isCreator = names !== undefined && creatorName !== undefined && names.has(creatorName);`
+    // `authorityPermissions` を渡さなければ、照らす名前は `creator_permission` の1つで、旧の式と同じ値になる。
+    const authority =
+      params.authorityPermissions ?? (creatorName === undefined ? [] : [creatorName]);
+    const isCreator = names !== undefined && authority.some((name) => names.has(name));
     if (!isCreator) {
       // **見える人には「作れない」を、見えない人には「無い」を返す。**
+      // **【`V23-M6-T03`】この読み分けだけは S 経由で読めるかを見る**(`D-V23-161`)。
+      // **「作成者か」そのもの(上の `names`)は S 経由を見ない**(`D-V23-146`)。
       const verdict = judgeRecordAccess({
         manifest,
         tableId: target.tableId,
         row: target.row,
         actorId: actor ?? null,
-        grantRows,
+        grantRows: principalRowGrantRows({
+          manifest,
+          tableId: target.tableId,
+          row: target.row,
+          actorId: actor ?? null,
+          grantRows,
+          memberRows,
+          readRows,
+        }),
         memberRows,
       });
+      // **【`V23-M12-T05`。`D-V23-407`】旧の2行目(逐語)**: `? { kind: "not_creator" }`
+      // 断りの文を組む操作と、照らした管理の権限の宣言の名前を持たせる(種類は増やさない)。
+      const permissions = declared.permissions ?? [];
       return verdict.read
-        ? { kind: "not_creator" }
+        ? {
+            kind: "not_creator",
+            op,
+            authorityNames: authority.map(
+              (id) => permissions.find((permission) => permission.id === id)?.name ?? id,
+            ),
+          }
         : { kind: "invisible_target", tableId: target.tableId, recordId: target.recordId };
+    }
+    // **【`V23-M1-T07`。`SC-G5` / `D-V23-7`・`D-V23-15`】行の最後の管理者。** 運営ロールは
+    // この枝に入らない(人の操作としての運営は外せる)。 消す・書き換えた後の付与の集合で数え、
+    // 管理者が1人以上から0人になるなら断る。 関門 (3)(4)(5) より先に立てる。
+    const grantId = nonEmptyString(values._id);
+    if (params.userExists !== undefined && op !== "create" && grantId !== undefined) {
+      const vanishes =
+        op === "delete"
+          ? lastRowAdminVanishes({
+              manifest,
+              readRows,
+              userExists: params.userExists,
+              removed: [{ tableId, recordId: grantId }],
+            })
+          : lastRowAdminVanishes({
+              manifest,
+              readRows,
+              userExists: params.userExists,
+              replaced: {
+                grantTableId: tableId,
+                afterRows: readRows(tableId).map((row) =>
+                  nonEmptyString(row?._id) === grantId ? { ...row, ...values } : row,
+                ),
+              },
+            });
+      if (vanishes) {
+        return { kind: "last_row_admin" };
+      }
     }
   }
 
   if (op === "delete") {
     return { kind: "allowed" };
+  }
+
+  // **【`V23-M6-T04`。`ADR-0538` §Decision 1-4・`D-V23-162`】相手の行を指す欄は、招待の承諾の外では
+  // 新しく入れられない・変えられない。** 関門 (2) の後に置く(見えない行の存在を、この断りで言い当てさせない)。
+  // **`principal_row` を宣言していない表では何も読まずに素通りする。**
+  {
+    const grantId = nonEmptyString(values._id);
+    if (
+      principalRowWriteRefused({
+        manifest,
+        tableId,
+        op,
+        values,
+        before: () => (grantId === undefined ? undefined : readRow(tableId, grantId)),
+        accepted: params.principalRowAccepted === true,
+      })
+    ) {
+      return { kind: "principal_row_locked", reason: "acceptance_only" };
+    }
   }
 
   // **(3)(4) 相手の検査。** **クライアントが送った id を信用しない**(`ADR-0016` 却下 (iv))
@@ -3882,7 +5235,31 @@ export function judgeGrantWrite(params: {
   const holderMemberId =
     memberField === undefined ? undefined : nonEmptyString(values[memberField]);
   const holderGroupId = groupField === undefined ? undefined : nonEmptyString(values[groupField]);
-  if (holderMemberId === undefined && holderGroupId === undefined) {
+  // **【`V23-M6-T04`。`D-V23-152`・`D-V23-164`・`ADR-0538` §Decision 1-4】相手の欄だけを持つ行**(承諾で作る行・
+  // その権限の欄だけの更新)。 **旧の式(逐語)**:
+  //   `if (holderMemberId === undefined && holderGroupId === undefined) {`
+  //   `  return { kind: "unknown_holder" };`
+  //   `}`
+  // 相手の欄が空なら旧の式と同じ値になる。 相手の欄があるときは、(4) を「S の行が実在するか」に、(3) を
+  // 「書く人が S に `via` を持つか」に置き換え、(5) は S に `via` を持つ人全員に落とす。
+  const principal = principalRowOf(manifest, target.tableId);
+  const holderPrincipalRowId =
+    principal === undefined ? undefined : nonEmptyString(values[principal.column]);
+  if (principal !== undefined && holderPrincipalRowId !== undefined) {
+    if (holderMemberId !== undefined || holderGroupId !== undefined) {
+      return { kind: "principal_row_locked", reason: "mixed_holder" };
+    }
+    if (readRow(principal.table, holderPrincipalRowId) === undefined) {
+      return { kind: "unknown_holder" };
+    }
+    // **自分に権限を付けられない**(`D-V7-14`・`D-V23-163` の形)。 **運営ロールも例外にしない。**
+    if (
+      actor !== undefined &&
+      holdsPrincipalRow({ manifest, principal, recordId: holderPrincipalRowId, actor, readRows })
+    ) {
+      return { kind: "self" };
+    }
+  } else if (holderMemberId === undefined && holderGroupId === undefined) {
     return { kind: "unknown_holder" };
   }
   if (holderMemberId !== undefined) {
@@ -3943,6 +5320,8 @@ export function judgeGrantWrite(params: {
     targetRow: target.row,
     holderMemberId,
     holderGroupId,
+    // **【`V23-M6-T04`】相手の行**(相手の欄だけを持つ行のとき。S に `via` を持つ人全員に落とす)。
+    holderPrincipalRowId,
     memberRows,
     readRows,
     readRow,
@@ -4056,6 +5435,31 @@ export function rowGrantWriteJudge(params: {
   actorId: string | null;
   roles: ActorRoles;
   readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): RowGrantWriteJudgeWithChild {
+  // **【`V23-M7-T05b`。`ADR-0542` §Decision 4-5・限定5。決定 `D-V23-184`・`D-V23-188`・`D-V23-189`】**
+  // **行ごとの判定の5つ目のキーを、同じ判定の関数に生やす**(親の表の権限のどれかが `create_child` を
+  // 宣言しているときだけ。宣言の無い表では今日の関数をそのまま返す = 4キーのまま)。 **今日の本体は
+  // 非 `export` の {@link rowGrantWriteOnly} へ1バイトも変えずに移した**(export の名前を増やさない)。
+  const createChild = createChildDisplayJudge(params);
+  const judge = rowGrantWriteOnly(params);
+  return createChild === undefined ? judge : Object.assign(judge, { createChild });
+}
+
+/**
+ * **{@link rowGrantWriteJudge} の返り値の形**(`V23-M7-T05b`)。 **`createChild` は、親の表の権限の
+ * どれかが `create_child` を宣言しているときだけ在る**(鍵は宣言に名の出る子の表 ID、値は真偽)。
+ */
+type RowGrantWriteJudgeWithChild = ((row: Record<string, unknown>) => boolean) & {
+  readonly createChild?: (row: Record<string, unknown>) => Readonly<Record<string, boolean>>;
+};
+
+/** **{@link rowGrantWriteJudge} の今日の本体**(`V23-M7-T05b` が名前だけを付けて移した。式は1バイトも変えていない)。 */
+function rowGrantWriteOnly(params: {
+  manifest: Manifest;
+  tableId: string;
+  actorId: string | null;
+  roles: ActorRoles;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
 }): (row: Record<string, unknown>) => boolean {
   const { manifest, tableId, actorId, roles, readRows } = params;
   const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
@@ -4153,28 +5557,16 @@ export function rowGrantWriteJudge(params: {
     //
     // **(h8) 付与表そのものの親の関門**(付与表の `inherit_from` が対象の欄を指す形。親 = この行)。
     // **付与の `POST` と同じ {@link judgeCreateParentAccess} を、同じ引数の作り方で呼ぶ。**
-    const parent = judgeCreateParentAccess({
+    // **【`V23-M7-T05b`。`D-V23-188`】下の関門の呼び出しを、子の表を引数に取る表示用の判定
+    // {@link createParentDisplayAllows} 1本へ移した**(付与表の `grant_write` と5つ目のキーの両方がそこを通る。
+    // 非テストの呼び出しの本数は11のまま)。 **引数の作り方と読み手と旧コメントは1バイトも変えずに移した。**
+    const parentAllowed = createParentDisplayAllows({
       manifest,
-      tableId: grantTableId,
-      values: { [targetField]: recordId },
+      childTableId: grantTableId,
+      parentField: targetField,
+      parentRecordId: recordId,
       actorId,
       readRows,
-      // **読み手を1本も増やしていない** —— **`readRows` が返す同じ行から `_id` で引くだけである。**
-      // **サーバ層の読み手(`memoizedRowReaders`)がしているのも、この索引を先に作ることだけで
-      // あり、読む先も読む量も1行も変わらない。**
-      // **【`V18-M8-T02`。直前の3行を1バイトも消していない】** **この読み手も `readRows` が返す
-      // 同じ行から `_id` で引くだけである**(壁の述語に渡す読み手と同じ作法)。
-      readRow: (id, wantedId) => {
-        // **【`V18-M8-T02`。下の3群の旧コメントを1バイトも消していない】** **下の3群は、取り除いた
-        // 辿りの訪問関数(`visit`)の中にあったものであり、この読み手の説明ではない。**
-        // **段0 は直前で見ているので、ここでは数えない。** **既に見つかっていれば何もしない。**
-        // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32`)——
-        // **段0 と親で違う整え方をしない**({@link resolveRecordAccess} と同じ手前の整えである)。
-        // **突き合わせる綴りは**段0 の表**の `creator_permission` である** ——
-        // **親の表の `creator_permission` ではない。** **問うているのは「その子の行の作成者と
-        // 同じ強さを、親の側で持っているか」だからである。**
-        return readRows(id).find((candidate) => nonEmptyString(candidate?._id) === wantedId);
-      },
     });
     // **上限に当たったら `false` に倒す**(fail-closed)。 **一覧の口は上限に当たると 400 を
     // 返すが、`grant_write` は**ボタンを出すかどうかの材料**であって壁ではない** ——
@@ -4183,7 +5575,110 @@ export function rowGrantWriteJudge(params: {
     // **【`V18-M8-T02`。直前の4行を1バイトも消していない】** **直前の4行は取り除いた辿りの上限の説明である。**
     // **付与表そのものの親の関門が上限に当たったときも、`allowed` ではないので偽に倒す**
     // (付与の `POST` はそのとき 400 を返す)。
-    return parent.kind === "allowed";
+    return parentAllowed;
+  };
+}
+
+/**
+ * **表示用の親の関門**(`V23-M7-T05b`。`ADR-0542` §Decision 4-5。決定 `D-V23-188`)。
+ *
+ * **付与表の `grant_write` の (h8) と、行ごとの判定の5つ目のキー {@link createChildDisplayJudge} の両方が、
+ * この1本の {@link judgeCreateParentAccess} の呼び出しを通る**(非テストの呼び出しの本数を増やさない。
+ * `ADR-0503` 限定3)。 **上限に当たったときも `allowed` ではないので偽に倒す**(fail-closed)。
+ * **非 `export`**。
+ */
+function createParentDisplayAllows(params: {
+  manifest: Manifest;
+  childTableId: string;
+  parentField: string;
+  parentRecordId: string;
+  actorId: string | null;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): boolean {
+  const { manifest, childTableId, parentField, parentRecordId, actorId, readRows } = params;
+  const parent = judgeCreateParentAccess({
+    manifest,
+    tableId: childTableId,
+    values: { [parentField]: parentRecordId },
+    actorId,
+    readRows,
+    // **読み手を1本も増やしていない** —— **`readRows` が返す同じ行から `_id` で引くだけである。**
+    // **サーバ層の読み手(`memoizedRowReaders`)がしているのも、この索引を先に作ることだけで
+    // あり、読む先も読む量も1行も変わらない。**
+    // **【`V18-M8-T02`。直前の3行を1バイトも消していない】** **この読み手も `readRows` が返す
+    // 同じ行から `_id` で引くだけである**(壁の述語に渡す読み手と同じ作法)。
+    readRow: (id, wantedId) => {
+      // **【`V18-M8-T02`。下の3群の旧コメントを1バイトも消していない】** **下の3群は、取り除いた
+      // 辿りの訪問関数(`visit`)の中にあったものであり、この読み手の説明ではない。**
+      // **段0 は直前で見ているので、ここでは数えない。** **既に見つかっていれば何もしない。**
+      // **消えたグループ行を指す付与は、どの段でも1件も解決しない**(`Z-G32`)——
+      // **段0 と親で違う整え方をしない**({@link resolveRecordAccess} と同じ手前の整えである)。
+      // **突き合わせる綴りは**段0 の表**の `creator_permission` である** ——
+      // **親の表の `creator_permission` ではない。** **問うているのは「その子の行の作成者と
+      // 同じ強さを、親の側で持っているか」だからである。**
+      return readRows(id).find((candidate) => nonEmptyString(candidate?._id) === wantedId);
+    },
+  });
+  return parent.kind === "allowed";
+}
+
+/**
+ * **行ごとの判定の5つ目のキー `create_child`**(`V23-M7-T05b`。`ADR-0542` §Decision 4-5・限定5。
+ * 決定 `D-V23-184`・`D-V23-189`)。
+ *
+ * - **親の表の権限のどれかが `create_child` を宣言しているときだけ関数を返す**(宣言の無い表では
+ *   `undefined` = 4キーのまま。宣言を見る前に行を1本も読まない)。
+ * - 値は**宣言に名の出る子の表 ID を鍵にした真偽**。 真は「作成の関門がその行で通る」(write で通るものも真)。
+ *   子の表の `inherit_from` のうちこの表を指す参照の項目の**全部**で、表示用の関門 {@link createParentDisplayAllows}
+ *   が通るときだけ真。 **行が無い(`_id` が無い)・指す項目が無い・上限・読めないは偽**(fail-closed)。
+ * - 拒否の種別も止めた層も載せない(`ADR-0542` §7 線5)。 **非 `export`**。
+ */
+function createChildDisplayJudge(params: {
+  manifest: Manifest;
+  tableId: string;
+  actorId: string | null;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): ((row: Record<string, unknown>) => Readonly<Record<string, boolean>>) | undefined {
+  const { manifest, tableId, actorId, readRows } = params;
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const childIds: string[] = [];
+  for (const permission of Array.isArray(declared?.permissions) ? declared.permissions : []) {
+    for (const childId of Array.isArray(permission?.create_child) ? permission.create_child : []) {
+      if (typeof childId === "string" && !childIds.includes(childId)) {
+        childIds.push(childId);
+      }
+    }
+  }
+  if (childIds.length === 0) {
+    return undefined;
+  }
+  return (row) => {
+    const recordId = nonEmptyString(row?._id);
+    const answer: Record<string, boolean> = {};
+    for (const childId of childIds) {
+      const child = tablesOf(manifest).find((candidate) => candidate?.id === childId);
+      const childDeclared = child === undefined ? undefined : accessControlOf(child);
+      const inherits = Array.isArray(childDeclared?.inherit_from) ? childDeclared.inherit_from : [];
+      const fieldIds = inherits.filter((fieldId) => {
+        const field = child?.fields?.find((candidate) => candidate?.id === fieldId);
+        return field?.type === "reference" && field.reference_table === tableId;
+      });
+      answer[childId] =
+        recordId !== undefined &&
+        fieldIds.length > 0 &&
+        fieldIds.every((fieldId) =>
+          createParentDisplayAllows({
+            manifest,
+            childTableId: childId,
+            parentField: fieldId,
+            parentRecordId: recordId,
+            actorId,
+            readRows,
+          }),
+        );
+    }
+    return answer;
   };
 }
 
@@ -4516,6 +6011,11 @@ function judgeGrantParentAccess(params: {
   targetRow: Record<string, unknown>;
   holderMemberId: string | undefined;
   holderGroupId: string | undefined;
+  /**
+   * **【`V23-M6-T04`。`D-V23-152`・`D-V23-164`】相手の行(`principal_row`)の ID。** 渡したら、その行に `via` を
+   * 持つ人全員を相手の人として数える(1人でも親を読めなければ止める)。 渡さなければ今日と同じ。
+   */
+  holderPrincipalRowId?: string | undefined;
   memberRows: readonly Record<string, unknown>[];
   readRows: (tableId: string) => readonly Record<string, unknown>[];
   readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
@@ -4588,6 +6088,26 @@ function judgeGrantParentAccess(params: {
         accounts.add(account);
       }
     }
+    // **【`V23-M6-T04`。`D-V23-152`・`D-V23-164`】相手の行を指す付与は、その行に `via` を持つ人全員に落とす。**
+    const principal = principalRowOf(manifest, protectedTable.id);
+    const principalRowId = params.holderPrincipalRowId;
+    if (principal !== undefined && principalRowId !== undefined) {
+      for (const member of memberRows) {
+        const account = nonEmptyString(member?.[accountField]);
+        if (
+          account !== undefined &&
+          holdsPrincipalRow({
+            manifest,
+            principal,
+            recordId: principalRowId,
+            actor: account,
+            readRows,
+          })
+        ) {
+          accounts.add(account);
+        }
+      }
+    }
   }
 
   for (const fieldId of inheritFrom) {
@@ -4626,12 +6146,21 @@ function judgeGrantParentAccess(params: {
     const parentMemberRows =
       parentSources.memberTable === undefined ? [] : readRows(parentSources.memberTable);
     for (const account of accounts) {
+      // **【`V23-M6-T03`】親の付与は相手の人ごとに読み替える**(`D-V23-161`)。
       const verdict = judgeRecordAccess({
         manifest,
         tableId: parentTableId,
         row: parentRow,
         actorId: account,
-        grantRows: parentGrantRows,
+        grantRows: principalRowGrantRows({
+          manifest,
+          tableId: parentTableId,
+          row: parentRow,
+          actorId: account,
+          grantRows: parentGrantRows,
+          memberRows: parentMemberRows,
+          readRows,
+        }),
         memberRows: parentMemberRows,
       });
       if (!verdict.read) {
@@ -4772,6 +6301,8 @@ export const ANON_RESERVED_FIELDS: readonly string[] = [
   UNDELETABLE_FIELD,
   // **`V4-M10-T04` / `E-G49` / `ADR-0077` 限定7**(`ADR-0061` 限定10 / `ADR-0073` 限定7 の作法)。
   NO_DIRECT_CREATE_FIELD,
+  // **【`V23-M4-T05` / `D-V23-92`・`D-V23-98`】更新者も伏せる(4本 → 5本)。** 同じ作法。
+  UPDATED_BY_FIELD,
 ];
 
 // --- 受信 payload から予約規約フィールドを落とす(V4-M36 / D-V4-125)---------------------
@@ -4807,12 +6338,15 @@ export const ANON_RESERVED_FIELDS: readonly string[] = [
 /**
  * **受信 payload から無条件に取り除く予約規約フィールドの全量**(`D-V4-125`)。
  * **`ANON_RESERVED_FIELDS` との差は `st_owner` 1本だけである**(上のコメントの理由)。
+ * **【2026-09-30 訂正(`V23-M4-T10`)。上の一文を消していない】** 今日の差は `st_owner` と
+ * `st_updated_by` の2本である(`st_updated_by` を入れない理由は {@link UPDATED_BY_FIELD} の上の注釈)。
  */
 export const INBOUND_STRIPPED_RESERVED_FIELDS: readonly string[] = [
   PUBLIC_FIELD,
   // **【`V8-M20` / `J-G30`】`ADMIN_READABLE_FIELD` を落とした(4本 → 3本)。**
   UNDELETABLE_FIELD,
   NO_DIRECT_CREATE_FIELD,
+  // **【`V23-M4-T05`】更新者 `st_updated_by` は入れない**(`D-V23-110`。列を持つ表ではカーネルが捨てて空を押す)。
 ];
 
 /**
@@ -4917,6 +6451,8 @@ export function stripInboundReservedFields(values: Record<string, unknown>): str
  *
  * **【`V8-M20`。旧文を1バイトも消していない】** **`st_admin_readable` は `V8-M20` / `J-G30` で撤去された。**
  * **今日伏せるのは `ANON_RESERVED_FIELDS` の 4本 である**(その定数が正)。
+ * **【2026-09-30 訂正(`V23-M4-T10`)。上の一文を消していない】** `V23-M4` で `st_updated_by` を足し、
+ * 今日伏せるのは 5本 である(その定数が正であることは変わらない)。
  */
 export function projectForAnonymous(row: Record<string, unknown>): Record<string, unknown> {
   const projected: Record<string, unknown> = {};
@@ -5699,7 +7235,11 @@ function evaluateRoleCondition(
   row: Record<string, unknown> | undefined,
   userId: string | null,
 ): RoleConditionOutcome {
-  const when = rule.when;
+  // **【`V21-M2`。旧の1行を逐語で残す】旧: `const when = rule.when;`**
+  // **規則から条件を取り出す1本({@link conditionOf})へ移した** —— **条件を「評価する」口は
+  // 今日もこの関数1本であり、取り出す口も {@link conditionOf} の1行だけである**
+  // (`role-conditions-enforcement.test.ts` の (E) が数える綴りは1回のまま)。
+  const when = conditionOf(rule);
   if (when === undefined || when === null) {
     return { conditional: false, holds: true };
   }
@@ -5707,6 +7247,43 @@ function evaluateRoleCondition(
     return { conditional: true, holds: true };
   }
   return { conditional: true, holds: roleConditionHolds(when, row, userId) };
+}
+
+/**
+ * **規則1本から条件(`when`)を取り出す唯一の口**(`V21-M2`。`ADR-0482` §1-1 (iii-b))。
+ *
+ * **条件を取り出す製品コードは、リポジトリ全体でこの1行だけである** ——
+ * {@link evaluateRoleCondition}(評価)と {@link conditionNamesCurrentUser}(「自分」を含むか)の
+ * 2つがこの1本から条件を受け取る。 **評価はしない。**
+ */
+function conditionOf(rule: Record<string, unknown>): unknown {
+  return rule.when;
+}
+
+/**
+ * **条件の木に「自分」(`equals_current_user`)の葉が1枚でも在るか**(`V21-M2`。非 export)。
+ *
+ * **評価ではない** —— **行も相手も見ず、木の形だけを見る。** **`not` の下に在っても真**
+ * (`ADR-0482` §1-1 (iii-b) の理由: `not` で包むと未ログインに真になりうる)。
+ * **深さの上限は適用時にカーネルが閉じている**が、壊れた木で止まらないよう 64 段で打ち切り、
+ * **打ち切ったときは真に倒す**(閉じる側)。
+ */
+function conditionNamesCurrentUser(condition: unknown, depth = 0): boolean {
+  if (depth > 64) {
+    return true;
+  }
+  if (typeof condition !== "object" || condition === null || Array.isArray(condition)) {
+    return false;
+  }
+  const node = condition as Record<string, unknown>;
+  if (Array.isArray(node.and) || Array.isArray(node.or)) {
+    const children = (Array.isArray(node.and) ? node.and : node.or) as unknown[];
+    return children.some((child) => conditionNamesCurrentUser(child, depth + 1));
+  }
+  if (Object.hasOwn(node, "not")) {
+    return conditionNamesCurrentUser(node.not, depth + 1);
+  }
+  return node.equals_current_user === true;
 }
 
 /**
@@ -6257,7 +7834,17 @@ export type RecordPopulationScope =
    * ない**(`ADR-0435` §Status 4)。 **【禁止】「安全になった」と書かない。**
    */
   | "unnamed_view_wall"
-  | "role_conditional";
+  | "role_conditional"
+  /**
+   * **未ログインの表ごとの読取**(`V21-M2`。`ADR-0482` の `AN-G1` §1-1)。
+   *
+   * **公開の印を持たず、未ログインの読取規則を持ち、所有者・付与・名簿・「自分」の条件の
+   * どれにも当たらない表**({@link anonymousTableReadable})への未ログインの読取がこの枝に入る。
+   * **行は規則の条件(`when`)で絞る**(条件が無ければ全行)。 **予約規約フィールドを伏せるのは
+   * 呼び出し側**(`projectForAnonymous`。`anonymous_public` の枝と同じ)。
+   * **名乗らない読取の壁はこの枝に掛けない**(`ADR-0482` §1-5)。
+   */
+  | "anonymous_table_read";
 
 /** {@link RecordPopulationScope} + **絞りが要らない**(分岐5 = 非スコープ)。 */
 export type RecordPopulationClass = RecordPopulationScope | "unfiltered";
@@ -6291,6 +7878,11 @@ export type RecordRowAccess = {
   readonly write: boolean;
   readonly delete: boolean;
   readonly grant_write: boolean;
+  /**
+   * **【`V23-M7-T05b`。`ADR-0542` §Decision 4-5。`ADR-0402` 限定2 を引き直す】5つ目のキー**。 **親の表の
+   * 権限のどれかが `create_child` を宣言しているときだけ載る**(鍵は宣言に名の出る子の表 ID、値は真偽)。
+   */
+  readonly create_child?: Readonly<Record<string, boolean>>;
 };
 
 export type RecordPopulation =
@@ -6325,8 +7917,10 @@ export type RecordPopulation =
  */
 export function recordRowAccessMap(params: {
   entries: readonly { row: Record<string, unknown>; verdict: RecordAccessVerdict }[];
-  grantWrite: (row: Record<string, unknown>) => boolean;
+  grantWrite: RowGrantWriteJudgeWithChild;
 }): Record<string, RecordRowAccess> {
+  // **【`V23-M7-T05b`】5つ目のキーは `grantWrite.createChild` が在るときだけ載せる**(宣言の無い表では4キーのまま)。
+  const createChild = params.grantWrite.createChild;
   const map: Record<string, RecordRowAccess> = {};
   for (const entry of params.entries) {
     const recordId = nonEmptyString(entry.row?._id);
@@ -6338,6 +7932,7 @@ export function recordRowAccessMap(params: {
       write: entry.verdict.write,
       delete: entry.verdict.delete,
       grant_write: params.grantWrite(entry.row),
+      ...(createChild === undefined ? {} : { create_child: createChild(entry.row) }),
     };
   }
   return map;
@@ -6621,6 +8216,209 @@ function unnamedViewReadWallCloses(params: {
   });
 }
 
+// =====================================================================================
+// **未ログインの表ごとの読取**(`V21-M2`。`ADR-0482` の `AN-G1` §1-1〜§1-2b)
+//
+// **判定の家はこの節の1本である**(`ADR-0482` §1-6)。 **`app.ts` の関門の条件式に規則を読む
+// 式を直に書かない**(`ADR-0314` 限定4 / `ADR-0061` 限定4)。 **カーネルの適用時検査(§1-2b)も
+// 同じ述語を呼ぶ**(判定を2本目に書かない)。
+// =====================================================================================
+
+/**
+ * **未ログインに閉じている理由**(`ADR-0482` §1-1 の (i)(iii)(iii-b))。
+ *
+ * - `st_public` … 公開の印を持つ表(今日の行ごとの枝を通る。表ごとの枝には入らない)
+ * - `st_owner` … 所有者で絞る表
+ * - `access_control` … 行ごとの付与を有効にした表
+ * - `access_registry` … 付与・名簿・グループの表(述語3本。**4本目を作らない**)
+ * - `self_condition` … いずれかの役割の、その表を名指しした読取規則の条件に「自分」が在る表
+ */
+type AnonymousTableProtection =
+  | "st_public"
+  | "st_owner"
+  | "access_control"
+  | "access_registry"
+  | "self_condition";
+
+/** **その表が未ログインの表ごとの読取に閉じている理由の全量**(非 export。空なら閉じていない)。 */
+function anonymousTableProtections(
+  manifest: Manifest,
+  tableId: string,
+): readonly AnonymousTableProtection[] {
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  if (table === undefined) {
+    return [];
+  }
+  const reasons: AnonymousTableProtection[] = [];
+  if (publicField(table) !== undefined) {
+    reasons.push("st_public");
+  }
+  if (personalOwnerField(table) !== undefined) {
+    reasons.push("st_owner");
+  }
+  if (isAccessControlledTable(table)) {
+    reasons.push("access_control");
+  }
+  if (
+    isGrantTable(manifest, tableId) ||
+    isMemberTable(manifest, tableId) ||
+    isGroupTable(manifest, tableId)
+  ) {
+    reasons.push("access_registry");
+  }
+  const target: RoleAccessTarget = { target: "table", table: tableId };
+  const selfConditioned = manifestRoleDeclarations(manifest).some((declaration) =>
+    roleRulesOf(declaration).some(
+      (rule) =>
+        ruleNamesTarget(rule, target) &&
+        (rule.can as readonly unknown[]).includes("read") &&
+        conditionNamesCurrentUser(conditionOf(rule)),
+    ),
+  );
+  if (selfConditioned) {
+    reasons.push("self_condition");
+  }
+  return reasons;
+}
+
+/** 未ログイン(`anonymous`)の役割が、その表の読取規則を1本以上持つか(条件つきを含む)。 */
+function anonymousReadsTable(manifest: Manifest, tableId: string): boolean {
+  return judgeRoleAccess({
+    manifest,
+    roles: null,
+    target: { target: "table", table: tableId },
+    verb: "read",
+  }).allowed;
+}
+
+/**
+ * **未ログインの表ごとの読取の枝に入る表か**(`V21-M2`。`ADR-0482` §1-1 の (i)〜(iv) と (iii-b))。
+ *
+ * **真 = 未ログインの一覧・単件・子一覧を通す**(行は規則の条件で絞り、予約規約フィールドを
+ * 伏せる。呼び出し側が {@link recordPopulationScope} の `anonymous_table_read` の枝で行う)。
+ * **偽 = 今日どおり**(`st_public` の表は行ごとの枝へ、それ以外は 401)。
+ *
+ * **ログインした人の判定には1バイトも入らない**(呼ぶのは未ログインの関門だけ)。
+ */
+export function anonymousTableReadable(manifest: Manifest, table: Table): boolean {
+  const tableId = table?.id;
+  if (typeof tableId !== "string" || isSystemTableId(tableId)) {
+    return false;
+  }
+  if (anonymousTableProtections(manifest, tableId).length > 0) {
+    return false;
+  }
+  return anonymousReadsTable(manifest, tableId);
+}
+
+/**
+ * **差分の前後で、未ログインの表ごとの読取について拒否すべきものを返す**
+ * (`V21-M2`。`ADR-0482` §1-2b。**判定だけ。文言はカーネルが組む**)。
+ *
+ * **前は閉じていた表 T が後で閉じなくなり、後の未ログインの要素に T を名指しした読取規則が
+ * ある**(保護を外す op)とき、T を1件返す。 **前後の差だけを見るので、保護の状態を変えない
+ * 差分は1本も当たらない**(`D-V8-66` の問題を起こさない)。
+ *
+ * **【入れていないもの。隠さない】** `ADR-0482` §1-1 (iii-b) の後半「未ログインの規則の条件に
+ * 『自分』を書いた差分は適用時に拒否する」は**入れていない**。 入れると授権(`ADR-0483`)の外の
+ * 既存の期待値2本(`role-conditions.test.ts` の (T-6) / `role-conditions-enforcement.test.ts`
+ * の (D))が動くため、`V21-M2` の記録に未決として書き、メインに戻した。 **実行時は閉じている**
+ * —— その表は (iii-b) で表ごとの枝に入らない(401)。 `st_public` の表では「自分」は未ログインで
+ * 偽に評価される(今日どおり)。
+ */
+export type AnonymousReadDiffViolation = {
+  readonly kind: "protection_removed";
+  readonly table: string;
+  readonly removed: readonly string[];
+};
+
+export function anonymousReadDiffViolations(
+  before: Manifest,
+  after: Manifest,
+): readonly AnonymousReadDiffViolation[] {
+  const violations: AnonymousReadDiffViolation[] = [];
+  for (const table of tablesOf(after)) {
+    const tableId = table?.id;
+    if (typeof tableId !== "string" || !anonymousReadsTable(after, tableId)) {
+      continue;
+    }
+    const was = anonymousTableProtections(before, tableId);
+    if (was.length === 0) {
+      continue;
+    }
+    if (anonymousTableProtections(after, tableId).length === 0) {
+      violations.push({ kind: "protection_removed", table: tableId, removed: was });
+    }
+  }
+  return violations;
+}
+
+// --- 未ログインにだけ隠す項目(`V21-M2B`。`ADR-0482` の `AN-G2`)-----------------------------
+//
+// **判定の家はここ1本である**(`ADR-0482` §2-6 の末尾 / 計画 §8-6 の26)。 **未ログインの判定は
+// 今日どおり呼び出し側の「名乗り無し」(`roles = null` / 未ログインの窓の旗)で分け、ここに
+// 2本目の未ログインの判定を書かない。** ここが持つのは隠す項目の集合 H(T) の1本だけである。
+// **H を「無い項目」にしたマニフェストの写しを作る射影は `anonymous-hidden-fields.ts` に置いた**
+// (画面の定義の区切り・合計のキーまで写すので、「母集団の判定は群を知らない」
+// —— `record-population-home.test.ts` の (C-1) / `list-group-by.test.ts` の (h) —— を保つため。
+// 射影は H を読むだけで、判定を持たない)。
+//
+// **効かせ方**: 未ログインの読取の口(一覧・単件・子一覧・画像の配信・`GET /public`)は、
+// 読み込んだマニフェストの代わりに `manifestForAnonymous` の写しを使う。 **カーネルの読取は
+// 宣言された列だけを SELECT し、並べ替え・絞り込み・合計・区切りの項目の実在をマニフェストで
+// 検査する** ので、隠した項目は行に載らず、引数で名指しすると「存在しない項目」と同じ 400 になり、
+// 400 の `allowed_values` にも出ない(`ADR-0482` §2-6 の表の1〜2行目)。
+//
+// **ログインした人の口はこの写しを1度も使わない**(`D-V21-16`。ログインした人の見え方を変えない)。
+
+/**
+ * **表 T の未ログインに隠す項目の集合 H(T)**(`ADR-0482` §2-3 / §2-4)。
+ *
+ * **未ログインの要素(`id: "anonymous"`)の規則のうち、対象が表で T を名指ししたものすべての
+ * `hidden_fields` の和集合**(条件つきの規則も、どの行に当たったかに関わらず足す)。
+ *
+ * **予約規約フィールド(`ANON_RESERVED_FIELDS`)は集合に入れない** —— 行からは
+ * {@link projectForAnonymous} が今日どおり伏せており、写しから消すと公開の印・所有者の判定
+ * (`publicField` / `personalOwnerField`)が「印の無い表」と読み違え、閉じていた行が開く向きに
+ * 倒れるためである(安全側)。
+ */
+export function anonymousHiddenFieldIds(manifest: unknown, tableId: string): ReadonlySet<string> {
+  const hidden = new Set<string>();
+  for (const declaration of manifestRoleDeclarations(manifest)) {
+    if (declaration.id !== ANONYMOUS_AUDIENCE) {
+      continue;
+    }
+    for (const rule of roleRulesOf(declaration)) {
+      if (rule.target !== "table" || rule.table !== tableId || !Array.isArray(rule.hidden_fields)) {
+        continue;
+      }
+      for (const fieldId of rule.hidden_fields as readonly unknown[]) {
+        if (typeof fieldId === "string" && !ANON_RESERVED_FIELDS.includes(fieldId)) {
+          hidden.add(fieldId);
+        }
+      }
+    }
+  }
+  // **【`V23-M4-T10` / `ADR-0531` 2】押す対象の更新者 `st_updated_by` は H に入れる。** 行からは
+  // `projectForAnonymous` が伏せているが、それだけでは未ログインが `filter.st_updated_by=<id>` /
+  // `sort=st_updated_by` で「誰が最後に更新したか」を当てられた(独立点検の中1)。 H に入れると、
+  // 名指しは存在しない項目と同じ 400 になり、`allowed_values` にも出ない。 **判定には使わない列なので**
+  // (`ADR-0500` 限定19)、上の段落の「写しから消すと判定を読み違える」は当たらない。 押さない
+  // `st_updated_by`(text でないか必須)と、列の無い表は今日と同じ(`ADR-0531` 限定1)。
+  const tables = (manifest as { app?: { tables?: unknown } } | null)?.app?.tables;
+  const table = Array.isArray(tables)
+    ? (tables as Table[]).find((candidate) => candidate?.id === tableId)
+    : undefined;
+  if (
+    table !== undefined &&
+    Array.isArray(table.fields) &&
+    stampedUpdatedByField(table) !== undefined
+  ) {
+    hidden.add(UPDATED_BY_FIELD);
+  }
+  return hidden;
+}
+
 /**
  * **どの絞り方をする表かを決める**(行を1件も見ない)。
  *
@@ -6656,7 +8454,16 @@ export function recordPopulationScope(params: {
    * **省略は未ログイン(`anonymous`)と同じである。**
    */
   roles?: ActorRoles | undefined;
+  /**
+   * **未ログインの表ごとの読取か**(`V21-M2`。未ログインの関門が {@link anonymousTableReadable}
+   * で決めた旗をそのまま渡す)。 **省略(`undefined`)は偽であり、着手前と1バイトも同じ答えになる。**
+   */
+  anonymousTableRead?: boolean | undefined;
 }): RecordPopulationClass {
+  // **【`V21-M2` / `ADR-0482` §1-5】未ログインの表ごとの読取には、下の壁を掛けない。**
+  // **ログインした人と `st_public` の表の未ログインには今日どおり掛ける**(旗が立つのは
+  // 未ログインの関門が表ごとの枝に入れたときだけである)。
+  //
   // **【`V18-M4-T02` / `PM-G10` / `ADR-0435` §Decision 2 の 2】画面名を名乗らない読取の壁。**
   //
   // **既存の5分岐の**手前**に置く** —— **壁が閉じたときの答えは「行を1件も返さない」であり、
@@ -6666,6 +8473,7 @@ export function recordPopulationScope(params: {
   // **`unnamedViewRead` を渡さない呼び出し(集計表の口 / AI の口 / 既存の検査)では、
   // この `if` は1度も真にならない。**
   if (
+    params.anonymousTableRead !== true &&
     params.unnamedViewRead !== undefined &&
     unnamedViewReadWallCloses({
       manifest: params.manifest,
@@ -6679,6 +8487,10 @@ export function recordPopulationScope(params: {
   // **匿名公開は最初に見る** —— **匿名には actor が無いので、以降の分岐が成り立たない。**
   if (params.anonymousPublic) {
     return "anonymous_public";
+  }
+  // **【`V21-M2`】未ログインの表ごとの読取**(匿名公開と同じく、以降の分岐は actor を前提にする)。
+  if (params.anonymousTableRead === true) {
+    return "anonymous_table_read";
   }
   if (personalOwnerField(params.table) !== undefined) {
     return "owner_scoped";
@@ -6723,7 +8535,7 @@ export function judgeRecordPopulation(params: {
    * **`undefined` なら `access` を1件も組まない** —— **着手前と1バイトも変わらない。**
    * **ここで DB を読まない**(読み手は呼び出し側が持つ)。
    */
-  grantWrite?: ((row: Record<string, unknown>) => boolean) | undefined;
+  grantWrite?: RowGrantWriteJudgeWithChild | undefined;
   /**
    * **行を読む手**(`V18-M3-T02`。`app.ts` の `memoizedRowReaders` が組んだもの)。
    *
@@ -6745,6 +8557,11 @@ export function judgeRecordPopulation(params: {
    * **`undefined`(既定)では着手前と1バイトも同じ答えになる。**
    */
   unnamedViewRead?: UnnamedViewReadShape | undefined;
+  /**
+   * **未ログインの表ごとの読取か**(`V21-M2`)。 **そのまま {@link recordPopulationScope} へ渡る。**
+   * **省略は偽**(着手前と1バイトも同じ答え)。
+   */
+  anonymousTableRead?: boolean | undefined;
 }): RecordPopulation {
   const { manifest, tableId, rows, actorId, roles, tableRead, judge, grantWrite } = params;
   const scope = recordPopulationScope(params);
@@ -6878,12 +8695,14 @@ export function judgeRecordPopulation(params: {
       ) {
         return { kind: "visible", scope, rows: registryRows };
       }
+      // **【`V23-M6-T03`】見える範囲には行を相手にした付与(S 経由)を入れない**(`D-V23-165`)——
+      // **読み替えを切った読む手を渡す**({@link accessRegistryVisibleIds} の本文は変えない)。
       const visibleIds = accessRegistryVisibleIds({
         manifest,
         tableId,
         actorId,
         roles,
-        readRows,
+        readRows: withoutPrincipalRows(readRows),
         readRow,
       });
       return {
@@ -6905,6 +8724,10 @@ export function judgeRecordPopulation(params: {
       return { kind: "visible", scope, rows: [] };
     }
     case "role_conditional":
+      return { kind: "visible", scope, rows: rows.filter((row) => roleRowReadable(row)) };
+    case "anonymous_table_read":
+      // **【`V21-M2` / `ADR-0482` §1-1】規則の条件に合う行だけ**(条件が無ければ全行)。
+      // **公開の印は見ない**(この枝に入る表は `st_public` を持たない)。
       return { kind: "visible", scope, rows: rows.filter((row) => roleRowReadable(row)) };
     case "unfiltered":
       // **絞りは要らない** —— **レコード一覧は SQL 1文へ、集計表は全行を母集団にする。**
@@ -7073,4 +8896,890 @@ export function isRoleActionWriteAllowed(
     }
   }
   return walled ? allowed : true;
+}
+
+// =====================================================================================
+// **マイページの「自分」の条件の表**(`V22-M3-T02`。`ADR-0488` §Decision 1 の 4 の (ii) /
+// `ADR-0490` §Decision 1 の行1 / `ADR-0492` §Decision 1 の行1・§Decision 3 の限定13'')
+//
+// **この節は `22f1b0fb` の中身の後ろへの追記だけである** —— 上の述語は1バイトも書き換えていない。
+// 足したのは export 1本({@link myPageSelfConditionFields})と非 export の補助1本だけ(限定13'')。
+// 関数宣言の巻き上げが効くので、上の非 export(`ruleNamesTarget` / `conditionOf`)をそのまま呼ぶ。
+// **規則を読むのは `owner-scope.ts` の中に閉じる**(`ADR-0305` 限定2 の検査の列の走査を守る。第2列は
+// `ADR-0492` が破ると名指しした2か所目)。 `src/shared/my-page.ts` はこの答えを受け取るだけで規則を読まない。
+// =====================================================================================
+
+/**
+ * **その表の「自分」の条件の列名**(`V22-M3-T02`。マイページの「自分の記録」の (ii))。
+ *
+ * **全役割の、その表を名指しした `read` を含む規則**(`anonymousTableProtections` と同じ範囲。閲覧者の
+ * 役割で絞らない)の条件の木から、**`not` の下にない** `equals_current_user: true` の葉の `field` を、
+ * 出てきた順に重複なく返す。 **深さ64を越えた枝からは1つも返さない**(数えない側 = 載せない側に倒す)。
+ *
+ * - **`conditionNamesCurrentUser` とは意味が違う**(あちらは未ログインを閉じる側なので `not` の下も真・
+ *   打ち切りも真)。 **「返す列名が空でない ⇒ 同じ条件で `conditionNamesCurrentUser` が真」だけが成り立つ**
+ *   (`ADR-0492` §Decision 1-1。検査は `src/kernel/workspace-my-page.test.ts` の (8))。
+ * - **評価ではない** —— 行も相手も見ず、木の形だけを見る。 列の型(`text` か)は見ない(呼び出し側が見る)。
+ * - 形の壊れた定義では空を返す(例外を投げない)。
+ */
+export function myPageSelfConditionFields(manifest: Manifest, tableId: string): readonly string[] {
+  const target: RoleAccessTarget = { target: "table", table: tableId };
+  const fields: string[] = [];
+  for (const declaration of manifestRoleDeclarations(manifest)) {
+    for (const rule of roleRulesOf(declaration)) {
+      if (!ruleNamesTarget(rule, target) || !(rule.can as readonly unknown[]).includes("read")) {
+        continue;
+      }
+      collectSelfConditionFields(conditionOf(rule), 0, fields);
+    }
+  }
+  return fields;
+}
+
+/**
+ * **条件の木から「自分」の葉の列名を集める**(非 export。{@link myPageSelfConditionFields} の補助1本)。
+ * たどり方(`and` / `or` の子へ深さ+1・64段で打ち切り)は `conditionNamesCurrentUser` と同じ段で行い、
+ * **`not` の下へは降りない。**
+ */
+function collectSelfConditionFields(condition: unknown, depth: number, fields: string[]): void {
+  if (depth > 64) {
+    return;
+  }
+  if (typeof condition !== "object" || condition === null || Array.isArray(condition)) {
+    return;
+  }
+  const node = condition as Record<string, unknown>;
+  if (Array.isArray(node.and) || Array.isArray(node.or)) {
+    const children = (Array.isArray(node.and) ? node.and : node.or) as unknown[];
+    for (const child of children) {
+      collectSelfConditionFields(child, depth + 1, fields);
+    }
+    return;
+  }
+  if (Object.hasOwn(node, "not")) {
+    return;
+  }
+  if (
+    node.equals_current_user === true &&
+    typeof node.field === "string" &&
+    !fields.includes(node.field)
+  ) {
+    fields.push(node.field);
+  }
+}
+
+// =====================================================================================
+// **行の招待: 誰が出せるか・誰が見られるか**(`V23-M5-T03`。`ADR-0532` §Decision 1-2・1-6。
+// 決定 `D-V23-121`・`D-V23-127`・`D-V23-131`・`D-V23-133` 中7・`D-V23-134` (1))
+// =====================================================================================
+
+/** `expires_days` を省いたときの日数(`ADR-0532` §Decision 1-1)。 */
+const ROW_INVITATION_DEFAULT_EXPIRES_DAYS = 7;
+
+/**
+ * **行の招待の宣言と、その行について相手が何をできるか**を返す(招待の口が読む唯一の入口)。
+ *
+ * - **`app.ts` は `access_control` の綴りを1文字も持たない**(`D-V23-134` (1)。`ADR-0532` 式11)ので、
+ *   宣言の有無を読む述語はここに置く。
+ * - `tableId` を省くと、アプリの中で招待を宣言した表(`enabled: true` の表だけ)の一覧だけを返す
+ *   (自分宛ての一覧・返答の口の「宣言の無いアプリは 404」に使う)。 1つも無ければ `undefined`。
+ * - `tableId` を渡すと、その表の `grantable`(`permissions[].name` つき)と期限の日数を返す。
+ *   宣言が無い・`enabled: false` の表は `undefined`。
+ * - `subject` を渡すと、その行について **出せるか(`issue`)と、一覧・取消ができるか(`manage`)** を返す。
+ *   - 運営者(実効ロールに `owner`)は両方とも真。
+ *   - 出せるのは、その行に `by`(省けば `[creator_permission]`)のどれかを持つ人。
+ *   - 一覧・取消ができるのは、`by` を持つ人と `creator_permission` を持つ人。
+ *   - **持つかどうかの解き方は {@link resolveGrantedPermissionNames} 1本**(行への直接の付与と
+ *     グループ経由の付与。**親はたどらない**。`D-V23-131`)。 付与の行は {@link judgeGrantWrite} と
+ *     同じく {@link grantsWithExistingGroups} を通した後の値を使う。
+ * - **判定の家を2本目にしない**: 名前の解決は既存の関数を呼ぶだけで、本文は1バイトも変えない(`ADR-0532` 式13)。
+ *
+ * 【2026-09-30。`V23-M5-T05` の追記。上の行を消していない】
+ * - `tableId` と `inviteeRoles` を渡すと、**その実効ロールが `target_roles` のどれかに合うか**
+ *   (`targetMatches`)も返す(自分宛ての一覧が「役割が合わない招待は返さない」に使う。`D-V23-126`)。
+ *   合わせ方は承諾の判定({@link judgeRowInvitationAccept})と同じ: `target_roles` が空・無いなら合う、
+ *   あれば {@link declaredMatchesRoles}。 渡さなければ `targetMatches` は返さない(既存の呼び出しの値は同じ)。
+ * - export の名前は増やさない(`ADR-0532` 限定3 の2名は使い切っている)。
+ *
+ * 【2026-09-30。`V23-M5-T11` の独立点検の処置(`ADR-0537` §2)の追記。上の行を消していない】
+ * - `inviteeRoles` と一緒に `inviteeGroup`(招待された行と受け手の ID と `readRows`)を渡すと、
+ *   **承諾で受け手の名簿のグループ欄が替わるか**(`changesGroup`)も返す。 真になるのは、表が `group_from` を
+ *   宣言し(名簿のグループ欄 `members.group` もある)、招待した行のその項目の値が空でなく、その値が受け手の
+ *   今のグループと違うとき(受け手の名簿の行がちょうど1行でなければ「今のグループ」は無いとみなして違う)。
+ *   式は承諾の判定がグループ欄に書くかどうかと同じ1本({@link rowInvitationGroupTarget})を通す。
+ *   グループの名前や ID は返さない。 渡さなければ `changesGroup` は返さない(既存の呼び出しの値は同じ)。
+ */
+export function rowInvitationAccess(params: {
+  manifest: Manifest;
+  tableId?: string;
+  /** 自分宛ての一覧で、受け手の実効ロールが `target_roles` に合うかを見るときだけ渡す(`V23-M5-T05`)。 */
+  inviteeRoles?: ActorRoles;
+  /** 自分宛ての一覧で、承諾で所属グループが替わるかを見るときだけ渡す(`V23-M5-T11`。`ADR-0537` §2)。 */
+  inviteeGroup?: {
+    row: Record<string, unknown>;
+    inviteeId: string;
+    readRows: (tableId: string) => readonly Record<string, unknown>[];
+  };
+  subject?: {
+    recordId: string;
+    actorId: string | null;
+    role: ActorRoles;
+    readRows: (tableId: string) => readonly Record<string, unknown>[];
+  };
+  /**
+   * 【`V23-M6-T05`】行の招待用コードの口(`ADR-0538` §1-5)。 `tableId` の表がどこかの表の
+   * `grant.principal_row.table` か、`recordId` と人を渡せばその行のコードを見られるか(`codeAdmin`)。
+   */
+  inviteCode?: {
+    tableId: string;
+    recordId?: string;
+    actorId?: string | null;
+    role?: ActorRoles;
+    readRows?: (tableId: string) => readonly Record<string, unknown>[];
+  };
+  /**
+   * 【`V23-M6-T06`】コードの招待(`ADR-0538` §1-6)。 `tableId`(R)と一緒に渡す。 空で渡すと R が `principal_row` を
+   * 宣言しているか(`principalRowTable`)だけを返す。 宛先の行(S の表と行)と人を渡すと、S が R の相手の表で行が
+   * 在るか(`principalRowMatches`)・その人が S に `via` を持つか(`principalRowHolds`)・S の管理者か(`principalRowAdmin`)。
+   */
+  principalRow?: {
+    tableId?: string;
+    recordId?: string;
+    actorId?: string | null;
+    readRows?: (tableId: string) => readonly Record<string, unknown>[];
+    /**
+     * 【2026-10-01。決定 `D-V23-176`】招待する行(R の行 ID)。 渡すと、同じ R と同じ S を指す付与の行が既に在るか
+     * (`principalRowGranted`)も返す。 渡さなければ返さない(既存の呼び出しの値は同じ)。
+     */
+    targetRecordId?: string;
+  };
+}):
+  | {
+      readonly tableIds: readonly string[];
+      readonly grantable: readonly { readonly id: string; readonly name: string }[];
+      readonly expiresDays: number;
+      readonly issue: boolean;
+      readonly manage: boolean;
+      readonly targetMatches?: boolean;
+      readonly changesGroup?: boolean;
+      readonly codeAdmin?: boolean;
+      readonly principalRowTable?: string | undefined;
+      readonly principalRowMatches?: boolean;
+      readonly principalRowHolds?: boolean;
+      readonly principalRowAdmin?: boolean;
+      readonly principalRowGranted?: boolean;
+    }
+  | undefined {
+  const { manifest, tableId, subject } = params;
+  if (params.inviteCode !== undefined) {
+    return rowInviteCodeAccess(manifest, params.inviteCode);
+  }
+  const declaredTables: { table: Table; declared: AccessControlDeclaration }[] = [];
+  for (const table of tablesOf(manifest)) {
+    const declared = accessControlOf(table);
+    const invitations = declared?.invitations;
+    if (
+      declared !== undefined &&
+      typeof invitations === "object" &&
+      invitations !== null &&
+      Array.isArray(invitations.grantable)
+    ) {
+      declaredTables.push({ table, declared });
+    }
+  }
+  if (declaredTables.length === 0) {
+    return undefined;
+  }
+  const tableIds = declaredTables.map((entry) => entry.table.id);
+  if (tableId === undefined) {
+    return {
+      tableIds,
+      grantable: [],
+      expiresDays: ROW_INVITATION_DEFAULT_EXPIRES_DAYS,
+      issue: false,
+      manage: false,
+    };
+  }
+  const entry = declaredTables.find((candidate) => candidate.table.id === tableId);
+  if (entry === undefined) {
+    return undefined;
+  }
+  const { declared } = entry;
+  const invitations = declared.invitations as NonNullable<AccessControlDeclaration["invitations"]>;
+  const permissions = Array.isArray(declared.permissions) ? declared.permissions : [];
+  const grantable = invitations.grantable
+    .filter((id): id is string => typeof id === "string")
+    .map((id) => ({
+      id,
+      name: permissions.find((permission) => permission?.id === id)?.name ?? id,
+    }));
+  const days = invitations.expires_days;
+  const expiresDays =
+    typeof days === "number" && Number.isInteger(days) && days >= 1 && days <= 30
+      ? days
+      : ROW_INVITATION_DEFAULT_EXPIRES_DAYS;
+  // **【`V23-M6-T06`】コードの招待**(`ADR-0538` §Decision 1-6。決定 `D-V23-154`・`D-V23-163`・`D-V23-166`)。
+  // 渡さなければ下の今日の枝のまま(戻り値も同じ)。
+  if (params.principalRow !== undefined) {
+    return {
+      tableIds,
+      grantable,
+      expiresDays,
+      issue: false,
+      manage: false,
+      ...rowCodeInvitationTarget(manifest, tableId, params.principalRow),
+    };
+  }
+  if (params.inviteeRoles !== undefined) {
+    const targetRoles = Array.isArray(invitations.target_roles) ? invitations.target_roles : [];
+    const targetMatches =
+      targetRoles.length === 0 || declaredMatchesRoles(targetRoles, params.inviteeRoles);
+    const inviteeGroup = params.inviteeGroup;
+    if (inviteeGroup !== undefined) {
+      const target = rowInvitationGroupTarget(declared, inviteeGroup.row);
+      const changesGroup =
+        target !== undefined &&
+        (() => {
+          const own = inviteeGroup
+            .readRows(target.memberTableId)
+            .filter((member) => member?.[target.accountField] === inviteeGroup.inviteeId);
+          return !(own.length === 1 && nonEmptyString(own[0]?.[target.fieldId]) === target.value);
+        })();
+      return {
+        tableIds,
+        grantable,
+        expiresDays,
+        issue: false,
+        manage: false,
+        targetMatches,
+        changesGroup,
+      };
+    }
+    return { tableIds, grantable, expiresDays, issue: false, manage: false, targetMatches };
+  }
+  if (subject === undefined) {
+    return { tableIds, grantable, expiresDays, issue: false, manage: false };
+  }
+  if (declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, subject.role)) {
+    return { tableIds, grantable, expiresDays, issue: true, manage: true };
+  }
+  const actor = nonEmptyString(subject.actorId);
+  const grantTable = nonEmptyString(declared.grant?.table);
+  if (actor === undefined || grantTable === undefined) {
+    return { tableIds, grantable, expiresDays, issue: false, manage: false };
+  }
+  const groupTableId = nonEmptyString(declared.groups?.table);
+  const memberTable = nonEmptyString(declared.members?.table);
+  const names = resolveGrantedPermissionNames({
+    declared,
+    recordId: subject.recordId,
+    actor,
+    grantRows: grantsWithExistingGroups({
+      manifest,
+      tableId,
+      grantRows: subject.readRows(grantTable),
+      groupRows: groupTableId === undefined ? [] : subject.readRows(groupTableId),
+    }),
+    memberRows: memberTable === undefined ? [] : subject.readRows(memberTable),
+  });
+  const creatorName = nonEmptyString(declared.creator_permission);
+  const by = Array.isArray(invitations.by)
+    ? invitations.by
+    : creatorName === undefined
+      ? []
+      : [creatorName];
+  const issue = names !== undefined && by.some((name) => names.has(name));
+  const manage =
+    issue || (names !== undefined && creatorName !== undefined && names.has(creatorName));
+  return { tableIds, grantable, expiresDays, issue, manage };
+}
+
+/**
+ * **【`V23-M6-T05`】行の招待用コードを見られるか**(`ADR-0538` §Decision 1-5。決定 `D-V23-153`。
+ * {@link rowInvitationAccess} の `inviteCode` の中身。 export の名前は増やさない)。
+ *
+ * - **口が開くのは、その表がどこかの表の `grant.principal_row.table` で、その表自身が行ごとの付与を宣言している
+ *   ときだけ**(それ以外は `undefined` = 口は登録の無いパスと同じ 404 で、`app.sqlite` に触れない)。
+ * - `recordId` を渡すと `codeAdmin` を返す。 **真になるのは運営(実効ロールに `owner`)と、その行に
+ *   `creator_permission` を持つ人**(行への直接の付与とグループ経由の付与だけ。**親は辿らない**。
+ *   **行を相手にした付与(S 経由)は数えない** —— 読み替えの {@link principalRowGrantRows} を通さない)。
+ *   持つかどうかの解き方は {@link resolveGrantedPermissionNames} 1本(本文は変えない)。
+ */
+function rowInviteCodeAccess(
+  manifest: Manifest,
+  code: NonNullable<Parameters<typeof rowInvitationAccess>[0]["inviteCode"]>,
+):
+  | {
+      readonly tableIds: readonly string[];
+      readonly grantable: readonly { readonly id: string; readonly name: string }[];
+      readonly expiresDays: number;
+      readonly issue: boolean;
+      readonly manage: boolean;
+      readonly codeAdmin: boolean;
+    }
+  | undefined {
+  const pointed = tablesOf(manifest).some(
+    (table) => principalRowOf(manifest, table.id)?.table === code.tableId,
+  );
+  const codeTable = tablesOf(manifest).find((table) => table?.id === code.tableId);
+  const declared = codeTable === undefined ? undefined : accessControlOf(codeTable);
+  if (!pointed || declared === undefined) {
+    return undefined;
+  }
+  const base = {
+    tableIds: [code.tableId],
+    grantable: [],
+    expiresDays: ROW_INVITATION_DEFAULT_EXPIRES_DAYS,
+    issue: false,
+    manage: false,
+  };
+  if (code.recordId === undefined) {
+    return { ...base, codeAdmin: false };
+  }
+  if (declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, code.role)) {
+    return { ...base, codeAdmin: true };
+  }
+  // 【2026-10-01。`V23-M6-T06`】下の式を {@link holdsRowCreatorPermission} へ移した(コードの招待の受け手と1本にするため)。
+  // 旧の式は移した先と同じ(`resolveGrantedPermissionNames` に直接とグループ経由の付与を渡し、`creator_permission` を持つか)。
+  return {
+    ...base,
+    codeAdmin: holdsRowCreatorPermission({
+      manifest,
+      tableId: code.tableId,
+      recordId: code.recordId,
+      actorId: code.actorId,
+      readRows: code.readRows,
+    }),
+  };
+}
+
+/**
+ * **その行に `creator_permission` を持つか**(`V23-M6-T05`・`T06`。非 export)。 行への直接の付与とグループ経由の付与だけ
+ * (**親は辿らない**。**S 経由は数えない** —— 読み替えの {@link principalRowGrantRows} を通さない)。 運営かは見ない。
+ * 解き方は {@link resolveGrantedPermissionNames} 1本(本文は変えない)。 宣言・人・読む手が欠ければ偽。
+ */
+function holdsRowCreatorPermission(params: {
+  manifest: Manifest;
+  tableId: string;
+  recordId: string;
+  actorId: string | null | undefined;
+  readRows: ((tableId: string) => readonly Record<string, unknown>[]) | undefined;
+}): boolean {
+  const { manifest, tableId, recordId, readRows } = params;
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const actor = nonEmptyString(params.actorId);
+  const grantTable = nonEmptyString(declared?.grant?.table);
+  const creatorName = nonEmptyString(declared?.creator_permission);
+  if (
+    declared === undefined ||
+    actor === undefined ||
+    grantTable === undefined ||
+    creatorName === undefined ||
+    readRows === undefined
+  ) {
+    return false;
+  }
+  const groupTableId = nonEmptyString(declared.groups?.table);
+  const memberTable = nonEmptyString(declared.members?.table);
+  const names = resolveGrantedPermissionNames({
+    declared,
+    recordId,
+    actor,
+    grantRows: grantsWithExistingGroups({
+      manifest,
+      tableId,
+      grantRows: readRows(grantTable),
+      groupRows: groupTableId === undefined ? [] : readRows(groupTableId),
+    }),
+    memberRows: memberTable === undefined ? [] : readRows(memberTable),
+  });
+  return names?.has(creatorName) === true;
+}
+
+/**
+ * **【`V23-M6-T06`】コードの招待の宛先**(`ADR-0538` §Decision 1-6。{@link rowInvitationAccess} の `principalRow` の中身。
+ * 非 export)。
+ *
+ * - `principalRowTable`: R が `principal_row` を宣言していれば相手の表(S)。 無ければ `undefined`(呼ぶ側は `code` を見ない)。
+ * - `principalRowMatches`: 渡された S の表が R の相手の表で、S の行が在る。
+ * - `principalRowHolds`: その人が S に `via` を持つ(発行の時の自分への付与の禁止。運営も例外にしない。`D-V23-163`)。
+ * - `principalRowAdmin`: その人が S の管理者(`creator_permission` を直接かグループ経由で。親と S 経由は数えない。
+ *   **運営は受け手ではない** —— 役割を見ない)。 受け取り・承諾・辞退の受け手(`D-V23-154`)。
+ */
+function rowCodeInvitationTarget(
+  manifest: Manifest,
+  tableId: string,
+  target: NonNullable<Parameters<typeof rowInvitationAccess>[0]["principalRow"]>,
+): {
+  principalRowTable: string | undefined;
+  principalRowMatches: boolean;
+  principalRowHolds: boolean;
+  principalRowAdmin: boolean;
+  principalRowGranted?: boolean;
+} {
+  const principal = principalRowOf(manifest, tableId);
+  const actor = nonEmptyString(target.actorId);
+  const readRows = target.readRows;
+  const recordId = nonEmptyString(target.recordId);
+  const matches =
+    principal !== undefined &&
+    readRows !== undefined &&
+    recordId !== undefined &&
+    target.tableId === principal.table &&
+    readRows(principal.table).some((row) => nonEmptyString(row?._id) === recordId);
+  if (!matches || principal === undefined || recordId === undefined || actor === undefined) {
+    return {
+      principalRowTable: principal?.table,
+      principalRowMatches: matches,
+      principalRowHolds: false,
+      principalRowAdmin: false,
+    };
+  }
+  // 【2026-10-01。決定 `D-V23-176`】招待する行を渡されたときだけ、同じ R と同じ S の付与の行が既に在るかを返す。
+  const targetRecordId = nonEmptyString(target.targetRecordId);
+  return {
+    ...(targetRecordId === undefined
+      ? {}
+      : {
+          principalRowGranted: principalRowGrantExists({
+            manifest,
+            tableId,
+            recordId: targetRecordId,
+            principalRecordId: recordId,
+            readRows: readRows as (tableId: string) => readonly Record<string, unknown>[],
+          }),
+        }),
+    principalRowTable: principal.table,
+    principalRowMatches: true,
+    principalRowHolds: holdsPrincipalRow({
+      manifest,
+      principal,
+      recordId,
+      actor,
+      readRows: readRows as (tableId: string) => readonly Record<string, unknown>[],
+    }),
+    principalRowAdmin: holdsRowCreatorPermission({
+      manifest,
+      tableId: principal.table,
+      recordId,
+      actorId: actor,
+      readRows,
+    }),
+  };
+}
+
+/**
+ * **【2026-10-01。決定 `D-V23-176`】同じ R と同じ S を指す付与の行が既に在るか**(非 export)。 R の付与表の行のうち、
+ * `target` が R の行で、相手の列(`principal_row.column`)が S の行のものが1行でも在れば真。 権限の名前は問わない。
+ * 付与表の生の行を読む(見える範囲で絞らない)。 R が `principal_row` を宣言していなければ偽。
+ */
+function principalRowGrantExists(params: {
+  manifest: Manifest;
+  tableId: string;
+  recordId: string;
+  principalRecordId: string;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): boolean {
+  const { manifest, tableId, recordId, principalRecordId, readRows } = params;
+  const principal = principalRowOf(manifest, tableId);
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const grantTable = nonEmptyString(declared?.grant?.table);
+  const targetField = nonEmptyString(declared?.grant?.target);
+  if (principal === undefined || grantTable === undefined || targetField === undefined) {
+    return false;
+  }
+  return readRows(grantTable).some(
+    (row) => row?.[targetField] === recordId && row?.[principal.column] === principalRecordId,
+  );
+}
+
+// =====================================================================================
+// **行の招待: 承諾の判定**(`V23-M5-T04`。`ADR-0532` §Decision 1-3。決定 `D-V23-115`・`D-V23-123`・
+// `D-V23-131`・`D-V23-133` 重2・軽4・`D-V23-134` (2))
+// =====================================================================================
+
+/**
+ * **行の招待を承諾してよいかを答える1本**(承諾の口が呼ぶ唯一の判定)。
+ *
+ * - **招待者を主体に、付与表への HTTP の作成(単件 `POST`)と同じ関門を、同じ順に通す。** 替えるのは
+ *   「作成者か」の関門だけで、**「その行に `by`(省けば `[creator_permission]`)のどれかを今も持つか」**
+ *   にする({@link judgeGrantWrite} の `authorityPermissions`。持つかどうかの解き方は行への直接の付与と
+ *   グループ経由で、親はたどらない。`D-V23-131`)。 運営者かどうかは承諾の時点の実効ロールで見る(軽4)。
+ *   - 面: 表の書込({@link roleGateBlocksWithoutGrants})→ 直接作成の遮断({@link isDirectCreateSuppressed})→
+ *     ボタンの規則({@link isRoleActionWriteAllowed})→ 項目の規則({@link judgeRoleFieldWrite})→
+ *     行ごとの規則({@link judgeRoleAccess} に作る行を渡す)
+ *   - 点: {@link judgeGrantWrite}(作成者か → `by` を持つか / 相手の実在 / 自分宛て / 親の読取 `Z-G33`)
+ *   - 作成の関門: {@link judgeRootCreatableRoles} → {@link judgeCreateParentAccess}
+ * - **加えて承諾の時点で見るもの**(どれか1つでも欠けたら断る): 行が在る / 招待者の利用者が在る /
+ *   渡す権限が今の `grantable` に在る / 受け手の実効ロールが `target_roles` のどれかに合う
+ *   ({@link declaredMatchesRoles}。`ADR-0303` 限定5)/ 受け手の名簿の行がちょうど1行
+ *   (0行は `D-V23-115`)/ 期限内。
+ * - **付与の行は、受け手の名簿の行を相手にして作る**(`target` = 招待の行、`permission` = 招待の権限)。
+ *   通したときは、付与表の ID と書く値を返す。
+ * - **判定値の種類を {@link judgeGrantWrite} に足さない**(`ADR-0497` 限定9)。 断りの理由はここの戻り値である。
+ * - **書かない**(I/O を持たない純関数)。 行・名簿・付与は `readRows` / `readRow` で読む。
+ */
+export function judgeRowInvitationAccept(params: {
+  manifest: Manifest;
+  tableId: string;
+  recordId: string;
+  permission: string;
+  /** 招待者。 利用者が消えていれば `undefined`。 実効ロールは承諾の時点の値。 */
+  inviter: { id: string; roles: ActorRoles } | undefined;
+  /** 受け手(承諾しようとしているログイン中の人)。 */
+  invitee: { id: string; roles: ActorRoles };
+  expiresAt: string;
+  now: string;
+  readRows: (tableId: string) => readonly Record<string, unknown>[];
+  readRow: (tableId: string, recordId: string) => Record<string, unknown> | undefined;
+  /**
+   * **【`V23-M6-T06`。`ADR-0538` §Decision 1-6】コードの招待の宛先の行(S)。** 渡したときだけコードの招待として判定する:
+   * 受け手は S の管理者(`creator_permission` を直接かグループ経由で。親と S 経由は数えない。運営は受け手ではない。
+   * 違えば `gone`)/ `target_roles` と名簿の行と `group_from` を見ない / 書く値は `{target: R, 相手の列: S, permission}` /
+   * {@link judgeGrantWrite} に `principalRowAccepted` を渡す(相手の列を書ける唯一の経路)/ 招待者が S に `via` を
+   * 持てば `principal_self` / S に `via` を持つ人の誰かが R の親を読めなければ `principal_parent_denied`。
+   * **渡さなければ着手前と1バイトも同じ判定**(名前の招待)。
+   */
+  principalRow?: { tableId: string; recordId: string };
+}):
+  | {
+      readonly kind: "allowed";
+      readonly grantTableId: string;
+      readonly values: Record<string, unknown>;
+      /**
+       * **【`V23-M5-T04b`】承諾で書く名簿のグループ欄**(`group_from` を宣言し、招待した行のその項目に
+       * 値があり、受け手の名簿の行の今の値と違うときだけ。`ADR-0532` §Decision 1-5)。 値は招待した行と
+       * 宣言だけで決まり、受け手も招待者も選べない。
+       */
+      readonly group?: {
+        readonly memberTableId: string;
+        readonly memberRecordId: string;
+        readonly fieldId: string;
+        readonly value: string;
+      };
+    }
+  | {
+      readonly kind: "refused";
+      readonly reason:
+        | "gone"
+        | "expired"
+        | "row_gone"
+        | "inviter_gone"
+        | "not_grantable"
+        | "role_mismatch"
+        | "not_member"
+        | "member_ambiguous"
+        | "inviter_denied"
+        | "parent_denied"
+        | "group_not_inviters"
+        | "principal_self"
+        | "principal_parent_denied"
+        | "principal_granted";
+    } {
+  const { manifest, tableId, recordId, permission, inviter, invitee, readRows, readRow } = params;
+  const refused = (
+    reason:
+      | "gone"
+      | "expired"
+      | "row_gone"
+      | "inviter_gone"
+      | "not_grantable"
+      | "role_mismatch"
+      | "not_member"
+      | "member_ambiguous"
+      | "inviter_denied"
+      | "parent_denied"
+      | "group_not_inviters"
+      | "principal_self"
+      | "principal_parent_denied"
+      | "principal_granted",
+  ) => ({ kind: "refused", reason }) as const;
+
+  // --- 宣言(承諾の時点の宣言。 招待の宣言が消えた表の招待は、無い招待と同じ)---------------------
+  const table = tablesOf(manifest).find((candidate) => candidate?.id === tableId);
+  const declared = table === undefined ? undefined : accessControlOf(table);
+  const invitations = declared?.invitations;
+  if (
+    declared === undefined ||
+    typeof invitations !== "object" ||
+    invitations === null ||
+    !Array.isArray(invitations.grantable)
+  ) {
+    return refused("gone");
+  }
+  const grantTableId = nonEmptyString(declared.grant?.table);
+  const targetField = nonEmptyString(declared.grant?.target);
+  const memberField = nonEmptyString(declared.grant?.member);
+  const permissionField = nonEmptyString(declared.grant?.permission);
+  const memberTable = nonEmptyString(declared.members?.table);
+  const accountField = nonEmptyString(declared.members?.account);
+  if (
+    grantTableId === undefined ||
+    targetField === undefined ||
+    memberField === undefined ||
+    permissionField === undefined ||
+    memberTable === undefined ||
+    accountField === undefined
+  ) {
+    return refused("gone");
+  }
+
+  // --- 【`V23-M6-T06`】コードの招待: 宛先の行(S)と受け手 --------------------------------------
+  // **受け手は S の管理者だけ**(違えば無い招待と同じ `gone`)。 期限・行の有無より先に見る(他人に理由を見せない)。
+  const code = params.principalRow;
+  const principal = code === undefined ? undefined : principalRowOf(manifest, tableId);
+  if (code !== undefined) {
+    const target = rowCodeInvitationTarget(manifest, tableId, {
+      tableId: code.tableId,
+      recordId: code.recordId,
+      actorId: invitee.id,
+      readRows,
+    });
+    if (principal === undefined || !target.principalRowMatches || !target.principalRowAdmin) {
+      return refused("gone");
+    }
+  }
+
+  // --- 承諾の時点で見るもの --------------------------------------------------------------
+  if (params.expiresAt <= params.now) {
+    return refused("expired");
+  }
+  const row = readRow(tableId, recordId);
+  if (row === undefined) {
+    return refused("row_gone");
+  }
+  if (inviter === undefined) {
+    return refused("inviter_gone");
+  }
+  if (!invitations.grantable.includes(permission)) {
+    return refused("not_grantable");
+  }
+  // 【`V23-M6-T06`】コードの招待では `target_roles` と名簿の行を見ない(`D-V23-154`)。 書く値は相手の列だけ。
+  let values: Record<string, unknown>;
+  let memberRows: readonly Record<string, unknown>[] = [];
+  let own: readonly Record<string, unknown>[] = [];
+  let holderMemberId: string | undefined;
+  if (code !== undefined && principal !== undefined) {
+    // 【2026-10-01。決定 `D-V23-176`】同じ R と同じ S を指す付与の行が既に在れば断る(付与の行を2行にしない)。
+    // 器の外と器の中の両方でこの判定を通すので、器の中の見直しにも効く。
+    if (
+      principalRowGrantExists({
+        manifest,
+        tableId,
+        recordId,
+        principalRecordId: code.recordId,
+        readRows,
+      })
+    ) {
+      return refused("principal_granted");
+    }
+    values = {
+      [targetField]: recordId,
+      [principal.column]: code.recordId,
+      [permissionField]: permission,
+    };
+  } else {
+    const targetRoles = Array.isArray(invitations.target_roles) ? invitations.target_roles : [];
+    if (targetRoles.length > 0 && !declaredMatchesRoles(targetRoles, invitee.roles)) {
+      return refused("role_mismatch");
+    }
+    memberRows = readRows(memberTable);
+    own = memberRows.filter((member) => member?.[accountField] === invitee.id);
+    if (own.length === 0) {
+      return refused("not_member");
+    }
+    if (own.length > 1) {
+      return refused("member_ambiguous");
+    }
+    holderMemberId = nonEmptyString(own[0]?._id);
+    if (holderMemberId === undefined) {
+      return refused("not_member");
+    }
+    values = {
+      [targetField]: recordId,
+      [memberField]: holderMemberId,
+      [permissionField]: permission,
+    };
+  }
+
+  // --- 付与表への作成と同じ関門(招待者を主体に)-----------------------------------------------
+  const grantTable = tablesOf(manifest).find((candidate) => candidate?.id === grantTableId);
+  const roles = inviter.roles;
+  if (
+    roleGateBlocksWithoutGrants({
+      role: judgeRoleAccess({
+        manifest,
+        roles,
+        target: { target: "table", table: grantTableId },
+        verb: "write",
+      }),
+      grantGoverned: recordAccessSourceTables(manifest, grantTableId) !== undefined,
+    })
+  ) {
+    return refused("inviter_denied");
+  }
+  if (grantTable !== undefined && isDirectCreateSuppressed(grantTable)) {
+    return refused("inviter_denied");
+  }
+  if (!isRoleActionWriteAllowed(manifest, grantTableId, "create", roles)) {
+    return refused("inviter_denied");
+  }
+  if (judgeRoleFieldWrite({ manifest, table: grantTable, values, roles }).kind === "denied") {
+    return refused("inviter_denied");
+  }
+  if (
+    recordAccessSourceTables(manifest, grantTableId) === undefined &&
+    !judgeRoleAccess({
+      manifest,
+      roles,
+      target: { target: "table", table: grantTableId },
+      verb: "write",
+      row: values,
+      subject: inviter.id,
+    }).allowed
+  ) {
+    return refused("inviter_denied");
+  }
+  const by = Array.isArray(invitations.by)
+    ? invitations.by
+    : nonEmptyString(declared.creator_permission) === undefined
+      ? []
+      : [declared.creator_permission as string];
+  const verdict = judgeGrantWrite({
+    manifest,
+    tableId: grantTableId,
+    op: "create",
+    values,
+    actorId: inviter.id,
+    role: roles,
+    readRows,
+    readRow,
+    authorityPermissions: by,
+    // 【`V23-M6-T06`】コードの招待の承諾だけが相手の列を書ける(`D-V23-145`・`D-V23-152`)。
+    ...(code === undefined ? {} : { principalRowAccepted: true }),
+  });
+  if (verdict === undefined) {
+    return refused("gone");
+  }
+  // 【`V23-M6-T06`】コードの招待: 招待者が S に `via` を持つ(`D-V23-163`)・S に `via` を持つ人の誰かが親を読めない(`D-V23-152`)。
+  if (code !== undefined && verdict.kind === "self") {
+    return refused("principal_self");
+  }
+  if (code !== undefined && verdict.kind === "parent_denied") {
+    return refused("principal_parent_denied");
+  }
+  if (verdict.kind === "parent_denied") {
+    return refused("parent_denied");
+  }
+  if (verdict.kind !== "allowed") {
+    return refused("inviter_denied");
+  }
+  if (judgeRootCreatableRoles({ manifest, tableId: grantTableId, roles }) !== "allow") {
+    return refused("inviter_denied");
+  }
+  if (
+    judgeCreateParentAccess({
+      manifest,
+      tableId: grantTableId,
+      values,
+      actorId: inviter.id,
+      readRows,
+      readRow,
+    }).kind !== "allowed"
+  ) {
+    return refused("inviter_denied");
+  }
+  // 【`V23-M6-T06`】コードの招待は名簿のグループ欄を書かない(`group_from` は効かない。`D-V23-154`)。
+  if (code !== undefined || holderMemberId === undefined) {
+    return { kind: "allowed", grantTableId, values };
+  }
+  // **【`V23-M5-T04b`】名簿のグループ欄に書く値**(`D-V23-125`)。 値が空・今と同じなら書かない(付与だけ)。
+  //
+  // 【2026-09-30。`V23-M5-T11` の独立点検の処置(`ADR-0537` §1)。下の旧の3行は注記に逐語で残し、
+  // 同じ式を {@link rowInvitationGroupTarget} へ移した(自分宛ての一覧の `changes_group` と1本にするため)】
+  //   旧: `const groupFrom = nonEmptyString(invitations.group_from);`
+  //   旧: `const memberGroupField = nonEmptyString(declared.members?.group);`
+  //   旧: `const groupValue = groupFrom === undefined ? undefined : nonEmptyString(row[groupFrom]);`
+  // **書くのは、書く値が承諾の時点の招待者自身の名簿のグループ欄の値と同じときだけ**(招待者が運営者なら
+  // 問わない)。 違う・招待者の名簿の行が0行か2行以上なら `group_not_inviters` で断る(招待は残る。付与も
+  // 作らない)。 招待した行の項目を書ける人が、自分の入っていないグループへ受け手を入れられないようにする。
+  const groupTarget = rowInvitationGroupTarget(declared, row);
+  const memberGroupField = groupTarget?.fieldId;
+  const groupValue = groupTarget?.value;
+  if (
+    memberGroupField !== undefined &&
+    groupValue !== undefined &&
+    nonEmptyString(own[0]?.[memberGroupField]) !== groupValue
+  ) {
+    if (!declaredMatchesRoles(GRANT_WRITE_ADMIN_ROLES, roles)) {
+      const inviterRows = memberRows.filter((member) => member?.[accountField] === inviter.id);
+      if (
+        inviterRows.length !== 1 ||
+        nonEmptyString(inviterRows[0]?.[memberGroupField]) !== groupValue
+      ) {
+        return refused("group_not_inviters");
+      }
+    }
+    return {
+      kind: "allowed",
+      grantTableId,
+      values,
+      group: {
+        memberTableId: memberTable,
+        memberRecordId: holderMemberId,
+        fieldId: memberGroupField,
+        value: groupValue,
+      },
+    };
+  }
+  return { kind: "allowed", grantTableId, values };
+}
+
+/**
+ * **承諾で名簿のグループ欄に書く先と値**(`V23-M5-T11`。`ADR-0537` §1・§2。非 export)。
+ *
+ * - 表が `group_from` を宣言し、名簿の宣言にグループ欄(`members.group`)があり、招待した行のその項目の値が
+ *   空でないときだけ返す。 それ以外は `undefined`(承諾はグループ欄を書かない)。
+ * - 承諾の判定({@link judgeRowInvitationAccept})と自分宛ての一覧の `changes_group`
+ *   ({@link rowInvitationAccess} の `inviteeGroup`)がこの1本を通す(式を2か所に写さない)。
+ */
+function rowInvitationGroupTarget(
+  declared: AccessControlDeclaration,
+  row: Record<string, unknown>,
+): { memberTableId: string; accountField: string; fieldId: string; value: string } | undefined {
+  const invitations = declared.invitations;
+  const groupFrom =
+    typeof invitations === "object" && invitations !== null
+      ? nonEmptyString(invitations.group_from)
+      : undefined;
+  const memberTableId = nonEmptyString(declared.members?.table);
+  const accountField = nonEmptyString(declared.members?.account);
+  const fieldId = nonEmptyString(declared.members?.group);
+  const value = groupFrom === undefined ? undefined : nonEmptyString(row[groupFrom]);
+  if (
+    memberTableId === undefined ||
+    accountField === undefined ||
+    fieldId === undefined ||
+    value === undefined
+  ) {
+    return undefined;
+  }
+  return { memberTableId, accountField, fieldId, value };
+}
+
+/**
+ * **【`V23-M12-T05`。`D-V23-407`】名簿が自動登録で本人の名前の欄を宣言しているか**(非 export)。
+ * その表を名簿(`members.table`)に名指す宣言のどれかが `auto_enroll.name` を持てば真。
+ * 判定の答え(`membership_locked`)に印を付けるだけで、通すか断るかは変えない。
+ */
+function ownNameColumnDeclared(manifest: Manifest, tableId: string): boolean {
+  return tablesOf(manifest).some((table) => {
+    const members = accessControlOf(table)?.members;
+    return (
+      nonEmptyString(members?.table) === tableId &&
+      nonEmptyString(members?.auto_enroll?.name) !== undefined
+    );
+  });
 }

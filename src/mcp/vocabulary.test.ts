@@ -42,6 +42,7 @@ import {
   // 代わりに、所有の軸を越える例外の**今日の実装の真**をここから引く。**
   roleReadCrossesOwnerScope,
   UNDELETABLE_FIELD,
+  UPDATED_BY_FIELD,
 } from "../server/owner-scope.ts";
 import { SYSTEM_TABLE_IDS } from "../shared/system-tables.ts";
 import { createMcpServer } from "./server.ts";
@@ -58,6 +59,7 @@ import {
   DESIGN_ADJECTIVE_TABLE,
   DESIGN_ADJECTIVE_UNTOUCHED_SLOTS,
   DESTRUCTIVE_CHANGE_FLOW,
+  DRIFT_THEME_LIMITATION,
   describeTool,
   OUT_OF_SCOPE_BEHAVIOR,
   SKILL_GUIDE,
@@ -153,7 +155,9 @@ test("VOCABULARY_SCOPE は差分操作16種をすべて列挙している", () =
   // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】期待値を 18 → 17 に**
   // **書き換えた。****旧行の逐語は `expect(DIFF_OPS.length).toBe(18);` である。**
   // **減らしたのは別の決定(`set_user_kinds` の廃止)である。****検査は消していない。**
-  expect(DIFF_OPS.length).toBe(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)/【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS.length).toBe(17);` —— 18種目 `remember_design` を足したので 17 → 18(別の決定)。
+  // **【`V22-M2-T03` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行23】旧(逐語)**: `expect(DIFF_OPS.length).toBe(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+  expect(DIFF_OPS.length).toBe(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)/【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
   for (const op of DIFF_OPS) {
     expect(VOCABULARY_SCOPE).toContain(op);
   }
@@ -655,7 +659,9 @@ test("APPLY_DIFF_OP_EXAMPLES は DIFF_OPS の全 op に最小 JSON 例を持つ"
   // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】期待値を 18 → 17 に**
   // **書き換えた。****旧行の逐語は `expect(DIFF_OPS.length).toBe(18);` である。**
   // **減らしたのは別の決定(`set_user_kinds` の廃止)である。****検査は消していない。**
-  expect(DIFF_OPS.length).toBe(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)/【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS.length).toBe(17);` —— 18種目 `remember_design` を足したので 17 → 18(別の決定)。
+  // **【`V22-M2-T03` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行23】旧(逐語)**: `expect(DIFF_OPS.length).toBe(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+  expect(DIFF_OPS.length).toBe(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)/【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
   for (const op of DIFF_OPS) {
     expect(APPLY_DIFF_OP_EXAMPLES).toContain(`"op": "${op}"`);
   }
@@ -986,7 +992,18 @@ test("V6-M12-T01: UPDATE_VIEW_ACCEPTED_KEYS は VOCABULARY_SCOPE の描画を1�
   // 3種別に書ける)と「26キーだけ」への更新である。****足したのは列挙の末尾1語と件数
   // だけで、文の形は1バイトも変えていない。****件数に丸めていない。**
   expect(VOCABULARY_SCOPE).toContain(
-    "update_view は既存ビューの表示名・表示設定(name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / preset_list_shape / custom_css / menu_listed / field_groups / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / after_delete / flow の26キーだけ)",
+    // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は列挙の中の旧綴り1語だけが違う。綴りだけを改めた(件数・位置・文の形は動いていない)。**
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で末尾にもう1キー足した】** **27キー目 `field_width`(入力欄の幅。
+    // `form` にだけ書ける)と「27キーだけ」への更新である。** 旧行の逐語は列挙の末尾が `flow` で件数が26の形。
+    // **足したのは列挙の末尾1語と件数だけで、文の形は1バイトも変えていない。**
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で末尾にもう1キー足した】** **28キー目 `group_by`(一覧の束ねるキー。
+    // `list_view` にだけ書ける)と「28キーだけ」への更新である。** 旧行の逐語は列挙の末尾が `field_width` で件数が27の形。
+    // **足したのは列挙の末尾1語と件数だけで、文の形は1バイトも変えていない。**
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471` で末尾にもう1キー足した】** **29キー目 `layout`(画面の中の並べ方の木。
+    // `list_view`(カード)/ `form` / `detail_view` に書ける)と「29キーだけ」への更新である。** 旧行の逐語は列挙の末尾が `group_by` で件数が28の形。
+    // **足したのは列挙の末尾1語と件数だけで、文の形は1バイトも変えていない。**
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行8 / 決定 `D-V23-230`】`history` を足して30キー。 旧行の逐語: "update_view は既存ビューの表示名・表示設定(name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / preset_list_shape / custom_css / menu_listed / field_sections / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / after_delete / flow / field_width / group_by / layout の29キーだけ)",
+    "update_view は既存ビューの表示名・表示設定(name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / preset_list_shape / custom_css / menu_listed / field_sections / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / after_delete / flow / field_width / group_by / layout / history の30キーだけ)",
   );
   // 重複が無い(同じキーを2度書いていない)。
   expect(new Set(UPDATE_VIEW_ACCEPTED_KEYS).size).toBe(UPDATE_VIEW_ACCEPTED_KEYS.length);
@@ -1529,11 +1546,23 @@ test("V2-M3-T05: schema に field.unique がある ⇔ 説明文が unique(単�
   //        reference_search_fields の13個だけで、"`
   //   新: 同じ並びから8つ目を抜いた12個。
   // **並びとキーの正は `schemas/diff.schema.json` であり、下の「順序ごと一致する」検査が持つ。**
+  // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-63`)】12個 → 13個 に更新した。**
+  // **`schemas/diff.schema.json` の `$defs/field_changes/properties` に `unique_message` が
+  // `unique` の直後に加わったためである。****旧値をここに残す**:
+  //   旧: `expect(APPLY_DIFF_OP_EXAMPLES).toContain("change_field は id / name / type / required / options /
+  //        reference_table / unique / unit / emphasis / hide_when_empty / reference_picker /
+  //        reference_search_fields の12個だけで、");`
+  //   旧: `expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("の13個だけで、それ以外のキーを書くと");`
+  // **主題(列挙した個数のキーだけを受け、それ以外を書くと断ると述べていること)は変えていない。**
+  // **旧の12個の版が残っていないことを、13個の版の代わりに `not.toContain` で見る**(双方向を保つ)。
   expect(APPLY_DIFF_OP_EXAMPLES).toContain(
-    "change_field は id / name / type / required / options / reference_table / unique / unit / emphasis / hide_when_empty / reference_picker / reference_search_fields の12個だけで、",
+    "change_field は id / name / type / required / options / reference_table / unique / unique_message / unit / emphasis / hide_when_empty / reference_picker / reference_search_fields の13個だけで、",
   );
   // **旧文(13個の版・11個の版)が1文字も残っていないこと**(双方向)。
-  expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("の13個だけで、それ以外のキーを書くと");
+  // 【2026-09-29。`V23-M2-T11` の訂正。上の行は `V23-M2-T02b` が書き換えて消していたので戻した】
+  // 今日の旧文は12個の版・11個の版である(13個の版は今日の正)。 下の2本がそれを見る。
+  // **旧文(12個の版・11個の版)が1文字も残っていないこと**(双方向)。
+  expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("の12個だけで、それ以外のキーを書くと");
   expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("11個だけで、それ以外のキーを書くと");
   // **`reference_picker` / `reference_search_fields` も change_field で効くことを述べている。**
   expect(APPLY_DIFF_OP_EXAMPLES).toContain("**reference_picker は change_field で効きます**");
@@ -1930,7 +1959,11 @@ test("V2-M6-T05 (EC-G17): detail_view は related(子一覧埋め込み)を持�
   expect([...Object.keys(detailBranch.then.properties)].sort()).toEqual([
     "actions",
     "columns",
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で足した】** detail_view 分岐に入力欄の幅 `field_width` の `false` が現れた(`form` でだけ書ける)。**これも閉じる側の差である。**
+    "field_width",
     "filter",
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で足した】** detail_view 分岐に一覧の束ねるキー `group_by` の `false` が現れた(`list_view` でだけ書ける)。**これも閉じる側の差である。**
+    "group_by",
     "modal",
     "page_size",
     "preset_column_align",
@@ -2024,7 +2057,15 @@ test("V2-M6-T05 (EC-G14): detail_view は actions(プリフィル遷移)を持�
    * **`ADR-0171` 限定10 の順序拘束が `V5-M25-T03` により解けたので、`items` ごと外した。**
    * **`form` 分岐の `false` は1バイトも解いていない**(下の行が今日も固定する)。
    */
-  expect(listBranch.then.properties.actions.items).toBeUndefined();
+  // **【`V20-M2-T01` / `ADR-0459` 限定4。2026-09-24】** **旧行の逐語**:
+  // `expect(listBranch.then.properties.actions.items).toBeUndefined();`
+  // **`items` が戻ったのは、一覧の行のボタンに強調(`action_emphasis`)を書かせないため
+  // だけである。****`set` は今日も閉じていない。**
+  expect(listBranch.then.properties.actions.items).toEqual({
+    type: "object",
+    properties: { action_emphasis: false },
+  });
+  expect(listBranch.then.properties.actions.items.properties.set).toBeUndefined();
   expect(formBranch.then.properties.actions).toBe(false);
   expect(detailBranch.then.properties.actions).not.toBe(false);
   expect(detailBranch.then.properties.actions.items.properties.view).toBe(false);
@@ -2105,7 +2146,9 @@ test("V2-M6-T05 (語彙総量不変): 一覧/フィルタ/詳細の拡張は使�
   // **`VOCABULARY_SCOPE` の側は `DIFF_OPS.length` から組み立てるので自動追随した** ——
   // **説明文の散文(`src/mcp/vocabulary.ts` の固定文字列)は本波では1バイトも触っていない**
   // (波及は `V8-M32` の担当)。
-  expect(VOCABULARY_SCOPE).toContain("差分操作は17種");
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(VOCABULARY_SCOPE).toContain("差分操作は17種");` —— `DIFF_OPS.length` から組み立てるので自動で 18 になった。
+  // **【`V22-M2-T03` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行23】旧(逐語)**: `expect(VOCABULARY_SCOPE).toContain("差分操作は18種");` —— `DIFF_OPS.length` から組み立てるので自動で 19 になった。
+  expect(VOCABULARY_SCOPE).toContain("差分操作は19種");
   // schema 側の view_type / field_type enum も増えていない(related/actions は view の中のキー)。
   // **【2026-08-14。`V8-M8`。台帳 `Q-G1`。門A 本審査 = `V8-M7`】期待値に `report_view` を足した。**
   // **旧行の逐語**: `expect((manifestSchema().$defs.view_type.enum as string[]).sort()).toEqual([`
@@ -2181,7 +2224,9 @@ test("V3-M1-T06 (実装→記述): 説明文は有限スロットのテーマ(se
 test("V3-M1-T06 (数の照合): 散文のスロット数が $defs/theme のキー数と一致する(散文は自動追随しない)", () => {
   // **実装の真**: `$defs/theme` の properties キー集合(= スロット集合)。
   const slots = themeSlotNames();
-  expect(slots.length).toBe(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(slots.length).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(slots.length).toBe(23);
+  expect(slots.length).toBe(27);
   // 散文の数がスキーマと食い違ったら赤くなる。**ここが本タスクの「文言と語彙定数の照合」である。**
   expect(VOCABULARY_SCOPE).toContain(`スロットは${slots.length}個`);
   expect(APPLY_DIFF_OP_EXAMPLES).toContain(`${slots.length}スロット`);
@@ -2225,7 +2270,16 @@ test("V3-M1-T06 (逆向きの歯止め): 依然できないこと(任意 CSS・�
   // 逐語がそれである)。**したがって下の `expect` は1バイトも変えない** ——
   // 見ているのは `CANNOT_DO` に「ダークモード」の語が在ることであり、そちらは今日も真だからである。
   // **旧文を1バイトも消していない**(`D-V4-188`。直し方は `ADR-0156` / `ADR-0157` と同じ形)。
+  //
+  // **【V20-M10-T05 が 2026-09-25 に追記。上の注釈を消していない】直前の段落の「一方でダークモードの側は
+  // 今日も真である」は今日から偽である** —— `V20-M10`(`ADR-0458`)でテーマに暗い側の組 `slots_dark` が入り、
+  // 画面は OS の明暗設定に追随する(`web/src/styles.css` の末尾の2規則と `web/src/color-scheme.ts`)。
+  // **「ダークモード / レスポンシブは1つも足していない」も、ダークモードの側は偽である。**
+  // **今日も真なのは「時刻で切り替わる配色は書けない」の側だけである**(`12-v20-m10-plan.md` §2 の 4)。
+  // 下の `expect` は `CANNOT_DO` に語「ダークモード」が在ることを見ており、それは今日も真なので残す。
+  // **逆向きの歯止めの向きは、時刻の側へ移した**(次の1行)。
   expect(CANNOT_DO).toContain("ダークモード");
+  expect(CANNOT_DO).toContain("**時刻で切り替わる配色は書けません**");
   // 読めない配色は拒否される(fail-closed。D-M1-4)—— 「何色でも指定できる」に倒れない。
   expect(VOCABULARY_SCOPE).toContain("読めない配色は適用が拒否されます");
 });
@@ -2334,7 +2388,10 @@ test("V3-M2-T01 + V3-M5-T02: update_view の表示設定の列挙が view_change
     // **V4-M16-T12(`P-G17` の (C) 側 / ADR-0092 限定2)で15キー目に増えた**
     // (詳細画面の項目のまとまり。**detail_view でだけ書ける**)。**列挙を消さずに1行足して
     // 更新した** —— 固定の向き(説明文とスキーマを一致させる)は1バイトも変えていない。
-    "field_groups",
+    // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+    "field_sections",
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅 `field_width` を1行足した。** **旧の列挙はこの1行が無い形である。**
+    "field_width",
     "fields",
     "filter",
     // **【2026-08-20。`V10-M4-T01` / `NV-G9` / `ADR-0359` §Decision 2 で 26 → 27 に
@@ -2343,6 +2400,12 @@ test("V3-M2-T01 + V3-M5-T02: update_view の表示設定の列挙が view_change
     // **列挙を消さずに1行足して更新した** —— 固定の向きは1バイトも変えていない。
     // **見せ方のキーではない** —— **意味は並びの中の位置である。**
     "flow",
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー `group_by` を1行足した。** **旧の列挙はこの1行が無い形である。**
+    "group_by",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行13】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `group_by` の次は `// **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` を1行足した。** **旧の列挙はこの1行が無い形である。**` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` を1行足した。** **旧の列挙はこの1行が無い形である。**
+    "layout",
     // **V4-M10-T45(E-G12 / ADR-0084 限定6)で14キー目に増えた**(画面一覧への掲載の可否)。
     // **列挙を消さずに1行足して更新した** —— 固定の向きは1バイトも変えていない。
     "menu_listed",
@@ -2573,6 +2636,8 @@ test("V3-M2-T05 (逆向きの歯止め): 「レイアウトが自由に指定で
   expect(CANNOT_DO).toContain("ピクセル座標");
   expect(CANNOT_DO).toContain("絶対配置");
   expect(CANNOT_DO).toContain("ダークモード");
+  // 【V20-M10-T05】ダークモードのうち OS に追随する側は書けるようになった。今日も書けないのは時刻の側。
+  expect(CANNOT_DO).toContain("**時刻で切り替わる配色は書けません**");
   expect(CANNOT_DO).toContain("レスポンシブ");
   // 段組も列幅も画面幅に追随しない(`@media` を1つも足していない。ADR-0050 限定9)。
   // **【V4-M53 が 2026-08-04 に追記。門A / 限定採用。ADR-0157】上のコメントの括弧の中は
@@ -2650,7 +2715,9 @@ test("V3-M2-T05 (1a): プリセットのキーを前進で消す手段が語彙�
   // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】期待値を 18 → 17 に**
   // **書き換えた。****旧行の逐語は `expect(DIFF_OPS.length).toBe(18);` である。**
   // **減らしたのは別の決定(`set_user_kinds` の廃止)である。****検査は消していない。**
-  expect(DIFF_OPS.length).toBe(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)/【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS.length).toBe(17);` —— 18種目 `remember_design` を足したので 17 → 18(別の決定)。
+  // **【`V22-M2-T03` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行23】旧(逐語)**: `expect(DIFF_OPS.length).toBe(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+  expect(DIFF_OPS.length).toBe(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)/【`V8-M29`】18 → 17(`set_user_kinds` を廃止)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
   expect([...DIFF_OPS].filter((op) => op.includes("preset"))).toEqual([]);
   // 実装の真2: **「既定へ戻す」を表す値が enum に1つも無い**(足すのは ADR-0050 §3a 3 の門A)。
   for (const [key, values] of Object.entries(presetEnums())) {
@@ -2902,7 +2969,10 @@ test("V3-M3-T06 (d): 「可視ロールを書くキーは無い」⇔ $defs/view
       // 画面には1文字も出ない)。**後半「ロールを1つも書けない」は今日も真である。**
       // **既存行は書き換えない**(本リポジトリの作法)。
       // **列挙を消して件数に丸めない。**
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅 `field_width` を1行足した。** **旧の列挙はこの1行が無い形である。**
+      "field_width",
       "fields",
       "filter",
       // **【2026-08-20。`V10-M4-T01` / `NV-G9` / `ADR-0359` §4b 限定1 による更新(31キー目)】**
@@ -2912,7 +2982,13 @@ test("V3-M3-T06 (d): 「可視ロールを書くキーは無い」⇔ $defs/view
       // ロールを1つも書けない(`after_save` / `after_delete` / `custom_css` と同じ性質)。
       // **列挙を消して件数に丸めない。**
       "flow",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470` による更新(33キー目)】** **`group_by`(一覧の束ねるキー)が加わった。** **これは可視ロールを書くキーではない** —— 値は表示列の項目1つと日付の粒度だけで、ロールを1つも書けない。**列挙を消して件数に丸めない。**
+      "group_by",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行14】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `group_by` の次は `"id",` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
       "id",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471` による更新(34キー目)】** **`layout`(画面の中の並べ方の木)が加わった。** **これは可視ロールを書くキーではない** —— 値は並べ方の型・間隔などの名前と、項目・ボタンの名前だけで、ロールを1つも書けない。**列挙を消して件数に丸めない。**
+      "layout",
       // **【V4-M10-T45 / `E-G12` / ADR-0084 限定1 による更新(20キー目)】**
       // **`menu_listed`(画面をメニューへ出すかを書くキー)が門A の本審査(再審査 B8)を
       // 通って加わった。** **これは可視ロールを書くキーではない** —— 値は真偽値1つで、
@@ -3103,7 +3179,9 @@ test("V3-M4-T02 (完了条件1): 表の全量が字面に現れる(表そのも�
 
 test("V3-M4-T02 (完了条件6・双方向 その1): 表が指すスロットは $defs/theme に実在する", () => {
   const slots = new Set<string>(themeSlotNames());
-  expect(slots.size).toBe(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(slots.size).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(slots.size).toBe(23);
+  expect(slots.size).toBe(27);
   for (const slot of tableSlots()) {
     expect(slots.has(slot)).toBe(true);
   }
@@ -3119,7 +3197,10 @@ test("V3-M4-T02 (完了条件6・双方向 その2): 触る13 + 触らない12 =
   const declared = [...tableSlots(), ...untouchedSlots()].sort();
   expect(declared).toEqual(themeSlotNames());
   expect(tableSlots().length).toBe(13);
-  expect(untouchedSlots().length).toBe(12);
+  // 【V20-M9 / ADR-0474 §1-3】触らない 12 → 10(寸法2件 `--detail-label-width` / `--login-max-width` を
+  // 語彙から外した)。テスト名の「12」「25」は撤去の前の逐語である。旧(逐語): `expect(untouchedSlots().length).toBe(12);`
+  // 【V20-M9 / ADR-0474 §1-2】10 → 14(配色の4枠を足した)。旧(逐語): `expect(untouchedSlots().length).toBe(10);`
+  expect(untouchedSlots().length).toBe(14);
 });
 
 test("V3-M4-T02 (完了条件6): 触る集合と触らない集合は1件も交わらない", () => {
@@ -3192,12 +3273,12 @@ test("V3-M4-T02 (T00 の形2): 表の単位は軸であり、余白の軸は6ス
   const space = DESIGN_ADJECTIVE_AXES.find((axis) => axis.id === "space");
   expect(space).toBeDefined();
   expect([...(space?.slots ?? [])]).toEqual([
-    "--space-1",
-    "--space-2",
-    "--space-3",
-    "--space-4",
-    "--space-5",
-    "--space-6",
+    "space_1",
+    "space_2",
+    "space_3",
+    "space_4",
+    "space_5",
+    "space_6",
   ]);
   // **1つの形容詞が6値を1組の別の6値へ差し替える。** 「スロット1個」ではない。
   for (const level of space?.levels ?? []) {
@@ -3208,20 +3289,13 @@ test("V3-M4-T02 (T00 の形2): 表の単位は軸であり、余白の軸は6ス
 
 test("V3-M4-T02 (完了条件4): 段階軸としてスロット側に実在するのは余白1本だけである", () => {
   // **実装の真**: `$defs/theme` の description が「余白の段階1 (最小)」「余白の段階6 (最大)」と
-  // 自ら段階を名乗っているのは `--space-*` だけである。他の軸は単一スロットで段階を持たない。
+  // 自ら段階を名乗っているのは `space_1`〜`space_6`(CSS 名 `--space-*`)だけである。他の軸は単一スロットで段階を持たない。
   const properties = manifestSchema().$defs.theme.properties;
   const staged = Object.entries(properties)
     .filter(([, def]) => String((def as Any).description ?? "").includes("余白の段階"))
     .map(([slot]) => slot)
     .sort();
-  expect(staged).toEqual([
-    "--space-1",
-    "--space-2",
-    "--space-3",
-    "--space-4",
-    "--space-5",
-    "--space-6",
-  ]);
+  expect(staged).toEqual(["space_1", "space_2", "space_3", "space_4", "space_5", "space_6"]);
   // 記述側: 段階軸を名乗る軸はちょうど1本で、それが余白である。
   const stagedAxes = DESIGN_ADJECTIVE_AXES.filter((axis) => axis.slotStages);
   expect(stagedAxes.length).toBe(1);
@@ -3291,7 +3365,9 @@ test("V3-M4-T02 (完了条件5): 統制語彙はマニフェストの語彙に�
     }
   }
   // `$defs/theme` は25スロットのまま(形容詞・段・軸の置き場が1つも生えていない)。
-  expect(themeSlotNames().length).toBe(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(themeSlotNames().length).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(themeSlotNames().length).toBe(23);
+  expect(themeSlotNames().length).toBe(27);
   expect(manifestSchema().$defs.theme.additionalProperties).toBe(false);
   // カーネルは「もっと」を1度も解釈しない ——(解釈するのは会話側 AI である)。
   expect(DESIGN_ADJECTIVE_TABLE).toContain("カーネルはこの表を1度も読みません");
@@ -3329,16 +3405,21 @@ test("V3-M4-T02 (完了条件2・逆向きの歯止め): 「表に無くても�
 test("V3-M4-T02 (ADR-0047 限定3): 1軸だけ動かすときも25スロット全部を書き直す", () => {
   // **「微調整」という語と、実際に流れる差分の量が食い違う**(審査記録 §4 S3-8)。
   // **表が指すのが6スロットでも、`set_theme` は25スロットを要求する。** 隠さない。
-  expect(manifestSchema().$defs.theme.required.length).toBe(25);
-  expect(DESIGN_ADJECTIVE_TABLE).toContain("25スロット全部を書き直す");
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(manifestSchema().$defs.theme.required.length).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(manifestSchema().$defs.theme.required.length).toBe(23);
+  expect(manifestSchema().$defs.theme.required.length).toBe(27);
+  // 【V20-M9 / ADR-0474】散文の数を 27 に打ち直した。旧(逐語): `toContain("25スロット全部を書き直す")`
+  expect(DESIGN_ADJECTIVE_TABLE).toContain("27スロット全部を書き直す");
   expect(DESIGN_ADJECTIVE_TABLE).toContain("部分更新の op はありません");
 });
 
 test("V3-M4-T02: 表は25のうち13スロットしか持たない —— 残る12の埋め方が書かれている", () => {
-  expect(DESIGN_ADJECTIVE_TABLE).toContain("表が値を持つのは25スロットのうち13だけ");
+  // 【V20-M9 / ADR-0474】散文の数を 27 / 14 に打ち直した(テスト名は引き直しの前の逐語)。
+  // 旧(逐語): `toContain("表が値を持つのは25スロットのうち13だけ")` / `"…残る12スロットは写す"`
+  expect(DESIGN_ADJECTIVE_TABLE).toContain("表が値を持つのは27スロットのうち13だけ");
   // 残る12は今のテーマから写す。テーマが未設定なら、この表だけでは set_theme を組み立てられない。
   expect(DESIGN_ADJECTIVE_TABLE).toContain(
-    "`get_manifest` で今のテーマを読み、残る12スロットは写す",
+    "`get_manifest` で今のテーマを読み、残る14スロットは写す",
   );
   expect(DESIGN_ADJECTIVE_TABLE).toContain("この表だけでは set_theme を組み立てられません");
 });
@@ -3426,12 +3507,66 @@ test("V3-M4-T03 (双方向): 画面ごとの配色の行が、実在するプレ
   }
   // **越えてはならない線が文にも書かれていること**(機械検査は `web/test/intake-boundary.test.ts`)。
   expect(CANNOT_DO).toContain("AI が候補を増やすことはできません");
-  expect(CANNOT_DO).toContain("URL を渡して見比べてもらうことはできず");
+  // **【`V20-M13-T02a` / `ADR-0476` 2-5】旧逐語は「URL を渡して見比べてもらうことはできず」だった。**
+  // **下見の URL は1案ずつ1時間だけ見られるので偽になった。** 新しい逐語に合わせる(赤のまま残さない)。
+  expect(CANNOT_DO).not.toContain("URL を渡して見比べてもらうことはできず");
+  // **【`V20-M14-T01A` / `ADR-0478` 2-8】旧逐語は「(URL は1案に1つで、1時間だけ見られ、保存されません)」と、
+  // 押さえる検査の無かった「候補を並べて見比べたい人には owner の画面で開いてもらうよう伝えてください」だった。**
+  // **見比べの束(`dry_run_diff` の `compare`)で2〜3案を1つの URL に並べられるので、どちらも偽になった。**
+  expect(CANNOT_DO).toContain(
+    "URL で見比べてもらうには、案ごとに dry_run_diff に preview を付けて下見の URL を作ってください" +
+      "(下見の URL は1時間だけ見られ、保存されません)",
+  );
+  expect(CANNOT_DO).toContain(
+    "2〜3案を1つの URL に並べて見比べてもらうには、案ごとに dry_run_diff に preview と compare を付けてください" +
+      "(1つの束は3案まで。束の URL は compare.url で、URL を知っている人なら1時間だけ見られます)",
+  );
+  expect(CANNOT_DO).toContain(
+    "並んだ案を選んで適用できるのは、ログインしていてアプリの設定を変えられる人だけです",
+  );
+  for (const stale of ["URL は1案に1つ", "owner の画面で開いてもらうよう"]) {
+    expect(CANNOT_DO, stale).not.toContain(stale);
+  }
+  // **「保存できる」「後から見返せる」を否定の形でしか書かない**(`ADR-0476` 2-5 の歯止め)。
+  for (const lie of [
+    "下見は保存できます",
+    "下見を保存できます",
+    "後から見返せます",
+    "いつでも見返せます",
+  ]) {
+    expect(CANNOT_DO, lie).not.toContain(lie);
+  }
   // **錨**: 画面ごとの配色の置き場がマニフェストに1つも無いこと(`$defs/view` にテーマのキーが無い)は
   // 既存の検査が持っている(本ファイルの「`$defs/view.properties.theme` が undefined」)。二重化しない。
 });
 
-/** `web/src/styles.css` の `:root` の既定値(スロット名 → 実値)。 */
+/**
+ * 役割名 → CSS カスタムプロパティ名(`web/src/theme-role-map.ts` を**文字列として読む**。`V20-M8` / `ADR-0473`)。
+ *
+ * **import しない・テストの側に2つ目の対応表を書かない。** 帯
+ * `export const THEME_ROLE_TO_CSS_PROPERTY: Readonly<Record<string, string>> = Object.freeze({` 〜 `});`
+ * の中の1行1件だけを拾う(形が崩れると0件になり、下の件数の検査が赤くなる)。
+ */
+function themeRoleMapFromSource(): Map<string, string> {
+  const source = readSrc("web", "src", "theme-role-map.ts");
+  const head =
+    "export const THEME_ROLE_TO_CSS_PROPERTY: Readonly<Record<string, string>> = Object.freeze({";
+  const start = source.indexOf(head);
+  const out = new Map<string, string>();
+  if (start < 0) {
+    return out;
+  }
+  const band = source.slice(start + head.length, source.indexOf("\n});", start));
+  for (const line of band.split("\n")) {
+    const match = /^ {2}(?:([a-z][a-z0-9_]*)|"(--[a-z0-9-]+)"): "(--[a-z0-9-]+)",$/.exec(line);
+    if (match !== null) {
+      out.set(String(match[1] ?? match[2]), String(match[3]));
+    }
+  }
+  return out;
+}
+
+/** `web/src/styles.css` の `:root` の既定値(**CSS 名** → 実値)。 */
 function rootDefaults(): Map<string, string> {
   const css = readSrc("web", "src", "styles.css").replace(/\/\*[\s\S]*?\*\//g, "");
   const start = css.indexOf(":root {");
@@ -3450,7 +3585,21 @@ test("V3-M4-T03 (T02 の申し送り4): 各軸に、製品の既定値と完全�
   // **「標準」という名前では照合しない。** 7軸のうち2軸(角丸・影)は、既定値と一致する段の
   // 名前が「標準」ではない(「角ばった」「なし」)。**名前で照合すると、その2軸を検査から
   // 落とすか、表の側の名前を実態に合わない「標準」へ寄せることになる。**
-  const root = rootDefaults();
+  //
+  // **【V20-M8 / ADR-0473】表のキーは役割名、`:root` のキーは CSS 名である。** 2つは写像
+  // (`web/src/theme-role-map.ts` を文字列として読む)を通して突き合わせる。
+  const cssRoot = rootDefaults();
+  const roleMap = themeRoleMapFromSource();
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(roleMap.size).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(roleMap.size).toBe(23);
+  expect(roleMap.size).toBe(27);
+  const root = new Map<string, string>();
+  for (const [role, cssName] of roleMap) {
+    const value = cssRoot.get(cssName);
+    if (value !== undefined) {
+      root.set(role, value);
+    }
+  }
   const defaultLevel: Record<string, string[]> = {};
   for (const axis of DESIGN_ADJECTIVE_AXES) {
     for (const slot of axis.slots) {
@@ -3771,10 +3920,16 @@ test("V3-M8-T04 (d) / V4-M4-T04 数の照合: 予約規約フィールドの実�
   const ids = [...source.matchAll(/^export const [A-Z_]+_FIELD = "(st_[a-z_]+)";$/gm)].map(
     (m) => m[1] as string,
   );
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行9(定数の段)】予約規約フィールドの5本目 `st_updated_by`**
+  // (門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す:
+  // `expect(ids.sort()).toEqual([NO_DIRECT_CREATE_FIELD, OWNER_FIELD, PUBLIC_FIELD, UNDELETABLE_FIELD].sort());`
+  // と `expect(ids.length).toBe(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(5本)。
+  // 同じ段で `CANNOT_DO` に `st_updated_by` の綴りと「今日5本です」の文を足した(既存の「今日4本です」の文は
+  // 1文字も消していない。別の検査がその文を区切りに使っている)。 **題名の本数は T05 の前の数のまま。**
   expect(ids.sort()).toEqual(
-    [NO_DIRECT_CREATE_FIELD, OWNER_FIELD, PUBLIC_FIELD, UNDELETABLE_FIELD].sort(),
+    [NO_DIRECT_CREATE_FIELD, OWNER_FIELD, PUBLIC_FIELD, UNDELETABLE_FIELD, UPDATED_BY_FIELD].sort(),
   );
-  expect(ids.length).toBe(4);
+  expect(ids.length).toBe(5);
   // **記述の側**: 4本とも字面に在り、本数の申告が実数と一致すること。
   for (const id of ids) {
     expect(CANNOT_DO, `CANNOT_DO に予約規約フィールド ${id} が無い`).toContain(id);
@@ -3914,6 +4069,8 @@ test("V3-M8-T04 (g) → V4-M3-T07: ADR-0061 の予約規約フィールドは、
   expect(Object.keys(schema.$defs.table.properties).sort()).toEqual([
     "access_control",
     "fields",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行15】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `fields` の次は `"id",` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
     "id",
     "name",
     "reference_search_fields",
@@ -3982,6 +4139,10 @@ test("V3-M8-T04 (g) → V4-M3-T07: ADR-0061 の予約規約フィールドは、
       "required",
       "type",
       "unique",
+      // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行13 で 12 → 13 に更新した】**
+      // `unique_message`(一意違反の文言)が13キー目に加わった。**予約規約フィールドの名前が
+      // `schemas/` に1文字も現れないという性質は今日も動いていない**(下の `not.toContain` が見る)。
+      "unique_message",
       "unit",
     ].sort(),
   );
@@ -4059,7 +4220,16 @@ test("V3-M9-T04 (b) 記述→実装(逆向きの嘘の歯止め): 記述は「�
   // 1バイトも変わっていない**(限定2)—— **緩んだのは「どの行か」の1点だけである。**
   const functionInput = schema.$defs.function_input;
   expect(Object.keys(functionInput.properties).sort()).toEqual(["source", "table", "via", "view"]);
-  expect(functionInput.properties.source.enum).toEqual(["table", "view", "record"]);
+  // **【`V23-M4-T02` / `SC-G15` / `ADR-0524` §Decision 1-4 / 授権 `ADR-0525` 行20】** 選択肢に `actor` / `previous` を足した
+  // (enum 案。3値から5値)。 **旧の期待(逐語)**: `expect(...source.enum).toEqual(["table", "view", "record"]);`。
+  // 新しい値はスキーマを検査の外の python で読んで得た。 禁止7語が0であることは下の検査が今日どおり見る。
+  expect(functionInput.properties.source.enum).toEqual([
+    "table",
+    "view",
+    "record",
+    "actor",
+    "previous",
+  ]);
   expect(functionInput.additionalProperties).toBe(false);
   // **クエリ言語の7語をどちらの定義にもキーとして持たない**(ADR-0024 限定3 の5語 + join / on)。
   for (const forbidden of ["where", "filter", "select", "count", "group_by", "join", "on"]) {
@@ -4142,7 +4312,12 @@ test("V3-M9-T04 (d) 完了条件6: CAS が課される経路と課されない�
   // **6引数目(expectedVersion)が足されたら、この字面が変わって赤になる。**
   const runner = readSrc("src", "kernel", "workflow-runner.ts");
   expect(runner).toContain("**版(expectedVersion)は渡さない = LWW を維持する**");
-  expect(runner).toContain("updateRecord(db, manifest, action.table, target.value, values.value);");
+  // **【2026-09-30。`V23-M4-T03` / 授権 `ADR-0527` 行3】旧の逐語を残す:**
+  // `expect(runner).toContain("updateRecord(db, manifest, action.table, target.value, values.value);");`
+  // 起点の操作者(`$actor`)を末尾の引数で運ぶようになった(`D-V23-102`)。 **6番目(版)は今日も `undefined`**(LWW のまま)。
+  expect(runner).toContain(
+    "updateRecord(\n    db,\n    manifest,\n    action.table,\n    target.value,\n    values.value,\n    undefined,\n    origin,\n  );",
+  );
   // **実装の真(課される)**: HTTP 単件は If-Match ヘッダ必須 / MCP 単件は if_match 必須。
   expect(readSrc("src", "server", "app.ts")).toContain('c.req.header("if-match")');
   expect(readSrc("src", "mcp", "tools", "write.ts")).toContain(
@@ -4240,7 +4415,16 @@ test("V3-M9-T04b (g) 記述→実装(逆向きの嘘の歯止め・書き方の�
   // 1バイトも変わっていない**(限定2)—— **緩んだのは「どの行か」の1点だけである。**
   const functionInput = schema.$defs.function_input;
   expect(Object.keys(functionInput.properties).sort()).toEqual(["source", "table", "via", "view"]);
-  expect(functionInput.properties.source.enum).toEqual(["table", "view", "record"]);
+  // **【`V23-M4-T02` / `SC-G15` / `ADR-0524` §Decision 1-4 / 授権 `ADR-0525` 行21】** 選択肢に `actor` / `previous` を足した
+  // (enum 案。3値から5値)。 **旧の期待(逐語)**: `expect(...source.enum).toEqual(["table", "view", "record"]);`。
+  // 新しい値はスキーマを検査の外の python で読んで得た。 禁止7語が0であることは下の検査が今日どおり見る。
+  expect(functionInput.properties.source.enum).toEqual([
+    "table",
+    "view",
+    "record",
+    "actor",
+    "previous",
+  ]);
   for (const forbidden of ["where", "filter", "select", "count", "group_by", "join", "on"]) {
     expect(Object.keys(functionInput.properties)).not.toContain(forbidden);
   }
@@ -4535,7 +4719,16 @@ test("V3-M10-T05 (e) 「絞りは2箇所」の数え上げを補った(不完全
   // 1バイトも変わっていない**(限定2)—— **緩んだのは「どの行か」の1点だけである。**
   const functionInput = manifestSchema().$defs.function_input as Any;
   expect(Object.keys(functionInput.properties).sort()).toEqual(["source", "table", "via", "view"]);
-  expect(functionInput.properties.source.enum).toEqual(["table", "view", "record"]);
+  // **【`V23-M4-T02` / `SC-G15` / `ADR-0524` §Decision 1-4 / 授権 `ADR-0525` 行22】** 選択肢に `actor` / `previous` を足した
+  // (enum 案。3値から5値)。 **旧の期待(逐語)**: `expect(...source.enum).toEqual(["table", "view", "record"]);`。
+  // 新しい値はスキーマを検査の外の python で読んで得た。 禁止7語が0であることは下の検査が今日どおり見る。
+  expect(functionInput.properties.source.enum).toEqual([
+    "table",
+    "view",
+    "record",
+    "actor",
+    "previous",
+  ]);
 });
 
 // **【`V9-M11-T02` / 台帳 `X-G28`】ここに在った test「V3-M10-T05 (f) docs/manual.md」 は `tools/docs/vocabulary-docs.test.ts` へ切り出した**(`docs/` を fs で読むため。公開単位は公開単位の外を読まない)。
@@ -4642,7 +4835,21 @@ test("V4-M22-T07 (Δ5): VOCABULARY_SCOPE の update_view の列挙が19キーに
   // **`UPDATE_VIEW_ACCEPTED_KEYS` に `report`(`V8-M8` が足した)が着手前から欠けている。**
   // **本タスクもその欠落を埋めていない。**
   expect(VOCABULARY_SCOPE).toContain("flow");
-  expect(VOCABULARY_SCOPE).toContain("の26キーだけ");
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で 26 → 27 に更新した】** 27キー目 `field_width`(入力欄の幅)が
+  // `UPDATE_VIEW_ACCEPTED_KEYS` に加わった。**旧行の逐語は件数が26の形。** `report` の欠落は今日も埋めていない。
+  expect(VOCABULARY_SCOPE).toContain("field_width");
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で 27 → 28 に更新した】** 28キー目 `group_by`(一覧の束ねるキー)が
+  // `UPDATE_VIEW_ACCEPTED_KEYS` に加わった。**旧行の逐語**: `expect(VOCABULARY_SCOPE).toContain("の27キーだけ");`
+  expect(VOCABULARY_SCOPE).toContain("group_by");
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471` で 28 → 29 に更新した】** 29キー目 `layout`(並べ方の木)が
+  // `UPDATE_VIEW_ACCEPTED_KEYS` に加わった。**旧の期待値は「28キーだけ」を含むこと。** `report` の欠落は今日も埋めていない。
+  expect(VOCABULARY_SCOPE).toContain("layout");
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行9 / 決定 `D-V23-230`】30キー目 `history`。 旧行の逐語: `expect(VOCABULARY_SCOPE).toContain("の29キーだけ");`
+  expect(VOCABULARY_SCOPE).toContain("の30キーだけ");
+  expect(VOCABULARY_SCOPE).not.toContain("の29キーだけ");
+  expect(VOCABULARY_SCOPE).not.toContain("の28キーだけ");
+  expect(VOCABULARY_SCOPE).not.toContain("の27キーだけ");
+  expect(VOCABULARY_SCOPE).not.toContain("の26キーだけ");
   expect(VOCABULARY_SCOPE).not.toContain("の19キーだけ");
   expect(VOCABULARY_SCOPE).not.toContain("の20キーだけ");
   expect(VOCABULARY_SCOPE).not.toContain("の21キーだけ");
@@ -5588,7 +5795,9 @@ test("V10-M34-T01 (4c): 入口の凍結値は 52 / 26 のまま動いていな�
   // **26 にしたのは前段(`V10-M30-T02`)である。** **【禁止】本段が「限定8 を履行した」と書かない。**
   const source = readSrc("src", "server", "entry-point-inventory.test.ts");
   expect(source.split("toHaveLength(52)").length - 1).toBe(1);
-  expect(source.split("toHaveLength(26)").length - 1).toBe(1);
+  // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行207】綴りを 26 → 27 へ書き換えた(回数1は動かしていない)。**
+  // **旧行の逐語**: 本数を 26 と綴った式の出現が1回(`entry-point-inventory.test.ts` の道具の本数)。
+  expect(source.split("toHaveLength(27)").length - 1).toBe(1);
 });
 
 test("V14-M3-T01: VOCABULARY_SCOPE は、ボタンが行ごとの付与でも出し分けられることと、掛からない5経路を両方述べている", () => {
@@ -6200,4 +6409,550 @@ test("V18-M7-T04: 出荷文と配る説明書に、旧文を消さずに訂正�
     expect(doc).toContain("受信口・自動処理・コードの島・決まった時刻に動く処理の");
     expect(doc).not.toContain("ADR-0444");
   }
+});
+
+test("V20-M4-T07: 役割の規則が名指しした項目について、画面の filter / sort の旧文に訂正が追記され、一覧の区切りには書けないと述べる(内部記号を書かない)", () => {
+  // **旧文は消していない**(上の V4-M28-T02 が今日も逐語で固定している)。**直後に訂正を足した。**
+  expect(CANNOT_DO).toContain(
+    "ただし画面(list_view)の filter / sort に書くことは今日どおりでき、" +
+      "その画面の並び順からは大小関係が今日も漏れます",
+  );
+  const oldAt = CANNOT_DO.indexOf("その画面の並び順からは大小関係が今日も漏れます");
+  const fixAt = CANNOT_DO.indexOf(
+    "訂正します(2026-09-24)。直前の「画面(list_view)の filter / sort に書くことは今日どおりでき",
+  );
+  expect(fixAt).toBeGreaterThan(oldAt);
+  // 訂正は旧文の直後(間に別の文を挟まない)。
+  expect(fixAt - oldAt).toBeLessThan(40);
+  const fix = CANNOT_DO.slice(fixAt, fixAt + 400);
+  expect(fix).toContain("大小関係は漏れません");
+  expect(fix).toContain("400");
+  expect(fix).toContain("一覧の区切り(group_by)には書けません");
+  expect(fix).not.toMatch(/ADR-|V20-|D-V20|H-V20/);
+  // 見出し(`【…】`)を増やしていない(この束の作法)。
+  expect((CANNOT_DO.match(/【[^】]+】/g) ?? []).length).toBe(2);
+  // 一覧の区切りの段落: 名指しした項目は適用の時点で拒否される(「適用できますが」と書かない)。
+  const groupAt = VOCABULARY_SCOPE.indexOf("一覧(list_view)に group_by を1本書くと");
+  expect(groupAt).toBeGreaterThan(0);
+  const group = VOCABULARY_SCOPE.slice(groupAt, groupAt + 1600);
+  expect(group).toContain("役割の規則(rules)が名指ししている項目は書けません");
+  expect(group).not.toContain(
+    "役割の規則(rules)が名指ししている項目を書くと、宣言そのものは適用できますが",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 画面の中の並べ方(layout)を AI へ配る散文に足した波及(2026-09-24)。
+// **値域はスキーマから組み立てて照合する** —— 散文に焼いた値域と `$defs/layout_node` の enum が
+// 1文字でも食い違えば赤になる(値を足した・消した・並びを変えた、のどれでも)。
+// ---------------------------------------------------------------------------
+
+type LayoutBranch = { properties: Record<string, { const?: string; enum?: string[] }> };
+
+function layoutBranches(): LayoutBranch[] {
+  const schema = JSON.parse(readSrc("schemas", "manifest.schema.json"));
+  return schema.$defs.layout_node.oneOf as LayoutBranch[];
+}
+
+/** 値域を持つパラメータ(`enum`)ごとの値の並び。同じキーは枝をまたいで同じ値域である。 */
+function layoutParamRanges(): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const branch of layoutBranches()) {
+    for (const [key, prop] of Object.entries(branch.properties)) {
+      if (prop.enum === undefined) continue;
+      const seen = out.get(key);
+      if (seen !== undefined) expect(prop.enum, key).toEqual(seen);
+      out.set(key, prop.enum);
+    }
+  }
+  return out;
+}
+
+/** 型ごとの、`type` 以外に書けるキー(スキーマの並びのまま)。 */
+function layoutKeysByType(): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const branch of layoutBranches()) {
+    const type = branch.properties.type?.const as string;
+    out.set(
+      type,
+      Object.keys(branch.properties).filter((key) => key !== "type"),
+    );
+  }
+  return out;
+}
+
+function layoutParagraph(): string {
+  const start = VOCABULARY_SCOPE.indexOf("この列挙には今日、画面の中の並べ方(layout)も入ります");
+  expect(start, "VOCABULARY_SCOPE に layout の段落が無い").toBeGreaterThan(0);
+  const end = VOCABULARY_SCOPE.indexOf("MCP の list_records はこの宣言を1つも見ません", start);
+  expect(end).toBeGreaterThan(start);
+  return VOCABULARY_SCOPE.slice(start, end);
+}
+
+test("layout の波及 (b): 語彙の説明に並べ方の6種・型ごとのキー・各パラメータの値域がスキーマと1文字も違わずに書いてある", () => {
+  const paragraph = layoutParagraph();
+  const byType = layoutKeysByType();
+  expect([...byType.keys()]).toEqual(["stack", "cluster", "sidebar", "switcher", "grid", "split"]);
+  expect(paragraph).toContain(`type は${byType.size}種です`);
+  for (const type of byType.keys()) {
+    expect(paragraph, type).toContain(`${type}(`);
+  }
+  const typeKeys = [...byType.entries()]
+    .map(([type, keys]) => `${type} は ${keys.join(" / ")}`)
+    .join("、");
+  expect(paragraph).toContain(`型ごとに書けるキーが決まっています: ${typeKeys} です`);
+  const ranges = layoutParamRanges();
+  expect([...ranges.keys()].sort()).toEqual([
+    "gap",
+    "justify",
+    "min_item",
+    "side_position",
+    "side_width",
+    "threshold",
+  ]);
+  const printed = [...ranges.entries()].map(([key, values]) => `${key} は ${values.join(" / ")}`);
+  for (const phrase of printed) {
+    expect(paragraph, phrase).toContain(phrase);
+  }
+});
+
+test("layout の波及 (b): 説明書の表(view-keys.md)の値域と型ごとのキーがスキーマと1文字も違わない", () => {
+  const doc = readSrc("plugins", "smailtalk", "skills", "view-shape", "reference", "view-keys.md");
+  const valueLine = doc.split("\n").find((line) => line.startsWith("値は名前だけ: "));
+  expect(valueLine, "値域の行が無い").toBeDefined();
+  // 「`a` / `b` は `x` / `y`」を、読点で区切った塊ごとに読む(キーをまとめて書いた塊も読む)。
+  const body = (valueLine as string).slice("値は名前だけ: ".length).split("。")[0] as string;
+  const read = new Map<string, string[]>();
+  for (const chunk of body.split("、")) {
+    const [left, right] = chunk.split(" は ");
+    const keys = (left ?? "").split(" / ").map((key) => key.replaceAll("`", "").trim());
+    const values = (right ?? "").split(" / ").map((value) => value.replaceAll("`", "").trim());
+    for (const key of keys) read.set(key, values);
+  }
+  expect(Object.fromEntries(read)).toEqual(Object.fromEntries(layoutParamRanges()));
+  const keyLine = doc
+    .split("\n")
+    .find((line) => line.startsWith("型ごとに書けるキーが決まっている: "));
+  expect(keyLine, "型ごとのキーの行が無い").toBeDefined();
+  for (const [type, keys] of layoutKeysByType()) {
+    expect(keyLine, type).toContain(`\`${type}\` = ${keys.map((key) => `\`${key}\``).join(" / ")}`);
+  }
+});
+
+test("layout の波及 (a): 語彙の説明に、書ける画面・葉・拒否される組・書かない項目の行き先・幅への追随が書いてあり、内部記号が無い", () => {
+  const paragraph = layoutParagraph();
+  for (const phrase of [
+    "入力フォーム(form)・詳細画面(detail_view)・一覧(list_view)に書けます",
+    'preset_list_shape: "card" を書いたときだけ',
+    '"action:submit" だけです',
+    "action:cancel は書けません",
+    "組込のボタン(編集・削除など)は葉にできません",
+    "field_sections",
+    "4段目",
+    "木の後ろに今日の順で縦に積んで描かれます",
+    "画面幅の条件(断点)を書くことではありません",
+  ]) {
+    expect(paragraph, phrase).toContain(phrase);
+  }
+  expect(paragraph).not.toMatch(/ADR-|V20|D-V20|H-V20|DS-G/);
+});
+
+test("layout の波及 (a): できないことの束の3つの旧文に訂正が直後に足され、旧文は消えておらず、見出しの数は変わらない", () => {
+  const pairs: [string, string][] = [
+    [
+      "ピクセル座標・絶対配置・重ね順を指す語彙もありません。",
+      "訂正します(2026-09-24)。先頭の例の「この項目をここに置いて」は",
+    ],
+    [
+      "3段組も、任意の位置への配置もできません。",
+      "訂正します(2026-09-24)。直前の「3段組も…できません」の「3段組」は今日は偽です",
+    ],
+    // 【V20-M10-T05】旧の逐語 "この3つを「ダークモードは書けない」の1文に丸めないでください)。"。
+    // ダークモードの OS に追随する側が書けるようになったので、丸めてはいけない先はレスポンシブの側だけになった。
+    [
+      "この3つを「レスポンシブは書けない」の1文に丸めないでください)。",
+      "訂正します(2026-09-24)。直前の「画面幅に応じたレスポンシブもこの語彙には1つもありません」は",
+    ],
+  ];
+  for (const [old, fix] of pairs) {
+    const oldAt = CANNOT_DO.indexOf(old);
+    expect(oldAt, old).toBeGreaterThan(0);
+    expect(CANNOT_DO.indexOf(fix), fix).toBe(oldAt + old.length);
+    expect(CANNOT_DO.slice(oldAt, oldAt + 600)).not.toMatch(/ADR-|V20|D-V20|H-V20/);
+  }
+  expect((CANNOT_DO.match(/【[^】]+】/g) ?? []).length).toBe(2);
+  const outOld = "ビューの columns と sort で表示する項目と並び順を変える案を代わりに出す。";
+  const outFix = "(2026-09-24 訂正: 上の列挙の「レスポンシブ」のうち";
+  expect(OUT_OF_SCOPE_BEHAVIOR.indexOf(outFix)).toBe(
+    OUT_OF_SCOPE_BEHAVIOR.indexOf(outOld) + outOld.length,
+  );
+});
+
+test("layout の波及 (a): 説明書の「画面の見た目はまだ変わらない」は今日の姿に置き換わっている", () => {
+  const skill = readSrc("plugins", "smailtalk", "skills", "view-shape", "SKILL.md");
+  const keys = readSrc("plugins", "smailtalk", "skills", "view-shape", "reference", "view-keys.md");
+  for (const doc of [skill, keys]) {
+    expect(doc).not.toContain("見た目はまだ変わらない");
+    expect(doc).toContain("木に置かなかった表示項目は木の後ろに今日の順で縦に積まれ");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// V20-M8(`ADR-0473`): AI に渡る面に、テーマのスロットの旧名(CSS 名)を残さない
+// ---------------------------------------------------------------------------
+
+test("V20-M8: AI に渡る面(vocabulary.ts の全行・接続直後の指示・ツール説明・語彙リソース)に旧名が0件(名前を残した2件を除く)", async () => {
+  // 旧名 = 写像の先(CSS 名)のうち、役割名と違うもの(23件)。**写像は文字列として読む**(2つ目の表を書かない)。
+  const roleMap = themeRoleMapFromSource();
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(roleMap.size).toBe(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(roleMap.size).toBe(23);
+  expect(roleMap.size).toBe(27);
+  const legacyNames = [...roleMap].filter(([role, css]) => role !== css).map(([, css]) => css);
+  // 【V20-M9 / ADR-0474】23 → 27(名前を残した2件を外し、4枠を足した。今日は全件が役割名 ≠ CSS 名)。
+  // 旧(逐語): expect(legacyNames).toHaveLength(23);
+  expect(legacyNames).toHaveLength(27);
+  const hits = (text: string): string[] =>
+    legacyNames.filter((name) =>
+      new RegExp(`(?<![A-Za-z0-9_-])${name}(?![A-Za-z0-9_-])`).test(text),
+    );
+
+  // (1) vocabulary.ts の全行(注釈を含む)。
+  expect(hits(readSrc("src", "mcp", "vocabulary.ts"))).toEqual([]);
+
+  // (2) 接続直後の指示・ツール説明(tools/list)・語彙リソース(resources/read)。
+  const server = createMcpServer({ dataRoot: "data", previewBaseUrl: "http://127.0.0.1:3000" });
+  const client = new Client({ name: "vocabulary-legacy-name-test-client", version: "0.0.0" });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+  try {
+    expect(hits(String(client.getInstructions() ?? ""))).toEqual([]);
+    const { tools } = await client.listTools();
+    expect(tools.length).toBeGreaterThan(0);
+    for (const tool of tools) {
+      expect(
+        hits(`${tool.description ?? ""}\n${JSON.stringify(tool.inputSchema)}`),
+        tool.name,
+      ).toEqual([]);
+    }
+  } finally {
+    await client.close();
+    await server.close();
+  }
+  const resources = await readVocabularyResources();
+  expect(resources.size).toBeGreaterThan(0);
+  for (const [uri, text] of resources) {
+    expect(hits(text), uri).toEqual([]);
+  }
+
+  // 陽性対照: 旧名を1つ混ぜると当たる(検出が空回りしていない)。
+  expect(hits("本文の色は --color-text です")).toEqual(["--color-text"]);
+  expect(hits("--detail-label-width は残す")).toEqual([]);
+});
+
+test("V20-M10-T05: ダークモードを「OS に追随する暗い側は書ける」と「時刻で切り替わる配色は書けない」の2つに割っている", () => {
+  // 旧文「**ダークモード**(OS 設定や時刻で切り替わる配色)も、画面幅に応じたレスポンシブも」は2つを1つに丸めていた。
+  expect(CANNOT_DO).not.toContain("(OS 設定や時刻で切り替わる配色)");
+  const start = CANNOT_DO.indexOf("**ダークモードは2つに分けて読んでください。**");
+  expect(start).toBeGreaterThan(0);
+  const end = CANNOT_DO.indexOf("画面幅に応じたレスポンシブも", start);
+  expect(end).toBeGreaterThan(start);
+  const paragraph = CANNOT_DO.slice(start, end);
+  for (const phrase of [
+    "**OS の設定に追随する暗い側の配色は書けます**",
+    "slots_dark",
+    "画面の上端のスイッチ",
+    "27枠がすべて必須",
+    "色以外の枠",
+    "slots と同じ値を書いてください",
+    "**set_theme はテーマを丸ごと差し替えるので、slots_dark を書かずに差し替えると暗い側の配色は消えます。**",
+    "暗い側の組を持たないテーマのアプリは、OS が暗い設定でも明るいまま描かれます",
+    "**時刻で切り替わる配色は書けません**",
+  ]) {
+    expect(paragraph, phrase).toContain(phrase);
+  }
+  // 時刻の側を「できる」に倒していない。
+  for (const overclaim of [
+    "時刻で切り替わる配色は書けます",
+    "時刻で切り替わる配色も書けます",
+    "時刻で切り替え",
+  ]) {
+    expect(CANNOT_DO, overclaim).not.toContain(overclaim);
+  }
+  // 配る散文に内部記号を書かない。
+  expect(paragraph).not.toMatch(/ADR-|V20|D-V20|H-V20|DS-G|CP-V/);
+});
+
+test("V20-M10 点検 中2: set_theme の形の注意 (15) が暗い側の組 slots_dark と、その拒否の path を案内している", () => {
+  const start = APPLY_DIFF_OP_EXAMPLES.indexOf(
+    "(15) **set_theme の theme は「スロットの実値の入れ物」である。**",
+  );
+  expect(start).toBeGreaterThan(0);
+  const end = APPLY_DIFF_OP_EXAMPLES.indexOf("関数は単体では動かない。", start);
+  expect(end).toBeGreaterThan(start);
+  const paragraph = APPLY_DIFF_OP_EXAMPLES.slice(start, end);
+  for (const phrase of [
+    "**暗い側の組**: slots と並べて slots_dark を書ける(任意)。",
+    "slots_dark も27スロット全部が必須で、同じ閾値のコントラスト検査に掛かる",
+    "暗い側の対が閾値未満ならエラーの path は /app/theme/slots_dark/<スロット名> の形で出る",
+  ]) {
+    expect(paragraph, phrase).toContain(phrase);
+  }
+  // 明るい側の path の案内は消していない(旧文を残した)。
+  expect(paragraph).toContain("エラーの path は /app/theme/slots/<スロット名> の形で出るので");
+  expect(paragraph).not.toMatch(/ADR-|V20|D-V20|H-V20|DS-G|CP-V/);
+});
+
+test("V20-M10 点検 中3: 言葉と見た目の対応表の手順が、slots_dark を持つテーマは slots_dark も写すと案内している", () => {
+  expect(DESIGN_ADJECTIVE_TABLE).toContain(
+    "今のテーマが slots_dark を持つなら、**slots_dark も丸ごと写してください**(set_theme は丸ごと差し替えなので、書かないと暗い側の配色が消えます)。",
+  );
+  // 手順の旧文(残る14スロットは写す)は消していない。
+  expect(DESIGN_ADJECTIVE_TABLE).toContain(
+    "`get_manifest` で今のテーマを読み、残る14スロットは写す",
+  );
+  expect(DESIGN_ADJECTIVE_TABLE).not.toMatch(/ADR-|V20|D-V20|H-V20|DS-G|CP-V/);
+});
+
+/**
+ * **【役割の見せ方。`ADR-0464` / `ADR-0475`】`set_roles` の説明に `density` の1文が在る。**
+ * **述べること3つ**: 画面の宣言が勝つ / 色は変わらない / anonymous には書けない。
+ * **【送り】この群は今日 `signup` を1度も述べていない(直さない。`V20-M16` へ渡す)。**
+ */
+test("V20-M11-T06: set_roles の説明が役割の詰め具合(density)を述べる", () => {
+  const text = VOCABULARY_SCOPE;
+  expect(text).toContain("それぞれの役割には詰め具合(density)を1つ書けます");
+  expect(text).toContain("画面に詰め具合(preset_density)を書いた画面では、画面の側が勝ちます。");
+  expect(text).toContain("変わるのは詰め具合だけで、色は1つも変わりません。");
+  expect(text).toContain("anonymous(ログインしていない人)には書けません");
+});
+
+/**
+ * **【V20-M11 の点検の処置(中2 / 軽4)】AI に配る文の前倒しの最小修正。**
+ * **中2**: 「書かなかった画面は今日と1ピクセルも変わらない」の2箇所(画面の詰まり具合の段落と、
+ * `preset_density` の description)は、役割に詰め具合を書いたアプリでは偽になった。
+ * **旧文は消さず**、直後に「役割に書いた場合はその役割の人には役割の指定が効く」の句を足した。
+ * **軽4**: `set_roles` の density の文と `density` の description に「効かない先」を足した。
+ * **内部記号を AI に配る文に書かない**(足した句の中に版・段・決定・ADR の記号が0件)。
+ */
+const MANIFEST_SCHEMA_FOR_M11_FIX = JSON.parse(
+  readFileSync(join(import.meta.dir, "..", "..", "schemas", "manifest.schema.json"), "utf8"),
+) as {
+  $defs: {
+    view: { properties: { preset_density: { description: string } } };
+    app: { properties: { roles: { items: { properties: { density: { description: string } } } } } };
+  };
+};
+
+const M11_FIX_SCOPE_DENSITY_PHRASE =
+  "役割に詰め具合(density)を書いた場合は、その役割の人には、画面に詰め具合を書かなかった画面へ役割の指定が効きます。今日と変わらないのは、画面にも役割にも詰め具合を書いていない場合です。";
+const M11_FIX_SCHEMA_DENSITY_PHRASE =
+  "役割に詰め具合 (density) を書いた場合は、その役割の人には、詰まり具合を書かなかった画面へ役割の指定が効く。今日と変わらないのは、画面にも役割にも詰め具合を書いていない場合である。";
+const M11_FIX_SCOPE_NOT_REACHED_PHRASE =
+  "役割の詰め具合は、集計表の画面と、上端の帯やメニューには効きません。効くのはその人のアカウントの役割1つです";
+const M11_FIX_SCHEMA_NOT_REACHED_PHRASE =
+  "集計表の画面と、上端の帯やメニューには効かない。効くのはその人のアカウントの役割1つである";
+const M11_FIX_INTERNAL_SYMBOLS = /ADR-|V20|D-V20|H-V20|DS-G|CP-V|V[0-9]+-M/;
+
+test("V20-M11 点検 中2: 画面の詰まり具合の段落が、旧文を残したまま、役割に書いた場合は役割の指定が効くと述べる", () => {
+  const text = VOCABULARY_SCOPE;
+  // 旧文は消していない。
+  expect(text).toContain(
+    "**書かなかった画面と、comfortable と書いた画面は今日と1ピクセルも変わりません。**",
+  );
+  expect(text).toContain(M11_FIX_SCOPE_DENSITY_PHRASE);
+  // 足した句は旧文の直後に在る(別の段落に置かない)。
+  const oldAt = text.indexOf(
+    "書かなかった画面と、comfortable と書いた画面は今日と1ピクセルも変わりません。",
+  );
+  const newAt = text.indexOf(M11_FIX_SCOPE_DENSITY_PHRASE);
+  expect(newAt).toBeGreaterThan(oldAt);
+  expect(newAt - oldAt).toBeLessThan(80);
+  expect(M11_FIX_SCOPE_DENSITY_PHRASE).not.toMatch(M11_FIX_INTERNAL_SYMBOLS);
+});
+
+test("V20-M11 点検 中2: preset_density の description が、旧文を残したまま、役割に書いた場合は役割の指定が効くと述べる", () => {
+  const description = MANIFEST_SCHEMA_FOR_M11_FIX.$defs.view.properties.preset_density.description;
+  expect(description).toContain("書かなかった画面は今日と1ピクセルも変わらない。");
+  expect(description).toContain(M11_FIX_SCHEMA_DENSITY_PHRASE);
+  expect(description).not.toMatch(M11_FIX_INTERNAL_SYMBOLS);
+});
+
+test("V20-M11 点検 軽4: set_roles の density の文と density の description が、効かない先を述べる", () => {
+  expect(VOCABULARY_SCOPE).toContain(M11_FIX_SCOPE_NOT_REACHED_PHRASE);
+  expect(M11_FIX_SCOPE_NOT_REACHED_PHRASE).not.toMatch(M11_FIX_INTERNAL_SYMBOLS);
+  const description =
+    MANIFEST_SCHEMA_FOR_M11_FIX.$defs.app.properties.roles.items.properties.density.description;
+  expect(description).toContain(M11_FIX_SCHEMA_NOT_REACHED_PHRASE);
+  expect(description).not.toMatch(M11_FIX_INTERNAL_SYMBOLS);
+});
+
+// ---------------------------------------------------------------------------
+// AI へ配る散文と、スキーマの description を今日の正に打ち直した(2026-09-27)。
+// **旧文を固定している検査は無かった**(直す前に旧文の綴りで検査の側を探した)ので、
+// **今日の正が在ることを撃つ検査を先に足して赤を見た。** 旧文は製品側の注釈に逐語で残す。
+// ---------------------------------------------------------------------------
+
+const M16_MANIFEST_SCHEMA = JSON.parse(
+  readFileSync(join(import.meta.dir, "..", "..", "schemas", "manifest.schema.json"), "utf8"),
+) as {
+  description: string;
+  $defs: {
+    theme: { properties: Record<string, { description?: string }> };
+    field: { properties: { emphasis: { description: string } } };
+    app: {
+      properties: {
+        roles: { description: string; items: { properties: { id: { description: string } } } };
+      };
+    };
+  };
+};
+
+const M16_INTERNAL_SYMBOLS = /ADR-|V20|D-V20|H-V20|DS-G|CP-V|V[0-9]+-M/;
+
+test("M16 散文1: テーマの値の形の2か所が、16進に加えて明るさ基準の oklch を名指しする", () => {
+  const phrase =
+    "色は #rgb / #rrggbb か明るさ基準の oklch(L C H)、長さは 0 か数値に px / rem / em を付けた形";
+  expect(VOCABULARY_SCOPE).toContain(phrase);
+  expect(APPLY_DIFF_OP_EXAMPLES).toContain(phrase);
+  expect(VOCABULARY_SCOPE).not.toContain("色は #rgb / #rrggbb、長さ");
+  expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("色は #rgb / #rrggbb、長さ");
+});
+
+test("M16 散文2: set_theme の形の説明が、枠の名前を CSS の変数名の形(先頭 --)で書かない", () => {
+  expect(APPLY_DIFF_OP_EXAMPLES).not.toContain('"--<スロット名>"');
+  expect(APPLY_DIFF_OP_EXAMPLES).toContain(
+    '形は { "slots": { "<役割の枠の名前>": "<値>", … }, "origin": { … } } で、',
+  );
+});
+
+test("M16 散文3: set_roles の説明が、役割の要素の5キー(signup と density を含む)を述べる", () => {
+  expect(VOCABULARY_SCOPE).not.toContain(
+    "書けるのは { id, name } の並びだけで、**1件以上12件までです**",
+  );
+  expect(VOCABULARY_SCOPE).toContain(
+    "書けるのは { id, name, rules, signup, density } の並びで(id 以外は省略できます)、**1件以上12件までです**",
+  );
+  const signup =
+    "**それぞれの役割には登録の口(signup)を1つ書けます** —— 値は open(誰でも登録できる)か invite(招待が要る)の2つだけで、省略すると open の扱いです。";
+  expect(VOCABULARY_SCOPE).toContain(signup);
+  // 役割の群の中に在る(詰め具合の文の後)。
+  expect(VOCABULARY_SCOPE.indexOf(signup)).toBeGreaterThan(
+    VOCABULARY_SCOPE.indexOf("**それぞれの役割には詰め具合(density)を1つ書けます**"),
+  );
+  expect(signup).not.toMatch(M16_INTERNAL_SYMBOLS);
+});
+
+test("M16 散文4: 合計の列(sum_field)が役割の規則の名指しした項目を指すと、適用の時点で拒否されると述べる", () => {
+  expect(VOCABULARY_SCOPE).not.toContain(
+    "宣言そのものは適用できますが、その画面を開いたときにサーバが 400 で拒みます",
+  );
+  expect(VOCABULARY_SCOPE).toContain(
+    "**役割の規則(rules)が名指ししている項目は指せません** —— 書いた差分は適用の時点で差分全体が拒否されます",
+  );
+});
+
+test("M16 散文5: 詰まり具合を comfortable と書いて戻せる、は役割に詰め具合を書いたアプリでは戻らないと述べる", () => {
+  const back =
+    "(役割に詰め具合(density)を書いたアプリでは、画面に comfortable と書くと画面の側が勝つので、その役割の人には書く前の見え方(役割の詰め具合)には戻りません。)";
+  expect(VOCABULARY_SCOPE).toContain(back);
+  const oldAt = VOCABULARY_SCOPE.indexOf(
+    "ただし comfortable と書いた画面は既定と同じ描画に戻せます(既定が comfortable だからです)。",
+  );
+  expect(oldAt).toBeGreaterThan(0);
+  expect(VOCABULARY_SCOPE.indexOf(back) - oldAt).toBeLessThan(80);
+  expect(VOCABULARY_SCOPE).toContain(
+    "(詰まり具合の「既定と同じ描画に戻せる」は、役割に詰め具合を書いていないアプリでの話です。)",
+  );
+});
+
+test("M16 散文6: 詳細画面の操作の起点の段落が、ボタンの見た目の強さ(action_emphasis)を述べる", () => {
+  const start = VOCABULARY_SCOPE.indexOf(
+    "**詳細画面(detail_view)には操作の起点(actions)を書けます。",
+  );
+  const end = VOCABULARY_SCOPE.indexOf("**一覧(list_view)の行にも操作の起点(actions)を書けます**");
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  const paragraph = VOCABULARY_SCOPE.slice(start, end);
+  expect(paragraph).toContain(
+    "**詳細画面のボタンには、見た目の強さ(action_emphasis)を1つずつ書けます**",
+  );
+  expect(paragraph).toContain("primary(主");
+  expect(paragraph).toContain("secondary(副)");
+  expect(paragraph).toContain("danger(危険");
+  expect(paragraph).toContain("**一覧の行のボタンには書けません**");
+});
+
+test("M16 散文7: 見た目の重複の数え方の限界が、今日の枠の数(27)で書かれている", () => {
+  expect(DRIFT_THEME_LIMITATION).toContain("(27行か1行か)");
+  expect(DRIFT_THEME_LIMITATION).not.toContain("(25行か1行か)");
+});
+
+test("M16 散文8: フィールド型の本数を焼いた2文が、今日の9型で書かれている", () => {
+  expect(APPLY_DIFF_OP_EXAMPLES).toContain(
+    "**select 型のフィールドにだけ書ける** —— 他の8型に書くと差分全体が拒否される",
+  );
+  expect(APPLY_DIFF_OP_EXAMPLES).toContain(
+    "**9型すべてに書ける** —— したがって unit / emphasis と違い",
+  );
+  expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("他の7型に書くと");
+  expect(APPLY_DIFF_OP_EXAMPLES).not.toContain("**8型すべてに書ける**");
+});
+
+test("M16 スキーマ1: 生の色を指せる色の枠13本すべての description が $palette_名前 を名指しする", () => {
+  const slots = Object.entries(M16_MANIFEST_SCHEMA.$defs.theme.properties).filter(([, property]) =>
+    JSON.stringify(property).includes("palette_"),
+  );
+  expect(slots.length).toBe(13);
+  for (const [name, property] of slots) {
+    expect(String(property.description), name).toContain("生の色への参照 $palette_名前");
+    expect(String(property.description), name).toContain("/ $palette_brand)");
+  }
+});
+
+test("M16 スキーマ2: 役割の description が、廃止した user_kinds と要素のキーを今日の正で述べる(旧文は残す)", () => {
+  const roles = M16_MANIFEST_SCHEMA.$defs.app.properties.roles;
+  expect(roles.description).toContain("要素は識別子 (id) と表示名 (name) だけを持ち");
+  expect(roles.description).toContain(
+    "要素に書けるのは id / name / rules / signup / density の5キーで、id に書けるのは予約4語か、小文字英数と _ だけの1〜32文字の識別子である (user_kinds は廃止された)。",
+  );
+  const id = roles.items.properties.id.description;
+  expect(id).toContain("app.user_kinds で宣言できる識別子と同じ形");
+  expect(id).toContain(
+    "直前の「app.user_kinds で宣言できる識別子と同じ形」は今日は辿れない —— app.user_kinds は廃止された。",
+  );
+  // 旧文の側は制定時の記号を持つので、足した訂正の側だけを見る。
+  const fixAt = roles.description.indexOf("【2026-09-27 訂正");
+  expect(fixAt).toBeGreaterThan(0);
+  expect(roles.description.slice(fixAt)).not.toMatch(M16_INTERNAL_SYMBOLS);
+  expect(id).not.toMatch(M16_INTERNAL_SYMBOLS);
+});
+
+test("M16 スキーマ3: 値の強調と語彙の全体の description が、今日の本数(27 / 8種)で述べる(旧文は残す)", () => {
+  const emphasis = M16_MANIFEST_SCHEMA.$defs.field.properties.emphasis.description;
+  expect(emphasis).toContain("直前の「テーマの25スロット」は今日は27スロットである。");
+  expect(M16_MANIFEST_SCHEMA.description).toContain(
+    "リソース種は app / table / form / list_view / detail_view / workflow / function / report_view の8種である。",
+  );
+  expect(M16_MANIFEST_SCHEMA.description).toContain(
+    `リソース種は ${RESOURCE_KINDS.join(" / ")} の${String(RESOURCE_KINDS.length)}種である。`,
+  );
+  expect(emphasis).not.toMatch(M16_INTERNAL_SYMBOLS);
+  expect(M16_MANIFEST_SCHEMA.description).not.toMatch(/D-V20|H-V20|DS-G|V20-M/);
+});
+
+// 点検の後の直し(2026-09-27)。CANNOT_DO の「ボタンの体裁なども選べません」は、
+// 詳細画面のボタンについては今日は言い過ぎである(action_emphasis で見た目の強さを3値から選べる)。
+// 旧文は消さず、同じ段落の後ろに訂正を1文足した。ここで見るのは、旧文の後ろに訂正が在ることだけである。
+test("M16 体裁1: できないことの「ボタンの体裁なども選べません」の後ろに、詳細画面のボタンの見た目の強さは選べるという訂正が在る", () => {
+  const oldAt = CANNOT_DO.indexOf("ボタンの体裁なども選べません");
+  expect(oldAt).toBeGreaterThan(0);
+  const fix =
+    "直前の段落の「ボタンの体裁なども選べません」は、詳細画面(detail_view)のボタンについては今日は言い過ぎです —— " +
+    "action_emphasis で見た目の強さを primary(主)/ secondary(副)/ danger(危険)の3つから1つずつ選べます" +
+    "(一覧の行のボタンには書けません)。";
+  const fixAt = CANNOT_DO.indexOf(fix);
+  expect(fixAt).toBeGreaterThan(oldAt);
+  // 訂正は同じ段落の中に置く(離れた場所に置くと、切り出して配る説明書に届かない)。
+  expect(fixAt - oldAt).toBeLessThan(1200);
+  expect(fix).not.toMatch(M16_INTERNAL_SYMBOLS);
 });

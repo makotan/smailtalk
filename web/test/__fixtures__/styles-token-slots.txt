@@ -24,6 +24,11 @@
 --color-border
 --color-page-background
 --color-surface-highlight
+# 【V20-M9 / ADR-0474 §Decision 1-2(D-V20-28)で4件を足した。全件は 28 → 32】主ボタンと小窓。
+--color-primary-fill
+--color-on-primary
+--color-overlay-background
+--color-overlay-text
 
 # 書体・行間(4)
 --font-family-base
@@ -87,3 +92,12 @@
 #   なり、`dashed` 等を許すと T01 が失った表現力を復活させる = 7軸を超える増分になる。
 # theme-excluded: --focus-outline-style
 #   `:focus-visible` が参照する。同上(種別は軸に含まれない)。
+#
+# 【V20-M9 / ADR-0474 §Decision 1-3(D-V20-12)で2件を足した。対象外は 3 → 5】
+# 上の見出しの「3件」「25キー」「25件」は撤去の前の逐語である(今日は対象外5件・テーマ対象は
+# 写像を通して数える)。**2件は `:root` のスロットとしては残る**(`styles.css` の2行は1バイトも
+# 動かしていない)。語彙から外したので「アプリごとに変えられる」項目ではなくなった。
+# theme-excluded: --detail-label-width
+#   `.detail-field dt` が参照する。V20-M9 / ADR-0474 で語彙から外した(D-V20-12)。:root には残る。
+# theme-excluded: --login-max-width
+#   `.login` が参照する。同上。

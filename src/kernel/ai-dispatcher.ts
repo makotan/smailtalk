@@ -31,7 +31,13 @@ import { Database } from "bun:sqlite";
 // ためであり、ここに個人所有の規約を1行も再実装しないための選択である)。
 // **`scripts/kernel-import-drift.test.ts` は `src/kernel/` を走査対象から外して
 // いるので、この向きの層またぎはその検査には現れない**(実測で緑を確かめた)。
-import { judgeOwnerScopedOp } from "../server/owner-scope.ts";
+import { effectiveRolesOnDb } from "../auth/store.ts";
+import {
+  isGrantTable,
+  judgeOwnerScopedOp,
+  lastRowAdminVanishes,
+  principalRowWriteRefused,
+} from "../server/owner-scope.ts";
 import { AiCapabilityStore } from "./ai-capability-store.ts";
 import { estimateCostUsd, isKnownModel } from "./ai-cost.ts";
 import { AI_MAX_CHAIN_DEPTH, aiUsageDate, checkAiLimit, withAiChainDepth } from "./ai-limits.ts";
@@ -39,7 +45,7 @@ import { type AiProvider, defaultAiProvider } from "./ai-provider.ts";
 import { buildStructuredPrompt, parseAiValue } from "./ai-structured.ts";
 import { readCurrentManifest } from "./apply-manifest.ts";
 import { systemClock } from "./clock.ts";
-import { getRecord, updateRecord } from "./records.ts";
+import { getRecord, listRecords, updateRecord } from "./records.ts";
 import { isApplyInProgress } from "./recovery.ts";
 import { resolveTable } from "./resolve-table.ts";
 import { resolveSecret } from "./secret-resolver.ts";
@@ -306,19 +312,35 @@ function writeBack(
       // 流用すると、通してはいけない値を通すか、通してよい値を止めるかの
       // どちらかを必ずやる。** **だから口ごとに、これから書く値で解く。**
       // **【誇張しない】これは「2度呼ぶほうが速い」ではなく「1度では答えが出ない」である。**
+      // **【`V23-M1-T07`。行18。`SC-G5` / `D-V23-14`】行の最後の管理者。** 書き戻し先が付与表の行なら、
+      // 書こうとしている値ごとに問う(本命とフォールバックの値は別物)。 **主体を問わず、
+      // `applies`(面と点の関門の有無)にも依らない**(時刻起動から積まれたジョブにも掛かる)。
+      // **【`V23-M6-T04`】相手の行を指す欄**(値ごとに問う。主体と `applies` に依らない)。
+      const judgeLastAdmin = (candidate: string): string | undefined =>
+        principalRowWriteBackDenial(db, manifest, job, candidate) ??
+        lastRowAdminWriteBackDenial(db, manifest, job, candidate);
       const judgeOwner = (candidate: string): string | undefined =>
-        applies ? judgeWriteBackOwner(db, manifest, job, candidate) : undefined;
+        judgeLastAdmin(candidate) ??
+        (applies ? judgeWriteBackOwner(db, manifest, job, candidate) : undefined);
 
       // まず AI 出力を試す(null = 抽出失敗なので最初からフォールバックへ)。
       // **断られたときは書かずにフォールバックへ落とす** —— **`updateRecord` が
       // フィールド制約で拒否したときと同じ扱いであり、断りの理由は下で組み直す。**
+      // **【`V23-M4-T03` / `D-V23-103`】書き戻しが起こす発火の `$actor` はジョブの主体。**
+      const origin = writeBackOrigin(db, manifest, job.actor);
       let primaryDenial: string | undefined;
       if (value !== null) {
         primaryDenial = judgeOwner(value);
         if (primaryDenial === undefined) {
-          const result = updateRecord(db, manifest, job.targetTable, job.targetRecordId, {
-            [job.outputField]: value,
-          });
+          const result = updateRecord(
+            db,
+            manifest,
+            job.targetTable,
+            job.targetRecordId,
+            { [job.outputField]: value },
+            undefined,
+            origin,
+          );
           if (result.ok) {
             return { ok: true, usedFallback: false, value };
           }
@@ -338,9 +360,15 @@ function writeBack(
         };
       }
       // これも通らなければ書かない。
-      const fallbackResult = updateRecord(db, manifest, job.targetTable, job.targetRecordId, {
-        [job.outputField]: job.fallback,
-      });
+      const fallbackResult = updateRecord(
+        db,
+        manifest,
+        job.targetTable,
+        job.targetRecordId,
+        { [job.outputField]: job.fallback },
+        undefined,
+        origin,
+      );
       if (fallbackResult.ok) {
         return { ok: true, usedFallback: true, value: job.fallback };
       }
@@ -476,4 +504,136 @@ function findField(manifest: Manifest, tableId: string, fieldId: string): Field 
   return manifest.app.tables
     .find((table) => table.id === tableId)
     ?.fields.find((field) => field.id === fieldId);
+}
+
+/**
+ * **AI の書き戻しが、付与表の行の値を書き換えて行の最後の管理者を消すなら断る**(`V23-M1-T07`。
+ * `ROUTES` の行18。`ADR-0510` §Decision 2)。 判定は `owner-scope.ts` の `lastRowAdminVanishes`
+ * 1本。 付与表でなければ1行も読まずに通す。 文に値を入れない。
+ */
+function lastRowAdminWriteBackDenial(
+  db: Database,
+  manifest: Manifest,
+  job: {
+    readonly targetTable: string;
+    readonly targetRecordId: string;
+    readonly outputField: string;
+  },
+  candidate: string,
+): string | undefined {
+  if (!isGrantTable(manifest, job.targetTable)) {
+    return undefined;
+  }
+  const readRows = (id: string): readonly Record<string, unknown>[] => {
+    const result = listRecords(db, manifest, id, {});
+    return result.ok ? (result.value as unknown as Record<string, unknown>[]) : [];
+  };
+  const vanishes = lastRowAdminVanishes({
+    manifest,
+    readRows,
+    userExists: (userId) => effectiveRolesOnDb(db, userId) !== null,
+    replaced: {
+      grantTableId: job.targetTable,
+      afterRows: readRows(job.targetTable).map((row) =>
+        row?._id === job.targetRecordId ? { ...row, [job.outputField]: candidate } : row,
+      ),
+    },
+  });
+  return vanishes
+    ? `テーブル "${job.targetTable}" のこの書込は、行の最後の管理者の権限を外すため断りました(1バイトも書いていません)。`
+    : undefined;
+}
+
+/**
+ * **【`V23-M6-T04`】AI の書き戻しが、付与表の相手の行を指す欄に値を入れる・変えるなら断る**(`ADR-0538`
+ * §Decision 1-4・`D-V23-162`)。 判定は `owner-scope.ts` の述語1本。 `principal_row` を宣言していないアプリでは
+ * 1行も読まずに通す。 文に値を入れない。
+ */
+function principalRowWriteBackDenial(
+  db: Database,
+  manifest: Manifest,
+  job: {
+    readonly targetTable: string;
+    readonly targetRecordId: string;
+    readonly outputField: string;
+  },
+  candidate: string,
+): string | undefined {
+  const refused = principalRowWriteRefused({
+    manifest,
+    tableId: job.targetTable,
+    op: "update",
+    values: { [job.outputField]: candidate },
+    before: () => {
+      const existing = getRecord(db, manifest, job.targetTable, job.targetRecordId);
+      return existing.ok && existing.value !== null
+        ? (existing.value as unknown as Record<string, unknown>)
+        : undefined;
+    },
+  });
+  return refused
+    ? `テーブル "${job.targetTable}" のこの書込は、相手の行を指す欄に書き込むため断りました(1バイトも書いていません)。この欄は招待の承諾でだけ書けます。`
+    : undefined;
+}
+
+// --- 書き戻しの起点の操作者(`V23-M4-T03`)-----------------------------------------------------
+
+/**
+ * **AI の書き戻しが起こす発火の `$actor`**(`V23-M4-T03` / `D-V23-103` / `ADR-0524` §Decision 1-1)。
+ *
+ * 書き戻しは非同期(配送器の周期)で走るので、連鎖の起点の人はもう手元に無い。 **ジョブに残っている
+ * 主体**(積んだときの判定の主体 = `act_as` の先か、トリガー元の行の `st_owner`)を起点とする。
+ * **起点の人(ジョブを起こす更新をした人)と割れる**(説明書と穴の一覧に書く)。 AI のジョブの表に
+ * 列は足さない。
+ *
+ * - 主体が空(`null` / 空文字)なら、3つとも空文字。
+ * - `id` はジョブの主体そのもの(SQL を引かない)。
+ * - **`login` と `role` のために利用者の表(`_auth_users`)を引くのは、そのアプリが `values` の
+ *   `$actor.login` / `$actor.role` か島の入力 `actor` を宣言しているときだけ**である。 宣言の無い
+ *   アプリは1本も SQL を増やさない(2つは空文字のまま。読む宣言が無いので見えない)。
+ * - 利用者の表に行が無い id(退会した人など)と、表の無いアプリは `login` と `role` を空文字にする。
+ */
+function writeBackOrigin(
+  db: Database,
+  manifest: Manifest,
+  actorId: string | null,
+): { id: string; login: string; role: string; keepUpdatedBy?: true } {
+  if (actorId === null || actorId === "") {
+    // **【`V23-M9-T04`。`D-V23-253`。`ADR-0549` §Decision 1-5】主体が空なら、更新者(`st_updated_by`)を
+    // 空で上書きせず、直前の値のまま残す。** 発火の `$actor` と変更履歴の操作者は今日どおり空。
+    return { id: "", login: "", role: "", keepUpdatedBy: true };
+  }
+  if (!readsActorNameOrRole(manifest)) {
+    return { id: actorId, login: "", role: "" };
+  }
+  let found: { username: string; role: string } | null = null;
+  try {
+    found = db
+      .query<{ username: string; role: string }, [string]>(
+        `SELECT "username", "role" FROM "_auth_users" WHERE "id" = ?`,
+      )
+      .get(actorId);
+  } catch {
+    // 利用者の表を持たないアプリ(人が0人)。 落とさず「分からない」に倒す。
+    found = null;
+  }
+  return { id: actorId, login: found?.username ?? "", role: found?.role ?? "" };
+}
+
+/** そのアプリが `$actor.login` / `$actor.role` か島の入力 `actor` を宣言しているか。 */
+function readsActorNameOrRole(manifest: Manifest): boolean {
+  const app = manifest.app;
+  const inputs = (app.functions ?? []).flatMap((fn) =>
+    fn.input === undefined ? [] : Array.isArray(fn.input) ? fn.input : [fn.input],
+  );
+  if (inputs.some((input) => (input as { source?: unknown }).source === "actor")) {
+    return true;
+  }
+  return (app.workflows ?? []).some((workflow) =>
+    workflow.actions.some((action) =>
+      Object.values((action as { values?: Record<string, unknown> }).values ?? {}).some(
+        (value) => value === "$actor.login" || value === "$actor.role",
+      ),
+    ),
+  );
 }

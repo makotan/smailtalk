@@ -22,6 +22,8 @@
  * | (iii) | アプリ間の遷移 | **テーマが残留しない**(下記の書き分けを読むこと)|
  * | (iv) | `apply_diff` | **製品の HTTP API で変えたらリロードだけで反映され、`undo` で戻る** |
  * | (v) | **影の当たり先** | **指定した影が5つの面すべてで効く**(未指定なら5つとも `none`)。V3-M1 が `.login` 1箇所しか作らなかったことの是正 |
+ * | (vi) | **明るさ基準の色(oklch)** | **oklch で書いた色がカスタムプロパティに oklch のまま届き、~~色域の外は差分ごと拒否される~~ 色域の外でも比の足りない配色は比で拒否される**(V20-M7 が足した。**V20-M7B が向きを変えた** —— 旧の逐語は「色域の外は差分ごと拒否される」。見出しの「5本」は当時の逐語のまま) |
+ * | (vii) | **色域の外の oklch** | **色域の外の oklch と H の none が HTTP で受理され、カスタムプロパティに書いた値のまま届く。広色域の画面の比だけで落ちる配色は2つの比を案内して拒否される**(V20-M7B が足した) |
  *
  * ## (iii) が証明すること / しないこと(**書き分けないと誇張になる**)
  *
@@ -48,6 +50,10 @@
  */
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import type { Diff, ListView, Manifest } from "../../src/kernel/types.ts";
+// **写像の表だけを借りる**(V20-M8)。`web/e2e/` は `web/src/` の React 部品を import しない
+// 作法だが、この表は import を1本も持たないデータであり、ここに2本目の対応表を書くと
+// 規則が2本に割れる(ADR-0473 限定12)ので、表そのものを読む。
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 import {
   buildRecord,
   ensureReferenceTargets,
@@ -64,47 +70,57 @@ import {
  * 非テキスト閾値 3:1 を下回って必ず拒否される(ADR-0046 の 2026-07-25 追記「限界7」)。
  */
 const THEME_A: Record<string, string> = {
-  "--color-text": "#f5f5f5",
-  "--color-text-secondary": "#c8d8e8",
-  "--color-text-label": "#ffd54a",
-  "--color-text-placeholder": "#b0b8c0",
-  "--color-danger": "#ff9a8a",
-  "--color-page-background": "#102030",
-  "--color-surface-highlight": "#243447",
-  "--color-border": "#8fa3b8",
-  "--focus-outline-color": "#7fd4ff",
-  "--font-family-base": "Georgia, serif",
-  "--font-size-secondary": "12px",
-  "--font-size-note": "13px",
-  "--line-height-base": "2",
-  "--space-1": "2px",
-  "--space-2": "4px",
-  "--space-3": "6px",
-  "--space-4": "8px",
-  "--space-5": "10px",
-  "--space-6": "12px",
-  "--border-width": "3px",
-  "--control-border-radius": "5px",
-  "--surface-shadow": "0 2px 6px #000000",
-  "--focus-outline-width": "4px",
-  "--detail-label-width": "120px",
-  "--login-max-width": "300px",
+  body_text: "#f5f5f5",
+  secondary_text: "#c8d8e8",
+  label_text: "#ffd54a",
+  placeholder_text: "#b0b8c0",
+  danger: "#ff9a8a",
+  page_background: "#102030",
+  highlight_surface: "#243447",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#102030",
+  on_primary: "#f5f5f5",
+  overlay_background: "#102030",
+  overlay_text: "#f5f5f5",
+  border_color: "#8fa3b8",
+  focus_ring: "#7fd4ff",
+  body_font: "Georgia, serif",
+  secondary_font_size: "12px",
+  note_font_size: "13px",
+  body_line_height: "2",
+  space_1: "2px",
+  space_2: "4px",
+  space_3: "6px",
+  space_4: "8px",
+  space_5: "10px",
+  space_6: "12px",
+  border_width: "3px",
+  control_radius: "5px",
+  surface_shadow: "0 2px 6px #000000",
+  focus_ring_width: "4px",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "120px",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "300px",
 };
 
 /** 検証用のテーマB(明るい地色)。**A と1つも同じ色を持たない。** */
 const THEME_B: Record<string, string> = {
   ...THEME_A,
-  "--color-text": "#1a237e",
-  "--color-text-secondary": "#37474f",
-  "--color-text-label": "#4a148c",
-  "--color-text-placeholder": "#5d4037",
-  "--color-danger": "#b00020",
-  "--color-page-background": "#fff8e1",
-  "--color-surface-highlight": "#ffecb3",
-  "--color-border": "#6d4c41",
-  "--focus-outline-color": "#00695c",
-  "--font-family-base": "Courier New, monospace",
-  "--line-height-base": "1.2",
+  body_text: "#1a237e",
+  secondary_text: "#37474f",
+  label_text: "#4a148c",
+  placeholder_text: "#5d4037",
+  danger: "#b00020",
+  page_background: "#fff8e1",
+  highlight_surface: "#ffecb3",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#fff8e1",
+  on_primary: "#1a237e",
+  overlay_background: "#fff8e1",
+  overlay_text: "#1a237e",
+  border_color: "#6d4c41",
+  focus_ring: "#00695c",
+  body_font: "Courier New, monospace",
+  body_line_height: "1.2",
 };
 
 /** テーマ対象外の3スロット(テーマから当たらないことを (ii) が実測する)。 */
@@ -241,6 +257,23 @@ test.describe("V3-M1-T04 テーマの表示層への適用(chromium 実測)", ()
     expect(scope["background-color"]).toBe("rgb(16, 32, 48)"); // --color-page-background: #102030
     expect(scope["font-family"]).toBe("Georgia, serif");
     expect(scope["line-height"]).toBe("32px"); // 2 × 16px
+
+    // --- 【V20-M8 / ADR-0473】役割名で書いたテーマが、写像の CSS 名に届く ---
+    // マニフェストのキーは役割名(`body_text` など)である。スコープ要素の CSS カスタムプロパティ
+    // (CSS 名)に25件すべての値が届いていることを読む。**上の計算値が変わったこと**と合わせて、
+    // 「役割名 → 写像 → CSS 名 → 描画」が1本で通っていることの実測である。
+    const roleNames = Object.keys(THEME_A).filter((slot) => !slot.startsWith("--"));
+    expect(roleNames.length).toBeGreaterThan(0);
+    const cssNames = Object.keys(THEME_A).map((slot) => THEME_ROLE_TO_CSS_PROPERTY[slot] ?? slot);
+    const delivered = await customProperties(page, cssNames);
+    expect(delivered).toEqual(
+      Object.fromEntries(
+        Object.entries(THEME_A).map(([slot, value]) => [
+          THEME_ROLE_TO_CSS_PROPERTY[slot] ?? `(写像に無い: ${slot})`,
+          value,
+        ]),
+      ),
+    );
 
     // --- スコープ配下の規則(`var()` を要素側で解決するもの)---
     const meta = await computed(page, ".view-list .meta", ["color", "font-size"]);
@@ -427,9 +460,9 @@ test.describe("V3-M1-T04 テーマの表示層への適用(chromium 実測)", ()
       "--color-page-background",
       "--font-family-base",
     ]);
-    expect(resolved["--color-text"]).toBe(THEME_B["--color-text"]);
-    expect(resolved["--color-page-background"]).toBe(THEME_B["--color-page-background"]);
-    expect(resolved["--font-family-base"]).toBe(THEME_B["--font-family-base"]);
+    expect(resolved["--color-text"]).toBe(THEME_B.body_text);
+    expect(resolved["--color-page-background"]).toBe(THEME_B.page_background);
+    expect(resolved["--font-family-base"]).toBe(THEME_B.body_font);
 
     // **スコープ要素は常に1つだけである**(2アプリが同一 DOM に並ぶことはない)。
     expect(await page.getByTestId("app-theme").count()).toBe(1);
@@ -477,7 +510,9 @@ test.describe("V3-M1-T04 テーマの表示層への適用(chromium 実測)", ()
     expect(after["font-family"]).toBe("Georgia, serif");
     // ログイン画面にしか当たらないスロット3件も、リロード後の値になっている。
     const login = await computed(page, ".login", ["max-width", "margin-top", "box-shadow"]);
-    expect(login["max-width"]).toBe("300px"); // --login-max-width
+    // 【V20-M9 / ADR-0474 §1-3(D-V20-12)】`--login-max-width` は語彙から外した(テーマでは変えられない)。
+    // `:root` の既定 22rem(= 352px)のまま残る。旧(逐語): `expect(login["max-width"]).toBe("300px"); // --login-max-width`
+    expect(login["max-width"]).toBe("352px"); // --login-max-width(:root の既定のまま)
     expect(login["margin-top"]).toBe("12px"); // --space-6
     expect(login["box-shadow"]).toBe("rgb(0, 0, 0) 0px 2px 6px 0px"); // --surface-shadow
     // **【`V8-M21` の後半で1本だけ足した。減らしていない】** **同じ3つのスロットを、
@@ -488,9 +523,11 @@ test.describe("V3-M1-T04 テーマの表示層への適用(chromium 実測)", ()
       "--space-6",
       "--surface-shadow",
     ]);
-    expect(slots["--login-max-width"]).toBe(THEME_A["--login-max-width"]);
-    expect(slots["--space-6"]).toBe(THEME_A["--space-6"]);
-    expect(slots["--surface-shadow"]).toBe(THEME_A["--surface-shadow"]);
+    // 【V20-M9 / ADR-0474 §1-3】テーマからは当たらず `:root` の既定が見える。
+    // 旧(逐語): `expect(slots["--login-max-width"]).toBe(THEME_A["--login-max-width"]);`
+    expect(slots["--login-max-width"]).toBe("22rem");
+    expect(slots["--space-6"]).toBe(THEME_A.space_6);
+    expect(slots["--surface-shadow"]).toBe(THEME_A.surface_shadow);
 
     // (d) undo → リロードだけで既定へ戻る(`app.theme` のキーごと消える)
     const undone = await request.post(`/api/apps/${app.appId}/undo`, { headers: app.authHeaders });
@@ -522,6 +559,114 @@ test.describe("V3-M1-T04 テーマの表示層への適用(chromium 実測)", ()
    * **測らないこと**: 影が視覚的にどう見えるか(計算値しか読んでいない。本ファイルの
    * 既存の限界と同じ)。
    */
+  /*
+   * **【V20-M7】明るさ基準の色(oklch)を製品の HTTP API で適用し、画面に届くことを実測する。**
+   * カーネル(スキーマ + コントラスト検査)が oklch を受け、`themeScopeStyle` の写像
+   * (V20-M8 で恒等から `web/src/theme-role-map.ts` の1本に建て替えた)を通って
+   * CSS カスタムプロパティとしてそのまま画面に届くこと(計画 09 の §0-4 判断1 の (β))を固定する。
+   * **証明しないこと**: ブラウザが描いた色と、カーネルが測った色が同じであること
+   * (ブラウザの oklch → sRGB の変換とカーネルの変換の突き合わせは点検の仕事。穴 H-V20-79)。
+   */
+  // 【V20-M7B-T02 で向きを変えた(ADR-0472。消していない)】旧の名前(逐語):
+  // "(vi) oklch を含むテーマを apply_diff で適用すると、カスタムプロパティに oklch のまま届き、色域の外は拒否される"
+  test("(vi) oklch を含むテーマを apply_diff で適用すると、カスタムプロパティに oklch のまま届き、色域の外でも比の足りない配色は比で拒否される", async ({
+    page,
+    request,
+  }) => {
+    const app = await provisionApp(request);
+    const oklchTheme: Record<string, string> = {
+      ...THEME_B,
+      body_text: "oklch(0.3 0.1 270)",
+      page_background: "oklch(0.98 0.02 90)",
+    };
+    await applyDiff(request, app, setThemeDiff(oklchTheme, "theme-oklch"));
+
+    await page.goto(`/apps/${app.appId}`);
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    const slots = await customProperties(page, ["--color-text", "--color-page-background"]);
+    expect(slots["--color-text"]).toBe("oklch(0.3 0.1 270)");
+    expect(slots["--color-page-background"]).toBe("oklch(0.98 0.02 90)");
+    // 計算値は oklch のまま解決される(chromium は oklch() で書かれた色を oklch() のまま直列化する)。
+    const values = await computed(page, '[data-testid="app-theme"]', ["color", "background-color"]);
+    expect(values.color).toBe("oklch(0.3 0.1 270)");
+    expect(values["background-color"]).toBe("oklch(0.98 0.02 90)");
+
+    // 【V20-M7B-T02 で向きを変えた】旧(逐語): 「色域の外の oklch は、スキーマを通ってもコントラスト検査の段で差分全体が拒否される。」
+    //   expect(await outOfGamut.text()).toContain("色として読めません");
+    // 今日は色域の外も読む。同じ明るい緑(L 0.7)を淡い地に置いた配色は、読めないからではなく比が足りないので
+    // 拒否される(2つの画面の比を案内する)。色域の外の色が受理されることは (vii) が見る。
+    const outOfGamut = await request.post(`/api/apps/${app.appId}/diffs`, {
+      data: setThemeDiff({ ...oklchTheme, body_text: "oklch(0.7 0.4 150)" }, "theme-oog"),
+      headers: app.authHeaders,
+    });
+    // 【V20-M7 点検の軽8】「400 以上」ではなく 400 ちょうど(実地で撃った応答も 400)。
+    expect(outOfGamut.status()).toBe(400);
+    const rejectedBody = await outOfGamut.text();
+    expect(rejectedBody).not.toContain("色として読めません");
+    expect(rejectedBody).toContain("下回ります");
+    expect(rejectedBody).toContain("広色域の画面では");
+    // 拒否されたので、画面は直前の oklch のままである(部分適用しない)。
+    await page.reload();
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    const kept = await customProperties(page, ["--color-text"]);
+    expect(kept["--color-text"]).toBe("oklch(0.3 0.1 270)");
+  });
+
+  /*
+   * **【V20-M7B-T01】色域の外の oklch を製品の HTTP API で適用し、書いた値のまま画面に届くことを実測する**
+   * (計画 09b-v20-m7b-plan.md §3 の完了条件5。ADR-0472 R-2 中4 が「保存値は書いた値のまま」を押さえる先に名指しした)。
+   * 適用の応答は、この API が成功に返す 201(計画の「200」は成功の意。applyDiff と同じ値を見る)。
+   * あわせて、通常の画面では通るが広色域の画面で落ちる配色(黒地に fuchsia-600)が 400 で拒否され、
+   * 応答の本文が2つの画面の比を案内することを見る。
+   * **証明しないこと**: ブラウザが描いた画素とカーネルの見え方が同じであること(メインの突き合わせ。完了条件6)。
+   */
+  test("(vii) 色域の外の oklch を含むテーマを apply_diff で適用すると成功し、カスタムプロパティに書いた値のまま届く", async ({
+    page,
+    request,
+  }) => {
+    const app = await provisionApp(request);
+    const outOfGamut: Record<string, string> = {
+      ...THEME_B,
+      // emerald-900(Tailwind v4)。sRGB の色域の外(V20-M7 では拒否されていた)。
+      body_text: "oklch(37.8% 0.077 168.94)",
+      // 色相に none を書いた無彩色(Tailwind v4 の neutral-50)。
+      page_background: "oklch(98.5% 0 none)",
+    };
+    const applied = await request.post(`/api/apps/${app.appId}/diffs`, {
+      data: setThemeDiff(outOfGamut, "theme-oog-accepted"),
+      headers: app.authHeaders,
+    });
+    expect(applied.status(), await applied.text()).toBe(201);
+
+    await page.goto(`/apps/${app.appId}`);
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    const slots = await customProperties(page, ["--color-text", "--color-page-background"]);
+    expect(slots["--color-text"]).toBe("oklch(37.8% 0.077 168.94)");
+    expect(slots["--color-page-background"]).toBe("oklch(98.5% 0 none)");
+
+    // 黒地に fuchsia-600 の文字: 通常の画面では 4.51:1 で通るが、広色域の画面では 4.34:1 で落ちる。
+    const rejected = await request.post(`/api/apps/${app.appId}/diffs`, {
+      data: setThemeDiff(
+        {
+          ...THEME_A,
+          body_text: "oklch(59.1% 0.293 322.896)",
+          page_background: "#000000",
+          highlight_surface: "#000000",
+        },
+        "theme-oog-p3-rejected",
+      ),
+      headers: app.authHeaders,
+    });
+    expect(rejected.status()).toBe(400);
+    const body = await rejected.text();
+    expect(body).toContain("通常の画面では 4.51:1、広色域の画面では 4.34:1");
+    // 拒否されたので、画面は直前の値のままである(部分適用しない)。
+    await page.reload();
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    const kept = await customProperties(page, ["--color-text"]);
+    expect(kept["--color-text"]).toBe("oklch(37.8% 0.077 168.94)");
+  });
+
   test("(v) 影を指定すると、面と判定した5つの当たり先すべてで効く(未指定なら5つとも none)", async ({
     page,
     request,
@@ -628,5 +773,63 @@ test.describe("V3-M1-T04 テーマの表示層への適用(chromium 実測)", ()
       ".record-form": shadow,
       ".login": shadow,
     });
+  });
+  /**
+   * **(vi)【V20-M9 点検の軽7 の処置】語彙から外した2枠(`ADR-0474` §Decision 1-3 / `D-V20-12`)は、
+   * テーマを当てても画面の寸法が `:root` の既定のまま。** 点検の時点でブラウザで測っていたのは
+   * ログイン画面の 22rem(上の (iv))だけで、詳細画面の項目名の幅 8rem は測っていなかった。
+   * 同じアプリを、テーマを当てる前と後で測る(前後とも 128px / 352px)。
+   * `THEME_EXCLUDED`(3件)は `.shell` 側で読むカスタムプロパティの一覧なので広げていない
+   * (2枠は `:root` に残り、当たり先は詳細画面とログイン画面なので、ここで当たり先を直接測る)。
+   */
+  test("(vi) 外した2枠は、テーマを当てても詳細画面の項目名の幅 128px・ログイン画面の最大幅 352px のまま", async ({
+    page,
+    request,
+  }) => {
+    const app = await provisionApp(request);
+    await app.authenticate(page.context());
+    const list = listViewOf(app.manifest);
+    const detailView = app.manifest.app.views.find((view) => view.type === "detail_view");
+    if (detailView === undefined) throw new Error("フィクスチャに detail_view が無い");
+    const table = app.tableOf(list.table);
+    const referenceIds = await ensureReferenceTargets(app, table);
+    const recordId = await app.createRecord(table.id, buildRecord(table, 0, referenceIds));
+
+    async function sizes(): Promise<{
+      labelBasis: string;
+      labelWidth: number;
+      loginMaxWidth: string;
+    }> {
+      await page.goto(`/apps/${app.appId}/views/${detailView?.id}/records/${recordId}`);
+      await expect(page.getByTestId("detail-fields")).toBeVisible();
+      const label = await page.evaluate(() => {
+        const dt = document.querySelector(".detail-fields .detail-field dt");
+        if (dt === null) throw new Error("項目名(dt)が無い");
+        return {
+          basis: getComputedStyle(dt).flexBasis,
+          width: Math.round(dt.getBoundingClientRect().width),
+        };
+      });
+      await page.context().clearCookies();
+      await page.goto(`/apps/${app.appId}`);
+      await expect(page.getByTestId("login-page")).toBeVisible();
+      const login = await computed(page, ".login", ["max-width"]);
+      await app.authenticate(page.context());
+      return {
+        labelBasis: label.basis,
+        labelWidth: label.width,
+        loginMaxWidth: login["max-width"] ?? "",
+      };
+    }
+
+    const expected = { labelBasis: "128px", labelWidth: 128, loginMaxWidth: "352px" };
+    const before = await sizes();
+    console.log(`retired-slots before-theme ${JSON.stringify(before)}`);
+    expect(before).toEqual(expected);
+
+    await applyDiff(request, app, setThemeDiff(THEME_A, "theme-a-retired-slots"));
+    const after = await sizes();
+    console.log(`retired-slots after-theme ${JSON.stringify(after)}`);
+    expect(after).toEqual(expected);
   });
 });

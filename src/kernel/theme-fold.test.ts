@@ -65,37 +65,42 @@ function baseManifest(): Manifest {
 
 /**
  * コントラスト検査を通るテーマ(25スロット)。**既定配色ではない** ——
- * 既定の `--color-border`(`#ddd`)は非テキスト閾値 3:1 を通らない
+ * 既定の `border_color`(`#ddd`)は非テキスト閾値 3:1 を通らない
  * (ADR-0046 の 2026-07-25 追記「限界7」)。
  */
 function passingTheme(): Theme {
   return {
     slots: {
-      "--color-danger": "#a00000",
-      "--color-text": "#000000",
-      "--color-text-label": "#595959",
-      "--color-text-placeholder": "#595959",
-      "--color-text-secondary": "#595959",
-      "--color-border": "#767676",
-      "--color-page-background": "#ffffff",
-      "--color-surface-highlight": "#f2f2f2",
-      "--font-family-base": "system-ui, sans-serif",
-      "--font-size-note": "0.875rem",
-      "--font-size-secondary": "0.85em",
-      "--line-height-base": "1.6",
-      "--space-1": "0.25rem",
-      "--space-2": "0.5rem",
-      "--space-3": "0.75rem",
-      "--space-4": "1rem",
-      "--space-5": "1.25rem",
-      "--space-6": "2rem",
-      "--border-width": "1px",
-      "--control-border-radius": "4px",
-      "--surface-shadow": "none",
-      "--focus-outline-color": "#005fcc",
-      "--focus-outline-width": "2px",
-      "--detail-label-width": "8rem",
-      "--login-max-width": "22rem",
+      danger: "#a00000",
+      body_text: "#000000",
+      label_text: "#595959",
+      placeholder_text: "#595959",
+      secondary_text: "#595959",
+      border_color: "#767676",
+      page_background: "#ffffff",
+      highlight_surface: "#f2f2f2",
+      // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+      primary_fill: "#ffffff",
+      on_primary: "#000000",
+      overlay_background: "#ffffff",
+      overlay_text: "#000000",
+      body_font: "system-ui, sans-serif",
+      note_font_size: "0.875rem",
+      secondary_font_size: "0.85em",
+      body_line_height: "1.6",
+      space_1: "0.25rem",
+      space_2: "0.5rem",
+      space_3: "0.75rem",
+      space_4: "1rem",
+      space_5: "1.25rem",
+      space_6: "2rem",
+      border_width: "1px",
+      control_radius: "4px",
+      surface_shadow: "none",
+      focus_ring: "#005fcc",
+      focus_ring_width: "2px",
+      // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+      // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
     },
   };
 }
@@ -103,8 +108,8 @@ function passingTheme(): Theme {
 /** 2つ目のテーマ(全体差し替えが「置き換え」であることを見るため、値をずらす)。 */
 function otherTheme(): Theme {
   const theme = passingTheme();
-  theme.slots["--space-1"] = "0.5rem";
-  theme.slots["--control-border-radius"] = "0";
+  theme.slots.space_1 = "0.5rem";
+  theme.slots.control_radius = "0";
   theme.origin = { template_app_id: "org-theme", template_diff_id: "d-0007" };
   return theme;
 }
@@ -160,7 +165,7 @@ describe("foldOperations: set_theme(ADR-0047 限定3。全体差し替え)", () 
     }
     expect(folded.manifest.app.theme).toEqual(otherTheme());
     // 置き換えなので、前のテーマの値は1つも残らない。
-    expect(folded.manifest.app.theme?.slots["--space-1"]).toBe("0.5rem");
+    expect(folded.manifest.app.theme?.slots.space_1).toBe("0.5rem");
   });
 
   test("現行マニフェストも渡した diff も書き換わらない(純粋関数 / 憲法5)", () => {
@@ -173,9 +178,9 @@ describe("foldOperations: set_theme(ADR-0047 限定3。全体差し替え)", () 
     // 畳み込み後のマニフェストを書き換えても、呼び出し側の diff は動かない
     // (`structuredClone` を積んでいるため。記録された操作と送られた操作がずれない)。
     if (folded.valid && folded.manifest.app.theme !== undefined) {
-      folded.manifest.app.theme.slots["--space-1"] = "9rem";
+      folded.manifest.app.theme.slots.space_1 = "9rem";
     }
-    expect(theme.slots["--space-1"]).toBe("0.25rem");
+    expect(theme.slots.space_1).toBe("0.25rem");
   });
 
   test("同じ差分の中で2回 set_theme すると、後の1つが残る(先頭から順に畳む)", () => {
@@ -260,7 +265,7 @@ describe("完了条件5: 新 op を含む changelog でも要件定義書の生�
     // テンプレートを足していないためである(段階A の判断。記録の限界に書いた)。
     // ここを固定しておかないと、「要件定義書がテーマを説明する」と後から誤読される。
     for (const statement of doc.statements) {
-      expect(statement.text).not.toContain("--color-text");
+      expect(statement.text).not.toContain("body_text");
       expect(statement.text).not.toContain("#000000");
     }
     // 操作の**対象**を述べる文も無い(テーマは対象IDを取らないため)。

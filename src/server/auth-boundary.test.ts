@@ -437,6 +437,99 @@ test("非保護の台帳は2本である(歯止め)", () => {
   expect(NON_PROTECTED_ENDPOINTS).toHaveLength(2);
 });
 
+// --- **下見の前段**(`V20-M13-T02b` / `ADR-0476` 2-3。2026-09-26) ---------------------------
+//
+// **非保護の台帳(上の2本)には足さず、下見用の台帳を新設した(1行ちょうど)。**
+// **理由**: 上の2本は「本体のアプリの口が、セッション無しで答える」台帳である。 下見の前段は
+// **本体のアプリの口ではなく**、URL の識別子(128ビット)を鍵に、**頼んだ人のセッションを
+// サーバの内側で付けて写しへ渡す**口であり、401 にならない理由が違う。 同じ台帳に混ぜると
+// 「本体の非保護の口は2本」という読みが偽になる。 `ADR-0476` 2-3 の置き換え「下見用の台帳を
+// 新設する形を採るなら、その台帳の行は1本ちょうどである。 4本目を足さない」に従う。
+// **本体の口の非保護は今日も2本のまま**(上の `toHaveLength(2)` は1バイトも動かしていない)。
+
+const PREVIEW_FRONT_ENDPOINTS: { label: string; route: string; allowedMethods: string[] }[] = [
+  {
+    // **【`V20-M14-T01B` / `ADR-0478` 2-2】旧逐語は「下見の前段(pv-<16進32桁>。許可リストの GET / HEAD だけを写しへ渡す)」。**
+    // 前段は束の識別子への GET / HEAD の /compare に自分で答えるようになった(行は1本のまま。ルートも1本のまま)。
+    label:
+      "下見の前段(pv-<16進32桁>。許可リストの GET / HEAD を写しへ渡し、束の識別子への GET / HEAD の /compare に自分で答える)",
+    route: "ALL /api/apps/:app_id/*",
+    allowedMethods: ["GET", "HEAD"],
+  },
+];
+
+/**
+ * **実際の登録**(`createServerApp(...).routes`)から、前段の形(`ALL /api/apps/:app_id/*`)を数える。
+ * **【`V20-M13` 点検の処置 軽6】** 旧の検査は検査の中の配列の長さを見るだけで、前段を2本登録しても
+ * 赤くならなかった。 **旧の逐語**: `expect(PREVIEW_FRONT_ENDPOINTS).toHaveLength(1);`
+ */
+function previewFrontRoutes(target: unknown): string[] {
+  const routes = (target as { routes: Array<{ method: string; path: string }> }).routes;
+  return routes
+    .map((r) => `${r.method} ${r.path}`)
+    .filter((key) => PREVIEW_FRONT_ENDPOINTS.some((entry) => entry.route === key));
+}
+
+test("下見用の台帳は1本である(歯止め。ADR-0476 2-3)", () => {
+  expect(PREVIEW_FRONT_ENDPOINTS).toHaveLength(1);
+  // 実際の登録(full)から数えて1本ちょうど。
+  const full = createServerApp({ dataRoot, profile: "full" });
+  expect(previewFrontRoutes(full)).toEqual(["ALL /api/apps/:app_id/*"]);
+});
+
+test("陽性対照: 前段を2本登録した版では、実際の登録から数えて2本になる(歯止めが恒真でない)", async () => {
+  const { registerPreviewFront } = await import("./preview-front.ts");
+  const doubled = createServerApp({ dataRoot, profile: "full" });
+  registerPreviewFront(doubled, {
+    root: join(dataRoot, "never-created-previews"),
+    realAppExists: () => false,
+    createInnerApp: () => ({ fetch: () => new Response(null, { status: 500 }) }),
+  });
+  expect(previewFrontRoutes(doubled)).toHaveLength(2);
+});
+
+test("下見の前段は未ログインで 401 にならず、本体の records は今日どおり 401", async () => {
+  const { createPreview } = await import("../mcp/preview.ts");
+  const { previewAppId } = await import("./preview-store.ts");
+  const previewRoot = await mkdtemp(join(tmpdir(), "gp-auth-boundary-previews-"));
+  try {
+    const owner = seedSession(dataRoot, APP_ID, { username: "preview-owner", role: "owner" });
+    const created = createPreview({
+      dataRoot,
+      appId: APP_ID,
+      diff: {
+        diff_id: "d-auth-boundary-preview",
+        intent: "備品に置き場所を持たせたい",
+        operations: [
+          {
+            op: "add_field",
+            table: "items",
+            field: { id: "place", name: "置き場所", type: "text" },
+          },
+        ],
+      },
+      mode: "real",
+      requesterUserId: owner.userId,
+      previewRoot,
+    });
+    if (created.kind !== "created") throw new Error(JSON.stringify(created));
+    const pv = previewAppId(created.meta.preview_id);
+    const withPreview = createServerApp({ dataRoot, preview: { root: previewRoot } });
+    const viaFront = await withPreview.request(
+      new Request(`http://localhost/api/apps/${pv}/tables/items/records`),
+    );
+    expect(viaFront.status).toBe(200);
+    // 本体の同じ口は今日どおり 401(`ADR-0014` §2 の字義は動かない)。
+    const main = await withPreview.request(new Request(`http://localhost${R}`));
+    expect(main.status).toBe(401);
+    expect(((await main.json()) as { errors: { message: string }[] }).errors[0]?.message).toBe(
+      AUTH_REQUIRED_MESSAGE,
+    );
+  } finally {
+    await rm(previewRoot, { recursive: true, force: true });
+  }
+});
+
 // --- **`AC-G20`(`V17-M4-T02`。2026-09-09)読み物3本を保護側へ移した** --------------------
 //
 // **上の非保護の台帳から外した3本を、ここで 401 として固定する** —— **消していない。**

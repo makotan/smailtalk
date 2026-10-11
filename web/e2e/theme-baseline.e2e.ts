@@ -58,6 +58,9 @@
  * 3. **製品が宣言している `--focus-outline-color` の値は、環境に依らない固定のリテラルである。**
  *    **その値が UA のリング色と一致するのは macOS だけである** —— これを明示的に固定した。
  *    **つまり Linux では、この製品の宣言はリングの太さと種別だけでなく色も変えている。**
+ * 4. **【V20-M10-T05 で足した】OS が暗い設定のときの既定の宣言も、環境に依らない固定のリテラルである。**
+ *    `--focus-outline-color` は `rgb(108, 182, 255)`、地色と文字色は `rgb(18, 18, 18)` / `rgb(230, 230, 230)`。
+ *    **暗い側のシステム色は測っていない**(暗い側の既定値はシステム色に根拠を持たない。下の限界4 の追記)。
  *
  * **書き直しの途中で分かった、もう1つの環境依存(実測)**: **ブラウザが名乗る
  * プラットフォームは、この判定には使えない。** `web/e2e/playwright.config.ts` の
@@ -97,7 +100,7 @@
  *    `docs/plan/v4/records/v4-m57.md`】上の括弧の中の**理由**(「`ADR-0046` 限定5 により
  *    `@media` を1つも足せない」)は今日から偽である** —— **2026-08-04 実測:
  *    `web/src/styles.css` には幅の条件の `@media` が2本ある**
- *    (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ *    (`:992` 逐語 `@media (min-width: 40rem)` / `:998` 逐語 `@media (min-width: 64rem)`。
  *    どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
  *    (`V4-M15-T07` / `D-V4-44`。2026-08-03)であり、同 ADR は自ら
  *    「**【禁止】「限定5 を1バイトも緩めていない」と書かない。緩めている。**」と書いている。
@@ -116,6 +119,25 @@
  *    「1つも足**せ**ない」が `V4-M53` の交替列(`足さない` / `足していない` / `無い` /
  *    `持てない` / `使わない`)に無かった。** **`ADR-0007` 限界11 改訂7 追記が名指しした
  *    「字面を含まない」類型とは別の、走査の第2の類型である**(`D-V4-195`)。
+ *
+ *    **【V20-M10-T05 が 2026-09-25 に追記。上の2段を消していない】上の括弧の帰結(「そもそもこの製品は
+ *    ダークモードに追随しない」)と、追記の「配色設定のメディア特性は今日も1つも無い」は、今日から偽である。**
+ *    `V20-M10`(`ADR-0458`)で `web/src/styles.css` の末尾に暗い側の既定の2規則が入り、画面は OS の明暗設定に
+ *    追随し、上端のスイッチで上書きできる(テーマは暗い側の組 `slots_dark` を持てる)。追記が逐語で引いた
+ *    `styles.css` 冒頭の「1バイトも動かしていない」も、今日は偽である(同ファイルに同じ日の訂正がある)。
+ *    **【禁止】の1行「この製品がダークモードに追随するようになった」と読まない、も今日は偽である** —— 追随する。
+ *    **それでも本ファイルの表(`OBSERVED_UA_FOCUS_RING_COLOR`)を「環境 × モード」にはしなかった。理由**:
+ *    **暗い側の既定値は、システム色(`Canvas` / `CanvasText` / `-webkit-focus-ring-color`)に根拠を持たない
+ *    固定値である**(地色 `#121212` / 文字色 `#e6e6e6` / フォーカスの輪 `#6cb6ff` ほか。計画
+ *    `docs/plan/v20/12-v20-m10-plan.md` §9-4 が決めた値)。**明るい側の `#fff` / `#000` のように「ブラウザの
+ *    キャンバスの色から採った」値ではないので、環境ごとに値が変わる理由が無い。** 表は「UA の色が環境で違う」
+ *    ことの台帳であり、暗い側にはその台帳に載せる UA の色が無い。
+ *    **暗い側の `Canvas` / `CanvasText` は、どの環境でも測っていない**(macOS でも Linux でも測っていない。
+ *    Windows と他ブラウザは明るい側も測っていない)。**代わりに、暗い既定の計算値が固定値そのものであることを
+ *    撃つ**: 地色と文字色は `web/e2e/color-scheme.e2e.ts` の `(i)(ii)(iii)`(`body` が `rgb(18, 18, 18)` /
+ *    `rgb(230, 230, 230)`)、フォーカスの輪の宣言は本ファイルの最後のテストの末尾(`rgb(108, 182, 255)`)。
+ *    **これは計画 `T05`(a)「環境 × モードの形に建て直す」の読み替えであり、(a) は「部分的」である**
+ *    (記録 `docs/plan/v20/records/v20-m10-t05.md`)。
  * 5. **UA 既定の `outline` の**短縮形**を Linux で実測してはいない。** Linux について実測した
  *    のはシステム色 `-webkit-focus-ring-color` の計算値だけである(`:focus-visible` には
  *    製品自身の宣言が当たるので、実ページから UA 既定の `outline` は読めない)。
@@ -404,5 +426,35 @@ test.describe("V3-M1-T01 スロットの既定値(chromium 実測)", () => {
     // リングの太さと種別だけでなく色も変えている。** 別の環境で一致するようになったら
     // (あるいは macOS で一致しなくなったら)ここが赤くなり、根拠を書き直すことになる。
     expect(system.declaredFocusOutline === system.focusRing).toBe(platform === "darwin");
+
+    // ---------------------------------------------------------------------
+    // (4) 【V20-M10-T05】OS が暗い設定のときの既定の宣言も、環境に依らない固定のリテラルである。
+    // ---------------------------------------------------------------------
+    // **表(`OBSERVED_UA_FOCUS_RING_COLOR`)を環境 × モードにしない理由**: 暗い側の既定値はシステム色に
+    // 根拠を持たない固定値だからである(冒頭 doc の限界4 の追記)。**暗い側の `Canvas` / `CanvasText` は
+    // 測っていない。** ここで撃つのは「暗い既定の計算値が固定値そのものである」ことだけである。
+    await page.emulateMedia({ colorScheme: "dark" });
+    const dark = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      document.body.appendChild(probe);
+      probe.style.color = getComputedStyle(document.documentElement)
+        .getPropertyValue("--focus-outline-color")
+        .trim();
+      const declaredFocusOutline = getComputedStyle(probe).color;
+      probe.remove();
+      const body = getComputedStyle(document.body);
+      return {
+        declaredFocusOutline,
+        background: body.backgroundColor,
+        text: body.color,
+        attribute: document.documentElement.getAttribute("data-theme"),
+      };
+    });
+    expect(dark).toEqual({
+      declaredFocusOutline: "rgb(108, 182, 255)",
+      background: "rgb(18, 18, 18)",
+      text: "rgb(230, 230, 230)",
+      attribute: null,
+    });
   });
 });

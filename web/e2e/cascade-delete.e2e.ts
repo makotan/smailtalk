@@ -194,11 +194,19 @@ test("V18-M7-T05 —— 親を消そうとすると子の件数が画面に出�
   await page.getByTestId("detail-delete-execute").click();
 
   // **【`CP-V18` 条件13】** **子が残っていることが、件数と表のIDで画面に出る。**
+  // 【V23-M14-T02。授権 ADR-0579 §2-2 の12。D-V23-451・D-V23-458・D-V23-465】上の1行は旧の期待で、
+  // 旧は `toContainText(CHILD_TABLE)`(表の ID)を求めていた。 条件13 の読み替え(ADR-0578 §Decision 3 の1)により、
+  // 件数と表の表示名が出て、確かめの枠全体に表の ID・If-Match-Children・If-Match が0件であることを求める。
   const children = page.getByTestId("detail-delete-children");
   await expect(children).toBeVisible();
-  await expect(children).toContainText("2 件");
-  await expect(children).toContainText(CHILD_TABLE);
+  await expect(children).toContainText("全部で 2 件");
+  await expect(children).toContainText("「明細」2 件");
+  await expect(children).toContainText("この「台帳」を消すと");
   await expect(children).toContainText("取り消しでは戻りません");
+  const frame = (await page.getByTestId("detail-delete-confirm").textContent()) ?? "";
+  for (const spelling of [CHILD_TABLE, PARENT_TABLE, "If-Match-Children", "If-Match"]) {
+    expect(frame, spelling).not.toContain(spelling);
+  }
   // **パネルは閉じていない。1つ目のボタンは消え、2つ目に置き換わっている。**
   await expect(page.getByTestId("detail-delete-confirm")).toBeVisible();
   await expect(page.getByTestId("detail-delete-execute")).toHaveCount(0);

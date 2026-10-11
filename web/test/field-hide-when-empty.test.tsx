@@ -163,7 +163,7 @@ test("(T08-5) 一覧の列には効かない(同じ宣言を持つ項目が列�
 test("(T08-6) まとまりの中の項目も行ごと消え、全部消えたまとまりには空の器を置かない", async () => {
   row = { _id: RECORD_ID, name: "机", memo: null, note: "覚書" };
   await renderDetail(
-    baseManifest({ fields: ["name", "memo", "note"], field_groups: { 補足: ["memo"] } }),
+    baseManifest({ fields: ["name", "memo", "note"], field_sections: { 補足: ["memo"] } }),
   );
   expect(screen.queryByTestId("detail-field-memo")).toBeNull();
   // **まとまりの見出しは残る** —— 見出しを消す宣言は今日1つも無い(本 ADR の射程外である)。

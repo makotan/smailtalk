@@ -45,6 +45,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import {
   appDbPath,
   applyManifest,
@@ -53,6 +56,7 @@ import {
   KernelMetaStore,
   type Manifest,
 } from "../kernel/index.ts";
+import { createMcpServer } from "../mcp/server.ts";
 import { createServerApp } from "./app.ts";
 import { judgeGrantWrite } from "./owner-scope.ts";
 import { seedSession, TEST_ORIGIN, withDefaultRoleRules } from "./test-helpers.ts";
@@ -283,7 +287,10 @@ describe("V7-M3-T03 (A): 誰が付与を作れるか", () => {
         role: "guest",
         values: { book: "book-1", member: "member-creator", permission: "writer" },
       }),
-    ).toEqual({ kind: "not_creator" });
+      // **【`V23-M12-T05`。`D-V23-407`・`D-V23-413` (2)・授権 `ADR-0575` §3-1 の1 で打ち直した。旧の期待を逐語で残す】**
+      //     ).toEqual({ kind: "not_creator" });
+      // 今日の正: 種類は `not_creator` のまま、断りの文を組む操作と管理の権限の宣言の名前を持つ。
+    ).toEqual({ kind: "not_creator", op: "create", authorityNames: ["作った人"] });
   });
 
   test("(A-5) 書ける付与(writer)を持つ人も、作成者ではないので付与は作れない", () => {
@@ -302,7 +309,9 @@ describe("V7-M3-T03 (A): 誰が付与を作れるか", () => {
         role: "guest",
         values: { book: "book-1", member: "member-creator", permission: "writer" },
       }),
-    ).toEqual({ kind: "not_creator" });
+      // **【`V23-M12-T05`。`D-V23-407`・`D-V23-413` (2)・授権 `ADR-0575` §3-1 の2 で打ち直した。旧の期待を逐語で残す】**
+      //     ).toEqual({ kind: "not_creator" });
+    ).toEqual({ kind: "not_creator", op: "create", authorityNames: ["作った人"] });
   });
 
   test("(A-6) 運営ロール(owner)は、付与を1件も持たなくても作れる", () => {
@@ -655,8 +664,13 @@ describe("V7-M3-T03 (B): 付与表への書込を API から測る", () => {
     });
     expect(response.status).toBe(403);
     const body = (await response.json()) as { errors: { message: string; hint?: string }[] };
+    // **【`V23-M12-T05`。`D-V23-360` (2)・`D-V23-407`・授権 `ADR-0572` §2-1 の2 で打ち直した。旧の期待を逐語で残す】**
+    //     expect(body.errors[0]?.message).toBe(
+    //       "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
+    //     );
+    // 内部記号が0文字であることの見張りは下に残す。
     expect(body.errors[0]?.message).toBe(
-      "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
+      "この行に権限を付けられるのは、この行で「作った人」の権限を持つ人と運営者だけです。",
     );
     const text = JSON.stringify(body);
     for (const symbol of [
@@ -1351,5 +1365,269 @@ describe("V7-M3-T04 (D): 親の行への権限を API から測る", () => {
       { project: projectId, member: assigneeMember, permission: "reader" },
     );
     expect(response.status).toBe(201);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 【`V23-M12-T05`】断りの文 (2): 付与の書込の断り(`D-V23-360`・`D-V23-407`・`D-V23-413` (2))
+// ---------------------------------------------------------------------------
+
+const ADD_ONE =
+  "この行に権限を付けられるのは、この行で「作った人」の権限を持つ人と運営者だけです。";
+const CHANGE_ONE =
+  "この行の権限を変えられるのは、この行で「作った人」の権限を持つ人と運営者だけです。";
+const REMOVE_ONE = "この行の権限を外せるのは、この行で「作った人」の権限を持つ人と運営者だけです。";
+const HINT_ONE = "この行で「作った人」の権限を持つ人か、アプリの運営者に頼んでください。";
+
+/** 読むだけの人(`reader`)の付与の行の ID と版。 */
+function readerGrant(): { id: string; version: string } {
+  const target = grantRows().find((row) => row.member === readerMemberId) as { _id: string };
+  const version = withDb(
+    (db) =>
+      (
+        db.query("SELECT _updated_at AS v FROM book_grant WHERE _id = ?").get(target._id) as {
+          v: string;
+        }
+      ).v,
+  );
+  return { id: target._id, version };
+}
+
+/** AI の口を1本撃つ(名乗りは利用者名)。 */
+async function mcpCall(
+  actor: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError: boolean; text: string }> {
+  const server = createMcpServer({
+    dataRoot,
+    previewBaseUrl: "http://localhost:3000",
+    actor,
+  });
+  const client = new Client({ name: "t05", version: "0.0.0" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await Promise.all([client.connect(a), server.connect(b)]);
+  try {
+    const result = (await client.callTool({
+      name,
+      arguments: { app_id: APP_ID, ...args },
+    })) as CallToolResult;
+    return { isError: result.isError === true, text: JSON.stringify(result.content) };
+  } finally {
+    await client.close();
+    await server.close();
+  }
+}
+
+/** 断りの本文の最初の文と hint。 */
+async function firstRefusal(response: Response): Promise<string> {
+  const body = (await response.json()) as { errors: { message: string; hint?: string }[] };
+  return `${response.status} ${body.errors[0]?.message} / ${body.errors[0]?.hint}`;
+}
+
+describe("V23-M12-T05 D-V23-360・D-V23-407: 付与の書込の断りの文 (2)", () => {
+  test("P1 D-V23-407: 判定の答え not_creator は、種類を増やさず、操作と管理の権限の宣言の名前を持つ(付ける・変える・外す)", () => {
+    const base = fixture();
+    base.rows.book_grant.push({
+      _id: "grant-2",
+      book: "book-1",
+      member: "member-other",
+      team: null,
+      permission: "reader",
+    });
+    const measured = (["create", "update", "delete"] as const).map((op) =>
+      judge({
+        rows: base.rows,
+        op,
+        actorId: OTHER,
+        role: "guest",
+        values: { _id: "grant-1", book: "book-1", member: "member-creator", permission: "reader" },
+      }),
+    );
+    expect(measured).toEqual([
+      { kind: "not_creator", op: "create", authorityNames: ["作った人"] },
+      { kind: "not_creator", op: "update", authorityNames: ["作った人"] },
+      { kind: "not_creator", op: "delete", authorityNames: ["作った人"] },
+    ]);
+  });
+
+  test("P1 D-V23-407: 管理の権限の名が2つ以上(authorityPermissions)なら並びのまま全部、0個(creator_permission を宣言しない)なら空", () => {
+    const base = fixture();
+    base.rows.book_grant.push({
+      _id: "grant-2",
+      book: "book-1",
+      member: "member-other",
+      team: null,
+      permission: "reader",
+    });
+    const common = {
+      tableId: "book_grant",
+      op: "create" as const,
+      values: { book: "book-1", member: "member-creator", permission: "reader" },
+      actorId: OTHER,
+      role: "guest" as never,
+      readRows: (tableId: string) => base.rows[tableId] ?? [],
+      readRow: (tableId: string, recordId: string) =>
+        (base.rows[tableId] ?? []).find((row) => row._id === recordId),
+    };
+    const two = judgeGrantWrite({
+      ...common,
+      manifest: manifest(),
+      authorityPermissions: ["writer", "keeper"],
+    });
+    const bare = manifest() as unknown as {
+      app: { tables: { access_control?: Record<string, unknown> }[] };
+    };
+    for (const table of bare.app.tables) {
+      if (table.access_control !== undefined) delete table.access_control.creator_permission;
+    }
+    const none = judgeGrantWrite({ ...common, manifest: bare as unknown as Manifest });
+    expect({ two, none }).toEqual({
+      two: { kind: "not_creator", op: "create", authorityNames: ["編集できる", "作った人"] },
+      none: { kind: "not_creator", op: "create", authorityNames: [] },
+    });
+  });
+
+  test("P1 D-V23-407: 文の組み立て(操作3つ × 名前1つ・2つ・0個)。 添える文も確定の文", async () => {
+    const { grantWriteRefusalError } = (await import("./errors.ts")) as unknown as {
+      grantWriteRefusalError?: (
+        op: string,
+        names: readonly string[],
+      ) => { path: string; message: string; hint?: string };
+    };
+    expect(typeof grantWriteRefusalError).toBe("function");
+    const make = grantWriteRefusalError as NonNullable<typeof grantWriteRefusalError>;
+    const lines = (["create", "update", "delete"] as const).flatMap((op) =>
+      [["作った人"], ["編集できる", "作った人"], []].map((names) => {
+        const error = make(op, names);
+        return `${error.path}|${error.message}|${error.hint}`;
+      }),
+    );
+    expect(lines).toEqual([
+      `|${ADD_ONE}|${HINT_ONE}`,
+      "|この行に権限を付けられるのは、この行で「編集できる」か「作った人」の権限を持つ人と運営者だけです。|この行で「編集できる」か「作った人」の権限を持つ人か、アプリの運営者に頼んでください。",
+      "|この行に権限を付けられるのは、アプリの運営者だけです。|アプリの運営者に頼んでください。",
+      `|${CHANGE_ONE}|${HINT_ONE}`,
+      "|この行の権限を変えられるのは、この行で「編集できる」か「作った人」の権限を持つ人と運営者だけです。|この行で「編集できる」か「作った人」の権限を持つ人か、アプリの運営者に頼んでください。",
+      "|この行の権限を変えられるのは、アプリの運営者だけです。|アプリの運営者に頼んでください。",
+      `|${REMOVE_ONE}|${HINT_ONE}`,
+      "|この行の権限を外せるのは、この行で「編集できる」か「作った人」の権限を持つ人と運営者だけです。|この行で「編集できる」か「作った人」の権限を持つ人か、アプリの運営者に頼んでください。",
+      "|この行の権限を外せるのは、アプリの運営者だけです。|アプリの運営者に頼んでください。",
+    ]);
+  });
+
+  test("P1 D-V23-360 (2): HTTP の付ける・変える・外すで、操作ごとの文と添える文。 行は1行も動かない", async () => {
+    const before = grantRows();
+    const grant = readerGrant();
+    const created = await post(`/api/apps/${APP_ID}/tables/book_grant/records`, reader.cookie, {
+      book: bookId,
+      member: strangerMemberId,
+      permission: "writer",
+    });
+    const changed = await patch(
+      `/api/apps/${APP_ID}/tables/book_grant/records/${grant.id}`,
+      reader.cookie,
+      grant.version,
+      { permission: "writer" },
+    );
+    const removed = await remove(
+      `/api/apps/${APP_ID}/tables/book_grant/records/${grant.id}`,
+      reader.cookie,
+      grant.version,
+    );
+    expect([
+      await firstRefusal(created),
+      await firstRefusal(changed),
+      await firstRefusal(removed),
+    ]).toEqual([
+      `403 ${ADD_ONE} / ${HINT_ONE}`,
+      `403 ${CHANGE_ONE} / ${HINT_ONE}`,
+      `403 ${REMOVE_ONE} / ${HINT_ONE}`,
+    ]);
+    expect(grantRows()).toEqual(before);
+  });
+
+  test("P1 D-V23-360 (2): AI の口でも同じ文と添える文(付ける・変える・外す)", async () => {
+    const before = grantRows();
+    const grant = readerGrant();
+    const created = await mcpCall(reader.username, "write_records", {
+      ops: [
+        {
+          op: "create",
+          table: "book_grant",
+          values: { book: bookId, member: strangerMemberId, permission: "writer" },
+        },
+      ],
+    });
+    const changed = await mcpCall(reader.username, "update_record", {
+      table_id: "book_grant",
+      record_id: grant.id,
+      if_match: grant.version,
+      changes: { permission: "writer" },
+    });
+    const removed = await mcpCall(reader.username, "delete_record", {
+      table_id: "book_grant",
+      record_id: grant.id,
+      if_match: grant.version,
+    });
+    const shown = [created, changed, removed].map((result) => ({
+      isError: result.isError,
+      text: [ADD_ONE, CHANGE_ONE, REMOVE_ONE, HINT_ONE].filter((part) =>
+        result.text.includes(part),
+      ),
+    }));
+    expect(shown).toEqual([
+      { isError: true, text: [ADD_ONE, HINT_ONE] },
+      { isError: true, text: [CHANGE_ONE, HINT_ONE] },
+      { isError: true, text: [REMOVE_ONE, HINT_ONE] },
+    ]);
+    expect(grantRows()).toEqual(before);
+  });
+
+  test("P2 N D-V23-407: 名簿の断り membership_locked は、名簿が本人の名前の欄を宣言したときだけ名前の欄の印を持つ。 グループの表と、宣言の無い名簿は今日の答えのまま", () => {
+    const base = fixture();
+    const named = manifest() as unknown as {
+      app: { tables: { access_control?: { members?: Record<string, unknown> } }[] };
+    };
+    for (const table of named.app.tables) {
+      if (table.access_control?.members !== undefined) {
+        table.access_control.members.auto_enroll = { roles: ["guest"], name: "account" };
+      }
+    }
+    const verdict = (definition: unknown, tableId: string) =>
+      judgeGrantWrite({
+        manifest: definition as Manifest,
+        tableId,
+        op: "create",
+        values: { account: OTHER, title: "班" },
+        actorId: OTHER,
+        role: "guest" as never,
+        readRows: (id) => base.rows[id] ?? [],
+        readRow: (id, recordId) => (base.rows[id] ?? []).find((row) => row._id === recordId),
+      });
+    expect({
+      namedMember: verdict(named, "book_member"),
+      namedGroup: verdict(named, "book_team"),
+      bareMember: verdict(manifest(), "book_member"),
+    }).toEqual({
+      namedMember: {
+        kind: "membership_locked",
+        tableId: "book_member",
+        role: "member",
+        ownNameColumn: true,
+      },
+      namedGroup: { kind: "membership_locked", tableId: "book_team", role: "group" },
+      bareMember: { kind: "membership_locked", tableId: "book_member", role: "member" },
+    });
+  });
+
+  test("N1 D-V23-360: 「どの行に対する権限なのかが決まらない」の断りは今日の文のまま(400)", async () => {
+    const response = await post(`/api/apps/${APP_ID}/tables/book_grant/records`, reader.cookie, {
+      member: strangerMemberId,
+      permission: "writer",
+    });
+    expect(await firstRefusal(response)).toBe(
+      "400 どの行に対する権限なのかが決まらないため、権限を渡せません。 / 権限を渡したい行を選んでから、もう一度試してください。",
+    );
   });
 });

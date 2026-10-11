@@ -639,7 +639,23 @@ describe("V18-M6-T02 (E): 壊してはいけない5件が1件も動いていな�
     // なるので、古い親を消せる人(`keeper`)の一覧にも1件も返らなくなる。**
     // **壁の内側から抜き出す道が今日も開いていることは、これで変わらない**
     // (**行は残っており、消えてもいない**)。
-    expect(await seenByKeeper(ISSUES, issue.id)).toBeUndefined();
+    //
+    // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行42 / 決定 `D-V23-13`】**上の「`keeper` の一覧にも
+    // 1件も返らなくなる」は今日は偽である。** この行を作ったのは `keeper` の `insert_sample_data` で、
+    // MCP の作成でも作成者への付与(`creator_permission` の `writer`)が1件書かれるようになったので、
+    // 親を外しても `keeper` は自分の付与で読める。 旧の期待(逐語):
+    //     expect(await seenByKeeper(ISSUES, issue.id)).toBeUndefined();
+    // 新しい期待は、付与表を読んで付与が在ることを別に確かめてから、一覧に返ることを見る。
+    // 「壁の内側から抜き出す道が今日も開いている」ことは変わらない(親を外す更新は今日どおり通る)。
+    const keeperGrants = okData(
+      await callTool("list_records", { app_id: APP_ID, table_id: GRANTS }, keeper.username),
+    ).records as Record<string, unknown>[];
+    expect(
+      keeperGrants.filter((grant) => grant.issue === issue.id).map((grant) => grant.permission),
+    ).toEqual(["writer"]);
+    const seenAfterEmptied = await seenByKeeper(ISSUES, issue.id);
+    expect(seenAfterEmptied?._id).toBe(issue.id);
+    expect(seenAfterEmptied?.project ?? null).toBeNull();
     expect(await storedParent(MILESTONES, milestone.id)).toBe(oldProject);
   });
 

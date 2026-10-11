@@ -1,0 +1,25 @@
+{
+  "app": {
+    "id": "member-desk",
+    "name": "会員受付",
+    "tables": [
+      {
+        "id": "members",
+        "name": "会員",
+        "fields": [
+          { "id": "last_name", "name": "姓", "type": "text", "required": true },
+          { "id": "email", "name": "メール", "type": "text" },
+          { "id": "note", "name": "メモ", "type": "long_text" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "member-view",
+        "type": "form", "fields": ["last_name", "email"],
+        "table": "members",
+        "layout": { "type": "stack", "children": ["last_name", "note"] }
+      }
+    ]
+  }
+}

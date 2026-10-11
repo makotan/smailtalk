@@ -73,6 +73,12 @@ export type WriteRecordsOptions = {
    * tx が巻き戻れば、このフックが書いた行も一緒に巻き戻る(部分適用ゼロ)。
    */
   onWritten?: (written: BatchWrittenOp) => void;
+  /**
+   * **【`V23-M10-T02c-c` / `D-V23-300`】作成の op で、行を書いた直後・作成の自動処理より前に、
+   * 同じ IMMEDIATE tx の中で呼ばれるフック**(作成者への付与を先に書くために入口層が渡す)。
+   * 投げればバッチごと巻き戻る。 渡さなければ今日と1バイトも同じ。 更新の op では呼ばない。
+   */
+  beforeWorkflows?: (written: BatchWrittenOp) => void;
 };
 
 /** バッチ書込の結果。成功なら書けた行の配列、失敗なら統一エラー + どの op で落ちたか。 */
@@ -210,6 +216,11 @@ export function writeRecords(
   manifest: Manifest,
   ops: readonly BatchOp[],
   options: WriteRecordsOptions = {},
+  /**
+   * **【`V23-M4-T03` / `D-V23-102`】連鎖の起点の操作者**(`$actor`)。 各 op の作成・更新へ
+   * そのまま渡す。 **省略できる**(省略すれば `$actor` は空)。
+   */
+  origin?: { readonly id: string; readonly login: string; readonly role: string },
 ): WriteRecordsResult {
   // 0) **「書くことが1件も無かった」指示は、0件書けた成功として受ける**(`ADR-0131` 単位A。
   //    V4-M34-T01)。**判定はこの1箇所だけが持ち、入口ごとの分岐を1つも作らない** ——
@@ -243,8 +254,17 @@ export function writeRecords(
     structure.ops.forEach((op, index) => {
       const result =
         op.op === "create"
-          ? createRecord(db, manifest, op.table, op.values)
-          : updateRecord(db, manifest, op.table, op.target, op.values, op.if_match);
+          ? createRecord(
+              db,
+              manifest,
+              op.table,
+              op.values,
+              origin,
+              options.beforeWorkflows === undefined
+                ? undefined
+                : (row) => options.beforeWorkflows?.({ index, op, record: row }),
+            )
+          : updateRecord(db, manifest, op.table, op.target, op.values, op.if_match, origin);
       if (!result.ok) {
         // 検証失敗 / CAS 競合 / 参照整合性違反 → 投げて tx をロールバックさせる。
         throw new BatchOpFailure(

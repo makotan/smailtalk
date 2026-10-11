@@ -97,7 +97,9 @@ test("限定1: $defs/field.properties のキー数は動かない", () => {
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(Object.keys(schema.$defs.field.properties)).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行28 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(Object.keys(schema.$defs.field.properties)).toHaveLength(13);
 });
 
 test("限定1: manifest.schema.json の field_type.enum は FIELD_TYPES と1要素も違わない", () => {

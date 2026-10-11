@@ -232,7 +232,12 @@ describe("(T01-2) 操作起点の4形目 run(ADR-0174 限定4)", () => {
    * **代わりに担うのは `app.roles[].rules` の「役割 × 対象(表)× 書込」と
    * 「役割 × 対象(ボタン)× 読取」の2本である。****旧文を1バイトも消していない。**
    */
-  test("$defs/view_action.properties は8キーである(着手前は7。`V8-M17` で9・`V8-M20` で8)", () => {
+  /*
+   * **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧テスト名(逐語)**: 「$defs/view_action.properties は8キーである
+   * (着手前は7。`V8-M17` で9・`V8-M20` で8)」。**9本目 `action_emphasis`(ボタンの強調)を
+   * 末尾に足した。****`run` の増分は今日も1本である。**
+   */
+  test("$defs/view_action.properties は9キーである(着手前は7。`V8-M17` で9・`V8-M20` で8・`V20-M2` で9)", () => {
     expect(Object.keys(viewActionSchema().properties as Any)).toEqual([
       "form",
       "view",
@@ -242,6 +247,7 @@ describe("(T01-2) 操作起点の4形目 run(ADR-0174 限定4)", () => {
       "visible_when",
       "run",
       "id",
+      "action_emphasis",
     ]);
   });
 

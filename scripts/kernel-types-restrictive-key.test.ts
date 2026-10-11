@@ -111,9 +111,16 @@ describe("(a) 逐語走査: ADR-0430 (β) —— 権限の型の6キー目", () 
     ).toBe(false);
   });
 
-  test("要素の型のキーは6つちょうど(7つ目を足していない)", () => {
+  // **【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543` 行1】7キー目 `create_child` を末尾に足した(子の表に行を作れる権限。門A `ADR-0503` を補う `ADR-0542` §Decision 1-1)。**
+  // **旧テスト名の逐語**: "要素の型のキーは6つちょうど(7つ目を足していない)"
+  // **旧の期待値の逐語**:
+  //
+  //     expect(keys).toEqual(["id", "name", "read", "write", "delete", "restrictive"]);
+  //
+  // 新しい値は `src/kernel/types.ts` の要素の型のキーを python で読んで得た。 検査は消していない・緩めていない。
+  test("要素の型のキーは7つちょうど(restrictive の後に create_child。8つ目を足していない)", () => {
     const keys = keyLines.map((line) => line.replace(/\?/, "").split(":")[0]?.trim());
-    expect(keys).toEqual(["id", "name", "read", "write", "delete", "restrictive"]);
+    expect(keys).toEqual(["id", "name", "read", "write", "delete", "restrictive", "create_child"]);
   });
 });
 

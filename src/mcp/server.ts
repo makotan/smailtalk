@@ -72,6 +72,14 @@ export type CreateMcpServerOptions = {
    * 書ける。認可であって認証ではない。**
    */
   actor?: string | undefined;
+  /**
+   * **下見の置き場の根**(`V20-M13-T02a`。`dry_run_diff` の `preview`)。
+   *
+   * 起動する側が `ST_PREVIEW_ROOT` から決める(`resolvePreviewRoot`)。**ツールは `process.env` を
+   * 読まない**(`actor` と同じ理由)。**省略したときは `<resolve(dataRoot)>.previews`**
+   * (`defaultPreviewRoot`。Web サーバが同じ既定で引く)。
+   */
+  previewRoot?: string | undefined;
 };
 
 /**

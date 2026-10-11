@@ -54,6 +54,7 @@ import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isoBase64URL, isoCBOR } from "@simplewebauthn/server/helpers";
 import { type AuthConfig, loadAuthConfig } from "../auth/config.ts";
 import { applyManifest, createApp, KernelMetaStore, type Manifest } from "../kernel/index.ts";
 import { createServerApp } from "./app.ts";
@@ -495,13 +496,349 @@ describe("(E-6) 宣言されていない `customer` の招待の要否(`D-V8-116
     expect((await selfRegister("shopper2")).status).toBe(200);
   });
 
-  test("`member: open` + 予約3語すべて invite: `member` は開いたまま `customer` だけ閉じる(限界)", async () => {
+  // **【2026-10-02。`V23-M10-T01c`。決定 `D-V23-291`。門A `ADR-0553`。授権 `ADR-0554` 行5】旧の題(逐語)**:
+  //     `member: open` + 予約3語すべて invite: `member` は開いたまま `customer` だけ閉じる(限界)
+  // **旧の期待(逐語)**: `expect((await selfRegister("shopper", "customer")).status).toBe(403);`
+  // **今日は、独自の役割(`member`)を宣言したアプリでは `customer` が名乗れる値に無く、
+  // 招待の要否の前に値域で 422 になる。** **「`customer` だけ閉じる」限界の形は今日は無い。**
+  test("`member: open` + 予約3語すべて invite: `member` は開いたまま、`customer` は名乗れる値に無く 422(D-V23-291・D-V23-292)", async () => {
     // **【限界。丸めない】** **この組み合わせは奇妙に見える** —— **アプリが「自由」と
     // 宣言した `member` は開いたままで、アプリが1文字も書いていない `customer` だけが
     // 閉じる。****`D-V8-116` が選んだ形の代償である。**
     await makeApp(shopManifest({ staff: "invite", member: "open" }), ENV_ON());
     expect((await adminRegister("first")).status).toBe(200);
     expect((await selfRegister("buyer", "member")).status).toBe(200);
-    expect((await selfRegister("shopper", "customer")).status).toBe(403);
+    expect((await selfRegister("shopper", "customer")).status).toBe(422);
+  });
+});
+
+// ===========================================================================
+// (E-7) 登録で名乗れる立場は、運営以外の役割を宣言したアプリでは宣言した役割だけ
+// ===========================================================================
+/*
+ * **登録で名乗れる立場は、運営以外の役割を宣言したアプリでは宣言した役割だけ**
+ * (`V23-M10-T01c`。決定 `D-V23-276`・`D-V23-291`〜`D-V23-293`。門A `ADR-0553`。授権 `ADR-0554`)。
+ * **本物の SQLite と実 HTTP で測る**(モックを置かない)。 passkey の登録は、検査の中の
+ * ソフトの認証器(`none` の証明・P-256)で WebAuthn の検証を本当に通してから名乗りを当てる。
+ *
+ * ## この検査が固定するもの
+ *
+ * 1. 運営以外の役割(予約4語のほか)を1つでも宣言し、`customer` を宣言していないアプリでは、
+ *    `GET /public` の `signup.kinds` に `customer` が無い。 役割が1つなら `kinds` は1件で、
+ *    登録画面の「登録する立場」の欄は出ない(画面は2件以上で欄を出す)。
+ * 2. そのアプリでパスワード登録・passkey 登録の口に `customer` を名乗ると 422(値域に無い)。
+ * 3. 宣言した役割が全部招待制のアプリでも、`customer` を名乗って招待なしに登録する道は無い。
+ *    招待コードを持つ人は今日どおり登録できる。
+ * 4. 陰性: 役割を宣言しないアプリ・既定3役割だけのアプリ・`customer` を自分で宣言したアプリは
+ *    今日どおり(`customer` で登録できる)。 名乗らない登録の落ち先は今日どおり宣言の1本目。
+ * 5. 既に `customer` で登録した人は、役割を宣言した後もログインできる(`D-V23-293`)。
+ */
+//
+// **置き場について**: 新しいファイルに置くと、カーネルの値の import(`applyManifest`・
+// `createApp`・`KernelMetaStore`)が層またぎの一覧(`scripts/kernel-import-snapshot.txt`)に
+// 3件増えて授権(`ADR-0554`)の外の赤になるので、同じ import を既に持つこのファイルに置いた。
+// アプリの器はこのファイルの `makeApp`・`adminRegister`・`selfRegister` をそのまま使う。
+
+const KIND_PASSWORD = "pw-123456";
+
+const KIND_RESERVED: KindRole[] = [
+  { id: "owner", name: "持ち主", rules: OWNER_RULES },
+  { id: "editor", name: "編集者" },
+  { id: "viewer", name: "閲覧者" },
+];
+
+type KindRole = { id: string; name?: string; signup?: "open" | "invite"; rules?: unknown[] };
+
+function kindManifest(roles: KindRole[] | undefined): Manifest {
+  return {
+    app: {
+      id: APP_ID,
+      name: "会",
+      tables: [{ id: "memo", name: "メモ", fields: [{ id: "title", name: "題名", type: "text" }] }],
+      views: [],
+      ...(roles === undefined ? {} : { roles }),
+    },
+  } as unknown as Manifest;
+}
+
+function kindReapply(manifest: Manifest): void {
+  const applied = applyManifest(dataRoot, APP_ID, manifest);
+  if (!applied.valid) {
+    throw new Error(`テスト前提のマニフェスト投入に失敗: ${JSON.stringify(applied.errors)}`);
+  }
+  app = createServerApp({ dataRoot, authConfig: ENV_ON() });
+}
+
+function kindPost(path: string, body: unknown, cookie?: string): Promise<Response> {
+  const req = postJson(path, body);
+  if (cookie !== undefined) req.headers.set("cookie", cookie);
+  return Promise.resolve(app.request(req));
+}
+
+function kindCookieOf(res: Response): string {
+  return res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+}
+
+async function kindSelfRegisterWithCode(
+  username: string,
+  invitationCode: string,
+): Promise<Response> {
+  return kindPost(`/api/apps/${APP_ID}/auth/signup/password/register`, {
+    username,
+    password: KIND_PASSWORD,
+    invitation_code: invitationCode,
+  });
+}
+
+async function kindPublicKinds(): Promise<{ id: string; name: string; invite: boolean }[]> {
+  const res = await app.request(
+    new Request(`http://localhost/api/apps/${APP_ID}/public`, { headers: { origin: ORIGIN } }),
+  );
+  expect(res.status).toBe(200);
+  const body = (await res.json()) as {
+    signup: { kinds: { id: string; name: string; invite: boolean }[] };
+  };
+  return body.signup.kinds;
+}
+
+async function kindRoleOf(res: Response): Promise<string> {
+  return ((await res.json()) as { user: { role: string } }).user.role;
+}
+
+// --- passkey の登録を、ソフトの認証器で本当に通す -----------------------------------------
+
+async function kindSoftPasskeyRegister(username: string, userKind?: string): Promise<Response> {
+  const base = `/api/apps/${APP_ID}/auth/signup/passkey/register`;
+  const opt = await kindPost(`${base}/options`, { username });
+  if (opt.status !== 200) return opt;
+  const options = (await opt.json()) as { challenge: string; rp: { id: string } };
+  const cookie = kindCookieOf(opt);
+
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
+  const cose = isoCBOR.encode(
+    new Map<number, number | Uint8Array>([
+      [1, 2],
+      [3, -7],
+      [-1, 1],
+      [-2, raw.slice(1, 33)],
+      [-3, raw.slice(33, 65)],
+    ]),
+  );
+  const credId = crypto.getRandomValues(new Uint8Array(16));
+  const rpIdHash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(options.rp.id)),
+  );
+  const authData = new Uint8Array([
+    ...rpIdHash,
+    0x45, // UP・UV・AT
+    0,
+    0,
+    0,
+    0,
+    ...new Uint8Array(16),
+    0,
+    credId.length,
+    ...credId,
+    ...cose,
+  ]);
+  const attestationObject = isoCBOR.encode(
+    new Map<string, unknown>([
+      ["fmt", "none"],
+      ["attStmt", new Map()],
+      ["authData", authData],
+    ]) as never,
+  );
+  const clientDataJSON = new TextEncoder().encode(
+    JSON.stringify({ type: "webauthn.create", challenge: options.challenge, origin: ORIGIN }),
+  );
+  const id = isoBase64URL.fromBuffer(credId);
+  return kindPost(
+    `${base}/verify`,
+    {
+      response: {
+        id,
+        rawId: id,
+        type: "public-key",
+        clientExtensionResults: {},
+        response: {
+          clientDataJSON: isoBase64URL.fromBuffer(clientDataJSON),
+          attestationObject: isoBase64URL.fromBuffer(attestationObject),
+          transports: ["internal"],
+        },
+      },
+      ...(userKind === undefined ? {} : { user_kind: userKind }),
+    },
+    cookie,
+  );
+}
+
+// ===========================================================================
+
+describe("D-V23-276・D-V23-291: 運営以外の役割を宣言したアプリでは、登録で名乗れる立場は宣言した役割だけ(選べるのに何もできない立場を出さない)", () => {
+  test("D-V23-291: 役割を2つ宣言したアプリの GET /public の kinds に customer が無い", async () => {
+    await makeApp(
+      kindManifest([
+        ...KIND_RESERVED,
+        { id: "member", name: "会員" },
+        { id: "staff", name: "スタッフ", signup: "invite" },
+      ]),
+      ENV_ON(),
+    );
+    expect((await kindPublicKinds()).map((k) => k.id)).toEqual(["member", "staff"]);
+  });
+
+  test("D-V23-291: 役割を1つだけ宣言したアプリの kinds は1件で、登録画面に立場を選ぶ欄は出ない", async () => {
+    await makeApp(kindManifest([...KIND_RESERVED, { id: "member", name: "会員" }]), ENV_ON());
+    const kinds = await kindPublicKinds();
+    // **画面(`LoginPage.tsx`)は `kinds` が2件以上のときだけ欄を出す。**
+    expect(kinds.map((k) => k.id)).toEqual(["member"]);
+    expect(kinds.length < 2).toBe(true);
+  });
+
+  test("D-V23-291: パスワード登録の口で customer を名乗ると 422 で、利用者は増えない", async () => {
+    await makeApp(kindManifest([...KIND_RESERVED, { id: "member", name: "会員" }]), ENV_ON());
+    expect((await adminRegister("first")).status).toBe(200);
+    const res = await selfRegister("someone", "customer");
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as {
+      errors: { path: string; allowed_values?: string[] }[];
+    };
+    expect(body.errors[0]?.path).toBe("/user_kind");
+    expect(body.errors[0]?.allowed_values).toEqual(["member"]);
+    // **同じ名前で宣言した役割を名乗れば通る(名前が残っていない = 作られていない)。**
+    const again = await selfRegister("someone", "member");
+    expect(again.status).toBe(200);
+    expect(await kindRoleOf(again)).toBe("member");
+  });
+
+  test("D-V23-291: passkey 登録の口で customer を名乗ると 422(WebAuthn の検証は通した上で)", async () => {
+    await makeApp(kindManifest([...KIND_RESERVED, { id: "member", name: "会員" }]), ENV_ON());
+    expect((await adminRegister("first")).status).toBe(200);
+    const res = await kindSoftPasskeyRegister("pk-customer", "customer");
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { errors: { path: string }[] };
+    expect(body.errors[0]?.path).toBe("/user_kind");
+    // **陽性対照: 同じ認証器の作り方で、宣言した役割は登録できる(検証が本当に通っている)。**
+    const ok = await kindSoftPasskeyRegister("pk-member", "member");
+    expect(ok.status).toBe(200);
+    expect(await kindRoleOf(ok)).toBe("member");
+  });
+
+  test("D-V23-291: 名乗らない登録の落ち先は今日どおり宣言の1本目", async () => {
+    await makeApp(
+      kindManifest([
+        ...KIND_RESERVED,
+        { id: "member", name: "会員" },
+        { id: "guest", name: "来訪" },
+      ]),
+      ENV_ON(),
+    );
+    expect((await adminRegister("first")).status).toBe(200);
+    const res = await selfRegister("plain");
+    expect(res.status).toBe(200);
+    expect(await kindRoleOf(res)).toBe("member");
+  });
+});
+
+describe("D-V23-292: 宣言した役割が全部招待制のアプリでは、customer を名乗って招待を避けられない", () => {
+  const inviteOnly = () =>
+    kindManifest([...KIND_RESERVED, { id: "expert", name: "専門家", signup: "invite" }]);
+
+  test("D-V23-292: 招待コードなしで customer を名乗ると断られ、名乗らない登録も断られる", async () => {
+    await makeApp(inviteOnly(), ENV_ON());
+    expect((await adminRegister("first")).status).toBe(200);
+    expect((await selfRegister("sneak", "customer")).status).toBe(422);
+    expect((await selfRegister("plain")).status).toBe(403);
+    expect((await kindPublicKinds()).map((k) => [k.id, k.invite])).toEqual([["expert", true]]);
+  });
+
+  test("D-V23-292: 招待コードを持つ人は今日どおり登録できる", async () => {
+    await makeApp(inviteOnly(), ENV_ON());
+    const first = await adminRegister("first");
+    expect(first.status).toBe(200);
+    const issued = await kindPost(
+      `/api/apps/${APP_ID}/auth/invitations`,
+      { username: "invited", role: "expert" },
+      kindCookieOf(first),
+    );
+    expect(issued.status).toBe(200);
+    const code = ((await issued.json()) as { invitation: { code: string } }).invitation.code;
+    const res = await kindSelfRegisterWithCode("invited", code);
+    expect(res.status).toBe(200);
+    expect(await kindRoleOf(res)).toBe("expert");
+  });
+});
+
+describe("D-V23-291: 陰性 —— 役割を宣言しないアプリと customer を宣言したアプリは今日どおり", () => {
+  test("D-V23-291: roles を書かないアプリは kinds が customer 1つで、customer で登録できる", async () => {
+    await makeApp(kindManifest(undefined), ENV_ON());
+    expect((await kindPublicKinds()).map((k) => k.id)).toEqual(["customer"]);
+    expect((await adminRegister("first")).status).toBe(200);
+    const res = await selfRegister("c1", "customer");
+    expect(res.status).toBe(200);
+    expect(await kindRoleOf(res)).toBe("customer");
+    const plain = await selfRegister("c2");
+    expect(plain.status).toBe(200);
+    expect(await kindRoleOf(plain)).toBe("customer");
+  });
+
+  test("D-V23-291: 既定3役割だけのアプリは kinds が customer 1つで、customer で登録できる", async () => {
+    await makeApp(kindManifest(KIND_RESERVED), ENV_ON());
+    expect((await kindPublicKinds()).map((k) => k.id)).toEqual(["customer"]);
+    expect((await adminRegister("first")).status).toBe(200);
+    const pk = await kindSoftPasskeyRegister("pk-c", "customer");
+    expect(pk.status).toBe(200);
+    expect(await kindRoleOf(pk)).toBe("customer");
+  });
+
+  test("D-V23-291: customer を自分で宣言したアプリは kinds も登録も今日どおり", async () => {
+    await makeApp(
+      kindManifest([
+        ...KIND_RESERVED,
+        { id: "staff", name: "担当", signup: "invite" },
+        { id: "customer", name: "利用者" },
+      ]),
+      ENV_ON(),
+    );
+    expect((await kindPublicKinds()).map((k) => [k.id, k.name])).toEqual([
+      ["staff", "担当"],
+      ["customer", "利用者"],
+    ]);
+    expect((await adminRegister("first")).status).toBe(200);
+    const res = await selfRegister("u1", "customer");
+    expect(res.status).toBe(200);
+    expect(await kindRoleOf(res)).toBe("customer");
+  });
+});
+
+describe("D-V23-293: 既に customer で登録した人は、役割を宣言した後もそのまま残りログインできる", () => {
+  test("D-V23-293: 役割を後から宣言しても、customer の人はパスワードでログインでき、立場も customer のまま", async () => {
+    await makeApp(kindManifest(KIND_RESERVED), ENV_ON());
+    expect((await adminRegister("first")).status).toBe(200);
+    expect((await selfRegister("early", "customer")).status).toBe(200);
+
+    kindReapply(kindManifest([...KIND_RESERVED, { id: "member", name: "会員" }]));
+    // **新しく customer を名乗る登録は断られる。**
+    expect((await selfRegister("late", "customer")).status).toBe(422);
+    // **既に居る人はログインできる。**
+    const login = await kindPost(`/api/apps/${APP_ID}/auth/password/login`, {
+      username: "early",
+      password: KIND_PASSWORD,
+    });
+    expect(login.status).toBe(200);
+    const me = await app.request(
+      new Request(`http://localhost/api/apps/${APP_ID}/auth/me`, {
+        headers: { origin: ORIGIN, cookie: kindCookieOf(login) },
+      }),
+    );
+    expect(me.status).toBe(200);
+    expect(((await me.json()) as { user: { role: string } }).user.role).toBe("customer");
   });
 });

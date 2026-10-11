@@ -99,6 +99,7 @@ import {
   judgeRoleAccess,
   OWNER_FIELD,
   personalOwnerField,
+  principalRowLabels,
   projectForRoleFields,
   recordAccessSourceTables,
   recordPopulationScope,
@@ -107,9 +108,31 @@ import {
   roleReadCrossesOwnerScope,
   scrubHiddenFieldIds,
 } from "../../server/owner-scope.ts";
+import {
+  defaultPreviewRoot,
+  manifestSha256,
+  type PreviewMeta,
+  previewAppId,
+} from "../../server/preview-store.ts";
+import {
+  deletedRowSnapshot,
+  readRecordHistoryPage,
+  recordHistoryDisplayNames,
+} from "../../server/record-history.ts";
+import { representativeTextField } from "../../server/representative-field.ts";
+import { collectDesignNotices, type DesignNotice } from "../../shared/design-notices.ts";
 import { routePath } from "../../shared/route.ts";
 import { SYSTEM_TABLES } from "../../shared/system-tables.ts";
 import { requireActor, requireActorAndApp } from "../actor-guard.ts";
+import { createPreview } from "../preview.ts";
+import {
+  admitCompare,
+  attachCandidate,
+  COMPARE_NAME_MAX,
+  COMPARE_TRADEOFF_MAX,
+  offPatternError,
+  validateCompareShape,
+} from "../preview-compare.ts";
 import { toolError, toolOk } from "../result.ts";
 import type { CreateMcpServerOptions } from "../server.ts";
 import {
@@ -255,6 +278,82 @@ const REQUIREMENT_SECTIONS = Object.keys(REQUIREMENT_SECTION_KEYS) as [
 ];
 
 /** マニフェストからテーブルIDの一覧を取り出す(エラーの allowed_values 用)。 */
+/**
+ * `dry_run_diff` の `preview` 引数(`V20-M13-T02a`。計画 §9-3 / `D-V20-40`)。**省略可能・2値。**
+ *
+ * **`apply_diff` には無い。** 差分(`diff`)の形は今日も両ツールで一致している
+ * (`descriptions.test.ts` の「diff 入力スキーマが完全に一致する」)。
+ */
+const previewArg = z
+  .enum(["real", "sample"])
+  .optional()
+  .describe(
+    "下見の URL を作るときだけ指定する。real = 今のデータで描く / sample = 見本のデータで描く。" +
+      "省略すると下見は作らない(今日と同じ)。",
+  );
+
+/** `dry_run_diff` の説明に足す `preview` の文(`V20-M13-T02a`)。 */
+const PREVIEW_ARG_DESCRIPTION =
+  "preview に real か sample を付けると、当てた後の画面を見る下見の URL(preview.url)も返します" +
+  "(real は今のデータ、sample は見本のデータで描きます)。" +
+  "下見は保存されず、1時間で消えます。URL を知っている人なら誰でも、頼んだ人の見え方で見られるので、" +
+  "渡す相手を選んでください。";
+
+/**
+ * `dry_run_diff` の `compare` 引数(`V20-M14-T01A`。計画 §9-1 / `ADR-0478` §Decision 1-1)。**省略可能。**
+ *
+ * **中のキーは zod で必須にしない**(`intent` と同じ理由。zod が handler より先に弾くと、`ADR-0003` §3 の
+ * 統一形式ではなく英語の検証エラーが返る)。 形(字数・改行・綴り)は handler の
+ * `validateCompareShape` が引数の誤りとして返す。
+ */
+const compareArg = z
+  .object({
+    name: z
+      .string()
+      .optional()
+      .describe(
+        `必須。案の名前(1〜${String(COMPARE_NAME_MAX)}字・改行なし)。例: 「一覧を2列にする案」。`,
+      ),
+    tradeoff: z
+      .string()
+      .optional()
+      .describe(
+        `必須。この案を選ぶと何を得て何を手放すかの1行(1〜${String(COMPARE_TRADEOFF_MAX)}字・改行なし)。`,
+      ),
+    group: z
+      .string()
+      .optional()
+      .describe("2・3案目だけ。1案目の応答の compare.group(pv- に続く16進32桁)をそのまま渡す。"),
+    // **【`V20-M15-T01B` / `ADR-0479` §Decision 4-1】4本目の鍵。** zod では型を見ない(見ると真偽以外が
+    // `ADR-0003` §3 の形ではなく英語の検証エラーで先に返る)。 真偽以外は `validateCompareShape` が
+    // `/compare/off_pattern` の引数の誤りで返す。 道具の引数の鍵は4本のまま。
+    off_pattern: z
+      .unknown()
+      .optional()
+      .describe("省略可能な真偽。このアプリの型から外れる案にだけ true を付ける。"),
+  })
+  .optional()
+  .describe(
+    "下見を見比べの束に入れるときだけ指定する(preview と一緒にしか指定できない)。省略すると今日と同じ。",
+  );
+
+/**
+ * `dry_run_diff` の説明に足す `compare` の文(`V20-M14-T01A`)。 **効能を約束しない**(どの案が良いかを
+ * 決めるのはユーザである。`ADR-0478` 2-8 / `ADR-0054` 限定3 の読み: 書くのは引数の形と断る条件だけ)。
+ */
+const COMPARE_ARG_DESCRIPTION =
+  "preview と一緒に compare({ name, tradeoff, group })を付けると、その下見を見比べの束に入れ、" +
+  "束の URL(compare.url)も返します。束の URL を開くと、束の案が並んで見比べられます。" +
+  "1案目では group を省き、2・3案目には1案目の応答の compare.group を渡してください" +
+  "(1つの束は3案まで。束は最初の案を作ってから1時間で消えます)。" +
+  "束に入れられるのは同じアプリ・同じ人・同じ mode の案だけで、" +
+  "データが失われる変更(remove_field / remove_table / change_table / change_field)を含む差分は入れられません。" +
+  "見比べの画面で案を選んで適用できるのは、ログインしていてアプリの設定を変えられる人だけです。" +
+  // **【`V20-M15-T01B` / `ADR-0479` §Decision 7】型を既定にし、外れる案に off_pattern を付ける1〜2文。**
+  // **効能を約束しない。 型の中身を置かない**(`ADR-0054` 限定3 の3つ目の引き直し後の読み)。
+  "アプリに型(get_manifest の app.design_memory.patterns)があれば、それを既定として案を作ってください。" +
+  "型から外れる案には compare.off_pattern: true を付けると、見比べの画面に『このアプリの型と違う』と出ます。";
+
 function viewIds(manifest: Manifest): string[] {
   return manifest.app.views.map((view) => view.id);
 }
@@ -402,7 +501,7 @@ export type DriftObservation = {
   view_type: ViewType | null;
   /** 列ごとのマップ形のキーのとき、その値が書かれていた列のID(昇順)。 */
   fields?: string[];
-  /** `app.theme` のとき、数えた根拠としての25スロットの値。 */
+  /** `app.theme` のとき、数えた根拠としての25スロットの値。 */ // 【V20-M9 で偽になった】今日は役割の枠27個と、書いてあれば生の色 palette_… の値(ADR-0474)。
   slots?: Record<string, string>;
 };
 
@@ -657,6 +756,8 @@ function withoutAuthTables(report: DryRunReport): DryRunReport {
 
 export function registerReadTools(server: McpServer, options: CreateMcpServerOptions): void {
   const { dataRoot, previewBaseUrl, actor } = options;
+  // **下見の置き場の根**(`V20-M13-T02a`)。起動する側が決めた値、無ければ Web サーバと同じ既定。
+  const previewRoot = options.previewRoot ?? defaultPreviewRoot(dataRoot);
 
   // ===========================================================================
   // **名乗りと主体の解決**(`V8-M31-T02` / `V8-M31-T03`。台帳 `T-G21a` / `T-G21b` / `T-G22`)
@@ -1174,11 +1275,25 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
                   readRow,
                 });
           const shown = population?.kind === "visible" ? population.rows : visible;
+          // **【`V23-M6-T04b`】付与の行ごとに相手の行の代表項目だけ**(`ADR-0538` §1-7。HTTP の一覧と同じ1本・
+          // 同じ値。返す行と同じ順・同じ長さ)。 `principal_row` の付与表でなければキーを出さない。
+          // 旧(逐語): `records: slicePage(shown, limit, offset).map((row) => dropHidden(row)),`
+          const page = slicePage(shown, limit, offset).map((row) => dropHidden(row));
+          const principalLabels = principalRowLabels({
+            manifest,
+            tableId: table_id,
+            rows: page,
+            roles,
+            subject: actorId,
+            readRow,
+            representative: representativeTextField,
+          });
           return toolOk({
             // **合計は絞ったあとの可視集合から採る**(HTTP と同じ。母集団を割らない)——
             // **`total` はもう「テーブル全体の件数」ではない。**
-            records: slicePage(shown, limit, offset).map((row) => dropHidden(row)),
+            records: page,
             total: shown.length,
+            ...(principalLabels === undefined ? {} : { principal_labels: principalLabels }),
           });
         }
         // total はテーブル全体の件数(limit / offset に左右されない)。list_records は filter を
@@ -1267,11 +1382,21 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
         "差分パッチを**適用せずに**、複製の上で実際に適用して結果を返します。" +
           "何が起きるか(適用後のテーブル定義、影響を受ける行数、拒否されるならその理由)を、" +
           "本体を1バイトも変えずに確かめる手段です。" +
-          "引数は apply_diff とまったく同じなので、ここで通った差分をそのまま apply_diff へ渡せます。" +
+          // **【`V20-M13-T02a`(`ADR-0476`)】旧文は逐語「引数は apply_diff とまったく同じなので、…」だった。**
+          // **`preview` を1本足したので「まったく同じ」は偽になった。** 差分の引数は今日も同じ。
+          "差分(diff)の形は apply_diff とまったく同じなので、ここで通った差分をそのまま apply_diff へ渡せます。" +
           "拒否された場合に返るエラーは apply_diff が返すものと同一です。" +
           "レポートの impacts には、テーブルごとの適用前後の行数・増減した列・影響行数が入ります。" +
           "破壊的な op(remove_field / remove_table / change_table / change_field)を含む差分では、" +
-          "**apply_diff より先に必ずこれを呼んでください。**\n" +
+          "**apply_diff より先に必ずこれを呼んでください。**" +
+          "レポートの design_notices は、当てた後のアプリ全体の画面の作りについての注意です" +
+          "(主ボタンが2つ以上・ボタンが多すぎる・長い入力フォームに区切りが無い)。" +
+          "注意があっても保存は止めないので、直すかどうかは注意を見せてユーザに聞いてください。\n" +
+          // **【`V20-M13-T02a`】`preview` の1〜2文。** 「保存できる」「後から見返せる」とは書かない。
+          PREVIEW_ARG_DESCRIPTION +
+          // **【`V20-M14-T01A`】`compare` の文。** 効能を約束しない。
+          COMPARE_ARG_DESCRIPTION +
+          "\n" +
           // **【`V10-M28-T02` / `T03`】壁と、返さないものを、道具の説明そのものに書く。**
           // **書かないと、断られた AI は「アプリが壊れている」と読んで差分を書き直し続ける。**
           "このツールは apply_diff とまったく同じ権限を要求します —— " +
@@ -1289,9 +1414,9 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
           "\n" +
           UNDO_ROLLBACK_LIMIT,
       ),
-      inputSchema: { app_id: appIdArg, diff: diffArg },
+      inputSchema: { app_id: appIdArg, diff: diffArg, preview: previewArg, compare: compareArg },
     },
-    ({ app_id, diff }) => {
+    ({ app_id, diff, preview, compare }) => {
       const guard = requireActorAndApp(dataRoot, app_id, actor);
       if (!guard.ok) {
         return toolError(guard.errors);
@@ -1327,13 +1452,145 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
         ]);
       }
 
-      const result = dryRunDiff(dataRoot, app_id, diff);
-      if (!result.valid) {
-        return toolError(result.errors);
+      // **【`V20-M14-T01A`】`compare` の形**(引数の誤り。`preview` 無しの `compare` もここ)。
+      // **`compare` を付けないときは1行も通らない。**
+      if (compare !== undefined) {
+        const shapeErrors = validateCompareShape(compare, preview);
+        if (shapeErrors.length > 0) {
+          return toolError(shapeErrors);
+        }
+        // **【`V20-M15-T01B`】型の無いアプリの `off_pattern: true` は引数の誤り**(計画 §10-1 の U3)。
+        // **判定は本物のアプリの今の型**(案が型を足す場合でも、今の型が無ければ断る)。 `true` のときだけ読む。
+        if (compare.off_pattern === true) {
+          const patterns = readCurrentManifest(dataRoot, app_id).app.design_memory?.patterns ?? [];
+          const offPattern = offPatternError(compare.off_pattern, patterns.length);
+          if (offPattern !== null) {
+            return toolError([offPattern]);
+          }
+        }
+      }
+
+      // **`preview` を付けたときだけ**、写しを残して下見を作る(`V20-M13-T02a`)。
+      // **省略したときは下の今日の経路を1バイトも変えずに通る。**
+      let previewField: Record<string, unknown> = {};
+      let report: DryRunReport;
+      // 見比べの案として束に入れる途中のもの(下見を作れたときだけ入る)。
+      let pendingCompare: { meta: PreviewMeta; baseManifestSha: string | null } | null = null;
+      // **【`V20-M14-T01A`】データが失われる op の断りと束の照合**(計画 §10-2)。 断るときは下見を作らない。
+      const admission =
+        compare === undefined || preview === undefined
+          ? null
+          : admitCompare({
+              previewRoot,
+              appId: app_id,
+              requesterUserId: guard.value.id,
+              mode: preview,
+              diff,
+              group: compare.group,
+            });
+      if (admission !== null && !admission.ok) {
+        // **差分の検証は今日どおり先に効く**(拒否なら今日と同じ errors)。 通るなら下見を作らずに断る。
+        const result = dryRunDiff(dataRoot, app_id, diff);
+        if (!result.valid) {
+          return toolError(result.errors);
+        }
+        report = result.report;
+        previewField = { preview_refused: { reason: admission.reason } };
+      } else if (preview === undefined) {
+        const result = dryRunDiff(dataRoot, app_id, diff);
+        if (!result.valid) {
+          return toolError(result.errors);
+        }
+        report = result.report;
+      } else {
+        // 作成時の本物のマニフェストの sha(`stale` の材料。下見を作る**前**に採る —— 間に本物が
+        // 変われば、見比べの画面では古い案に見える側に倒れる)。
+        const baseManifestSha = compare === undefined ? null : manifestSha256(dataRoot, app_id);
+        const created = createPreview({
+          dataRoot,
+          appId: app_id,
+          diff,
+          mode: preview,
+          requesterUserId: guard.value.id,
+          previewRoot,
+        });
+        if (created.kind === "rejected") {
+          // **拒否のときは写しを残さず、URL も返さない。** errors は省略時と同じ。
+          return toolError(created.errors);
+        }
+        if (created.kind === "created") {
+          report = created.report;
+          previewField = {
+            preview: {
+              url: `${previewBaseUrl}${routePath({ kind: "app", appId: previewAppId(created.meta.preview_id) })}/`,
+              expires_at: created.meta.expires_at,
+              mode: created.meta.mode,
+            },
+          };
+          if (compare !== undefined) {
+            pendingCompare = { meta: created.meta, baseManifestSha };
+          }
+        } else {
+          // **作らなかった**(上限・写せない人)。**差分の検証は拒否ではないので `isError` にしない**
+          // (`design_notices` と同じ扱い)。レポートが未だなら、今日の経路で取る。
+          if (created.report !== undefined) {
+            report = created.report;
+          } else {
+            const result = dryRunDiff(dataRoot, app_id, diff);
+            if (!result.valid) {
+              return toolError(result.errors);
+            }
+            report = result.report;
+          }
+          previewField = { preview_refused: { reason: created.reason } };
+        }
       }
       // **報告から認証まわりを落とす**(`V10-M28-T03`)。**カーネルが返したレポートは
       // 全量のままであり、絞っているのはこの1行だけである。**
-      return toolOk({ report: withoutAuthTables(result.report) });
+      // **画面の作りの注意**(`design_notices`)。**当てた後のマニフェストのアプリ全体の画面**を
+      // `collectDesignNotices` で点検した `notices` を**常に**載せる(無ければ `[]`)。
+      // **拒否ではない** —— **注意は適用を止めない。** 先例は `role_condition_notices`(拒否では
+      // ない知らせを常に在る欄で返す)。**カーネルのレポートには足さず、この層で足す。**
+      // **点検で例外が出ても `isError` を返さない** —— 差分そのものは検証を通っており、
+      // `isError` にすると通る差分を拒否されたと読ませる。点検は拒否ではないので、
+      // 壊れたときは注意を `[]` にする(`apply_diff` と同じ扱い)。
+      let designNotices: DesignNotice[];
+      try {
+        designNotices = collectDesignNotices(report.manifest).notices;
+      } catch {
+        designNotices = [];
+      }
+      // **【`V20-M14-T01A`】案の票と束**(注意は上で計算した値をそのまま保存する)。 断れば下見も消える。
+      if (pendingCompare !== null && compare !== undefined) {
+        const attached = attachCandidate({
+          previewRoot,
+          meta: pendingCompare.meta,
+          name: compare.name as string,
+          tradeoff: compare.tradeoff as string,
+          diff,
+          designNotices,
+          baseManifestSha: pendingCompare.baseManifestSha,
+          group: compare.group,
+          offPattern: compare.off_pattern === true,
+        });
+        previewField = attached.ok
+          ? {
+              ...previewField,
+              compare: {
+                url: `${previewBaseUrl}${routePath({ kind: "app", appId: previewAppId(attached.groupId) })}/`,
+                group: previewAppId(attached.groupId),
+                count: attached.count,
+              },
+            }
+          : { preview_refused: { reason: attached.reason } };
+      }
+      return toolOk({
+        report: {
+          ...withoutAuthTables(report),
+          design_notices: designNotices,
+        },
+        ...previewField,
+      });
     },
   );
 
@@ -1706,6 +1963,182 @@ export function registerReadTools(server: McpServer, options: CreateMcpServerOpt
         // (2つ目のページの切り方を作っていない)。
         comments: slicePage(addressed, limit, offset),
         total: addressed.length,
+      });
+    },
+  );
+
+  // --- list_record_history(行の変更履歴。`V23-M8-T05`・`T08` / `D-V23-212`・`D-V23-226`・`D-V23-229`)------
+  //
+  // **読める判定は HTTP の単件 GET と同じ並びである**(面の表の関門 → 行を渡した面 → 個人スコープ → 点の合成と
+  // 上限 → 母集団の壁(名簿・グループ・付与の表と、名乗らない読取の壁。単票の形))。 **判定は `owner-scope.ts` の
+  // 関数だけが持ち、ここに規則を読む条件式を書いていない。** 読めなければ、行が無いのと同じ文で断る。
+  // **消した行は運営だけ**(`D-V23-203`)。 隠す項目は今の行(消した行は最後の姿)に項目の規則を1回当てて決める。
+  server.registerTool(
+    "list_record_history",
+    {
+      description: describeTool(
+        "history: true を宣言した表の1行について、変更履歴(誰が・いつ・どの入口で・何を何に変えたか)を新しい順に返します。" +
+          "返るのは、ST_MCP_ACTOR で名乗った人がその行を読める場合だけです(読めない行は、無い行と同じに断ります)。" +
+          "その人に読めない項目は、変更前と変更後の両方を落とし、読めない項目だけが変わった更新は1件も返しません(total は絞った後の件数)。" +
+          "条件つきの項目の規則は今の行の状態で当たります(過去の値も今の状態で隠れます)。" +
+          "変えた人は表示名(無ければログイン名)で返り、退会した人は「(不明なユーザ)」、操作者の無い書込(受信口・時刻起動など)は空です。" +
+          "消した行の履歴は運営者だけが読めます。history を宣言していない表は断ります。" +
+          "undo すると、その差分より後の履歴も消えます(redo で戻ります)。履歴を書き換える・消すための道具はありません。" +
+          "返す形は { items, total, offset, limit } です。",
+      ),
+      inputSchema: {
+        app_id: appIdArg,
+        table_id: z.string().describe("履歴を読む表のID(history: true を宣言した表)。"),
+        record_id: z.string().describe("履歴を読む行の _id。"),
+        offset: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe("新しい側からスキップする件数。既定は0。"),
+        limit: z
+          .number()
+          .int()
+          .positive()
+          .max(200)
+          .optional()
+          .describe("返す件数の上限。既定は50、上限は200。"),
+      },
+    },
+    ({ app_id, table_id, record_id, offset, limit }) => {
+      const guard = requireActorAndApp(dataRoot, app_id, actor);
+      if (!guard.ok) {
+        return toolError(guard.errors);
+      }
+      const manifest = readCurrentManifest(dataRoot, app_id);
+      const table = manifest.app.tables.find((candidate) => candidate.id === table_id);
+      // **表の宣言だけを見る**(画面の `history` を問わない。`D-V23-226`)。
+      if (table === undefined || table.history !== true) {
+        return toolError([
+          {
+            path: "/table_id",
+            message: `テーブル "${table_id}" は変更履歴を宣言していません(history: true がありません)。`,
+          },
+        ]);
+      }
+      const roles = guard.value.roles;
+      const actorId = guard.value.id;
+      const notFound = () =>
+        toolError([{ path: "/record_id", message: `レコード "${record_id}" は見つかりません。` }]);
+      return withReadSource(dataRoot, app_id, (source) => {
+        const { readRows, readRow } = memoizedRowReaders(source, manifest);
+        const row = readRow(table_id, record_id);
+        let current: Record<string, unknown>;
+        if (row === undefined) {
+          // **消した行は運営だけ**(運営以外には、行が無いことと読めないことを区別しない)。
+          if (!roles.includes("owner")) {
+            return notFound();
+          }
+          const snapshot = deletedRowSnapshot(source.appDb(), table_id, record_id);
+          if (snapshot === undefined) {
+            return notFound();
+          }
+          current = snapshot;
+        } else {
+          const accessSources = recordAccessSourceTables(manifest, table_id);
+          const tableRead = judgeRoleAccess({
+            manifest,
+            roles,
+            target: { target: "table", table: table_id },
+            verb: "read",
+          });
+          if (
+            roleGateBlocksWithoutGrants({
+              role: tableRead,
+              grantGoverned: accessSources !== undefined,
+            })
+          ) {
+            return notFound();
+          }
+          if (
+            accessSources === undefined &&
+            !judgeRoleAccess({
+              manifest,
+              roles,
+              target: { target: "table", table: table_id },
+              verb: "read",
+              row,
+              subject: actorId,
+            }).allowed
+          ) {
+            return notFound();
+          }
+          if (
+            personalOwnerField(table) !== undefined &&
+            !isOwnerVisible(row[OWNER_FIELD], actorId) &&
+            !roleReadCrossesOwnerScope({ manifest, roles, table: table_id, row, subject: actorId })
+          ) {
+            return notFound();
+          }
+          const access =
+            accessSources === undefined
+              ? undefined
+              : resolveCombinedRecordAccess({
+                  manifest,
+                  tableId: table_id,
+                  row,
+                  actorId,
+                  roles,
+                  sources: accessSources,
+                  readRows,
+                  readRow,
+                });
+          if (access?.kind === "limit_exceeded") {
+            return toolError([recordAccessLimitError(access.limit)]);
+          }
+          if (access !== undefined && !access.verdict.read) {
+            return notFound();
+          }
+          // **母集団の壁**(`D-V23-229`)。 単件 GET と同じ1本に行を1件だけ渡す(単票の形)。
+          const population = judgeRecordPopulation({
+            manifest,
+            table,
+            tableId: table_id,
+            rows: [row],
+            anonymousPublic: false,
+            actorId,
+            roles,
+            accessSources,
+            tableRead,
+            judge: undefined,
+            readRows,
+            readRow,
+            unnamedViewRead: "single",
+          });
+          if (
+            population.kind === "visible" &&
+            ((population.scope === "access_registry" && population.rows.length === 0) ||
+              population.scope === "unnamed_view_wall")
+          ) {
+            return notFound();
+          }
+          current = row;
+        }
+        // **今の行に項目の規則を1回当て、落ちたキーを隠す項目とする**(`D-V23-224`)。
+        const projected = projectForRoleFields({
+          manifest,
+          table,
+          row: current,
+          roles,
+          subject: actorId,
+        });
+        const fieldIds = table.fields.map((field) => field.id);
+        return toolOk(
+          readRecordHistoryPage(source.appDb(), {
+            tableId: table_id,
+            recordId: record_id,
+            known: new Set(fieldIds),
+            hidden: new Set(fieldIds.filter((fieldId) => !Object.hasOwn(projected, fieldId))),
+            displayNames: recordHistoryDisplayNames(dataRoot, app_id),
+            offset: offset ?? 0,
+            limit: limit ?? 50,
+          }),
+        );
       });
     },
   );

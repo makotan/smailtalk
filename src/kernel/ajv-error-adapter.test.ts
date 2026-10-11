@@ -18,6 +18,7 @@
 import { describe, expect, test } from "bun:test";
 import { toValidationErrors } from "./ajv-error-adapter.ts";
 import type { ValidationError } from "./errors.ts";
+import { contrastRatio } from "./theme-contrast.ts";
 import { DIFF_OPS, FIELD_TYPES } from "./types.ts";
 import { diffSchema, manifestSchema, validateDiff, validateManifest } from "./validate.ts";
 
@@ -558,7 +559,9 @@ runCrossCheck({
       // フィールドIDの配列」の1段だけで、入れ子も並び順のキーも書けない**(限定3)。
       // schema 検証だけを見るので、まとまりに書いたIDの実在は問わない(実在の照合は
       // `referential-integrity.ts` の類型15 = 限定5)。
-      field_groups: { 基本: ["title"] },
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】綴りを `field_sections` に改めた。** **今日は form と
+      // detail_view で受理され、list_view / report_view の allOf 分岐では false**(上の「detail_view でだけ」は旧綴りの時点の記述)。
+      field_sections: { 基本: ["title"] },
       // `P-G24` の (C) 側 / ADR-0093(V4-M16-T13): 一覧の器の形(8つ目の `preset_` キー)。
       // **list_view でだけ受理される**(form / detail_view の allOf 分岐では false)——
       // その割り当てそのものを本検査が受理集合として実測する。**値域は `table` / `card` の
@@ -640,6 +643,14 @@ runCrossCheck({
       // **schema 検証だけを見るので、位置の重複や欠番は問わない**(その照合は
       // `referential-integrity.ts` 側 = 限定3)。
       flow: { id: "checkout", step: 1, kind: "input" },
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】32キー目 `field_width`(入力欄の幅。`form` でだけ書ける)の見本値。**
+      field_width: { title: "short" },
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by`(一覧の束ねるキー。`list_view` でだけ書ける)の見本値。** **`title` は日付でないので粒度を書かない形にしてある**(スキーマ検証だけを見るので、型と表示列の照合は問わない)。
+      group_by: { field: "title" },
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】34キー目 `layout`(並べ方の木。`report_view` 以外で書ける)の見本値。** **スキーマ検証だけを見るので、葉の実在・一覧がカードかは問わない**(その照合は `referential-integrity.ts`)。
+      layout: { type: "stack", children: ["title"] },
+      // **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行32〜行35(書き足し。期待値を緩めない)】35キー目 `history`(詳細画面に行の変更履歴を出すか。`detail_view` でだけ書ける。決定 `D-V23-205`)の見本値。** **スキーマ検証だけを見るので、表が `history: true` を宣言しているかは問わない**(その照合は `referential-integrity.ts`)。
+      history: true,
       // スキーマには無い属性(限定2 の見張り。受理されないことを実測で確かめる)。
       description: "この画面の説明",
     };
@@ -669,6 +680,11 @@ runCrossCheck({
       // EC-G8 / ADR-0038: 全型で書ける任意の一意制約フラグ(select/reference の
       // options/reference_table と違い型に依らず受理される)。
       unique: true,
+      // 【`V23-M2-T02` / `ADR-0498` 限定1・限定3 / 授権 `ADR-0517` 行15】一意違反の文言(1〜200文字の
+      // 文字列)。**`unique` と同じく全型で書ける**(型で絞る allOf の分岐が無い)ので、9型すべてで
+      // 受理されることが緑の中身である(`unique` の無い列に書くと断るのは構造検証ではなく
+      // 参照整合性検査であり、本検査が呼ぶ構造検証の外である)。
+      unique_message: "既に登録されています",
       options: ["未読", "読了"],
       reference_table: "books",
       // B-G2 / ADR-0071(V4-M3-T05): 項目ごとの「見せる相手」。**全型で書ける任意プロパティ**
@@ -730,7 +746,11 @@ runCrossCheck({
   // `v5-merge-repair-2.md` §5-2 が数えた「テスト名だけ古い」箇所が1件増えるためである。**
   // **【`V8-M16-T03` / `J-G1b` / `D-V8-31`】** **旧 label の逐語は "operation (差分 op 17種)" である。**
   // **18種目 `set_roles` が入ったので実体に合わせた。**
-  label: "operation (差分 op 18種)",
+  // **【`V20-M15-T01A`】`set_user_kinds` の撤去(`V8-M29`)で17種に戻っていたのに見出しは18種のままだった。**
+  // **18種目 `remember_design` が入り、今日偶然ふたたび実体と一致した**(見出しは1バイトも変えていない)。
+  // **【`V22-M2-T02` / `ADR-0486`(授権 `ADR-0487` 行2)】** **旧 label の逐語は "operation (差分 op 18種)" である。**
+  // **19種目 `set_workspace` が入ったので実体に合わせた。**
+  label: "operation (差分 op 19種)",
   doc: diffDoc,
   node: diffDoc.$defs.operation as SchemaNode,
   basePath: "/operations/0",
@@ -797,31 +817,36 @@ runCrossCheck({
       // である**(ADR-0047 2026-07-25 追記(2)。部分テーマを作らない)。
       theme: {
         slots: {
-          "--color-danger": "#a00000",
-          "--color-text": "#000000",
-          "--color-text-label": "#595959",
-          "--color-text-placeholder": "#595959",
-          "--color-text-secondary": "#595959",
-          "--color-border": "#767676",
-          "--color-page-background": "#ffffff",
-          "--color-surface-highlight": "#f2f2f2",
-          "--font-family-base": "system-ui, sans-serif",
-          "--font-size-note": "0.875rem",
-          "--font-size-secondary": "0.85em",
-          "--line-height-base": "1.6",
-          "--space-1": "0.25rem",
-          "--space-2": "0.5rem",
-          "--space-3": "0.75rem",
-          "--space-4": "1rem",
-          "--space-5": "1.25rem",
-          "--space-6": "2rem",
-          "--border-width": "1px",
-          "--control-border-radius": "4px",
-          "--surface-shadow": "none",
-          "--focus-outline-color": "#005fcc",
-          "--focus-outline-width": "2px",
-          "--detail-label-width": "8rem",
-          "--login-max-width": "22rem",
+          danger: "#a00000",
+          body_text: "#000000",
+          label_text: "#595959",
+          placeholder_text: "#595959",
+          secondary_text: "#595959",
+          border_color: "#767676",
+          page_background: "#ffffff",
+          highlight_surface: "#f2f2f2",
+          // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+          primary_fill: "#ffffff",
+          on_primary: "#000000",
+          overlay_background: "#ffffff",
+          overlay_text: "#000000",
+          body_font: "system-ui, sans-serif",
+          note_font_size: "0.875rem",
+          secondary_font_size: "0.85em",
+          body_line_height: "1.6",
+          space_1: "0.25rem",
+          space_2: "0.5rem",
+          space_3: "0.75rem",
+          space_4: "1rem",
+          space_5: "1.25rem",
+          space_6: "2rem",
+          border_width: "1px",
+          control_radius: "4px",
+          surface_shadow: "none",
+          focus_ring: "#005fcc",
+          focus_ring_width: "2px",
+          // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+          // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
         },
       },
       to: "volumes",
@@ -835,6 +860,15 @@ runCrossCheck({
       // **この表は「増えたら足すこと」を例外で強制する形になっており、実際に
       // 例外(`operation の属性 "roles" のサンプル値がありません`)で落ちた。**
       roles: [{ id: "owner", name: "運営" }],
+      // **【`V20-M15-T01A` / `ADR-0479`】10キー目 `design_memory` のサンプル値。**
+      // **`$defs/operation.properties` が10キーになったので、この表も1本増える** ——
+      // **この表は「増えたら足すこと」を例外で強制する形になっており、実際に
+      // 例外(`operation の属性 "design_memory" のサンプル値がありません`)で落ちた。**
+      design_memory: { choice: { name: "詰めた一覧", tradeoff: "情報量は多いが目が疲れる" } },
+      // **【`V22-M2-T02` / `ADR-0486`(授権 `ADR-0487` 行2)】11キー目 `workspace` のサンプル値。**
+      // **`$defs/operation.properties` が11キーになったので、この表も1本増える** ——
+      // **実際に例外(`operation の属性 "workspace" のサンプル値がありません`)で19本が落ちた。**
+      workspace: { navigation: { placement: "top" } },
     };
     const value = values[attribute];
     if (value === undefined) {
@@ -929,6 +963,10 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // allOf 分岐でだけ `false` である**(`V10-M4` の決1)。
       // **列挙を消して件数に丸めない。**
       "flow",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー `group_by` は `list_view` でだけ書けるので、この文脈の受理集合に現れる。** **旧の列挙はこの1行が無い形である。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
     ]);
   });
 
@@ -974,7 +1012,8 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // **detail_view の受理側にだけ加わる**(list_view / form 分岐では `false`。限定2)。
       // **門A の本審査(`V4-M14` 本審査② の単位9。判定 = 限定採用)を通った増分である。
       // 列挙を消して件数に丸めない**(`custom_css` / `menu_listed` と同じ作法)。
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **【V4-M19-T03 / `P-G32` の (C) 側 / ADR-0118 限定1 で足した26キー目 `preset_density`】**
       // ——**3種すべての受理側に加わる**(`name` / `custom_css` / `menu_listed` と同じ)。
       // **門A の本審査(V4-M19 単位C。2回目の審査。判定 = 限定採用)を通った増分である。**
@@ -1002,6 +1041,10 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // allOf 分岐でだけ `false` である**(`V10-M4` の決1)。
       // **列挙を消して件数に丸めない。**
       "flow",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行36】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `layout` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
   });
 
@@ -1048,6 +1091,10 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // **E-G12 / ADR-0084(V4-M10-T45)が20キー目 `menu_listed` を足した** —— 掲載は
       // 種別に依存しない属性なので、**3種すべての受理側に加わる**(`name` と同じ)。
       "menu_listed",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469` 限定1 で足した】** 項目のまとまり `field_sections` は
+      // 今日 form でも書ける(`$defs/view.properties` の宣言順どおり `menu_listed` の直後)。
+      // **旧の列挙はこの1行が無い形である。**
+      "field_sections",
       // **`P-G14` の (C) 側 / ADR-0095(V4-M18-T03)が23キー目 `modal` を足した** ——
       // **`form` でだけ受理される**(限定4)ので、この文脈(form)の列挙に現れる。
       // **単独では受理されないが(限定5)、`additionalProperties` の列挙は「書ける属性の
@@ -1074,6 +1121,10 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // allOf 分岐でだけ `false` である**(`V10-M4` の決1)。
       // **列挙を消して件数に丸めない。**
       "flow",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 が足した32キー目 `field_width`】** **入力欄の幅は `form` でだけ書ける**(`$defs/view.properties` の宣言順どおり末尾)。**旧の列挙はこの1行が無い形である。**
+      "field_width",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
     ]);
   });
 
@@ -1119,7 +1170,8 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // **detail_view の受理側にだけ加わる**(list_view / form 分岐では `false`。限定2)。
       // **門A の本審査(`V4-M14` 本審査② の単位9。判定 = 限定採用)を通った増分である。
       // 列挙を消して件数に丸めない**(`custom_css` / `menu_listed` と同じ作法)。
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **【V4-M19-T03 / `P-G32` の (C) 側 / ADR-0118 限定1 で足した26キー目 `preset_density`】**
       // ——**3種すべての受理側に加わる**(`name` / `custom_css` / `menu_listed` と同じ)。
       // **門A の本審査(V4-M19 単位C。2回目の審査。判定 = 限定採用)を通った増分である。**
@@ -1147,6 +1199,10 @@ describe("検証方法1: 3文脈それぞれで allowed_values の内容を固�
       // allOf 分岐でだけ `false` である**(`V10-M4` の決1)。
       // **列挙を消して件数に丸めない。**
       "flow",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行37】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `layout` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
   });
 
@@ -1768,12 +1824,50 @@ describe("V1-M2-T05e: action_value の pattern エラーは罠へ誘導しない
  * `DIFF_OP_ENUM_HINT` の追随漏れが3度起きたのと同じ形である(`:149`〜`:154`)。
  * **族の判定も `pattern` の文字列から行う**(スロット名の一覧を第4の写しにしない)。
  */
+/**
+ * 【V20-M7-T03】色の族の hint(逐語で固定する。2表記の例を字面で持つ)。
+ *
+ * 【V20-M7B-T02 で値を打ち直した(ADR-0472 §Decision 2-4。この定数を見る検査は消していない)】
+ * 旧の5文目(逐語): "sRGB で表せない色(彩度の高い色の一部)は書けません —— 断られたら C を小さくしてください。"
+ * 旧の7文目(逐語): "透明度付きの8桁(#rrggbbaa)も、oklch の / で区切る透明度・none・カンマ区切り・単位(deg)も、このスロットでは書けません。"
+ * 新しい値は末尾の `V20_M7B_COLOR_HINT`(`V20-M7B-T01` が先に書いた期待)と1文字も違わない(同じファイルの検査が見る)。
+ */
+const V20_M7_COLOR_HINT =
+  "色は16進表記か、明るさ基準の oklch 表記です —— # に続けて3桁または6桁の16進数を書くか、" +
+  "oklch(L C H) の形で L(0〜1 の小数か 0%〜100%)・C(0 以上の小数)・H(0〜360 の度。単位は書かない)を" +
+  "半角空白1つで区切って書いてください(例: #333 / #1a4f9c / oklch(0.55 0.15 250))。" +
+  "小数は6桁まで、oklch は小文字だけです。" +
+  "H の位置にだけ none を書けます(0 と書いたのと同じ色になります)。L と C の位置には none を書けません。" +
+  "色名(blue / red)・rgb() / rgba() / hsl() / lch() / oklab()・var() は書けません。" +
+  "透明度付きの8桁(#rrggbbaa)も、oklch の / で区切る透明度・L と C の位置の none・カンマ区切り・単位(deg)も、このスロットでは書けません。" +
+  // 【V20-M9 / ADR-0474 §1-1】参照の綴りの1文を足した(旧の値は上の行で終わっていた。例の丸括弧の外に置く)。
+  "生の色(palette_ で始まる名前。英小文字・数字・_ で1〜40字)を同じテーマに定義していれば、" +
+  "$palette_<名前> の形でその色を指すこともできます。";
+
 describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式を教える(専用文面の3件目)", () => {
   const themeSlotSchemas = (
     manifestSchema as unknown as {
-      $defs: { theme: { properties: Record<string, { pattern: string }> } };
+      $defs: {
+        theme: {
+          properties: Record<string, { pattern?: string; anyOf?: { pattern?: string }[] }>;
+        };
+      };
     }
   ).$defs.theme.properties;
+
+  /**
+   * スロットの pattern。**【V20-M7-T03】色スロット9件は anyOf の2枝(16進 / oklch)になったので、
+   * 素の pattern が無ければ1枝目(16進)の pattern を返す**(族の判定はこの検査の側で独立に行う)。
+   */
+  function slotPattern(schema: { pattern?: string; anyOf?: { pattern?: string }[] }): string {
+    // 【V20-M9 / ADR-0474】色の値域は入れ子の anyOf(外側 = [実値(内側に16進 / oklch), 参照])になったので、
+    // 最初の葉の pattern(16進)まで降りる。旧(逐語): `return String(schema.pattern ?? schema.anyOf?.[0]?.pattern);`
+    let node: { pattern?: string; anyOf?: unknown[] } | undefined = schema;
+    while (node !== undefined && node.pattern === undefined && Array.isArray(node.anyOf)) {
+      node = node.anyOf[0] as { pattern?: string; anyOf?: unknown[] } | undefined;
+    }
+    return String(node?.pattern);
+  }
 
   /**
    * その `pattern` を満たす値を1つ返す(族が分からなければ undefined)。
@@ -1805,9 +1899,9 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
   function themeSlots(overrides: Record<string, unknown>): Record<string, unknown> {
     const slots: Record<string, unknown> = {};
     for (const [name, schema] of Object.entries(themeSlotSchemas)) {
-      const base = baseValueFor(schema.pattern);
+      const base = baseValueFor(slotPattern(schema));
       if (base === undefined) {
-        throw new Error(`族が判定できないスロットがある: ${name}(pattern: ${schema.pattern})`);
+        throw new Error(`族が判定できないスロットがある: ${name}(pattern: ${slotPattern(schema)})`);
       }
       slots[name] = base;
     }
@@ -1828,9 +1922,14 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
     return error;
   }
 
-  /** hint の `(例: A / B)` から候補値を取り出す(**hint しか読まない**)。 */
+  /**
+   * hint の `(例: A / B)` から候補値を取り出す(**hint しか読まない**)。
+   *
+   * **【V20-M7-T03】例の中に丸括弧を1段だけ許す**(`oklch(0.55 0.15 250)` を1つの例として取り出すため)。
+   * 旧の式(逐語)は `/\(例: ([^)]+)\)/` で、最初の `)` で切れて `oklch(0.55 0.15 250` を返していた。
+   */
   function examplesIn(hint: string): string[] {
-    const matched = /\(例: ([^)]+)\)/.exec(hint);
+    const matched = /\(例: ((?:[^()]|\([^()]*\))+)\)/.exec(hint);
     if (matched?.[1] === undefined) {
       throw new Error(`hint に「(例: …)」がありません: ${hint}`);
     }
@@ -1838,26 +1937,28 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
   }
 
   test("前提: 書式を満たす25スロットは差分検証を通る(測定の土台が空回りしていない)", () => {
-    expect(Object.keys(themeSlotSchemas)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(themeSlotSchemas)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(themeSlotSchemas)).toHaveLength(23);
+    expect(Object.keys(themeSlotSchemas)).toHaveLength(27);
     expect(validateDiff(themeDiffWith({})).valid).toBe(true);
   });
 
-  test("T07 が見つけた本体 —— --color-text に blue と書いたときリソースIDの文面を返さない", () => {
-    const error = themeErrorFor("--color-text", "blue");
+  test("T07 が見つけた本体 —— body_text に blue と書いたときリソースIDの文面を返さない", () => {
+    const error = themeErrorFor("body_text", "blue");
     const whole = `${error.message}${error.hint ?? ""}`;
     // **これが誤誘導の本体。**従うと `blue-x` のような識別子になり、収束しない。
     expect(whole).not.toContain("英小文字で始まり");
     expect(whole).not.toContain("book-tracker");
     expect(error.message).not.toContain("識別子の規約に合いません");
     // 色の書式を教えていること。
-    expect(error.message).toBe('--color-text の値 "blue" は色の書式に合いません。');
+    expect(error.message).toBe('body_text の値 "blue" は色の書式に合いません。');
     expect(error.hint).toContain("16進");
   });
 
   test("25スロットのどれも RESOURCE_ID_PATTERN_HINT を返さない(1件も残っていない)", () => {
     for (const [slot, schema] of Object.entries(themeSlotSchemas)) {
       // **その族に合わない値**を作る: 書式を満たす値の末尾に空白と `!` を足す。
-      const bad = `${String(baseValueFor(schema.pattern))} !`;
+      const bad = `${String(baseValueFor(slotPattern(schema)))} !`;
       const error = themeErrorFor(slot, bad);
       const whole = `${error.message}${error.hint ?? ""}`;
       expect(whole, `${slot}: 汎用の識別子 hint が残っている`).not.toContain("英小文字で始まり");
@@ -1870,7 +1971,7 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
   test("**従えば通る** —— hint の例をそのまま値にすると、25スロットすべてで検証を通る", () => {
     let checked = 0;
     for (const [slot, schema] of Object.entries(themeSlotSchemas)) {
-      const error = themeErrorFor(slot, `${String(baseValueFor(schema.pattern))} !`);
+      const error = themeErrorFor(slot, `${String(baseValueFor(slotPattern(schema)))} !`);
       for (const example of examplesIn(String(error.hint))) {
         // **hint から取り出した文字列しか使っていない**(テスト外の知識を混ぜない)。
         const result = validateDiff(themeDiffWith({ [slot]: example }));
@@ -1878,33 +1979,37 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
         checked += 1;
       }
     }
-    // 25スロット × 各族の例(色2 / 長さ3 / 行間2 / 影2 / 書体2)。
-    expect(checked).toBe(9 * 2 + 13 * 3 + 2 + 2 + 2);
+    // 25スロット × 各族の例(色3 / 長さ3 / 行間2 / 影2 / 書体2)。
+    // 【V20-M7-T03】色の例を 2 → 3 に打ち直した(旧(逐語): `9 * 2 + 13 * 3 + 2 + 2 + 2`)。3つ目は oklch の例。
+    // 【V20-M9 / ADR-0474 §1-3】長さの族 13 → 11(`--detail-label-width` / `--login-max-width` を外した)。
+    // 旧(逐語): `expect(checked).toBe(9 * 3 + 13 * 3 + 2 + 2 + 2);`
+    // 【V20-M9 / ADR-0474 §1-2】色の族 9 → 13(4枠を足した)。旧(逐語): `expect(checked).toBe(9 * 3 + 11 * 3 + 2 + 2 + 2);`
+    expect(checked).toBe(13 * 3 + 11 * 3 + 2 + 2 + 2);
   });
 
   test("族ごとの文面(5族。逐語で固定する)", () => {
-    expect(themeErrorFor("--focus-outline-color", "blue").hint).toBe(
-      "色は16進表記だけです —— # に続けて3桁または6桁の16進数を書いてください(例: #333 / #1a4f9c)。" +
-        "色名(blue / red)・rgb() / rgba() / hsl()・var() は書けません。" +
-        "透明度付きの8桁(#rrggbbaa)もこのスロットでは書けません。",
-    );
-    expect(themeErrorFor("--space-4", "8").hint).toBe(
+    // 【V20-M7-T03】色の文面を2表記に打ち直した。旧(逐語):
+    // "色は16進表記だけです —— # に続けて3桁または6桁の16進数を書いてください(例: #333 / #1a4f9c)。" +
+    // "色名(blue / red)・rgb() / rgba() / hsl()・var() は書けません。" +
+    // "透明度付きの8桁(#rrggbbaa)もこのスロットでは書けません。"
+    expect(themeErrorFor("focus_ring", "blue").hint).toBe(V20_M7_COLOR_HINT);
+    expect(themeErrorFor("space_4", "8").hint).toBe(
       "長さは 0 か、数値に px / rem / em を付けた形だけです(例: 0 / 8px / 1.5rem)。" +
         "単位なしの数値(8 だけ)は書けず、% / vw / vh / pt も書けません。" +
         "小数点以下は3桁までで、calc() や var() は書けません。",
     );
-    expect(themeErrorFor("--line-height-base", "1.6rem").hint).toBe(
+    expect(themeErrorFor("body_line_height", "1.6rem").hint).toBe(
       "行間は単位なしの数値だけです(例: 1.6 / 2)。px / rem / em などの単位は付けられません" +
         " —— 1.6rem は書けません。整数部は2桁まで、小数点以下は3桁までで、" +
         "値は数値ではなく文字列として書きます。",
     );
-    expect(themeErrorFor("--surface-shadow", "0 1px 3px rgba(0,0,0,.1)").hint).toBe(
+    expect(themeErrorFor("surface_shadow", "0 1px 3px rgba(0,0,0,.1)").hint).toBe(
       "影は none か、長さを2〜4個スペースで区切って並べ、最後に16進色を1つ足した形だけです" +
         "(例: none / 0 1px 3px #0000001a)。長さは 0 か 数値+px / rem / em です。" +
         "rgba() は書けないので、透明度は16進8桁(#rrggbbaa)で表します。" +
         "inset や、カンマで複数の影を並べる形は書けません。",
     );
-    expect(themeErrorFor("--font-family-base", "var(--x)").hint).toBe(
+    expect(themeErrorFor("body_font", "var(--x)").hint).toBe(
       '書体はフォント名をカンマで区切って並べた形です(例: system-ui, sans-serif / "Helvetica Neue", sans-serif)。' +
         "空白を含む名前は引用符で囲めます。" +
         "記号 ( ) { } [ ] ; : / \\ < > & ? | ^ ~ # $ @ ! = % * + は1文字も使えないので、" +
@@ -1913,20 +2018,22 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
   });
 
   test("message は族の名前を言う(どの書式の話かがスロット名を知らなくても分かる)", () => {
-    expect(themeErrorFor("--color-danger", "red").message).toBe(
-      '--color-danger の値 "red" は色の書式に合いません。',
+    expect(themeErrorFor("danger", "red").message).toBe(
+      'danger の値 "red" は色の書式に合いません。',
     );
-    expect(themeErrorFor("--login-max-width", "50%").message).toBe(
-      '--login-max-width の値 "50%" は長さの書式に合いません。',
+    // 【V20-M9 / ADR-0474 §1-3】長さの族の代表を `--login-max-width`(語彙から外した)から `space_4` へ替えた。
+    // 旧(逐語): `expect(themeErrorFor("--login-max-width", "50%").message).toBe('--login-max-width の値 "50%" は長さの書式に合いません。');`
+    expect(themeErrorFor("space_4", "50%").message).toBe(
+      'space_4 の値 "50%" は長さの書式に合いません。',
     );
-    expect(themeErrorFor("--line-height-base", "1.6em").message).toBe(
-      '--line-height-base の値 "1.6em" は行間の書式に合いません。',
+    expect(themeErrorFor("body_line_height", "1.6em").message).toBe(
+      'body_line_height の値 "1.6em" は行間の書式に合いません。',
     );
-    expect(themeErrorFor("--surface-shadow", "inset 0 1px").message).toBe(
-      '--surface-shadow の値 "inset 0 1px" は影の書式に合いません。',
+    expect(themeErrorFor("surface_shadow", "inset 0 1px").message).toBe(
+      'surface_shadow の値 "inset 0 1px" は影の書式に合いません。',
     );
-    expect(themeErrorFor("--font-family-base", "ヒラギノ角ゴ; color: red").message).toBe(
-      '--font-family-base の値 "ヒラギノ角ゴ; color: red" は書体の書式に合いません。',
+    expect(themeErrorFor("body_font", "ヒラギノ角ゴ; color: red").message).toBe(
+      'body_font の値 "ヒラギノ角ゴ; color: red" は書体の書式に合いません。',
     );
   });
 
@@ -1938,20 +2045,20 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
           name: "蔵書管理",
           tables: [],
           views: [],
-          theme: { slots: themeSlots({ "--color-text": "blue" }) },
+          theme: { slots: themeSlots({ body_text: "blue" }) },
         },
       }),
     );
-    const error = errors.find((e) => e.path === "/app/theme/slots/--color-text");
-    expect(error?.message).toBe('--color-text の値 "blue" は色の書式に合いません。');
+    const error = errors.find((e) => e.path === "/app/theme/slots/body_text");
+    expect(error?.message).toBe('body_text の値 "blue" は色の書式に合いません。');
     expect(error?.hint).toContain("16進");
   });
 
   test('case "type": とは重複しない —— 型違反のときは pattern エラーが1件も出ない', () => {
     // **Ajv は同じ位置で type が落ちたら pattern を評価しない。**したがって
     // 「型の文面」と「書式の文面」が同じ往復で並ぶことはない(重複の心配が無い)。
-    const errors = errorsOf(validateDiff(themeDiffWith({ "--color-text": 16 })));
-    const atSlot = errors.filter((e) => e.path === "/operations/0/theme/slots/--color-text");
+    const errors = errorsOf(validateDiff(themeDiffWith({ body_text: 16 })));
+    const atSlot = errors.filter((e) => e.path === "/operations/0/theme/slots/body_text");
     expect(atSlot).toHaveLength(1);
     expect(atSlot[0]?.message).toContain("型が不正です");
     expect(atSlot[0]?.message).toContain("string");
@@ -1961,17 +2068,15 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
 
   test("minLength / maxLength とだけは同じ往復で並ぶ(書式を教えるのは pattern 側)", () => {
     // **重複が起きるのはこの1スロットだけである** —— `minLength` / `maxLength` を
-    // 持つテーマのスロットは `--font-family-base` の1件しかない($defs/theme)。
+    // 持つテーマのスロットは `body_font` の1件しかない($defs/theme)。
     // どちらも「空である」「長すぎる」しか言わないので、**書式を教える役目は
     // pattern 側にあり、二重に同じことを言っているのではない。**
     for (const [value, expected] of [
-      ["", "--font-family-base が空です。1文字以上の値を指定してください。"],
-      ["a".repeat(201), "--font-family-base が長すぎます。200文字以内にしてください。"],
+      ["", "body_font が空です。1文字以上の値を指定してください。"],
+      ["a".repeat(201), "body_font が長すぎます。200文字以内にしてください。"],
     ] as const) {
-      const errors = errorsOf(validateDiff(themeDiffWith({ "--font-family-base": value })));
-      const atSlot = errors.filter(
-        (e) => e.path === "/operations/0/theme/slots/--font-family-base",
-      );
+      const errors = errorsOf(validateDiff(themeDiffWith({ body_font: value })));
+      const atSlot = errors.filter((e) => e.path === "/operations/0/theme/slots/body_font");
       expect(atSlot).toHaveLength(2);
       // **長さの検査が先、書式の文面が後**(Ajv が返す順序をそのまま実測で固定する)。
       expect(atSlot[0]?.message).toBe(expected);
@@ -1990,5 +2095,324 @@ describe("V3-M1-T08: テーマのスロット値の pattern エラーは書式�
     const error = errors.find((e) => e.path === "/operations/0/table/id");
     expect(error?.message).toContain("識別子の規約に合いません");
     expect(error?.hint).toContain("英小文字で始まり");
+  });
+});
+
+describe("V20-M7-T03 色の案内文は2表記に追随する(anyOf の2枝を1件の色の書式エラーにまとめる)", () => {
+  const passingSlots = (): Record<string, string> => {
+    const slots: Record<string, string> = {};
+    const properties = (
+      manifestSchema as unknown as {
+        $defs: {
+          theme: { properties: Record<string, { pattern?: string; anyOf?: unknown[] }> };
+        };
+      }
+    ).$defs.theme.properties;
+    for (const [name, schema] of Object.entries(properties)) {
+      const pattern = String(schema.pattern ?? "");
+      slots[name] =
+        schema.anyOf !== undefined
+          ? "#333333"
+          : pattern.startsWith("^(none|")
+            ? "none"
+            : pattern.startsWith("^(0|")
+              ? "8px"
+              : pattern.startsWith("^[0-9]{1,2}")
+                ? "1.6"
+                : "system-ui, sans-serif";
+    }
+    return slots;
+  };
+  const errorsAt = (slot: string, value: string): ValidationError[] =>
+    errorsOf(
+      validateDiff(
+        diffWith([{ op: "set_theme", theme: { slots: { ...passingSlots(), [slot]: value } } }]),
+      ),
+    ).filter((e) => e.path === `/operations/0/theme/slots/${slot}`);
+
+  test("前提: 書式を満たす25スロットは差分検証を通る", () => {
+    expect(
+      validateDiff(diffWith([{ op: "set_theme", theme: { slots: passingSlots() } }])).valid,
+    ).toBe(true);
+  });
+
+  test.each([
+    "blue",
+    "rgb(0,0,0)",
+    "#ff",
+    "oklch(2 0 0)",
+    "oklch(0.5 0.1 250 / 0.5)",
+    "OKLCH(0.5 0.1 250)",
+    "oklch(0.5, 0.1, 250)",
+  ])(
+    "色スロットの書式違反 %s は、利用者に色の書式エラー1件として届く(anyOf の文面を混ぜない)",
+    (value) => {
+      const errors = errorsAt("body_text", value);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.message).toBe(
+        `body_text の値 ${JSON.stringify(value)} は色の書式に合いません。`,
+      );
+      expect(errors[0]?.hint).toBe(V20_M7_COLOR_HINT);
+      const whole = `${errors[0]?.message}${errors[0]?.hint}`;
+      expect(whole).not.toContain("anyOf");
+      expect(whole).not.toContain("識別子の規約");
+    },
+  );
+
+  test("マニフェスト側(/app/theme/slots/…)でも1件にまとまる", () => {
+    const errors = errorsOf(
+      validateManifest({
+        app: {
+          id: "book-tracker",
+          name: "蔵書管理",
+          tables: [],
+          views: [],
+          theme: { slots: { ...passingSlots(), danger: "oklch(1 0 0 / 1)" } },
+        },
+      }),
+    ).filter((e) => e.path === "/app/theme/slots/danger");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toBe('danger の値 "oklch(1 0 0 / 1)" は色の書式に合いません。');
+    expect(errors[0]?.hint).toBe(V20_M7_COLOR_HINT);
+  });
+
+  test("hint は2表記の例を字面で持ち、例は2表記とも差分検証を通る(従えば通る)", () => {
+    const matched = /\(例: ((?:[^()]|\([^()]*\))+)\)/.exec(V20_M7_COLOR_HINT);
+    const examples = String(matched?.[1]).split(" / ");
+    expect(examples).toEqual(["#333", "#1a4f9c", "oklch(0.55 0.15 250)"]);
+    for (const example of examples) {
+      const diff = diffWith([
+        { op: "set_theme", theme: { slots: { ...passingSlots(), body_text: example } } },
+      ]);
+      expect(validateDiff(diff).valid, example).toBe(true);
+    }
+  });
+
+  test("hint にコントラストのことを書かない(書式の拒否とコントラストの拒否は別の文面)", () => {
+    expect(V20_M7_COLOR_HINT).not.toContain("コントラスト");
+    expect(V20_M7_COLOR_HINT).not.toContain("4.5");
+  });
+
+  /** 合成した Ajv の pattern エラー(色スロットの anyOf の枝の位置)。 */
+  const syntheticPatternError = (pattern: string, branch: number) =>
+    ({
+      keyword: "pattern",
+      instancePath: "/app/theme/slots/body_text",
+      schemaPath: `#/$defs/theme/properties/body_text/anyOf/${branch}/pattern`,
+      params: { pattern },
+      data: "blue",
+      // biome-ignore lint/suspicious/noExplicitAny: 合成した Ajv エラー
+    }) as any;
+
+  test("色の枝はスキーマの2つの pattern の両方に当たり、1文字変えると外れる(恒真式でない)", () => {
+    const properties = (
+      manifestSchema as unknown as {
+        $defs: {
+          theme: {
+            properties: Record<
+              string,
+              { anyOf: { pattern?: string; anyOf?: { pattern: string }[] }[] }
+            >;
+          };
+        };
+      }
+    ).$defs.theme.properties;
+    // 【V20-M9 / ADR-0474】実値の2枝は外側の anyOf の1枝目の中(内側の anyOf)に入った。
+    // 旧(逐語): `const [hex, oklch] = (properties.body_text?.anyOf ?? []).map((b) => b.pattern);`
+    const [hex, oklch] = (properties.body_text?.anyOf?.[0]?.anyOf ?? []).map((b) => b.pattern);
+    // 参照の枝(外側の2枝目)も色の族に当たる(3つの枝の誤りが同じ文面に揃う)。
+    const reference = properties.body_text?.anyOf?.[1]?.pattern;
+    expect(reference).toBe("^\\$palette_[a-z0-9_]{1,40}$");
+    const [referenceError] = toValidationErrors([syntheticPatternError(String(reference), 1)]);
+    expect(referenceError?.message).toContain("は色の書式に合いません。");
+    expect(hex?.startsWith("^#(")).toBe(true);
+    expect(oklch?.startsWith("^oklch\\(")).toBe(true);
+    for (const [pattern, branch] of [
+      [String(hex), 0],
+      [String(oklch), 1],
+    ] as const) {
+      const [error] = toValidationErrors([syntheticPatternError(pattern, branch)]);
+      expect(error?.message, pattern).toContain("は色の書式に合いません。");
+      expect(error?.hint).toBe(V20_M7_COLOR_HINT);
+    }
+    // 1文字変えた pattern(先頭の綴り)は色の枝に当たらず、汎用の文面に落ちる。
+    for (const [pattern, branch] of [
+      [String(hex).replace("^#(", "^%("), 0],
+      [String(oklch).replace("^oklch", "^oklcg"), 1],
+      [String(oklch).replace("^oklch\\(", "^oklch("), 1],
+    ] as const) {
+      const [error] = toValidationErrors([syntheticPatternError(pattern, branch)]);
+      expect(error?.message, pattern).not.toContain("色の書式");
+      expect(error?.message, pattern).toContain("識別子の規約に合いません");
+    }
+  });
+
+  test("テーマのスロットの位置の anyOf エラーは落とし、それ以外の位置の anyOf は今日どおり汎用文面で返す", () => {
+    const anyOfAt = (schemaPath: string, instancePath: string) =>
+      toValidationErrors([
+        {
+          keyword: "anyOf",
+          instancePath,
+          schemaPath,
+          params: {},
+          message: "must match a schema in anyOf",
+          data: "x",
+          // biome-ignore lint/suspicious/noExplicitAny: 合成した Ajv エラー
+        } as any,
+      ]);
+    expect(
+      anyOfAt("#/$defs/theme/properties/body_text/anyOf", "/app/theme/slots/body_text"),
+    ).toEqual([]);
+    expect(
+      anyOfAt(
+        "diff.schema.json#/$defs/theme/properties/focus_ring/anyOf",
+        "/operations/0/theme/slots/focus_ring",
+      ),
+    ).toEqual([]);
+    // テーマ以外(条件の葉)の anyOf は1バイトも変えない。
+    const other = anyOfAt("#/$defs/filter/anyOf", "/app/views/0/filter");
+    expect(other).toHaveLength(1);
+    expect(other[0]?.message).toBe("filter が不正です(anyOf: must match a schema in anyOf)。");
+  });
+});
+
+describe("V20-M7 点検の処置: ajv の色の hint の例は既定の読み手で読める(中2)/ 色域の文(軽7)", () => {
+  const colorErrorHint = (): string => {
+    const errors = errorsOf(
+      validateManifest({
+        app: {
+          id: "book-tracker",
+          name: "蔵書管理",
+          tables: [],
+          views: [],
+          theme: {
+            slots: Object.fromEntries(
+              Object.entries(
+                (
+                  manifestSchema as unknown as {
+                    $defs: { theme: { properties: Record<string, unknown> } };
+                  }
+                ).$defs.theme.properties,
+              ).map(([name]) => [name, "blue"]),
+            ),
+          },
+        },
+      }),
+    );
+    const error = errors.find((e) => e.path === "/app/theme/slots/body_text");
+    return String(error?.hint);
+  };
+
+  test("実際の拒否が返す hint の例は、2表記とも色として読める(形だけでなく色域まで。従えば通る)", () => {
+    const matched = /\(例: ((?:[^()]|\([^()]*\))+)\)/.exec(colorErrorHint());
+    const examples = String(matched?.[1]).split(" / ");
+    expect(examples.some((example) => example.startsWith("oklch("))).toBe(true);
+    for (const example of examples) {
+      expect(contrastRatio(example, "#ffffff"), example).not.toBeNull();
+    }
+  });
+
+  // 【V20-M7B-T02 で向きを変えた(ADR-0472 §Decision 2-4。消していない)】旧の名前と期待(逐語):
+  // test("hint は sRGB で表せない色が書けないことを言い、コントラストのことは言わない", …)
+  //   expect(hint).toContain("sRGB で表せない色");
+  //   expect(hint).not.toContain("コントラスト");
+  test("hint は sRGB で表せない色のことを言わず(色域の外も書ける)、コントラストのことも言わない(V20-M7B で向きを変えた)", () => {
+    const hint = colorErrorHint();
+    expect(hint).not.toContain("sRGB で表せない色");
+    expect(hint).toContain("H の位置にだけ none を書けます");
+    expect(hint).not.toContain("コントラスト");
+  });
+});
+
+/**
+ * 【V20-M7B-T01】色の族の hint の新しい逐語(ADR-0472 §Decision 2-4、計画 §5 の 5)。
+ * 「sRGB で表せない色は書けません」の1文を外し、「H の位置にだけ none を書ける ／ L と C には書けない」と書き分ける。
+ * 最後の1文(書けないものの列挙)の「none」も「L と C の位置の none」に直す(矛盾させない)。
+ */
+const V20_M7B_COLOR_HINT =
+  "色は16進表記か、明るさ基準の oklch 表記です —— # に続けて3桁または6桁の16進数を書くか、" +
+  "oklch(L C H) の形で L(0〜1 の小数か 0%〜100%)・C(0 以上の小数)・H(0〜360 の度。単位は書かない)を" +
+  "半角空白1つで区切って書いてください(例: #333 / #1a4f9c / oklch(0.55 0.15 250))。" +
+  "小数は6桁まで、oklch は小文字だけです。" +
+  "H の位置にだけ none を書けます(0 と書いたのと同じ色になります)。L と C の位置には none を書けません。" +
+  "色名(blue / red)・rgb() / rgba() / hsl() / lch() / oklab()・var() は書けません。" +
+  "透明度付きの8桁(#rrggbbaa)も、oklch の / で区切る透明度・L と C の位置の none・カンマ区切り・単位(deg)も、このスロットでは書けません。" +
+  // 【V20-M9 / ADR-0474 §1-1】参照の綴りの1文を足した(旧の値は上の行で終わっていた。例の丸括弧の外に置く)。
+  "生の色(palette_ で始まる名前。英小文字・数字・_ で1〜40字)を同じテーマに定義していれば、" +
+  "$palette_<名前> の形でその色を指すこともできます。";
+
+describe("V20-M7B-T01 色の hint から sRGB の色域の文を外し、none を書き分ける", () => {
+  test("V20-M7 の定数(打ち直した後)と V20-M7B-T01 の期待は1文字も違わない", () => {
+    expect(V20_M7_COLOR_HINT).toBe(V20_M7B_COLOR_HINT);
+  });
+
+  const colorErrorHint = (value: string): string | undefined => {
+    const errors = errorsOf(
+      validateManifest({
+        app: {
+          id: "book-tracker",
+          name: "蔵書管理",
+          tables: [],
+          views: [],
+          theme: {
+            slots: Object.fromEntries(
+              Object.entries(
+                (
+                  manifestSchema as unknown as {
+                    $defs: { theme: { properties: Record<string, unknown> } };
+                  }
+                ).$defs.theme.properties,
+              ).map(([name]) => [name, value]),
+            ),
+          },
+        },
+      }),
+    );
+    return errors.find((e) => e.path === "/app/theme/slots/body_text")?.hint;
+  };
+
+  test("16進の形の誤りにも oklch の形の誤りにも、新しい逐語の hint が1つ返る", () => {
+    for (const value of ["blue", "#12345", "oklch(0.5 none 250)", "oklch(0.5 0.1 250 / 0.5)"]) {
+      expect(colorErrorHint(value), value).toBe(V20_M7B_COLOR_HINT);
+    }
+  });
+
+  test("hint は sRGB の色域のことを言わず、コントラストのことも言わない", () => {
+    expect(V20_M7B_COLOR_HINT).not.toContain("sRGB");
+    expect(V20_M7B_COLOR_HINT).not.toContain("C を小さく");
+    expect(V20_M7B_COLOR_HINT).not.toContain("コントラスト");
+  });
+
+  test("hint の none の書き分けに従えば通る(H の none は通り、L と C の none は断られる)", () => {
+    const valid = (value: string) =>
+      !errorsOf(
+        validateManifest({
+          app: {
+            id: "book-tracker",
+            name: "蔵書管理",
+            tables: [],
+            views: [],
+            theme: {
+              slots: Object.fromEntries(
+                Object.entries(
+                  (
+                    manifestSchema as unknown as {
+                      $defs: { theme: { properties: Record<string, unknown> } };
+                    }
+                  ).$defs.theme.properties,
+                  // 【V20-M8 / ADR-0473】旧(逐語): `name.startsWith("--color") || name === "--focus-outline-color" ? value : "x"`。
+                  // キーが役割名になり名前から色を判定できないので、スキーマの値域(色だけが anyOf の2枝)で判定する。
+                ).map(([name, property]) => [
+                  name,
+                  (property as { anyOf?: unknown }).anyOf !== undefined ? value : "x",
+                ]),
+              ),
+            },
+          },
+        }),
+      ).some((e) => e.path.startsWith("/app/theme/slots/body_text"));
+    expect(valid("oklch(0.55 0.15 none)")).toBe(true);
+    expect(valid("oklch(none 0.15 250)")).toBe(false);
+    expect(valid("oklch(0.55 none 250)")).toBe(false);
   });
 });

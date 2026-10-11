@@ -211,3 +211,44 @@ export function resolveReference(
   }
   return { found: true, text: label };
 }
+
+/** 【`V23-M6-T06b`】相手の行の代表項目が出せない(隠れている・行が無い)ときの文言(受け取り画面と同じ)。 */
+export const PRINCIPAL_LABEL_HIDDEN = "(表示できません)";
+
+/**
+ * **【`V23-M6-T06b`】付与表の相手の行の代表項目を、参照ラベルの索引に足す**(`D-V23-156`)。
+ *
+ * 付与表の行を読める人には、サーバが行ごとに相手の行(S)の代表項目だけを返す(`principal_labels`。行と同じ順・
+ * 同じ長さ)。 見る人が S を読めなくても「見つかりません」にしないため、その値を S の表の索引に足す。
+ * - 索引に既に在る行(見る人が S を読める)は替えない。
+ * - 値が `null`(隠れている・行が無い)なら {@link PRINCIPAL_LABEL_HIDDEN}。
+ * - `labels` が無い・長さが行と違うときは何もしない(元の索引をそのまま返す = 今日どおり)。
+ */
+export function withPrincipalLabels(
+  index: ReferenceLabelIndex,
+  records: readonly RecordRow[],
+  labels: readonly (string | null)[] | undefined,
+  columns: readonly { column: ResourceId; table: ResourceId }[],
+): ReferenceLabelIndex {
+  if (labels === undefined || labels.length !== records.length || columns.length === 0) {
+    return index;
+  }
+  const next = new Map<ResourceId, Map<string, string>>();
+  for (const [tableId, map] of index) {
+    next.set(tableId, new Map(map));
+  }
+  records.forEach((record, position) => {
+    for (const { column, table } of columns) {
+      const id = record[column];
+      if (typeof id !== "string" || id === "") {
+        continue;
+      }
+      const map = next.get(table) ?? new Map<string, string>();
+      if (!map.has(id)) {
+        map.set(id, labels[position] ?? PRINCIPAL_LABEL_HIDDEN);
+      }
+      next.set(table, map);
+    }
+  });
+  return next;
+}

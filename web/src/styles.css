@@ -7,7 +7,7 @@
  * **画面ごとの見せ方も同じで、マニフェストのビュー定義の preset_ で始まるキー
  * (有限 enum)にある**(ADR-0050 / ADR-0051)。
  *
- * **足してよいのは5つだけである。**(i) スロットの定義(:root)と、既存宣言からの
+ * **足してよいのは5つだけである。**(i) スロットの定義(:root と、末尾の暗い側の値の組)と、既存宣言からの
  * スロットの参照(var(--…))/(ii) アプリ単位テーマのスコープ要素の規則(.app-theme と、
  * 継承を開けるための inherit)/(iii) web/src/ 自身が描く UI 要素の「器」の宣言
  * (先例は .requirements-copy。.theme-export-copy / .theme-export-css も同型)/
@@ -18,8 +18,8 @@
  * 書き、枠の中の見た目は1宣言も持たない(候補の実値は ThemePreviewPanel が
  * インラインスタイルで立てる)。候補を何種類に増やしても規則は1つも増えない。
  *
- * **引き続き禁じる**: アプリ固有のセレクタ、任意の CSS 規則、そして
- * 配色設定・切り替え機構や、マニフェストに現れないレイアウト指定のような
+ * **引き続き禁じる**: アプリ固有のセレクタ、任意の CSS 規則、そして(末尾の暗い側の
+ * 既定の2規則を除く)配色設定・切り替え機構や、マニフェストに現れないレイアウト指定のような
  * 「マニフェストに現れない表示オプション」。
  *
  * **【V3-M5-T05 / ADR-0055 で追記】逃げ道(任意 CSS)もここには無い。** V3-M5 で
@@ -51,9 +51,9 @@
  *     **断点は2本だけである**(40rem / 64rem)。3本目を足すと検査が赤くなる。
  * (2) **それ以外の at-rule は今日どおり例外を投げる**(取り込み / 文字集合 / 機能問い合わせ /
  *     入れ子の器 / 作用域 / 層 / カスタムプロパティ登録 / キーフレーム / 書体宣言)。
- * (3) **配色設定のメディア特性とテーマ切り替えの属性セレクタは1バイトも動かしていない**
- *     —— 2本の文字列検査(`web/test/preset-boundary.test.ts` と
- *     `web/test/style-sources.test.ts`)が今日も見ている。
+ * (3) **配色設定のメディア特性とテーマ切り替えの属性セレクタは、V20-M10 で末尾の暗い側の2規則の分だけ通した**
+ *     (旧文「1バイトも動かしていない」は 2026-09-25 から偽)—— 2本の文字列検査(`web/test/preset-boundary.test.ts`
+ *     と `web/test/style-sources.test.ts`)が、配色設定の条件がちょうど1回であることを見ている。
  * **同 限定2 の7軸より多い軸を足さないこと**(足すには門A の再通過が要る)。
  *
  * (このコメントに禁止対象の字面を書かないのは、`web/src/styles.css` に対する
@@ -79,6 +79,16 @@
   --color-page-background: #fff;
   --color-surface-highlight: #f2f2f2;
   --color-border: #ddd;
+
+  /*
+   * 主ボタンと、重ねて出す小窓(V20-M9 / ADR-0474 §Decision 1-2。D-V20-28)。
+   * 既定値は今日その場所を描いている値と同じ実値である(主ボタン = ページ地色の地に本文の文字色、
+   * 小窓 = ページ地色の地に本文の文字色)。既定のままなら見た目は変わらない。
+   */
+  --color-primary-fill: #fff;
+  --color-on-primary: #000;
+  --color-overlay-background: #fff;
+  --color-overlay-text: #000;
 
   /* 書体・行間 */
   --font-family-base: system-ui, sans-serif;
@@ -574,7 +584,7 @@ li {
  * **【V4-M55 が 2026-08-04 に追記。門外 Δ7 / 限定採用。記録 =
  * `docs/plan/v4/records/v4-m55.md`】上の前提(「メディアクエリを1つも足していない」)は
  * 今日から偽である** —— **2026-08-04 実測: このファイルには幅の条件の `@media` が2本ある**
- * (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ * (`:992` 逐語 `@media (min-width: 40rem)` / `:998` 逐語 `@media (min-width: 64rem)`。
  * どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
  * (`V4-M15-T07` / `D-V4-44`。2026-08-03)**で、同 ADR §Context 2 は逐語で
  * 「`ADR-0046` 限定5 を緩めている。緩めていないふりをしない」と書いている。**
@@ -703,7 +713,7 @@ li {
  * **【V4-M55 が 2026-08-04 に追記。門外 Δ7 / 限定採用。記録 =
  * `docs/plan/v4/records/v4-m55.md`】上の前提(「メディアクエリを1つも足していない」)は
  * 今日から偽である** —— **2026-08-04 実測: このファイルには幅の条件の `@media` が2本ある**
- * (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ * (`:992` 逐語 `@media (min-width: 40rem)` / `:998` 逐語 `@media (min-width: 64rem)`。
  * どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
  * (`V4-M15-T07` / `D-V4-44`。2026-08-03)**で、同 ADR §Context 2 は逐語で
  * 「`ADR-0046` 限定5 を緩めている。緩めていないふりをしない」と書いている。**
@@ -913,7 +923,7 @@ li {
  * `docs/plan/v4/records/v4-m55.md`】上の括弧の中の実測値は今日から偽である** ——
  * **2026-08-04 実測: このファイルの at-rule の個数は今日 `2` である** ——
  * **幅の条件の `@media` が2本ある**
- * (`:982` 逐語 `@media (min-width: 40rem)` / `:988` 逐語 `@media (min-width: 64rem)`。
+ * (`:992` 逐語 `@media (min-width: 40rem)` / `:998` 逐語 `@media (min-width: 64rem)`。
  * どちらも `.shell` の `padding` だけを変える)。**足したのは `ADR-0089`**
  * (`V4-M15-T07` / `D-V4-44`。2026-08-03)。
  * **一方で主文(「`V4-M2-T03` 自身がメディアクエリを1つも足していない」)は今日も真である**
@@ -976,8 +986,8 @@ li {
  * 赤くなったら数を書き換える前に、増やしてよいかを門A で審査すること。
  * **AI も owner も断点を1つも指定できない** —— マニフェストの語彙に置き場が無い。
  *
- * **通るのは幅の条件だけである。** 配色設定のメディア特性(OS の明暗設定)も、
- * 印刷・向き・入力機器の条件も、解析器が例外を投げるので1つも書けない。
+ * **断点として通るのは幅の条件だけである。** 配色設定のメディア特性(OS の明暗設定)は末尾の暗い側の
+ * 1規則だけを通す(V20-M10)。印刷・向き・入力機器の条件は、解析器が例外を投げるので1つも書けない。
  */
 @media (min-width: 40rem) {
   .shell {
@@ -988,5 +998,53 @@ li {
 @media (min-width: 64rem) {
   .shell {
     padding: var(--space-6) var(--space-4);
+  }
+}
+
+/*
+ * 暗い側の既定値(V20-M10-T03 / ADR-0458。ユーザ決定 D-V20-16 / D-V20-31 / D-V20-32)。
+ *
+ * 中身は上の :root の色13枠の値の組の入れ替えだけである(色以外の14枠とテーマ対象外の5枠は
+ * 暗い側で動かさない)。規則は2つで、中身は1文字も違わない(web/test/styles.test.ts の (k))。
+ *
+ * - 1つ目: 画面内のスイッチで暗い側を選んで覚えたとき(html の属性の値が dark)。
+ * - 2つ目: OS の明暗設定が暗い側で、スイッチで明るい側を選んでいないとき(属性の値が light でない)。
+ *
+ * 属性の読み書きは web/src/color-scheme.ts の1本だけである。暗い側の組(slots_dark)を持つテーマは、
+ * テーマの器(.app-theme)の inline style がこの値を上書きする。値は計画 docs/plan/v20/12-v20-m10-plan.md
+ * §9-4 の表のとおりで、枠線の色が明るい側と同じ型でコントラスト検査の非テキスト 3:1 を割る
+ * (docs/plan/v20/records/v20-m10-t03.md)。
+ */
+:root[data-theme="dark"] {
+  --color-text: #e6e6e6;
+  --color-text-secondary: #a3a3a3;
+  --color-text-label: #a3a3a3;
+  --color-text-placeholder: #a3a3a3;
+  --color-danger: #ff7b7b;
+  --color-page-background: #121212;
+  --color-surface-highlight: #1f1f1f;
+  --color-border: #3a3a3a;
+  --color-primary-fill: #121212;
+  --color-on-primary: #e6e6e6;
+  --color-overlay-background: #121212;
+  --color-overlay-text: #e6e6e6;
+  --focus-outline-color: #6cb6ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-text: #e6e6e6;
+    --color-text-secondary: #a3a3a3;
+    --color-text-label: #a3a3a3;
+    --color-text-placeholder: #a3a3a3;
+    --color-danger: #ff7b7b;
+    --color-page-background: #121212;
+    --color-surface-highlight: #1f1f1f;
+    --color-border: #3a3a3a;
+    --color-primary-fill: #121212;
+    --color-on-primary: #e6e6e6;
+    --color-overlay-background: #121212;
+    --color-overlay-text: #e6e6e6;
+    --focus-outline-color: #6cb6ff;
   }
 }

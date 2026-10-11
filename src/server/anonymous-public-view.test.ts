@@ -31,6 +31,10 @@
  *   `web/e2e/anonymous-public-view.e2e.ts` の担当)。**ここは応答の中身だけである。**
  * - **参照(`reference`)型の項目が指す先の表は渡していない**(`publicTablesForView` の doc)。
  *   **したがって参照の列がどう描かれるかは、ここでは1つも測っていない。**
+ * - **【`V21-M3` の追記。上の2行を1文字も消していない】** 上の「渡していない」は今日から偽である ——
+ *   **未ログインで読める参照先の表は3種目として渡る**(`ADR-0482` §4-1 / §4-2)。 本ファイルの題材は
+ *   参照の項目を持たないので、ここの期待値は1本も動いていない。 3種目は
+ *   `src/kernel/anonymous-public-view-reference-http.test.ts` が固定する。
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -460,11 +464,17 @@ test("(f) 未ログインの GET /public に、セルフ登録で名乗れる立
     expect(Object.keys(kind).sort()).toEqual(["id", "invite", "name"]);
   }
   // **サーバが受理する値そのものである** —— **`anonymous` も予約3語も入らない。**
-  expect(body.signup.kinds.map((kind) => kind.id)).toEqual(["member", "staff", "customer"]);
+  // **【2026-10-02。`V23-M10-T01c`。決定 `D-V23-291`。門A `ADR-0553`。授権 `ADR-0554` 行1〜行3】旧(逐語)**:
+  //     expect(body.signup.kinds.map((kind) => kind.id)).toEqual(["member", "staff", "customer"]);
+  //     expect(body.signup.kinds.map((kind) => kind.name)).toEqual(["会員", "スタッフ", "customer"]);
+  //     expect(body.signup.kinds.map((kind) => kind.invite)).toEqual([false, true, false]);
+  // **旧は、宣言していない `customer` が末尾に必ず足されていた。** **この題材は運営以外の
+  // 役割を2つ(`member`・`staff`)宣言し `customer` を宣言しないので、今日は2つだけである。**
+  expect(body.signup.kinds.map((kind) => kind.id)).toEqual(["member", "staff"]);
   // **表示名は宣言があればそれ、無ければ識別子**(`D-V8-79` により `name` は任意)。
-  expect(body.signup.kinds.map((kind) => kind.name)).toEqual(["会員", "スタッフ", "customer"]);
+  expect(body.signup.kinds.map((kind) => kind.name)).toEqual(["会員", "スタッフ"]);
   // **`invite` は「その立場で名乗ったとき招待が要るか」。**
-  expect(body.signup.kinds.map((kind) => kind.invite)).toEqual([false, true, false]);
+  expect(body.signup.kinds.map((kind) => kind.invite)).toEqual([false, true]);
   // **`adminInvite` は「運営が人を足す口が招待を要求するか」**(予約3語のどれかが `"invite"`)。
   expect(body.signup.adminInvite).toBe(true);
 });

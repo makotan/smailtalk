@@ -21,9 +21,9 @@
  *
  * ## カーネルの値を import しない
  *
- * 宣言名は**マニフェストのキーそのもの**である(下記の恒等写像)。したがって
- * `src/kernel/` から値を import する必要が無く、ADR-0009 限定2 と
- * `scripts/kernel-import-drift.test.ts` を1ミリも動かさない(型のみ import する)。
+ * 宣言名は**マニフェストのキー(役割名)を写像 `web/src/theme-role-map.ts` で写した CSS 名**である
+ * (下記。V20-M8 / ADR-0473)。写像は表示層にあるので `src/kernel/` から値を import する必要が無く、
+ * ADR-0009 限定2 と `scripts/kernel-import-drift.test.ts` を1ミリも動かさない(型のみ import する)。
  *
  * ## 生成器をカーネルに置かない
  *
@@ -33,27 +33,30 @@
  */
 import { type ReactNode, useState } from "react";
 import type { Theme } from "../../src/kernel/types.ts";
+import { themeSlotsToCssProperties } from "./theme-role-map.ts";
 import { Button } from "./ui/button.tsx";
 import { Card } from "./ui/surfaces.tsx";
 import { cn } from "./ui/utils.ts";
 
 /**
- * スロット名 → CSS カスタムプロパティ名の変換規則は**1本だけ(恒等写像)**である。
+ * スロット名(役割名)→ CSS カスタムプロパティ名の変換規則は**1本だけ(写像
+ * `web/src/theme-role-map.ts` の `themeSlotsToCssProperties`)**である(V20-M8 / ADR-0473)。
  *
- * V3-M1-T03 段階B が定義し(`web/test/theme-slot-parity.test.ts` の
- * `themeSlotToCssCustomProperty`)、T04 が製品の適用経路(`AppWorkspace` の
- * `AppThemeScope`)で使っているのと**同一の規則**である。**2本目を作ってはならない**
+ * 製品の適用経路(`AppWorkspace` の `AppThemeScope`)が使っているのと**同一の写像**であり、
+ * 機械的な固定は `web/test/theme-slot-parity.test.ts`。**2本目を作ってはならない**
  * —— 作ると持ち出した `theme.css` が「形式は安定しているが当たらない」状態になる
- * (T05-4 / 審査記録 §5 S3-5)。ここでは関数にすらせず、キーをそのまま書く。
+ * (T05-4 / 審査記録 §5 S3-5)。
  *
- * 並びは**スロット名の昇順**にする。CSS カスタムプロパティの宣言は同一ブロック内で
+ * 並びは**CSS 名の昇順**にする(役割名の昇順ではない)。CSS カスタムプロパティの宣言は同一ブロック内で
  * 互いに独立(キーは一意)なので並びに意味は無いが、**生成物が一意に決まらないと
  * 「同じテーマから同じ `theme.css` が出る」と言えない**ので固定する。
  * `localeCompare` を使わないのは `web/test/styles.test.ts` と同じ理由(ICU の照合順は
  * 実行環境に依存する)。
  */
-function sortedSlots(theme: Theme): [string, string][] {
-  return Object.entries(theme.slots).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+function sortedDeclarations(theme: Theme): [string, string][] {
+  return Object.entries(themeSlotsToCssProperties(theme.slots)).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
 }
 
 /**
@@ -83,8 +86,14 @@ function header(theme: Theme): string[] {
     " *       (/app/theme がそのまま theme.json であり、変換層は1つも無い)。",
     origin,
     " *",
-    " * 宣言名はマニフェストのスロット名そのものである(変換を1つも挟んでいない)。",
-    " * スロットは有限で、増やすことはできない。",
+    " * 宣言名は CSS カスタムプロパティ名である。マニフェストのスロット名(役割名)から",
+    " * SmAIltalk の画面と同じ対応表1本で写したもの(値は加工していない)。",
+    // 【V20-M9 で偽になった】旧(逐語): " * スロットは有限で、増やすことはできない。",
+    // 生の色(palette_…)は AI が名付けて足せるようになった(役割の枠は今日も増やせない)。
+    " * 役割の枠は決まった名前だけで、増やすことはできない。",
+    // 【V20-M9 点検の重1 で直した】旧(逐語。ADR-0474 式P8 を偽にした): " * 生の色(palette_ で始まる名前)は名前を付けて足せる。宣言は --palette-… で、参照は var(--palette-…) のまま出る。",
+    // CSS 名の規則(palette_ → --palette-)は写像のファイル1本だけに置く(式P8)。文言から綴りを外した。
+    " * 生の色(palette_ で始まる名前)は名前を付けて足せる。宣言は名前の _ を - にした CSS 変数で、参照は var(…) のまま出る。",
     " *",
     " * ## これに含まれないもの(**当てても同じ描画にはならない**)",
     " *",
@@ -119,8 +128,8 @@ function header(theme: Theme): string[] {
  */
 export function buildThemeCss(theme: Theme): string {
   const lines = [...header(theme), ":root {"];
-  for (const [slot, value] of sortedSlots(theme)) {
-    lines.push(`  ${slot}: ${value};`);
+  for (const [name, value] of sortedDeclarations(theme)) {
+    lines.push(`  ${name}: ${value};`);
   }
   lines.push("}", "");
   return lines.join("\n");

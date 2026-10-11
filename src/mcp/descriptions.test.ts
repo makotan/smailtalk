@@ -151,6 +151,10 @@ const EXPECTED_TOOL_NAMES = [
   // **1本だけ**であり、`apply_diff` / `delete_app` と同じ壁である。
   // **名乗りを渡す引数を1本も置いていない**(限定3)。**カーネル語彙は1つも増えていない。**
   "set_comment_visibility",
+  // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行199。門A `ADR-0504`・`ADR-0544`】**
+  // **27本目。`history: true` を宣言した表の1行の変更履歴を読む参照系**(`registerReadTools`)。
+  // **名乗りが要る**(ほかの道具と同じ壁)。 **書く道具は1本も増えていない。**
+  "list_record_history",
 ] as const;
 
 /** クライアントとサーバを直結する(両 `connect` は必ず `Promise.all`。逐次だとデッドロック)。 */
@@ -252,7 +256,10 @@ test("公開ツールはちょうど23個で、名前の集合が計画どおり
   // V10-M30-T02(`ADR-0378`)で set_comment_visibility(コメントの出し入れを切り替える)が
   // 加わり 25 → 26。**増えたのは更新系1本だけである** —— **参照系は0本のまま。**
   // **旧行の逐語**: `expect(descriptions.size).toBe(25);`
-  expect(descriptions.size).toBe(26);
+  // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行18】** list_record_history(行の変更履歴を読む)が加わり 26 → 27。
+  // **増えたのは参照系1本だけである** —— 書き込み系は0本のまま。
+  // **旧行の逐語**: `expect(descriptions.size).toBe(26);`
+  expect(descriptions.size).toBe(27);
   expect([...descriptions.keys()].sort()).toEqual([...EXPECTED_TOOL_NAMES].sort());
 });
 
@@ -1226,4 +1233,12 @@ test("V3-M13-T04: CANNOT_DO が「失敗しても登録だけは残して」を�
   expect(CANNOT_DO).toContain("特定のアクションだけ「失敗してもよい」と宣言する手段もありません");
   // できないことだけに倒さない —— schedule は今日も巻き戻らない(双方向)。
   expect(CANNOT_DO).toContain("決まった時刻の発火(schedule)は巻き戻らない");
+});
+
+// 【V20-M9-T05】request_custom_css の説明文の「set_theme の25スロット」は、役割の枠が27個になった V20-M9 で偽になった。
+test("V20-M9: request_custom_css の説明文は set_theme の枠の数を25と名乗らない", async () => {
+  const descriptions = await fetchDescriptions();
+  const description = descriptionOf(descriptions, "request_custom_css");
+  expect(description).not.toContain("25スロット");
+  expect(description).toContain("set_theme の役割の枠");
 });

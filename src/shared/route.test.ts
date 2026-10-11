@@ -291,3 +291,140 @@ describe("URL のクエリの鍵の集合(V10-M20-T02 / FU-G9b)", () => {
     expect(keyShapes).toEqual([`${prefillParamPrefix}<field>`]);
   });
 });
+
+describe("ログイン画面の専用の場所 /apps/<app_id>/login(V21-M4 / ADR-0482 §5 / D-V21-17)", () => {
+  /*
+   * **`Route` の種別は4つのまま**(`ADR-0482` §5-2)。 **`/apps/<id>/login` は `app` 種別の中の印
+   * (`login: true`)で表す。** 5種目の枠(`ADR-0465` 限定1)は下見の器のためのものなので使わない。
+   */
+  test("parseRoute は /apps/<app_id>/login を app 種別の印つきに読む", () => {
+    expect(parseRoute("/apps/sample-app/login")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      login: true,
+    });
+  });
+
+  test("末尾スラッシュ・クエリ文字列が付いていても同じに読む(prefill は載せない)", () => {
+    expect(parseRoute("/apps/sample-app/login/")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      login: true,
+    });
+    expect(parseRoute("/apps/sample-app/login?prefill.product=prod-1")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      login: true,
+    });
+  });
+
+  test("routePath は印つきの app を /apps/<app_id>/login に戻す(往復する)", () => {
+    expect(routePath({ kind: "app", appId: "sample-app", login: true })).toBe(
+      "/apps/sample-app/login",
+    );
+    expect(routePath(parseRoute("/apps/sample-app/login"))).toBe("/apps/sample-app/login");
+  });
+
+  test("印の無い app は今日と1バイトも同じ URL(MCP の routePath の出力を変えない)", () => {
+    expect(routePath({ kind: "app", appId: "sample-app" })).toBe("/apps/sample-app");
+    expect(parseRoute("/apps/sample-app")).toEqual({ kind: "app", appId: "sample-app" });
+  });
+
+  // **【`V22-M3-T05`。授権 `ADR-0489` 行44】旧題の逐語**: `login の下の階層・login 以外の3階層目は今日どおり not-found`
+  // **`my-page` の3階層目は今日から `app` 種別の印になる**(下の `V22-M3` の describe)。 期待値は1つも変えていない。
+  test("login の下の階層・login 以外の3階層目(my-page を除く)は今日どおり not-found", () => {
+    expect(parseRoute("/apps/sample-app/login/deeper").kind).toBe("not-found");
+    expect(parseRoute("/apps/sample-app/logout").kind).toBe("not-found");
+  });
+
+  test("印つきの URL のクエリの鍵は0本(鍵の集合を増やさない)", () => {
+    expect(routePath({ kind: "app", appId: "sample-app", login: true })).not.toContain("?");
+  });
+});
+
+describe("マイページの場所 /apps/<app_id>/my-page(V22-M3 / ADR-0488 §Decision 1 の 6)", () => {
+  test("parseRoute は /apps/<app_id>/my-page を app 種別の印つきに読む(種別は4つのまま)", () => {
+    expect(parseRoute("/apps/sample-app/my-page")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      myPage: true,
+    });
+    expect(parseRoute("/apps/sample-app/my-page/")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      myPage: true,
+    });
+    expect(parseRoute("/apps/sample-app/my-page?prefill.x=1")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      myPage: true,
+    });
+  });
+
+  test("routePath は印つきの app を /apps/<app_id>/my-page に戻す(往復する)", () => {
+    expect(routePath({ kind: "app", appId: "sample-app", myPage: true })).toBe(
+      "/apps/sample-app/my-page",
+    );
+    expect(routePath(parseRoute("/apps/sample-app/my-page"))).toBe("/apps/sample-app/my-page");
+  });
+
+  test("login と myPage は同時に成り立たない: parseRoute はどちらか一方だけを作り、routePath は両方立っていたら login を優先する", () => {
+    expect(parseRoute("/apps/sample-app/login")).not.toHaveProperty("myPage");
+    expect(parseRoute("/apps/sample-app/my-page")).not.toHaveProperty("login");
+    expect(routePath({ kind: "app", appId: "sample-app", login: true, myPage: true })).toBe(
+      "/apps/sample-app/login",
+    );
+  });
+
+  test("my-page の下の階層は not-found", () => {
+    expect(parseRoute("/apps/sample-app/my-page/deeper").kind).toBe("not-found");
+  });
+});
+
+// **【`V23-M5-T06`(画面)。`D-V23-129`・`ADR-0532` §Decision 1-8】受け取り画面の場所。**
+// マイページと同じ作法で、種別を増やさず `app` の中の印で表す。 旧の検査は1本も書き換えていない(追加だけ)。
+describe("招待の受け取り画面の場所 /apps/<app_id>/invitations(V23-M5)", () => {
+  test("parseRoute は /apps/<app_id>/invitations を app 種別の印つきに読む(種別は4つのまま)", () => {
+    expect(parseRoute("/apps/sample-app/invitations")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      invitations: true,
+    });
+    expect(parseRoute("/apps/sample-app/invitations/")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      invitations: true,
+    });
+    expect(parseRoute("/apps/sample-app/invitations?prefill.x=1")).toEqual({
+      kind: "app",
+      appId: "sample-app",
+      invitations: true,
+    });
+  });
+
+  test("routePath は印つきの app を /apps/<app_id>/invitations に戻す(往復する)", () => {
+    expect(routePath({ kind: "app", appId: "sample-app", invitations: true })).toBe(
+      "/apps/sample-app/invitations",
+    );
+    expect(routePath(parseRoute("/apps/sample-app/invitations"))).toBe(
+      "/apps/sample-app/invitations",
+    );
+  });
+
+  test("login・myPage とは同時に成り立たない: routePath は login、次に myPage を優先する", () => {
+    expect(parseRoute("/apps/sample-app/invitations")).not.toHaveProperty("myPage");
+    expect(parseRoute("/apps/sample-app/invitations")).not.toHaveProperty("login");
+    expect(parseRoute("/apps/sample-app/my-page")).not.toHaveProperty("invitations");
+    expect(routePath({ kind: "app", appId: "sample-app", login: true, invitations: true })).toBe(
+      "/apps/sample-app/login",
+    );
+    expect(routePath({ kind: "app", appId: "sample-app", myPage: true, invitations: true })).toBe(
+      "/apps/sample-app/my-page",
+    );
+  });
+
+  test("invitations の下の階層は not-found、印の無い app の URL は今日と同じ", () => {
+    expect(parseRoute("/apps/sample-app/invitations/deeper").kind).toBe("not-found");
+    expect(routePath({ kind: "app", appId: "sample-app" })).toBe("/apps/sample-app");
+  });
+});

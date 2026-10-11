@@ -147,7 +147,10 @@ test.describe("3状態の招待を本物のサーバで見分ける(`V19-M3-T03`
       await expect(guest.getByTestId("login-page")).toBeVisible();
       await guest.getByTestId("auth-username").fill(joined);
       await guest.getByTestId("auth-password").fill(PASSWORD);
-      await guest.getByTestId("auth-user-kind").selectOption("staff");
+      // **【2026-10-02。`V23-M10-T01c`。`D-V23-291`。授権 `ADR-0554`】旧(逐語)**:
+      //     await guest.getByTestId("auth-user-kind").selectOption("staff");
+      // **名乗れるのが `staff` 1つだけになり、立場を選ぶ欄が出ないので選ばない**(落ち先は今日も `staff`)。
+      await expect(guest.getByTestId("auth-user-kind")).toHaveCount(0);
       await guest.getByTestId("auth-invitation-code").fill(joinedCode);
       await guest.getByTestId("customer-password-register").click();
       // **登録が通ったことを確かめてから閉じる** —— **通っていなければ印は立たない。**

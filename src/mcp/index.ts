@@ -17,6 +17,7 @@
  * | `ST_DATA_ROOT` | `data` | データルート。**Webサーバ(`bun run server`)と同じ値**でなければならない |
  * | `ST_PREVIEW_BASE_URL` | `http://localhost:3000` | `get_preview_url` が返す URL の基底。Webサーバのリッスン先と揃える |
  * | `ST_MCP_ACTOR` | (無し) | **このサーバがどの利用者として動くか**(ログイン名または利用者ID)。`V8-M31-T02` |
+ * | `ST_PREVIEW_ROOT` | `<ST_DATA_ROOT の絶対パス>.previews` | `dry_run_diff` の `preview` が写しを残す置き場の根。**Webサーバと同じ値**にする。`V20-M13-T02a` |
  *
  * **`ST_MCP_ACTOR` を書き忘れても起動する** —— ただし**23本のツールがすべて失敗する**
  * (ユーザ決定 `D-V8-46` の逐語「指定を忘れると**何もできない状態で立ち上がります**」)。
@@ -28,6 +29,7 @@
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ensureIslandRuntimeReady, recover } from "../kernel/index.ts";
+import { resolvePreviewRoot } from "../server/preview-store.ts";
 import { normalizeActor } from "./actor-guard.ts";
 import { createMcpServer } from "./server.ts";
 
@@ -91,10 +93,16 @@ try {
   console.error(error);
 }
 
-const server = createMcpServer({ dataRoot, previewBaseUrl, actor });
+// **下見の置き場の根**(`V20-M13-T02a`)。Web サーバと同じ `ST_PREVIEW_ROOT` / 同じ既定で決める。
+const previewRoot = resolvePreviewRoot(dataRoot, process.env);
+const server = createMcpServer({ dataRoot, previewBaseUrl, actor, previewRoot });
 const transport = new StdioServerTransport();
 
 await server.connect(transport);
+
+// **下見の置き場の根を1行印字する**(`V20-M13` 点検の処置 軽4)。 Web サーバの起動の印字と並べて、
+// 作った側と開く側の根が同じかを確かめられるようにする(食い違うと作った直後の下見が 410 に見える)。
+console.error(`[smailtalk mcp] 下見の置き場(ST_PREVIEW_ROOT)= ${previewRoot}`);
 
 // 起動ログは stderr のみ。ここを console.log にすると即座にプロトコルが壊れる。
 // **名乗りの有無をここに出す**(`V8-M31-T02`)—— 名乗り無しでも起動するので、
@@ -115,6 +123,8 @@ if (actor === undefined) {
       `(直前の「24本」は今日は25本です)。` +
       // **【`V10-M30-T02`。台帳 `CM-G37` / `ADR-0378`】** **直前の本数も今日は偽である**
       // (`V10-M30-T02` が `set_comment_visibility` を足した)。**旧文を1バイトも消していない。**
-      `(直前の「25本」は今日は26本です)。`,
+      `(直前の「25本」は今日は26本です)。` +
+      // **【`V23-M8-T05`】直前の本数も今日は偽である**(`list_record_history` を足した)。**旧文を1バイトも消していない。**
+      `(直前の「26本」は今日は27本です)。`,
   );
 }

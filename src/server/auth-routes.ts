@@ -24,6 +24,7 @@
  * ログイン・登録の成功経路はいずれも `issueSession` で**新規**セッションを発行し、
  * `st_session` を再セットする。pending は verify 時に必ず消費(取得即削除)+ cookie 削除する。
  */
+
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -87,6 +88,7 @@ import type { InboundSignatureFormat, InboundSignatureHeader } from "../kernel/i
 import type { ValidationError } from "../kernel/index.ts";
 import type { SecretSource } from "../kernel/secret-resolver.ts";
 import type { AuthEnv, AuthUser } from "./auth-context.ts";
+import { AutoEnrollRefused, enrollIfDeclared, withdrawFromDeclaredRosters } from "./auto-enroll.ts";
 // **【`V10-M15-T05` / `CM-G21` / `ADR-0370`】「誰に見えるか」の合成は1本だけを呼ぶ**
 // (判定の家を2軒目にしない)。**`judgeRoleAccess` をこの口が直に呼ばない。**
 import { declaresNoRules, visibleComments } from "./comment-visibility.ts";
@@ -412,6 +414,12 @@ export function assignableRoleValues(roleIds: readonly string[]): readonly Role[
  *
  * **【今日と1文字も変わらない場合】** **アプリが自分で作った役割が0本なら、戻りは
  * 着手前の `allowed`(= `kinds`。空なら `["customer"]`)とまったく同じである。**
+ *
+ * **【2026-10-02 訂正。上の文を1バイトも消していない】** **アプリが自分で作った役割が
+ * 1本以上なら、戻りはその役割だけである。既定の立場(`customer`)を足さない**
+ * (`D-V23-291`。`ADR-0553`)。 **登録画面(`GET /public` の `signup.kinds`)・パスワード登録・
+ * passkey 登録の3つが、この1本の戻りを読むので同じ値域になる。** **`customer` を自分で
+ * 宣言したアプリと、独自の役割が0本のアプリの戻りは変わらない。**
  */
 export function signupKindValues(roleIds: readonly string[]): readonly string[] {
   // **【2026-08-11。`V8-M29` 第2波 / 台帳 `T-G9a`】旧(逐語)**:
@@ -435,7 +443,21 @@ export function signupKindValues(roleIds: readonly string[]): readonly string[] 
   if (custom.length === 0) {
     return today;
   }
-  return [...custom, ...today.filter((id) => !custom.includes(id))];
+  // **【2026-10-02。`V23-M10-T01c`。決定 `D-V23-276`・`D-V23-291`・`D-V23-292`。門A `ADR-0553`】**
+  // **旧(逐語。1バイトも消していない)**:
+  //
+  //     return [...custom, ...today.filter((id) => !custom.includes(id))];
+  //
+  // **旧の形は、独自の役割を1つでも宣言したアプリにも既定の立場(`customer`)を必ず足していた。**
+  // **その立場には宣言が無いので規則が1本も無く、名乗って登録した人は何もできなかった**
+  // (登録画面に「登録する立場」の欄が出て、選べるのに使えない立場が並んだ)。 **しかも
+  // 宣言した役割が全部招待制のアプリでも、その立場を名乗れば招待なしに登録できた。**
+  // **今日は、独自の役割があるアプリでは宣言した役割だけを返す。** **人に付けられる値
+  // ({@link assignableRoleValues})と同じ線に揃う。** **独自の役割が0本のアプリは上の枝で
+  // 今日どおり `["customer"]` を返す。** **`customer` を自分で宣言したアプリは `custom` に
+  // 含まれるので、戻りは今日と1文字も変わらない。** **戻りの先頭(名乗らない登録の落ち先)は
+  // 今日も旧の形でも `custom[0]` で、変わらない。**
+  return custom;
 }
 
 /** 値がそのアプリのロール語彙か。管理エンドポイントの role バリデーションに使う。 */
@@ -733,6 +755,13 @@ function invitationRequired(
   // 閉じる」と書いており、その字義は今日から成り立たない**(枝が3つある)。 **成り立たなく
   // なったのは**数え方**であって**読み先**ではない。** **【禁止】これを「限定14 を1バイトも
   // 破っていない」と書かない。** **訂正は同 ADR に置いた。**
+  //
+  // **【2026-10-02。`D-V23-291`・`D-V23-292` の後の読み方。上の文を1バイトも消していない】**
+  // **今日この枝に来るのは、独自の役割を1つも宣言していないアプリで `customer` を名乗った
+  // (または名乗らずに落ちた)登録だけである** —— **独自の役割があるアプリでは
+  // {@link signupKindValues} が `customer` を返さないので、宣言していない名乗りは値域で
+  // 先に 422 になり、ここまで来ない。** **「全部招待制のアプリで `customer` を名乗れば
+  // 招待なしに登録できた」道は、値域の側で閉じた。**
   return RESERVED_ROLES.every((role) => inviteOnlyRoles.includes(role));
 }
 
@@ -1179,6 +1208,10 @@ function resolveRequestedUserKind(
         // **【この文面が述べていないこと】** **独自の役割が0本のアプリでは `allowed` が
         // `["customer"]` になるが、`customer` は `app.roles` に書かれていなくても入る** ——
         // **その1点はこの文面から読み取れない。****`allowed_values` が正である。**
+        // **【2026-10-02 訂正(`D-V23-291`)。上の2行を消していない】** **今日 `customer` が
+        // `app.roles` に書かれていなくても入るのは、独自の役割が0本のアプリだけである。**
+        // **独自の役割を1つでも宣言したアプリでは、宣言していない `customer` は `allowed` に無く、
+        // 名乗るとここで 422 になる。** **文面は今日の値域と合うので1文字も変えていない。**
         hint: "アプリが宣言している役割(roles)のうち、持ち主・編集者・閲覧者・未ログインを除いたもののいずれかを指定するか、省略してください。",
       },
     };
@@ -1881,38 +1914,64 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
         ) {
           return c.json(errorBody([registrationClosedError]), 403);
         }
-        const created = createUserSafely(c, store, {
-          username: pending.username,
-          role: policy.resolveRole(store, requested.kind),
-          // **【`V8-M3-T05`】印を立てるのとユーザを作るのを1つのトランザクションに入れる**
-          // (`ADR-0336` 限定17 / `ADR-0337` 限定11)。
-          ...(invitation === undefined ? {} : { consumeInvitationFor: invitation.username }),
-        });
-        if (!created.ok) {
-          return created.response;
+        // **【`V23-M1-T04`。`D-V23-24` の案A / `ADR-0510` §Decision 3 の2】利用者の作成・最初の1人の
+        // 役割・招待の役割・名簿の行を、`AuthStore` の接続の上の外側のトランザクション1つで書く。**
+        // 絞り込んだ型(ログイン名が在る)をトランザクションの関数の中へ運ぶための1行。
+        const pendingUsername = pending.username;
+        let registered: { ok: true; user: User } | { ok: false; response: Response };
+        try {
+          registered = store.runInTransaction((db) => {
+            const created = createUserSafely(c, store, {
+              username: pendingUsername,
+              role: policy.resolveRole(store, requested.kind),
+              // **【`V8-M3-T05`】印を立てるのとユーザを作るのを1つのトランザクションに入れる**
+              // (`ADR-0336` 限定17 / `ADR-0337` 限定11)。
+              ...(invitation === undefined ? {} : { consumeInvitationFor: invitation.username }),
+            });
+            if (!created.ok) {
+              return created;
+            }
+            // **【`V8-M30` 第2波 / `D-V8-82`。旧の4行を逐語で残す】**
+            //
+            //     const user = created.user;
+            //     // 顧客経路は owner をブートストラップしない(healOwner=false。ADR-0033 §1b)。
+            //     if (policy.healOwner) {
+            //       store.ensureOwnerExists();
+            //     }
+            //
+            // **判定は {@link bootstrapFirstUserOwner} 1本が持つ**(2経路に写しを作らない)。
+            const user = bootstrapFirstUserOwner(store, policy, created.user, wasFirstUser);
+            // **【`V8-M3-T06`。台帳 `I-G22`。裁定 `M0-2`。`ADR-0337` §3-6】**
+            // **役割は招待の行から来る** —— **本文の `role` を1度も読まない**(限定6)。
+            // **これが `ADR-0158` 限定9 の「昇格不可の構造保証」を保つ理由である。**
+            //
+            // **【限界。隠さない】** **最初の1人は列が `owner` に据わり、招待に書かれた役割は
+            // それに**足される**** —— **「招待に書かれたとおりの立場になる」は最初の1人に
+            // ついては成り立たない**(`ADR-0337` §限界1)。
+            // **判定を2箇所に写していない** —— **`bootstrapFirstUserOwner` は1バイトも
+            // 変えていない**(限定7)。
+            if (invitation !== undefined) {
+              store.grantRole(user.id, invitation.role);
+            }
+            // **【`V23-M4-T03`】`$actor` は登録した本人**(`D-V23-93`)。
+            enrollIfDeclared(db, manifestFor(appId), user, {
+              id: user.id,
+              login: user.username,
+              role: user.role,
+              entry: "http",
+            });
+            return { ok: true as const, user };
+          });
+        } catch (error) {
+          if (error instanceof AutoEnrollRefused) {
+            return c.json(errorBody(error.errors), 422);
+          }
+          throw error;
         }
-        // **【`V8-M30` 第2波 / `D-V8-82`。旧の4行を逐語で残す】**
-        //
-        //     const user = created.user;
-        //     // 顧客経路は owner をブートストラップしない(healOwner=false。ADR-0033 §1b)。
-        //     if (policy.healOwner) {
-        //       store.ensureOwnerExists();
-        //     }
-        //
-        // **判定は {@link bootstrapFirstUserOwner} 1本が持つ**(2経路に写しを作らない)。
-        const user = bootstrapFirstUserOwner(store, policy, created.user, wasFirstUser);
-        // **【`V8-M3-T06`。台帳 `I-G22`。裁定 `M0-2`。`ADR-0337` §3-6】**
-        // **役割は招待の行から来る** —— **本文の `role` を1度も読まない**(限定6)。
-        // **これが `ADR-0158` 限定9 の「昇格不可の構造保証」を保つ理由である。**
-        //
-        // **【限界。隠さない】** **最初の1人は列が `owner` に据わり、招待に書かれた役割は
-        // それに**足される**** —— **「招待に書かれたとおりの立場になる」は最初の1人に
-        // ついては成り立たない**(`ADR-0337` §限界1)。
-        // **判定を2箇所に写していない** —— **`bootstrapFirstUserOwner` は1バイトも
-        // 変えていない**(限定7)。
-        if (invitation !== undefined) {
-          store.grantRole(user.id, invitation.role);
+        if (!registered.ok) {
+          return registered.response;
         }
+        const user = registered.user;
         store.addWebauthnCredential({
           id: verification.credential.id,
           userId: user.id,
@@ -2142,41 +2201,68 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
         ) {
           return c.json(errorBody([registrationClosedError]), 403);
         }
-        const created = createUserSafely(c, store, {
-          username,
-          role: policy.resolveRole(store, requested.kind),
-          // **【`V8-M3-T05`】印を立てるのとユーザを作るのを1つのトランザクションに入れる**
-          // (`ADR-0336` 限定17 / `ADR-0337` 限定11)。
-          ...(invitation === undefined ? {} : { consumeInvitationFor: invitation.username }),
-        });
-        if (!created.ok) {
-          return created.response;
+        // **【`V23-M1-T04`。`D-V23-24` の案A / `ADR-0510` §Decision 3 の2】利用者の作成・最初の1人の
+        // 役割・招待の役割・名簿の行を、`AuthStore` の接続の上の外側のトランザクション1つで書く。**
+        // 旧はこの下の行を包まずに並べ、合言葉の指紋を合言葉を保存する呼び出しの引数の中で作っていた。
+        // 指紋はトランザクションの前に作る(トランザクションの中では待てないため)。
+        const passwordHash = await hashPassword(password);
+        let registered: { ok: true; user: User } | { ok: false; response: Response };
+        try {
+          registered = store.runInTransaction((db) => {
+            const created = createUserSafely(c, store, {
+              username,
+              role: policy.resolveRole(store, requested.kind),
+              // **【`V8-M3-T05`】印を立てるのとユーザを作るのを1つのトランザクションに入れる**
+              // (`ADR-0336` 限定17 / `ADR-0337` 限定11)。
+              ...(invitation === undefined ? {} : { consumeInvitationFor: invitation.username }),
+            });
+            if (!created.ok) {
+              return created;
+            }
+            store.setPassword(created.user.id, passwordHash);
+            // **【`V8-M30` 第2波 / `D-V8-82`。旧の6行を逐語で残す】**
+            //
+            //     const user = created.user;
+            //     store.setPassword(user.id, await hashPassword(password));
+            //     // 顧客経路は owner をブートストラップしない(healOwner=false。ADR-0033 §1b)。
+            //     // 管理経路は移行 DB 等で owner=0 になっていれば最古を昇格する。
+            //     if (policy.healOwner) {
+            //       store.ensureOwnerExists();
+            //     }
+            //
+            // **判定は {@link bootstrapFirstUserOwner} 1本が持つ**(2経路に写しを作らない)。
+            const user = bootstrapFirstUserOwner(store, policy, created.user, wasFirstUser);
+            // **【`V8-M3-T06`。台帳 `I-G22`。裁定 `M0-2`。`ADR-0337` §3-6】**
+            // **役割は招待の行から来る** —— **本文の `role` を1度も読まない**(限定6)。
+            // **これが `ADR-0158` 限定9 の「昇格不可の構造保証」を保つ理由である。**
+            //
+            // **【限界。隠さない】** **最初の1人は列が `owner` に据わり、招待に書かれた役割は
+            // それに**足される**** —— **「招待に書かれたとおりの立場になる」は最初の1人に
+            // ついては成り立たない**(`ADR-0337` §限界1)。
+            // **判定を2箇所に写していない** —— **`bootstrapFirstUserOwner` は1バイトも
+            // 変えていない**(限定7)。
+            if (invitation !== undefined) {
+              store.grantRole(user.id, invitation.role);
+            }
+            // **【`V23-M4-T03`】`$actor` は登録した本人**(`D-V23-93`)。
+            enrollIfDeclared(db, manifestFor(appId), user, {
+              id: user.id,
+              login: user.username,
+              role: user.role,
+              entry: "http",
+            });
+            return { ok: true as const, user };
+          });
+        } catch (error) {
+          if (error instanceof AutoEnrollRefused) {
+            return c.json(errorBody(error.errors), 422);
+          }
+          throw error;
         }
-        store.setPassword(created.user.id, await hashPassword(password));
-        // **【`V8-M30` 第2波 / `D-V8-82`。旧の6行を逐語で残す】**
-        //
-        //     const user = created.user;
-        //     store.setPassword(user.id, await hashPassword(password));
-        //     // 顧客経路は owner をブートストラップしない(healOwner=false。ADR-0033 §1b)。
-        //     // 管理経路は移行 DB 等で owner=0 になっていれば最古を昇格する。
-        //     if (policy.healOwner) {
-        //       store.ensureOwnerExists();
-        //     }
-        //
-        // **判定は {@link bootstrapFirstUserOwner} 1本が持つ**(2経路に写しを作らない)。
-        const user = bootstrapFirstUserOwner(store, policy, created.user, wasFirstUser);
-        // **【`V8-M3-T06`。台帳 `I-G22`。裁定 `M0-2`。`ADR-0337` §3-6】**
-        // **役割は招待の行から来る** —— **本文の `role` を1度も読まない**(限定6)。
-        // **これが `ADR-0158` 限定9 の「昇格不可の構造保証」を保つ理由である。**
-        //
-        // **【限界。隠さない】** **最初の1人は列が `owner` に据わり、招待に書かれた役割は
-        // それに**足される**** —— **「招待に書かれたとおりの立場になる」は最初の1人に
-        // ついては成り立たない**(`ADR-0337` §限界1)。
-        // **判定を2箇所に写していない** —— **`bootstrapFirstUserOwner` は1バイトも
-        // 変えていない**(限定7)。
-        if (invitation !== undefined) {
-          store.grantRole(user.id, invitation.role);
+        if (!registered.ok) {
+          return registered.response;
         }
+        const user = registered.user;
         const session = issueSession(store, user.id, authConfig.sessionTtlSec);
         setSessionCookie(c, authConfig, appId, session);
         return c.json({ user: userView(store, user) }, 200);
@@ -2395,7 +2481,18 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
         return authed.response;
       }
       try {
-        store.deleteUser(authed.user.id);
+        // **【`V23-M1-T06`。`SC-G3` / `ADR-0497` 限定7】退会の連鎖** —— 自動登録を宣言した名簿の
+        // 本人の行と、その行を相手にした付与の行を、利用者の削除と同じトランザクションで消す。
+        // 削除が断られたら(最後の運営ほか)、名簿の行も付与の行も戻る。
+        store.runInTransaction((db) => {
+          withdrawFromDeclaredRosters(db, manifestFor(appId), authed.user.id, {
+            id: authed.user.id,
+            login: authed.user.username,
+            role: authed.user.role,
+            entry: "http",
+          });
+          store.deleteUser(authed.user.id);
+        });
       } catch (error) {
         if (error instanceof LastOwnerError) {
           return c.json(errorBody([lastOwnerWithdrawalError]), 409);
@@ -2608,17 +2705,33 @@ export function registerAuthRoutes(app: Hono<AuthEnv>, deps: AuthRouteDeps): voi
       }
       let updated: User;
       try {
-        if (wantsSet) {
-          // **実効ロール集合を丸ごと置き換える。** `role` も書かれていればそれを列に据える。
-          const set = requestedRoles as Role[];
-          const ordered = wantsColumn
-            ? [body.value.role as Role, ...set.filter((role) => role !== body.value.role)]
-            : set;
-          updated = store.setUserRoles(userId, ordered);
-        } else {
-          updated = store.setUserRole(userId, body.value.role as Role);
-        }
+        // **【`V23-M1-T04`。`ADR-0510` §Decision 3 の1・2】役割の付与と名簿の行を、同じ外側の
+        // トランザクション1つで書く。** 名簿の行が書けなければ役割の付与ごと巻き戻る。
+        updated = store.runInTransaction((db) => {
+          let next: User;
+          if (wantsSet) {
+            // **実効ロール集合を丸ごと置き換える。** `role` も書かれていればそれを列に据える。
+            const set = requestedRoles as Role[];
+            const ordered = wantsColumn
+              ? [body.value.role as Role, ...set.filter((role) => role !== body.value.role)]
+              : set;
+            next = store.setUserRoles(userId, ordered);
+          } else {
+            next = store.setUserRole(userId, body.value.role as Role);
+          }
+          // **【`V23-M4-T03`】`$actor` は操作した人**(対象者ではない。`D-V23-105`)。
+          enrollIfDeclared(db, manifestFor(appId), next, {
+            id: owner.user.id,
+            login: owner.user.username,
+            role: owner.user.role,
+            entry: "http",
+          });
+          return next;
+        });
       } catch (error) {
+        if (error instanceof AutoEnrollRefused) {
+          return c.json(errorBody(error.errors), 422);
+        }
         if (error instanceof LastOwnerError) {
           return c.json(errorBody([lastOwnerRejectedError]), 409);
         }

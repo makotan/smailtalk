@@ -60,7 +60,8 @@
  *   **`ViewRendererProps` には props を1つも足していない**(値は `view` の中に入っている)。
  */
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { RecordValue } from "../../../src/kernel/records.ts";
 import type { DetailView, Field, Manifest, ResourceId, Table } from "../../../src/kernel/types.ts";
 import {
   // **【`V18-M7-T05` / `PM-G5`】ぶら下がっている行の断り2本**(`ADR-0444` §Decision 3 の ③ / ④ / ⑤)。
@@ -71,6 +72,8 @@ import {
   isApplyInProgress,
   isForbidden,
   isWriteConflict,
+  type RecordHistoryItem,
+  type RecordHistoryPage,
   type RecordRow,
   // **【`V14-M2-T01` / `RB-G1`】行1件ぶんの判定の型**(`ADR-0402` §Decision 4)。
   type RowAccess,
@@ -100,10 +103,21 @@ import {
   referenceLinkTarget,
 } from "../fields/display.tsx";
 import {
+  inviteCodeTableDeclared,
+  invitePermissionLabel,
+  permissionShown,
+  principalRowColumns,
+  principalRowTableOf,
+} from "../fields/input.tsx";
+import {
   buildReferenceLabelIndex,
   type ReferenceLabelIndex,
   representativeField,
+  withPrincipalLabels,
 } from "../fields/reference-label.ts";
+import { rowInvitationsDeclared } from "../fields/user-account.ts";
+// 【`V23-M8-T07`】行の変更履歴の時刻の書き方(年-月-日 時:分)は招待の期限と同じ1本を使う。
+import { formatInvitationDeadline } from "../InvitationInbox.tsx";
 // **`DetailTargetNote` の import は `V10-M18-T02`(`FU-G2`)で落とした** ——
 // **呼び出し3件を撤去したので、残すと `biome` の `noUnusedImports` が error になる。**
 // **`resolveDetailViewTarget` は残っている**(子行の遷移先を決めるのは今日も同じ1本である)。
@@ -124,6 +138,9 @@ import {
 } from "../ui/table.tsx";
 import { cn } from "../ui/utils.ts";
 import { flowNextRoute } from "./flow.ts";
+import { ACTION_LEAF_PREFIX, actionLeafName, LayoutTree, layoutLeaves } from "./LayoutTree.tsx";
+import { RowInvitationsPanel } from "./RowInvitationsPanel.tsx";
+import { RowInviteCodePanel } from "./RowInviteCodePanel.tsx";
 import { rowAccessAllows, rowActionVerb } from "./row-action-verb.ts";
 import type { DetailViewRendererProps } from "./types.ts";
 import { visibleWhenMatches } from "./visible-when.ts";
@@ -180,6 +197,38 @@ type DetailData = {
  * **綴りをここ1箇所に持つのは、突き合わせに使う文字列と表示する文字列がずれないためである。**
  */
 const CASCADE_UNDO_WARNING = "まとめて消した行は取り消しでは戻りません。";
+
+/**
+ * **ボタンの強調の宣言(`action_emphasis`)を、`Button` の `variant` に写す**
+ * (`V20-M2-T02` / `T03`。`ADR-0459` 限定1〜限定5)。**写し方はここ1箇所にしか無い。**
+ *
+ * - `primary` → `"default"`(**着手前の「主」と同じ見た目**。塗りつぶしの `"primary"` variant ではない)
+ * - `secondary` → `"secondary"`
+ * - `danger` → `"destructive"`
+ * - **書いていない → `"secondary"`(主を出さない)。**
+ *
+ * **並び順も、役割で他のボタンが絞り落とされたかどうかも見ない** —— **各ボタンは自分の宣言だけで
+ * 決まる。****`web/src/ui/button.tsx` を1バイトも触っていない**(既存5値のうち3つを選ぶだけ)。
+ * **組込のボタン(編集・削除)には当てない。**
+ *
+ * **【V20-M9 / ADR-0474 §Decision 1-7】上の `primary` → `"default"` と「`web/src/ui/button.tsx` を1バイトも
+ * 触っていない」は引き直しの前の逐語である。** 今日は `primary` → `"emphasis"`(`button.tsx` に足した
+ * variant。地色 `primary_fill`・文字色 `on_primary`)。既定値のままなら平常時の見た目は今日と同じ。
+ */
+function actionEmphasisVariant(
+  emphasis: "primary" | "secondary" | "danger" | undefined,
+): "emphasis" | "secondary" | "destructive" {
+  // 【V20-M9 / ADR-0474 §Decision 1-7】主を新しい variant `emphasis`(地色 `primary_fill`・文字色 `on_primary`)へ
+  // 写した。旧(逐語): 戻り値の型 `"default" | "secondary" | "destructive"` と `return "default";`。
+  switch (emphasis) {
+    case "primary":
+      return "emphasis";
+    case "danger":
+      return "destructive";
+    default:
+      return "secondary";
+  }
+}
 
 export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailViewRendererProps) {
   // 対象テーブルの解決はシステムテーブルも見る(ADR-0006 §7 の #10)。
@@ -258,6 +307,15 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
       .map((id) => resolveViewTable(manifest, id))
       .filter((candidate): candidate is Table => candidate !== undefined);
   }, [manifest, fields]);
+
+  /**
+   * 【`V23-M6-T06b`】付与表の相手の行を指す欄(宣言を読むだけ。宣言の無いアプリでは空 = 今日どおり)。
+   * サーバが返す相手の行の代表項目(`principal_labels`)を、その欄の参照ラベルとして足す場所。
+   */
+  const principalColumns = useMemo(
+    () => principalRowColumns(manifest, view.table),
+    [manifest, view.table],
+  );
 
   const [state, setState] = useState<AsyncState<DetailData>>({ status: "loading" });
   /** 削除の確認中かどうか。誤操作で1レコードが消えないための一段。 */
@@ -490,7 +548,13 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
             value: {
               record: fetched.record,
               ...(fetched.access === undefined ? {} : { access: fetched.access }),
-              referenceLabels: buildReferenceLabelIndex(referenceSources),
+              // 【`V23-M6-T06b`】付与表の1行なら相手の行の代表項目を足す(返さなければ今日どおりの索引)。
+              referenceLabels: withPrincipalLabels(
+                buildReferenceLabelIndex(referenceSources),
+                [fetched.record],
+                fetched.principalLabel === undefined ? undefined : [fetched.principalLabel],
+                principalColumns,
+              ),
             },
           });
         }
@@ -505,7 +569,16 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
     return () => {
       cancelled = true;
     };
-  }, [appId, view.id, view.table, namedViewId, recordId, referencedTables, manifestErrors]);
+  }, [
+    appId,
+    view.id,
+    view.table,
+    namedViewId,
+    recordId,
+    referencedTables,
+    manifestErrors,
+    principalColumns,
+  ]);
 
   /**
    * 編集の行き先: 同じテーブルの form。無ければ導線を出さない(壊れない)。
@@ -842,7 +915,8 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
   const visibleActions = writableActions.filter(
     ({ action }) =>
       (action.visible_when === undefined || visibleWhenMatches(action.visible_when, record)) &&
-      rowAccessAllows(access, rowActionVerb(manifest, table?.id, action)),
+      rowAccessAllows(access, rowActionVerb(manifest, table?.id, action)) &&
+      createChildActionAllows(manifest, access, action),
   );
 
   /**
@@ -941,12 +1015,12 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
    * (`ADR-0006` §7 #11)ためである。
    */
   const groupedFieldIds = new Set(
-    Object.values(view.field_groups ?? {}).flatMap((group) =>
+    Object.values(view.field_sections ?? {}).flatMap((group) =>
       Array.isArray(group) ? group : group.fields,
     ),
   );
   const ungroupedFields = fields.filter((field) => !groupedFieldIds.has(field.id));
-  const fieldGroups = Object.entries(view.field_groups ?? {}).map(([name, group]) => ({
+  const fieldGroups = Object.entries(view.field_sections ?? {}).map(([name, group]) => ({
     name,
     fields: (Array.isArray(group) ? group : group.fields)
       .map((id) => fields.find((field) => field.id === id))
@@ -1065,53 +1139,166 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
   const FIELD_WEIGHT_CLASS = "font-semibold text-lg leading-base";
 
   /** 1つぶんの項目の器(`<dl class="detail-fields">`)。**まとまりの内外で同じ器を使う。** */
-  const renderFieldList = (listFields: Field[]) => (
-    <dl className={cn("detail-fields", "m-0")} data-testid="detail-fields" {...fieldListPresets}>
-      {listFields.map((field) => (
-        <div
-          className={cn("detail-field", widthAdaptiveLabel && "flex-col sm:flex-row")}
-          key={field.id}
-        >
-          {/* 見出しはマニフェストの Field.name。ID を出すと利用者の言葉と食い違う。 */}
-          <dt
-            className={cn(
-              "text-label",
-              "font-medium",
-              widthAdaptiveLabel && "basis-auto! sm:basis-[var(--detail-label-width)]!",
-            )}
-          >
-            {field.name}
-          </dt>
-          {/*
+  /**
+   * **1項目ぶん**(`dt` と `dd`)。**木を書かない画面では `div` で包む**(着手前と1文字も同じ)。
+   * **木の葉として描くときだけ `dl` で包む**(`V20-M5-T03`。上の器が `div` になるため)。
+   */
+  const renderDetailField = (field: Field, Item: "div" | "dl" = "div") => (
+    <Item
+      className={cn("detail-field", widthAdaptiveLabel && "flex-col sm:flex-row")}
+      key={field.id}
+    >
+      {/* 見出しはマニフェストの Field.name。ID を出すと利用者の言葉と食い違う。 */}
+      <dt
+        className={cn(
+          "text-label",
+          "font-medium",
+          widthAdaptiveLabel && "basis-auto! sm:basis-[var(--detail-label-width)]!",
+        )}
+      >
+        {field.name}
+      </dt>
+      {/*
             **【V4-M19-T02】代表項目1本だけを重く描く。** **宣言を持たないテーブルでは
             `weightedFieldId` が `undefined` になり、className は今日どおり `"m-0"` 1つで、
             DOM は着手前と1バイトも変わらない**(実測は
             `web/test/information-weight.test.tsx` の (c) —— 着手前に取った DOM との完全一致)。
           */}
-          <dd
-            className={cn("m-0", field.id === weightedFieldId && FIELD_WEIGHT_CLASS)}
-            data-testid={`detail-field-${field.id}`}
-            data-field={field.id}
-            data-field-type={field.type}
-          >
-            <ReferenceLinkScope
-              target={referenceLinkTarget(manifest, field, record[field.id], referenceLabels)}
-              appId={appId}
-              recordId={record[field.id]}
-            >
-              <FieldValue
-                field={field}
-                value={record[field.id]}
-                referenceLabels={referenceLabels}
-                appId={appId}
-                textPreview={view.preset_text_preview}
-              />
-            </ReferenceLinkScope>
-          </dd>
-        </div>
-      ))}
+      <dd
+        className={cn("m-0", field.id === weightedFieldId && FIELD_WEIGHT_CLASS)}
+        data-testid={`detail-field-${field.id}`}
+        data-field={field.id}
+        data-field-type={field.type}
+      >
+        <ReferenceLinkScope
+          target={referenceLinkTarget(manifest, field, record[field.id], referenceLabels)}
+          appId={appId}
+          recordId={record[field.id]}
+        >
+          <FieldValue
+            // 【`V23-M12-T03`。`D-V23-356`】付与の表の権限の欄だけ宣言の名前(それ以外は値のまま)。
+            // (強調の鍵も名前に写した欄の写しと、名前に替えた値を渡す。)
+            {...permissionShown(manifest, view.table, field, record[field.id])}
+            referenceLabels={referenceLabels}
+            appId={appId}
+            textPreview={view.preset_text_preview}
+          />
+        </ReferenceLinkScope>
+      </dd>
+    </Item>
+  );
+
+  const renderFieldList = (listFields: Field[]) => (
+    <dl className={cn("detail-fields", "m-0")} data-testid="detail-fields" {...fieldListPresets}>
+      {listFields.map((field) => renderDetailField(field))}
     </dl>
   );
+
+  const renderDeclaredAction = (
+    { action, declaredIndex }: (typeof visibleActions)[number],
+    index: number,
+  ) =>
+    /*
+              **【V4-M20-T01 / ADR-0100 限定1】形は2つだけである。**
+              **`"set" in action` の1点で分かれ、3つ目の分岐は無い**(schema の `oneOf` が
+              2形を排他に閉じているので、ここに来る要素は必ずどちらか一方である)。
+              **形 (ii) は遷移しない** —— `navigate` を1度も呼ばない。
+            */
+    "run" in action ? (
+      <Button
+        // actions は安定IDを持たず、定義位置が同一性である(`V20-M5-T03` で map の外の関数に出したので抑止の注釈は外した)
+        key={`run:${action.run}:${index}`}
+        variant={actionEmphasisVariant(action.action_emphasis)}
+        type="button"
+        data-testid={`action-run-${action.run}`}
+        disabled={runningWorkflow !== null}
+        onClick={() => {
+          void handleRunAction(action.run);
+        }}
+      >
+        {action.name ?? "実行する"}
+      </Button>
+    ) : "set" in action ? (
+      <Button
+        // 同じ field/value を複数並べられる(位置が同一性)ので定義位置を鍵に含める。
+        // actions は安定IDを持たず、定義位置が同一性である(`V20-M5-T03` で map の外の関数に出したので抑止の注釈は外した)
+        key={`set:${action.set.field}:${index}`}
+        variant={actionEmphasisVariant(action.action_emphasis)}
+        type="button"
+        data-testid={`action-set-${action.set.field}`}
+        disabled={settingAction !== null}
+        onClick={() => {
+          void handleSetAction(declaredIndex, action.set);
+        }}
+      >
+        {action.name ?? "この値にする"}
+      </Button>
+    ) : (
+      <Button
+        // 同じ form/field を複数並べられる(位置が同一性)ので定義位置を鍵に含める。
+        // actions は安定IDを持たず、定義位置が同一性である(`V20-M5-T03` で map の外の関数に出したので抑止の注釈は外した)
+        key={`${action.form}:${action.prefill.field}:${index}`}
+        // **主副は「書かれた配列」の位置で決まる**(`declaredIndex`)—— 絞り込み後の
+        // 位置(`index`)ではない。**この1行が上の規約の全実装である。**
+        // **【`V20-M2-T02`。上の2行は1バイトも消していない】上の2行は今日から偽である** ——
+        // **主副は位置ではなく、そのボタン自身の宣言(`action_emphasis`)で決まる。**
+        // **3形とも同じ1つの関数(`actionEmphasisVariant`)を呼ぶ。**
+        variant={actionEmphasisVariant(action.action_emphasis)}
+        type="button"
+        data-testid={`action-origin-${action.form}`}
+        onClick={() => {
+          // プリフィルは参照フィールド1つ × 今開いているレコードの `_id`(ADR-0045 限定2/3)。
+          navigate({
+            kind: "view",
+            appId,
+            viewId: action.form,
+            prefill: { field: action.prefill.field, value: record._id },
+          });
+        }}
+      >
+        {action.name ?? "新規作成へ"}
+      </Button>
+    );
+
+  /*
+   * **並べ方の木**(`V20-M5-T03` / `ADR-0462` / `ADR-0471`。メインの申7)。
+   *
+   * - **木を書かなかった画面は、着手前と1文字も変わらない**(`layout === undefined` のとき
+   *   `originActions` は `visibleActions` そのもので、項目の器は下の着手前の式のまま。固定は
+   *   `web/test/layout-tree.test.tsx` の (d))。
+   * - **木を書いた画面だけ、項目の器を `dl` から `div` にする**(申7)。1項目は
+   *   `dl.detail-field`(中に `dt` / `dd`)で描く —— `div` の直下に `dt` / `dd` を置かないため。
+   *   **クラス・testid・属性は着手前の項目と同じ**(`.detail-field` の規則がそのまま当たる)。
+   * - **名指しされた宣言ボタン(`action:<id>`)は葉の位置に描き、宣言ボタンの器には描かない。**
+   *   **名指しされなかったボタンは今日の器のまま。** 見せてよいかの判定(`visibleActions`)は
+   *   1バイトも変えていない —— 見せない相手には葉の位置にも出ない。
+   * - **値が無いとき行ごと出さない項目(`hide_when_empty`)は、葉の位置でも同じ規則で落ちる。**
+   * - **木に置かなかった項目は、木の後ろに今日の器(`dl.detail-fields`)で今日の順に積む。**
+   */
+  const layout = view.layout;
+  const placedLeaves = new Set(layout === undefined ? [] : layoutLeaves(layout));
+  const originActions =
+    layout === undefined
+      ? visibleActions
+      : visibleActions.filter(
+          ({ action }) =>
+            !placedLeaves.has(`${ACTION_LEAF_PREFIX}${String((action as { id?: unknown }).id)}`),
+        );
+  const renderLayoutLeaf = (leaf: string) => {
+    const actionName = actionLeafName(leaf);
+    if (actionName !== undefined) {
+      const index = visibleActions.findIndex(
+        ({ action }) => (action as { id?: unknown }).id === actionName,
+      );
+      const entry = visibleActions[index];
+      return entry === undefined ? null : renderDeclaredAction(entry, index);
+    }
+    const field = fields.find((candidate) => candidate.id === leaf);
+    return field === undefined || visibleFields([field]).length === 0
+      ? null
+      : renderDetailField(field, "dl");
+  };
+  const unplacedFields = fields.filter((field) => !placedLeaves.has(field.id));
 
   return (
     <section
@@ -1135,8 +1322,22 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
           **全部落ちた画面では器そのものを出さない** —— 既存の「当たり先の無い器を DOM に
           置かない」作法をそのまま使う(下のまとまりも同じ)。
         */}
-        {visibleFields(ungroupedFields).length > 0 &&
-          renderFieldList(visibleFields(ungroupedFields))}
+        {layout === undefined ? (
+          visibleFields(ungroupedFields).length > 0 &&
+          renderFieldList(visibleFields(ungroupedFields))
+        ) : (
+          <>
+            <div
+              className={cn("detail-fields", "m-0")}
+              data-testid="detail-fields"
+              {...fieldListPresets}
+            >
+              <LayoutTree node={layout} renderLeaf={renderLayoutLeaf} />
+            </div>
+            {visibleFields(unplacedFields).length > 0 &&
+              renderFieldList(visibleFields(unplacedFields))}
+          </>
+        )}
         {/*
           **まとまり**(マニフェストの記述順)。**見出し + 区切り + そのまとまりの項目**である
           (限定6。器の形はアプリが選べない)。**重ねて出す表現(モーダル / トースト /
@@ -1212,6 +1413,25 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
       ))}
 
       {/*
+        **【`V23-M8-T07`】行の変更履歴**(`D-V23-213`)。 **画面が `history: true` のときだけ**、子の一覧の後ろに別の部品を
+        描く(書いていない画面では部品も読みも足さない)。 部品は単件の読取に `?history=1` を付けて読み、サーバが
+        `history` を返さなければ何も描かない。 行は URL の `recordId` で指す(射影が `_id` を落としうるため)。
+      */}
+      {view.history === true && table !== undefined && recordId !== undefined ? (
+        <RecordHistoryPanel
+          // **【`V23-M8-T13`(独立点検の軽5)】行の版(`_updated_at`)も鍵に入れる** —— 詳細画面の上のボタンで行が
+          // 変わると、部品を作り直して最初のページを読み直す。 版が変わらない間は読み直さない。
+          key={`history-${recordId}-${String(record._updated_at)}`}
+          manifest={manifest}
+          appId={appId}
+          table={table}
+          recordId={recordId}
+          viewId={namedViewId}
+          referenceLabels={referenceLabels}
+        />
+      ) : null}
+
+      {/*
         ビューからの操作起点(EC-G14 / ADR-0045)。**自レコード表示の下に**、指定 form へ
         遷移し、参照フィールド1つを今開いているレコードの `_id` でプリフィルするボタンを置く
         (「この商品をカートに入れる」)。プリフィルは URL ではなく navigate に載せて運ぶ
@@ -1253,72 +1473,30 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
           **実測は `web/test/action-emphasis.test.tsx` の (c)。**
         - **主が実際に目立って見えるか(見分けが付くか)を1件も測っていない** ——
           `variant` の対はコントラスト検査にも chromium の実測にも1件も載っていない。
+
+        ## **【`V20-M2-T02` / `ADR-0459`。2026-09-24 に追記。上の文は1バイトも消していない】上の規約は今日から偽である**
+
+        **「`view.actions` の1番目を主、それ以外を副とする」は今日から偽である。** **各ボタンの見た目は、
+        そのボタン自身の宣言 `action_emphasis`(`primary` / `secondary` / `danger`。省略可)だけで決まる**
+        (写し方は上の `actionEmphasisVariant` 1箇所)。**書いていないボタンは副であり、宣言の無い画面には
+        主が1つも出ない。**
+
+        - **「満たしていない完了条件」の前提(語彙を1バイトも増やさない・規約がマニフェストに現れない)は
+          今日から偽である** —— **宣言はマニフェストに現れる。** MCP の説明文への追随は別の葉が行う。
+        - **「並び順と主副を独立に選べない」は今日から偽である** —— **並びを変えずに2番目を主にできる。**
+        - **「1番目がロールで絞り落とされた画面では、主のボタンが1つも出ない」は、宣言が無ければ今日も真**
+          **であり、2番目は今日も繰り上がらない。** **ただし理由は位置ではなく「各ボタンが自分の宣言だけで
+          決まる」ことである** —— **2番目が自分で `primary` と書いていれば、1番目が落ちても主として描かれる。**
+        - **「chromium の実測に1件も載っていない」は今日から偽である** —— `web/e2e/action-emphasis.e2e.ts`
+          が主と副の計算値の地色の違いを測る。**コントラスト(見分けが付くか)は今日も1件も測っていない。**
+        - **`declaredIndex` は主副の決定には今日から使っていない**(値の書換の押下中の印に使うだけである)。
       */}
-      {visibleActions.length > 0 && (
+      {(originActions.length > 0 || (layout !== undefined && runError !== null)) && (
         <div
           className={cn("detail-action-origins", "flex flex-wrap items-center gap-s2")}
           data-testid="detail-action-origins"
         >
-          {visibleActions.map(({ action, declaredIndex }, index) =>
-            /*
-              **【V4-M20-T01 / ADR-0100 限定1】形は2つだけである。**
-              **`"set" in action` の1点で分かれ、3つ目の分岐は無い**(schema の `oneOf` が
-              2形を排他に閉じているので、ここに来る要素は必ずどちらか一方である)。
-              **形 (ii) は遷移しない** —— `navigate` を1度も呼ばない。
-            */
-            "run" in action ? (
-              <Button
-                // biome-ignore lint/suspicious/noArrayIndexKey: actions は安定IDを持たず、定義位置が同一性である
-                key={`run:${action.run}:${index}`}
-                variant={declaredIndex === 0 ? "default" : "secondary"}
-                type="button"
-                data-testid={`action-run-${action.run}`}
-                disabled={runningWorkflow !== null}
-                onClick={() => {
-                  void handleRunAction(action.run);
-                }}
-              >
-                {action.name ?? "実行する"}
-              </Button>
-            ) : "set" in action ? (
-              <Button
-                // 同じ field/value を複数並べられる(位置が同一性)ので定義位置を鍵に含める。
-                // biome-ignore lint/suspicious/noArrayIndexKey: actions は安定IDを持たず、定義位置が同一性である
-                key={`set:${action.set.field}:${index}`}
-                variant={declaredIndex === 0 ? "default" : "secondary"}
-                type="button"
-                data-testid={`action-set-${action.set.field}`}
-                disabled={settingAction !== null}
-                onClick={() => {
-                  void handleSetAction(declaredIndex, action.set);
-                }}
-              >
-                {action.name ?? "この値にする"}
-              </Button>
-            ) : (
-              <Button
-                // 同じ form/field を複数並べられる(位置が同一性)ので定義位置を鍵に含める。
-                // biome-ignore lint/suspicious/noArrayIndexKey: actions は安定IDを持たず、定義位置が同一性である
-                key={`${action.form}:${action.prefill.field}:${index}`}
-                // **主副は「書かれた配列」の位置で決まる**(`declaredIndex`)—— 絞り込み後の
-                // 位置(`index`)ではない。**この1行が上の規約の全実装である。**
-                variant={declaredIndex === 0 ? "default" : "secondary"}
-                type="button"
-                data-testid={`action-origin-${action.form}`}
-                onClick={() => {
-                  // プリフィルは参照フィールド1つ × 今開いているレコードの `_id`(ADR-0045 限定2/3)。
-                  navigate({
-                    kind: "view",
-                    appId,
-                    viewId: action.form,
-                    prefill: { field: action.prefill.field, value: record._id },
-                  });
-                }}
-              >
-                {action.name ?? "新規作成へ"}
-              </Button>
-            ),
-          )}
+          {originActions.map(renderDeclaredAction)}
           {runError === null ? null : (
             // **黙って捨てない**(憲法6)。**押した場所のすぐ横に理由を出す。**
             <span
@@ -1466,11 +1644,11 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
             ) : (
               <>
                 <div className={cn("flex flex-col gap-s1")} data-testid="detail-delete-children">
+                  {/* 【V23-M14-T02。D-V23-458】409 の hint(印の付け方。ヘッダの名を含む)は画面に
+                      出さない。 出すのは使う人の言葉の message と、取り消しの一文(画面が1度だけ出す)。
+                      旧は hint を出し、hint がこの一文を持たないときだけ画面が足していた。 */}
                   <p className={cn("m-0", "text-destructive")}>{cascadeDenial.message}</p>
-                  <p className={cn("m-0")}>{cascadeDenial.hint}</p>
-                  {cascadeDenial.hint.includes(CASCADE_UNDO_WARNING) ? null : (
-                    <p className={cn("m-0", "text-destructive")}>{CASCADE_UNDO_WARNING}</p>
-                  )}
+                  <p className={cn("m-0", "text-destructive")}>{CASCADE_UNDO_WARNING}</p>
                 </div>
                 <Button
                   variant="destructive"
@@ -1541,6 +1719,35 @@ export function DetailViewRenderer({ appId, manifest, view, recordId }: DetailVi
           </Button>
         )}
       </div>
+
+      {/*
+        **【`V23-M5-T06`】行の招待**(`D-V23-116`・`D-V23-129`・`ADR-0532` §Decision 1-8)。 **表が招待を宣言しているときだけ**
+        部品を描き(宣言の無い表では口を呼ばない。計画 §24-6 中8)、出すかどうかは部品が行の招待の一覧の口の答えで決める
+        (200 以外は何も描かない)。 宣言の有無は許された関数越しに読む(`D-V23-134` (3))。 `RowAccess` にキーを足していない。
+      */}
+      {!readOnly && rowInvitationsDeclared(table) ? (
+        <RowInvitationsPanel
+          key={record._id}
+          appId={appId}
+          tableId={view.table}
+          recordId={record._id}
+          // 【`V23-M6-T06b`】守る表が相手の行を宣言しているときだけ渡す(渡さなければ DOM は着手前と同じ)。
+          {...(principalRowTableOf(manifest, view.table) === undefined ? {} : { byCode: true })}
+        />
+      ) : null}
+
+      {/*
+        **【`V23-M6-T06b`】行の招待用コード**(`D-V23-153`・`D-V23-169`)。 **表がどこかの表の相手の行に指されているときだけ**
+        部品を描き(指されていない表では口を呼ばない)、出すかどうかは部品がコードを見る口の答えで決める(200 以外は何も描かない)。
+      */}
+      {!readOnly && inviteCodeTableDeclared(manifest, view.table) ? (
+        <RowInviteCodePanel
+          key={`code-${record._id}`}
+          appId={appId}
+          tableId={view.table}
+          recordId={record._id}
+        />
+      ) : null}
 
       {writeForbidden && <WriteForbidden />}
       {writeConflict && <WriteConflict />}
@@ -1631,6 +1838,9 @@ function RelatedList({
 }) {
   /** 子テーブル(宣言テーブル。子レコードはシステムテーブルには置けない)。 */
   const childTable = resolveViewTable(manifest, related.table);
+  // 【`V23-M12-T03`。`D-V23-356`】親の表(子の一覧の `via` が指す表)。 権限の名前は親の表の宣言から引く。
+  const viaField = childTable?.fields.find((candidate) => candidate.id === related.via);
+  const parentTableId = viaField?.type === "reference" ? viaField.reference_table : undefined;
 
   /** `columns` をフィールド定義に解決する。解決できない列は隠さず報告する(憲法6)。 */
   const resolved = useMemo(() => {
@@ -1694,8 +1904,12 @@ function RelatedList({
       ...(related.sort !== undefined ? { sort: related.sort } : {}),
     };
 
+    // 【`V23-M12-T04`。`D-V23-357`】サーバが付与の表の一覧に添える相手の行の代表項目(一覧・詳細と同じ1本で足す)。
+    let principalLabels: (string | null)[] | undefined;
     Promise.all([
-      fetchRecords(appId, related.table, options),
+      fetchRecords(appId, related.table, options, undefined, (labels) => {
+        principalLabels = labels;
+      }),
       Promise.all(
         referencedTables.map(async (target) => ({
           table: target,
@@ -1707,7 +1921,15 @@ function RelatedList({
         if (!cancelled) {
           setState({
             status: "ready",
-            value: { records, labels: buildReferenceLabelIndex(referenceSources) },
+            value: {
+              records,
+              labels: withPrincipalLabels(
+                buildReferenceLabelIndex(referenceSources),
+                records,
+                principalLabels,
+                principalRowColumns(manifest, related.table),
+              ),
+            },
           });
         }
       },
@@ -1725,6 +1947,7 @@ function RelatedList({
     // カーネルと共有の normalizeSort が引き受けるので、ここは値を渡すだけ)。
   }, [
     appId,
+    manifest,
     related.table,
     related.via,
     related.sort,
@@ -1815,6 +2038,8 @@ function RelatedList({
               {state.value.records.map((child) => (
                 <RelatedRow
                   key={child._id}
+                  tableId={related.table}
+                  parentTableId={parentTableId}
                   appId={appId}
                   manifest={manifest}
                   columns={resolved.columns}
@@ -1868,6 +2093,8 @@ function RelatedList({
  * この事情で変えると、クリック可能な行の中に無い他の全リンクの挙動まで変わる**ためである。
  */
 function RelatedRow({
+  tableId,
+  parentTableId,
   appId,
   manifest,
   columns,
@@ -1876,6 +2103,10 @@ function RelatedRow({
   textPreview,
   onOpen,
 }: {
+  /** 【`V23-M12-T03`。`D-V23-356`】子の表(権限の名前を引く付与の表かを見るため)。 */
+  tableId: ResourceId;
+  /** 【`V23-M12-T03`。`D-V23-356`】親の表(子の一覧の `via` が指す表。決まらなければ `undefined`)。 */
+  parentTableId: ResourceId | undefined;
   appId: string;
   manifest: Manifest;
   columns: Field[];
@@ -1925,8 +2156,9 @@ function RelatedRow({
         return target === undefined ? (
           <FieldCell
             key={field.id}
-            field={field}
-            value={record[field.id]}
+            // 【`V23-M12-T03`。`D-V23-356`】付与の表の権限の欄だけ、親の表の宣言の名前(それ以外は値のまま)。
+            // (強調の鍵も名前に写した欄の写しと、名前に替えた値を渡す。)
+            {...permissionShown(manifest, tableId, field, record[field.id], parentTableId)}
             referenceLabels={referenceLabels}
             appId={appId}
             textPreview={textPreview}
@@ -2002,4 +2234,252 @@ function afterDeleteRoute(
   return list === undefined
     ? ({ kind: "app", appId } as const)
     : ({ kind: "view", appId, viewId: list.id } as const);
+}
+
+/**
+ * **【`V23-M7-T05b`。決定 `D-V23-179`・`D-V23-184`・`D-V23-189`】form+prefill の「新規作成へ」の出し分け**。
+ *
+ * **遷移先の form の表が、この行の判定の5つ目のキー `create_child` の鍵にあるときだけ、その値で出し分ける。**
+ * **鍵が無い・5つ目のキーが無い・判定が無いときは今日どおり(この1項は真)。** 画面はマニフェストのアクセス権の
+ * 宣言を読まない(鍵の有無で宣言を知る)。 `rowActionVerb` には触れていない。 **ボタンを隠すことは作成を止める
+ * ことではない**(遮断は今日どおりサーバの 403)。
+ */
+function createChildActionAllows(
+  manifest: Manifest,
+  access: RowAccess | undefined,
+  action: unknown,
+): boolean {
+  const createChild = access?.create_child;
+  if (createChild === undefined || typeof action !== "object" || action === null) {
+    return true;
+  }
+  const formId = (action as { form?: unknown }).form;
+  if (typeof formId !== "string") {
+    return true;
+  }
+  const formView = manifest.app.views.find(
+    (candidate) => candidate.type === "form" && candidate.id === formId,
+  );
+  if (formView === undefined || !Object.hasOwn(createChild, formView.table)) {
+    return true;
+  }
+  return createChild[formView.table] === true;
+}
+
+/**
+ * **詳細画面の行の変更履歴の部品**(`V23-M8-T07`。決定 `D-V23-211`・`D-V23-213`・`D-V23-217`・`D-V23-226`)。
+ *
+ * - 呼び手(このファイルの詳細画面)は、画面が `history: true` のときだけこの部品を描く(書いていない画面では
+ *   読みを1本も足さない)。 部品は単件の読取(`fetchRecord`)に `?history=1&history_offset=<n>` を付けて読む
+ *   (`api.ts` の export を増やさない)。 サーバが `history` を返さないとき(未ログイン・表に宣言が無い)と
+ *   読みが失敗したときは、何も描かない(静かに)。
+ * - 並びはサーバの返した順(新しい順)のまま。 50件ずつ読み、`total` が残っていれば「さらに読む」で次の50件を足す。
+ * - 1件に、時刻・変えた人(サーバが差し替えた名前。空は「—」)・入口の日本語・操作の日本語・項目ごとの
+ *   変更前と変更後。 値は今日の値の表示部品(`FieldValue`)で出し、`long_text` は全文(`textPreview="full"`)。
+ *   項目名はマニフェストの項目名。 招待の記録は招かれた人と配る権限名。
+ * - **画面は判定を持たない。** 誰に何が見えるかはサーバが決める(読めない項目はサーバが落として返す)。
+ *   CSS のファイルは足さず、クラスは静的な Tailwind の綴りだけ。
+ */
+/** 入口の6値の言い方。 */
+const ENTRY_LABELS: Record<RecordHistoryItem["entry"], string> = {
+  http: "画面・API",
+  manual: "手動起動",
+  inbound: "受信口",
+  "on_create/on_update": "自動処理",
+  schedule: "時刻起動",
+  mcp: "AI",
+};
+
+/** 操作の7値の言い方。 */
+const OP_LABELS: Record<RecordHistoryItem["op"], string> = {
+  create: "作成",
+  update: "更新",
+  delete: "削除",
+  invite: "招待",
+  invite_accept: "承諾",
+  invite_decline: "辞退",
+  invite_revoke: "取消",
+};
+
+/** 項目ごとの変更(招待でない記録の `changes` の要素)。 */
+type FieldChange = {
+  field: string;
+  before: RecordValue | undefined;
+  after: RecordValue | undefined;
+};
+
+function RecordHistoryPanel({
+  manifest,
+  appId,
+  table,
+  recordId,
+  viewId,
+  referenceLabels,
+}: {
+  /** 【`V23-M12-T03`。`D-V23-356`】権限の欄の値と招待の件の「権限:」を宣言の名前で出すために読む。 */
+  manifest: Manifest;
+  appId: string;
+  table: Table;
+  recordId: string;
+  /** 単件の読取に名乗る画面(本体の読みと同じ。名乗らなければ `undefined`)。 */
+  viewId: string | undefined;
+  referenceLabels: ReferenceLabelIndex;
+}) {
+  /** `null` = まだ答えが無い、または `history` が返らなかった(何も出さない)。 */
+  const [page, setPage] = useState<RecordHistoryPage | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  /** 最初のページを読んだときの件数(読む間に新しい履歴が増えた分だけ、続きの offset をずらすのに使う)。 */
+  const [firstTotal, setFirstTotal] = useState(0);
+
+  const load = useCallback(
+    async (offset: number): Promise<RecordHistoryPage | null> => {
+      try {
+        const fetched = await fetchRecord(appId, table.id, recordId, viewId, { offset });
+        return fetched.history ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [appId, table.id, recordId, viewId],
+  );
+
+  useEffect(() => {
+    let alive = true;
+    setPage(null);
+    void load(0).then((first) => {
+      if (alive) {
+        setPage(first);
+        setFirstTotal(first?.total ?? 0);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [load]);
+
+  if (page === null) {
+    return null;
+  }
+
+  // **【`V23-M8-T13`(独立点検の軽4)】読む間に新しい履歴が増えると、新しい順の offset がその分ずれる。**
+  // 増えた件数(今の total − 最初の total)だけ続きの offset をずらし、それでも重なった1件は seq で落とす
+  // (同じ seq を2回並べない)。 増えた新しい側の履歴は上に足さない(読み直すと出る)。
+  const newer = Math.max(0, page.total - firstTotal);
+  const readMore = async () => {
+    setLoadingMore(true);
+    const next = await load(page.items.length + newer);
+    // **【`D-V23-242`】読む間に件数が減った(undo で新しい側の履歴が消えた)なら、続きを足さない。**
+    // 減った分は offset をずらしても取りこぼす(消えた位置が分からない)ので、読んだ分を捨てて最初のページから読み直す。
+    // **【T13b(独立点検B 軽1)】比べる相手は直前に読んだ件数(`page.total`)。** 最初の件数と比べると、
+    // 増えてから同じ数だけ減った形を見逃し、ずらした offset の分を取りこぼす。
+    if (next !== null && next.total < page.total) {
+      const first = await load(0);
+      setLoadingMore(false);
+      if (first !== null) {
+        setPage(first);
+        setFirstTotal(first.total);
+      }
+      return;
+    }
+    setLoadingMore(false);
+    if (next !== null) {
+      const seen = new Set(page.items.map((item) => item.seq));
+      const fresh = next.items.filter((item) => !seen.has(item.seq));
+      setPage({ ...next, items: [...page.items, ...fresh], offset: 0 });
+    }
+  };
+
+  const fieldsById = new Map<string, Field>(table.fields.map((field) => [field.id, field]));
+
+  return (
+    <section className="record-history mt-s4 flex flex-col gap-s2" data-testid="record-history">
+      <h3 className="text-base font-semibold">変更履歴</h3>
+      {page.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">変更履歴はまだありません。</p>
+      ) : (
+        <ol className="flex flex-col gap-s2">
+          {page.items.map((item) => (
+            <li
+              key={item.seq}
+              className="rounded-ui border-[length:var(--border-width)] border-solid border-border p-s2"
+              data-testid="record-history-item"
+              data-seq={item.seq}
+            >
+              <div className="flex flex-wrap items-center gap-s2 text-sm">
+                <span data-testid="record-history-at">{formatInvitationDeadline(item.at)}</span>
+                <span data-testid="record-history-actor">
+                  {item.actor === "" ? "—" : item.actor}
+                </span>
+                <span data-testid="record-history-entry">
+                  {ENTRY_LABELS[item.entry] ?? item.entry}
+                </span>
+                <span className="font-medium" data-testid="record-history-op">
+                  {OP_LABELS[item.op] ?? item.op}
+                </span>
+              </div>
+              <ul className="mt-s1 flex flex-col gap-s1 text-sm">
+                {item.op.startsWith("invite")
+                  ? (item.changes as { invitee: string; permission: string }[]).map((change) => (
+                      <li
+                        key={`${change.invitee}:${change.permission}`}
+                        data-testid="record-history-invite"
+                      >
+                        {`招かれた人: ${change.invitee} / 権限: ${invitePermissionLabel(manifest, table.id, change.permission)}`}
+                      </li>
+                    ))
+                  : (item.changes as FieldChange[]).map((change) => {
+                      const field = fieldsById.get(change.field);
+                      return (
+                        <li
+                          key={change.field}
+                          className="flex flex-wrap items-baseline gap-s2"
+                          data-testid="record-history-change"
+                        >
+                          <span className="font-medium" data-testid="record-history-field">
+                            {field?.name ?? change.field}
+                          </span>
+                          <span data-testid="record-history-before">
+                            {field === undefined ? (
+                              String(change.before ?? "")
+                            ) : (
+                              <FieldValue
+                                // (強調の鍵も名前に写した欄の写しと、名前に替えた値を渡す。)
+                                {...permissionShown(manifest, table.id, field, change.before)}
+                                referenceLabels={referenceLabels}
+                                appId={appId}
+                                textPreview="full"
+                              />
+                            )}
+                          </span>
+                          <span aria-hidden="true">→</span>
+                          <span data-testid="record-history-after">
+                            {field === undefined ? (
+                              String(change.after ?? "")
+                            ) : (
+                              <FieldValue
+                                // (強調の鍵も名前に写した欄の写しと、名前に替えた値を渡す。)
+                                {...permissionShown(manifest, table.id, field, change.after)}
+                                referenceLabels={referenceLabels}
+                                appId={appId}
+                                textPreview="full"
+                              />
+                            )}
+                          </span>
+                        </li>
+                      );
+                    })}
+              </ul>
+            </li>
+          ))}
+        </ol>
+      )}
+      {page.items.length + newer < page.total ? (
+        <div>
+          <Button type="button" disabled={loadingMore} onClick={() => void readMore()}>
+            さらに読む
+          </Button>
+        </div>
+      ) : null}
+    </section>
+  );
 }

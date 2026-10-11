@@ -10,6 +10,8 @@
  * `authed(cookie)` は `app.request(...)` に渡す入力へ Cookie と Origin を注入する薄い
  * ラッパで、文字列パス・`Request` オブジェクトのどちらの呼び方も受ける。
  */
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { AuthStore } from "../auth/store.ts";
 import type { Role } from "../auth/types.ts";
 
@@ -309,4 +311,46 @@ export function withDefaultRoleRules<M>(manifest: M, options?: DefaultRoleRuleOp
   grantOwnerDefinitionRules(roles);
   app.roles = roles;
   return clone as M;
+}
+
+/**
+ * データルート配下の全ファイルの相対パスの一覧(並べ替え済み)。**SQLite の WAL の付随ファイルを
+ * 2種だけ外す**(V20-M13 実 CI の赤。記録 `docs/plan/v20/records/v20-m13.md` §6)。
+ *
+ * `kernel.sqlite` は WAL で開く(`meta-store.ts`)。読むだけの接続(`dry-run.ts` の
+ * `copyDatabaseConsistently`)が閉じたとき、**Linux の SQLite は `-wal`(0 バイト)と `-shm` を残し、
+ * macOS の SQLite は書く接続が閉じた後も最初から残したままにする**。どちらも SQLite が置く付随の
+ * ファイルで、台によって在るか無いかが変わるだけで本体の中身ではない。そこで比べる一覧から:
+ *
+ * - 外す: 一覧に在る `*.sqlite` の `<名前>-shm`(WAL の索引。中身は `-wal` から作り直せる)
+ * - 外す: 一覧に在る `*.sqlite` の `<名前>-wal` のうち **0 バイトのもの**(書き込みを1つも抱えていない)
+ * - **外さない**: 0 バイトでない `-wal`(本体への未反映の書き込みを抱えている)・持ち主の `*.sqlite`
+ *   が一覧に無い付随ファイル・`-journal` ほか上の2種でないもの全部
+ */
+export function listDataRootFiles(dir: string): string[] {
+  const all = listFilesUnder(dir, "");
+  const present = new Set(all);
+  return all
+    .filter((rel) => {
+      for (const suffix of ["-shm", "-wal"] as const) {
+        if (!rel.endsWith(suffix)) continue;
+        const owner = rel.slice(0, -suffix.length);
+        if (!owner.endsWith(".sqlite") || !present.has(owner)) return true;
+        if (suffix === "-shm") return false;
+        return statSync(join(dir, rel)).size !== 0;
+      }
+      return true;
+    })
+    .sort();
+}
+
+function listFilesUnder(dir: string, prefix: string): string[] {
+  if (!existsSync(dir)) return [];
+  const files: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) files.push(...listFilesUnder(join(dir, entry.name), rel));
+    else files.push(rel);
+  }
+  return files;
 }

@@ -87,6 +87,8 @@ test("(a-1) access_control のキーは9つで、9つ目が creatable_by_roles �
     "inherit_from",
     "creatable_by",
     "creatable_by_roles",
+    // **【2026-09-30。`V23-M5-T02` / 授権 `ADR-0533` 行4】10キー目 `invitations` を末尾に足した(行の招待。門A `ADR-0501` を補う `ADR-0532` 限定1)。 旧の期待値は直上の `"creatable_by_roles",` で終わる9本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。**
+    "invitations",
   ]);
 });
 
@@ -134,7 +136,9 @@ test("(a-3) 陰性対照: required は今日どおり4本である(9キー目を
 // 9キーのまま / `$defs` は 30 のまま / `diff.schema.json` は 0バイト**(すぐ下の (a-5) と
 // `table-access-control.test.ts` の (g-5) / (g-7) が撃っている)。
 // ---------------------------------------------------------------------------------
-test("(a-4) 陰性対照: permissions[] の要素は今日 6キーである(`ADR-0412` 限定1 第2項 → `ADR-0429`)", () => {
+// **【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543`】7キー目 `create_child` を足したので、テスト名の「6キー」が今日は偽になる。打ち直した。**
+// **旧テスト名の逐語**: "(a-4) 陰性対照: permissions[] の要素は今日 6キーである(`ADR-0412` 限定1 第2項 → `ADR-0429`)"
+test("(a-4) 陰性対照: permissions[] の要素は今日 7キーである(`ADR-0412` 限定1 第2項 → `ADR-0429` → `ADR-0542`)", () => {
   const item = accessControlSchema().properties.permissions.items as Any;
   expect(Object.keys(item.properties)).toEqual([
     "id",
@@ -143,6 +147,8 @@ test("(a-4) 陰性対照: permissions[] の要素は今日 6キーである(`ADR
     "write",
     "delete",
     "restrictive",
+    // 【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543` 行8】7キー目 `create_child` を末尾に足した(子の表に行を作れる権限。門A `ADR-0503` を補う `ADR-0542` §Decision 1-1)。 旧の期待値は直上の `"restrictive",` で終わる6本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "create_child",
   ]);
   expect(item.required).toEqual(["id", "name", "read", "write", "delete"]);
   expect(item.additionalProperties).toBe(false);
@@ -150,7 +156,8 @@ test("(a-4) 陰性対照: permissions[] の要素は今日 6キーである(`ADR
 
 test("(a-5) 陰性対照: $defs の本数 30 と $defs/table の6キーが動かない(`ADR-0412` 限定1)", () => {
   const schema = readSchema("manifest.schema.json");
-  expect(Object.keys(schema.$defs)).toHaveLength(30);
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+  expect(Object.keys(schema.$defs)).toHaveLength(31);
   expect(Object.keys(schema.$defs.table.properties)).toEqual([
     "id",
     "name",
@@ -158,6 +165,8 @@ test("(a-5) 陰性対照: $defs の本数 30 と $defs/table の6キーが動か
     "representative_field",
     "reference_search_fields",
     "access_control",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行88】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `access_control` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
   ]);
 });
 

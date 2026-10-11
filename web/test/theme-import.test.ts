@@ -83,31 +83,36 @@ const APP_A = "hashibami-order";
  * 条件でもある**)。
  */
 const IMPORTED_SLOTS: Record<string, string> = {
-  "--color-text": "#14281d",
-  "--color-text-secondary": "#405146",
-  "--color-text-label": "#33443a",
-  "--color-text-placeholder": "#4d5e53",
-  "--color-danger": "#8c1d18",
-  "--color-page-background": "#fffdf8",
-  "--color-surface-highlight": "#eef2ea",
-  "--color-border": "#6b7a70",
-  "--focus-outline-color": "#1a5fb4",
-  "--focus-outline-width": "2px",
-  "--font-family-base": "Hiragino Sans, Yu Gothic, sans-serif",
-  "--font-size-secondary": "0.875rem",
-  "--font-size-note": "0.75rem",
-  "--line-height-base": "1.7",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.5rem",
-  "--space-6": "2.5rem",
-  "--border-width": "1px",
-  "--control-border-radius": "6px",
-  "--surface-shadow": "0 1px 2px #14281d1a",
-  "--detail-label-width": "9rem",
-  "--login-max-width": "24rem",
+  body_text: "#14281d",
+  secondary_text: "#405146",
+  label_text: "#33443a",
+  placeholder_text: "#4d5e53",
+  danger: "#8c1d18",
+  page_background: "#fffdf8",
+  highlight_surface: "#eef2ea",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#fffdf8",
+  on_primary: "#14281d",
+  overlay_background: "#fffdf8",
+  overlay_text: "#14281d",
+  border_color: "#6b7a70",
+  focus_ring: "#1a5fb4",
+  focus_ring_width: "2px",
+  body_font: "Hiragino Sans, Yu Gothic, sans-serif",
+  secondary_font_size: "0.875rem",
+  note_font_size: "0.75rem",
+  body_line_height: "1.7",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.5rem",
+  space_6: "2.5rem",
+  border_width: "1px",
+  control_radius: "6px",
+  surface_shadow: "0 1px 2px #14281d1a",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "9rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "24rem",
 };
 
 /**
@@ -130,7 +135,7 @@ const UNIMPORTABLE_VARIABLES: Record<string, string> = {
 
 type ThemeSchema = {
   required: string[];
-  properties: Record<string, { pattern?: string }>;
+  properties: Record<string, { pattern?: string; anyOf?: { pattern?: string }[] }>;
 };
 
 function themeSchema(): ThemeSchema {
@@ -408,7 +413,9 @@ describe("完了条件1 / 2: 取り込み元の資産2種が git 管理下に在
     const png = readPngColors(SCREENSHOT_PATH);
     expect(png.width).toBeGreaterThan(0);
     expect(png.height).toBeGreaterThan(0);
-    expect(COLOR_SLOTS).toHaveLength(9);
+    // 【V20-M9 / ADR-0474 §1-2】9 → 13。足した4枠の値は page_background / body_text と同じ値を写したもの
+    // (資産から新しく取り出した色ではない)。旧(逐語): expect(COLOR_SLOTS).toHaveLength(9);
+    expect(COLOR_SLOTS).toHaveLength(13);
 
     const missing = COLOR_SLOTS.filter(([, value]) => !png.colors.has(value.toLowerCase())).map(
       ([slot, value]) => `${slot}=${value}`,
@@ -439,7 +446,9 @@ describe("完了条件1 / 2: 取り込み元の資産2種が git 管理下に在
 describe("完了条件2: 資産から取り出した25スロットが apply_diff の set_theme でマニフェストに入る", () => {
   test("スロット名の集合が $defs/theme の properties と完全一致する(25件)", () => {
     const expected = Object.keys(themeSchema().properties).sort();
-    expect(expected).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(expected).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(expected).toHaveLength(23);
+    expect(expected).toHaveLength(27);
     expect(Object.keys(IMPORTED_SLOTS).sort()).toEqual(expected);
     // `required` も25件である(部分テーマを作れない。ADR-0047 限定5)。
     expect(themeSchema().required.sort()).toEqual(expected);
@@ -448,11 +457,29 @@ describe("完了条件2: 資産から取り出した25スロットが apply_diff
   test("値はスキーマの pattern を満たす(式・計算・参照を1つも含まない)", () => {
     const properties = themeSchema().properties;
     for (const [slot, value] of Object.entries(IMPORTED_SLOTS)) {
-      const pattern = properties[slot]?.pattern;
+      // 【V20-M7-T01】色スロット9件の値域は anyOf の2枝(16進 / oklch)になった。素の pattern か、
+      // anyOf の枝の pattern のどれかに当たれば値域の中である(Ajv の anyOf と同じ読み方)。
+      const property = properties[slot];
+      // 【V20-M9 / ADR-0474 §1-1】色の値域は入れ子の anyOf(外側 = [実値(内側に16進 / oklch), 参照])になった。
+      // 葉の pattern を再帰で集め、**参照の枝(`^\\$palette_…`)は数えない**(実値だけで書いていることを見る)。
+      // 旧(逐語): `(property?.anyOf ?? []).flatMap((branch) => branch.pattern === undefined ? [] : [branch.pattern])`
+      const leaves = (node: { pattern?: string; anyOf?: unknown[] } | undefined): string[] =>
+        node === undefined
+          ? []
+          : node.pattern !== undefined
+            ? [node.pattern]
+            : (node.anyOf ?? []).flatMap((branch) =>
+                leaves(branch as { pattern?: string; anyOf?: unknown[] }),
+              );
+      const patterns = leaves(property).filter((each) => !each.startsWith("^\\$palette_"));
+      const pattern = patterns.length > 0 ? patterns : undefined;
       if (pattern === undefined) {
         throw new Error(`スキーマに pattern が無いスロット: ${slot}`);
       }
-      expect({ slot, ok: new RegExp(pattern).test(value) }).toEqual({ slot, ok: true });
+      expect({ slot, ok: pattern.some((each) => new RegExp(each).test(value)) }).toEqual({
+        slot,
+        ok: true,
+      });
     }
   });
 
@@ -496,14 +523,14 @@ describe("完了条件3: コントラスト検査が両方向で効き、拒否�
     // 資産の地色に本文色を寄せた偽の取り込み(「読めない配色」の最短の作り方)。
     const broken = {
       ...IMPORTED_SLOTS,
-      "--color-text": IMPORTED_SLOTS["--color-page-background"] as string,
+      body_text: IMPORTED_SLOTS.page_background as string,
     };
     expect(checkThemeContrast(broken).length).toBeGreaterThan(0);
   });
 
   test("通らない配色は apply_diff が purpose === incoming で拒否する", async () => {
     await createApp(APP_A, "ハシバミ製作所の注文管理");
-    const broken = { ...IMPORTED_SLOTS, "--color-text": "#f4f4f4" };
+    const broken = { ...IMPORTED_SLOTS, body_text: "#f4f4f4" };
 
     const result = await callTool("apply_diff", {
       app_id: APP_A,
@@ -519,7 +546,7 @@ describe("完了条件3: コントラスト検査が両方向で効き、拒否�
     const beforeBytes = captureBytes(APP_A);
     const beforeLog = (await changelogOf(APP_A)).length;
 
-    const broken = { ...IMPORTED_SLOTS, "--color-border": "#f0f0f0" };
+    const broken = { ...IMPORTED_SLOTS, border_color: "#f0f0f0" };
     const result = await callTool("apply_diff", {
       app_id: APP_A,
       diff: importDiff("d-import-0001", { slots: broken }),
@@ -535,7 +562,7 @@ describe("完了条件3: コントラスト検査が両方向で効き、拒否�
     await createApp(APP_A, "ハシバミ製作所の注文管理");
     await applyTheme(APP_A, "d-import-0001", { slots: IMPORTED_SLOTS });
 
-    const broken = { ...IMPORTED_SLOTS, "--color-text-secondary": "#f8f8f8" };
+    const broken = { ...IMPORTED_SLOTS, secondary_text: "#f8f8f8" };
     const result = await callTool("apply_diff", {
       app_id: APP_A,
       diff: importDiff("d-import-0002", { slots: broken }),
@@ -579,7 +606,7 @@ describe("完了条件4: 取り込みは既存の履歴機構にそのまま載�
   test("取り込み → 取り直し → undo で1つ前の取り込みに戻る", async () => {
     await createApp(APP_A, "ハシバミ製作所の注文管理");
     await applyTheme(APP_A, "d-import-0001", { slots: IMPORTED_SLOTS });
-    const retouched = { ...IMPORTED_SLOTS, "--control-border-radius": "0" };
+    const retouched = { ...IMPORTED_SLOTS, control_radius: "0" };
     await applyTheme(APP_A, "d-import-0002", { slots: retouched });
     expect((await manifestOf(APP_A)).app.theme?.slots).toEqual(retouched);
 

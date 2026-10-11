@@ -101,7 +101,7 @@ const VIEW_CHANGE_KEYS = {
   preset_text_preview: true,
   custom_css: true,
   menu_listed: true,
-  field_groups: true,
+  field_sections: true,
   preset_list_shape: true,
   modal: true,
   search_fields: true,
@@ -111,9 +111,18 @@ const VIEW_CHANGE_KEYS = {
   after_save: true,
   after_delete: true,
   flow: true,
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅(`ViewChanges` の28キー目)。**
+  field_width: true,
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー(`ViewChanges` の29キー目)。**
+  group_by: true,
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木(`ViewChanges` の30キー目)。**
+  layout: true,
   actions: true,
   reference_pickers: true,
   report: true,
+  // **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行202】詳細画面の変更履歴(`ViewChanges` の31キー目。決定 `D-V23-205`)。**
+  // 旧の一覧は直上の `report: true,` で終わる30キーであり、この行が無かった(無いと型検査が TS2741 で赤い。授権の撃ちで見た赤)。
+  history: true,
 } satisfies Record<keyof ViewChanges, true>;
 
 /** 型から導いたキー名(並びは問わないので、突合はすべて整列してから行う)。 */
@@ -232,14 +241,23 @@ function typeChangeMessage(): string {
 // 1. AI へ渡る受理キーの列挙
 // ---------------------------------------------------------------------------
 
-test("(ca1) AI へ渡る update_view の受理キー26本に related が無い(陽性対照 field_groups は在る)", () => {
+// **【2026-09-24。`V20-M3-T01` / `ADR-0469`】陽性対照の綴りを `field_sections` に改めた(この段の (ca1)〜(ca6) すべて)。**
+// **旧テスト名の逐語**: 「(ca1) AI へ渡る update_view の受理キー26本に related が無い(陽性対照 field_groups は在る)」。
+test("(ca1) AI へ渡る update_view の受理キー26本に related が無い(陽性対照 field_sections は在る)", () => {
   // **`UPDATE_VIEW_ACCEPTED_KEYS` は `VOCABULARY_SCOPE` と `apply_diff` のツール固有説明の
   // 両方が読む1つの定数である**(片方だけが古くなる余地を作らないため)。
   // **ここに `related` を1行足すと、AI は「後から書き換えられる」と読む。**
-  expect(MCP_ACCEPTED_KEYS.length).toBe(26);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 26 → 27 へ書き換えた。** **27本目は入力欄の幅 `field_width`。**
+  // **テスト名の「26本」は書いた日の値である(検査は消していない)。**
+  // **旧行の逐語**: `expect(MCP_ACCEPTED_KEYS.length).toBe(26);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toBe(27) → toBe(28) へ書き換えた。** **28本目は一覧の束ねるキー `group_by`(AI へ渡る update_view の受理キーの末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(MCP_ACCEPTED_KEYS.length).toBe(27);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】期待値を 28 → 29 へ書き換えた。** **29本目は並べ方の木 `layout`(AI へ渡る update_view の受理キーの末尾)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行6 / 決定 `D-V23-230`】30本目は詳細画面の変更履歴 `history`(AI へ渡る update_view の受理キーの末尾)。 旧行の逐語: `expect(MCP_ACCEPTED_KEYS.length).toBe(29);`
+  expect(MCP_ACCEPTED_KEYS.length).toBe(30);
   expect(MCP_ACCEPTED_KEYS.includes("related")).toBe(false);
   // 陽性対照 —— 同じ式が「在る」を掴めることの実証(常に false を返す式ではない)。
-  expect(MCP_ACCEPTED_KEYS.includes("field_groups")).toBe(true);
+  expect(MCP_ACCEPTED_KEYS.includes("field_sections")).toBe(true);
   // **26 と 27 の差は `report` 1本ちょうどである**(`ADR-0374` `CM-G34` 限定6 の既知の食い違い。
   // **この差は本単位が生んだものではなく、直しもしない**)。
   expect(TYPE_KEYS.filter((key) => !MCP_ACCEPTED_KEYS.includes(key))).toEqual(["report"]);
@@ -252,10 +270,16 @@ test("(ca1) AI へ渡る update_view の受理キー26本に related が無い(�
 test("(ca2) diff.schema.json の view_changes 27キーに related が無く、型のキー集合と一致する", () => {
   const viewChanges = diffSchema().$defs.view_changes;
   const keys = Object.keys(viewChanges.properties as Record<string, unknown>);
-  expect(keys.length).toBe(27);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(keys.length).toBe(27);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toBe(28) → toBe(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(keys.length).toBe(28);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行26】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(keys.length).toBe(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+  expect(keys.length).toBe(31);
   expect(keys.includes("related")).toBe(false);
   // 陽性対照。
-  expect(keys.includes("field_groups")).toBe(true);
+  expect(keys.includes("field_sections")).toBe(true);
   // **`additionalProperties: false` が、知らないキーを黙って通さないことの根拠である** ——
   // これが `true` に変わると、`related` は「未知のプロパティ」ではなくなり素通りする。
   expect(viewChanges.additionalProperties).toBe(false);
@@ -287,7 +311,7 @@ test("(ca3) detail_view の許可キーに related が無い(applyDiff を実際
     expect(allowed.length).toBeGreaterThan(0);
     expect(allowed.includes("related")).toBe(false);
     // 陽性対照 —— まとまりは `detail_view` で書ける。
-    expect(allowed.includes("field_groups")).toBe(true);
+    expect(allowed.includes("field_sections")).toBe(true);
     // **許可キーは `ViewChanges` の部分集合である**(型に無いキーを許していない)。
     expect(allowed.filter((key) => !TYPE_KEYS.includes(key))).toEqual([]);
   });
@@ -303,10 +327,16 @@ test("(ca4) migrate.ts の文面が列挙する27キーに related が無く、�
   // **突き合わせる相手は「型」である**(`migrate.test.ts` は JSON スキーマと突き合わせている。
   // 相手を替えてあるので二重ではない)。
   const keys = enumeratedKeys(typeChangeMessage());
-  expect(keys.length).toBe(27);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(keys.length).toBe(27);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toBe(28) → toBe(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(keys.length).toBe(28);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行28】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(keys.length).toBe(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+  expect(keys.length).toBe(31);
   expect(keys.includes("related")).toBe(false);
   // 陽性対照。
-  expect(keys.includes("field_groups")).toBe(true);
+  expect(keys.includes("field_sections")).toBe(true);
   expect([...keys].sort()).toEqual(TYPE_KEYS);
 });
 
@@ -338,12 +368,12 @@ test("(ca5) update_view で related を送っても、適用後の定義が1バ�
     // (「何を送っても変わらない台」で測っていないことの実証)
     const accepted = applyDiff(dataRoot, APP_ID, {
       diff_id: "d-ca-4",
-      intent: "field_groups を update_view で書く(陽性対照)",
+      intent: "field_sections を update_view で書く(陽性対照)",
       operations: [
         {
           op: "update_view",
           view: DETAIL_ID,
-          changes: { field_groups: { 基本: { id: "g_a", fields: ["f_a"] } } },
+          changes: { field_sections: { 基本: { id: "g_a", fields: ["f_a"] } } },
         },
       ],
     });
@@ -363,10 +393,16 @@ test("(ca6) ViewChanges 型のキー集合に related が無い(型 → 値の�
   // **【禁止】`VIEW_CHANGE_KEYS` を手書きの配列(`as const`)に書き換えないこと。**
   // その形にすると、型が変わっても全件 `bun test` が 0 fail のまま、
   // この検査の名前だけが嘘になる(このリポジトリで4度出た型)。
-  expect(TYPE_KEYS.length).toBe(27);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(TYPE_KEYS.length).toBe(27);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toBe(28) → toBe(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(TYPE_KEYS.length).toBe(28);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行7】31キー目 `history`。 旧行の逐語: `expect(TYPE_KEYS.length).toBe(30);`
+  expect(TYPE_KEYS.length).toBe(31);
   expect(TYPE_KEYS.includes("related")).toBe(false);
   // 陽性対照。
-  expect(TYPE_KEYS.includes("field_groups")).toBe(true);
+  expect(TYPE_KEYS.includes("field_sections")).toBe(true);
 });
 
 // ---------------------------------------------------------------------------

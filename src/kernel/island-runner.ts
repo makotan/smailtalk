@@ -14,6 +14,10 @@
  * - **アンビエント権限ゼロ**(ADR-0023 §Decision の決め手 = CP-V1-4 の構造的担保):
  *   島は既定で `fetch` / `require` / `process` / `Bun` に一切届かない。危険物を1つも注入しない。
  *   外部到達は `hostFunctions` で明示注入した関数**だけ**(T04 の前方互換の口。T03 は既定で空)。
+ *   **【2026-09-29。`V23-M2-T04` の訂正。上の文を消していない】** 島の本文に語の境界つきの綴り
+ *   `reject` がある島にだけ、第2引数 `{ reject }` を渡す(`ADR-0498` 限定7・`D-V23-60`)。 これは
+ *   外へ届く関数ではなく、ホスト側に断りの文言を控えて島の中で例外を投げるだけのものである。
+ *   綴りの無い島の呼び出しは今日と1バイトも変わらない(引数は1つ)。
  * - **CPU / 実行時間**(ADR-0023 B2): QuickJS は同期実行なので、interruptHandler の deadline
  *   1本で「CPU 時間」も「実行時間」も同時に担保する(PoC 実測: 500.6ms で中断・オーバーラン無し)。
  * - **メモリ**(ADR-0023 B3 / T03 引き継ぎ限界1): `setMemoryLimit` は QuickJS 追跡ヒープ
@@ -46,12 +50,18 @@ export type IslandLimits = {
   maxInputBytes: number;
 };
 
-/** 島の実行結果。成功なら出力(JSON 化可能)、失敗なら理由を構造化して返す。 */
+/**
+ * 島の実行結果。成功なら出力(JSON 化可能)、失敗なら理由を構造化して返す。
+ *
+ * **【`V23-M2-T04`】6値目 `rejected`**: 島が第2引数の `reject(message)` を呼んだ(`D-V23-43`)。
+ * このときだけ `error` は島が渡した文言そのもの(1〜200 コードポイント)である。 他の5値の
+ * `error` は今日どおり島の例外の本文などで、呼び出し側が捨てる。
+ */
 export type IslandResult =
   | { status: "success"; output: unknown; elapsedMs: number }
   | {
       status: "failure";
-      reason: "timeout" | "memory" | "error" | "input_too_large" | "output_too_large";
+      reason: "timeout" | "memory" | "error" | "input_too_large" | "output_too_large" | "rejected";
       error: string;
       elapsedMs: number;
     };
@@ -87,6 +97,7 @@ export async function runIsland(params: {
   input: unknown;
   limits: IslandLimits;
   hostFunctions?: Record<string, (arg: unknown) => unknown>;
+  withReject?: boolean;
 }): Promise<IslandResult> {
   // モジュール取得だけ非同期。実行本体は同期版と**同じ内部関数**を通す(重複実装を避ける)。
   const QuickJS = await getQuickJS();
@@ -117,6 +128,7 @@ export function runIslandSync(params: {
   input: unknown;
   limits: IslandLimits;
   hostFunctions?: Record<string, (arg: unknown) => unknown>;
+  withReject?: boolean;
 }): IslandResult {
   let QuickJS: QuickJSWASMModule;
   try {
@@ -159,9 +171,14 @@ function executeIsland(
     input: unknown;
     limits: IslandLimits;
     hostFunctions?: Record<string, (arg: unknown) => unknown>;
+    /**
+     * **【`V23-M2-T04`】第2引数 `{ reject }` を渡すか**(`D-V23-43`・`D-V23-60`)。 渡すかどうかは
+     * 呼び出し側が島の本文の綴りで決める。 偽か省略なら、呼び出しは今日と1バイトも変わらない。
+     */
+    withReject?: boolean;
   },
 ): IslandResult {
-  const { code, input, limits, hostFunctions } = params;
+  const { code, input, limits, hostFunctions, withReject } = params;
   const startedAt = performance.now();
   const elapsed = (): number => Math.round(performance.now() - startedAt);
 
@@ -206,6 +223,29 @@ function executeIsland(
   });
 
   const ctx = rt.newContext();
+  // **【`V23-M2-T04`】`reject(message)` の控え(島の外。`D-V23-43`・`D-V23-56`)。** 1回目だけを採る。
+  // 島が例外を握りつぶしても・値を返しても・その後に時間切れ等になっても、控えがあれば断りを返す。
+  let rejectedWith: { message: string } | { invalid: true } | undefined;
+  const rejectedResult = (): IslandResult | undefined => {
+    if (rejectedWith === undefined) {
+      return undefined;
+    }
+    if ("invalid" in rejectedWith) {
+      // 文言が文字列でない・1〜200 コードポイントの外 → 汎用の失敗(本文は呼び出し側が捨てる)。
+      return {
+        status: "failure",
+        reason: "error",
+        error: "reject の文言は 1〜200 文字の文字列である必要があります",
+        elapsedMs: elapsed(),
+      };
+    }
+    return {
+      status: "failure",
+      reason: "rejected",
+      error: rejectedWith.message,
+      elapsedMs: elapsed(),
+    };
+  };
   try {
     // capability 注入(T04 の前方互換の口)。T03 は hostFunctions 未指定 = 何も注入しない。
     injectHostFunctions(ctx, hostFunctions);
@@ -252,9 +292,45 @@ function executeIsland(
     const inputHandle = inputResult.value;
 
     // 3. 島の関数を呼ぶ。無限ループ / メモリ暴走はこの中で interrupt / OOM として現れる。
-    const callResult = ctx.callFunction(fn, ctx.undefined, inputHandle);
+    // **【`V23-M2-T04`】綴りのある島だけ第2引数 `{ reject }` を足す。** 綴りの無い島は今日の呼び出しのまま。
+    let callResult: ReturnType<QuickJSContext["callFunction"]>;
+    if (withReject === true) {
+      const hostArg = ctx.newObject();
+      const rejectFn = ctx.newFunction("reject", (messageHandle) => {
+        if (rejectedWith === undefined) {
+          const value = messageHandle === undefined ? undefined : ctx.dump(messageHandle);
+          const length = typeof value === "string" ? [...value].length : -1;
+          rejectedWith =
+            typeof value === "string" && length >= 1 && length <= 200
+              ? { message: value }
+              : { invalid: true };
+        }
+        // 島の中で例外を投げて処理を止める(`D-V23-56`)。 握りつぶされても控えは残る。
+        return { error: ctx.newError("rejected") };
+      });
+      ctx.setProp(hostArg, "reject", rejectFn);
+      rejectFn.dispose();
+      callResult = ctx.callFunction(fn, ctx.undefined, inputHandle, hostArg);
+      hostArg.dispose();
+    } else {
+      callResult = ctx.callFunction(fn, ctx.undefined, inputHandle);
+    }
     fn.dispose();
     inputHandle.dispose();
+    // **【`V23-M2-T04`】断りは、後の時間切れ・メモリ超過・出力超過・例外より優先する**(`D-V23-56`)。
+    const rejected = rejectedResult();
+    if (rejected !== undefined) {
+      try {
+        if (callResult.error) {
+          callResult.error.dispose();
+        } else {
+          callResult.value.dispose();
+        }
+      } catch {
+        // メモリ超過の直後は破棄も失敗しうる。吸収する(ホストを殺さない)。
+      }
+      return rejected;
+    }
     if (callResult.error) {
       return classifyVmError(ctx, callResult.error, interrupted, elapsed());
     }
@@ -298,6 +374,11 @@ function executeIsland(
     return { status: "success", output, elapsedMs: elapsed() };
   } catch (e) {
     // host 側に伝播した例外(OOM 由来の WASM RuntimeError など)。**ホストを殺さない。**
+    // **【`V23-M2-T04`】断りが控えてあれば、それを優先する**(`D-V23-56`)。
+    const rejectedLate = rejectedResult();
+    if (rejectedLate !== undefined) {
+      return rejectedLate;
+    }
     if (interrupted) {
       return { status: "failure", reason: "timeout", error: message(e), elapsedMs: elapsed() };
     }

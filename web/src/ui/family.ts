@@ -44,6 +44,10 @@
  * **したがって切り替えの手段は4つになり、いちばん強いのはマニフェストの宣言である** ——
  * **画面の宣言 → テスト用の口 → ビルド時の環境変数 → 既定。**
  *
+ * **【`V20-M11` の点検の処置(軽2)。2026-09-25。直前の2行を1バイトも消していない】**
+ * **直前の「切り替えの手段は4つ」は今日は偽で、5つである** —— **画面の宣言 → 役割の宣言
+ * (`app.roles[].density`)→ テスト用の口 → ビルド時の環境変数 → 既定。**(`ADR-0464` / `ADR-0475`)
+ *
  * - **【禁止】これを「AI が部品を選べるようになった」と読まない**(`ADR-0118` §Decision 5)——
  *   **選べるのは詰まり具合の2値だけで、部品も器も1つも選べない**(`P-G26` は4回却下されている)。
  * - **`ADR-0087` 限定2(系統の選択はマニフェストに1バイトも現れない)は今日から成り立たない。**
@@ -80,15 +84,46 @@ function isUiFamily(value: unknown): value is UiFamily {
  * 書いているなら、それがその画面の答えである。** **宣言を持たない画面は今日どおり
  * 「テスト用の口 → 環境変数 → 既定」で決まり、DOM は1バイトも変わらない**(限定8)。
  *
+ * **【`V20-M11` の点検の処置(軽2)。2026-09-25。直前の2行を1バイトも消していない】**
+ * **直前の「宣言を持たない画面は …DOM は1バイトも変わらない」は、役割に詰め具合を書いたアプリでは
+ * 偽である** —— **画面に宣言が無くても、その役割の人には役割の宣言が効き、作用域が立つ。**
+ * **今日の正は「画面にも役割にも宣言が無い画面は …DOM は1バイトも変わらない」である**
+ * (`ADR-0475` が `ADR-0118` 限定8 をこの形に引き直した。限定7 = 判定はこの1箇所、は破っていない)。
+ *
  * **【この関数が解かないこと】** **返すのは「その画面の系統」だけである。**
  * **アプリ全体が `compact` のときに画面で `comfortable` へ戻すことはできない** ——
  * 当たり先の `group-data-[ui-family=compact]/ui:` は「**祖先のどれかが `compact`**」で
  * 当たるためで、内側に `comfortable` を立てても外側を打ち消せない。
  * **実測は `web/test/view-density.test.tsx` の (T04-6) が固定している。隠さない。**
+ *
+ * ## **【`V20-M11-T03` / `ADR-0464` 限定5 で引数をもう1つ足した。旧文を1バイトも消していない】**
+ *
+ * **上の「読む順は『画面の宣言 → テスト用の口 → ビルド時の環境変数 → 既定』」は今日から
+ * 成り立たない。** **役割の宣言(`app.roles[].density`)が2番目に入る** ——
+ * **読む順は「画面の宣言 → 役割の宣言 → テスト用の口 → ビルド時の環境変数 → 既定」である。**
+ *
+ * - **画面の宣言が役割の宣言より強い**(ユーザ決定 `D-V20-34`「画面の指定が勝つ」)——
+ *   **画面に詰め具合を書いた画面は、どの役割の人が開いても今日と同じ答えになる。**
+ * - **役割の宣言はテスト用の口とビルド時の環境変数より強い** —— **画面の宣言と同じく、
+ *   アプリが書いた宣言である。**
+ * - **2つ目の引数は「その人の役割の宣言」の値そのものである** —— **役割の一覧から値を
+ *   引く作業は下の `resolveRoleDisplayDensity` が持ち、判定(どちらが勝つか・知らない値を
+ *   どう倒すか)は本関数だけが持つ**(限定7 の「2箇所目を作らない」を役割の側にも守る)。
+ *   **【`V20-M11` の点検の処置(軽3)。2026-09-25。直前の文を1バイトも消していない】**
+ *   **直前の「知らない値をどう倒すかは本関数だけが持つ」は実物より強い** —— 下の
+ *   `resolveRoleDisplayDensity` も値域の外の値を `undefined` に落とす。**言い分ける**: **値域の外を
+ *   `undefined` に落とすのは、作用域の器を立てないため**(外すと値域の外の値で器が立つ)で、
+ *   **どちらが勝つか・既定へどう倒すかの判定は本関数だけが持つ。**
+ * - **上の「この関数が解かないこと」は役割の宣言にもそのまま当たる** —— **アプリ全体が
+ *   `compact` のとき、役割に `comfortable` と書いても戻らない。**
+ * - **変えるのは詰め具合だけで、色は1つも変えない**(ユーザ決定 `D-V20-35`)。
  */
-export function resolveUiFamily(declared?: unknown): UiFamily {
+export function resolveUiFamily(declared?: unknown, roleDeclared?: unknown): UiFamily {
   if (isUiFamily(declared)) {
     return declared;
+  }
+  if (isUiFamily(roleDeclared)) {
+    return roleDeclared;
   }
   const hook = (globalThis as { __ST_UI_FAMILY__?: unknown }).__ST_UI_FAMILY__;
   if (isUiFamily(hook)) {
@@ -99,4 +134,30 @@ export function resolveUiFamily(declared?: unknown): UiFamily {
     return fromEnv;
   }
   return DEFAULT_UI_FAMILY;
+}
+
+/**
+ * **その人の役割に書かれた詰め具合を引く**(`V20-M11-T03`。`ADR-0464` 限定5)。
+ *
+ * - **役割の見せ方を導く箇所は、製品全体でこの1本だけである** —— 接頭辞
+ *   `resolveRoleDisplay` で始まる関数を2本目として作らない(`web/test/role-density.test.tsx`
+ *   の (R-4) が常設で数える)。
+ * - **ここは値を引くだけで、判定はしない** —— **画面の宣言とどちらが勝つか・知らない値を
+ *   どう倒すかは `resolveUiFamily` の1箇所が決める。** **返すのは役割 id が一致する要素の
+ *   `density` が値域の2値のどれかであるときだけで、それ以外は `undefined` である。**
+ * - **見る役割は1つだけである** —— **画面が知っている役割は、ログインしたアカウントの役割
+ *   1つ(画面の器が役割の文脈から読むもの)であり、付与表だけで持つ2本目以降の役割は
+ *   ここに届かない。**
+ * - **未ログイン(役割が `null`)では常に `undefined` である** —— **未ログインの画面に渡る
+ *   定義には役割の一覧が入っておらず、スキーマも `anonymous` に書くことを拒む。**
+ */
+export function resolveRoleDisplayDensity(
+  roles: readonly { readonly id: string; readonly density?: unknown }[] | undefined,
+  role: string | null,
+): UiFamily | undefined {
+  if (role === null || roles === undefined) {
+    return undefined;
+  }
+  const density = roles.find((declared) => declared.id === role)?.density;
+  return isUiFamily(density) ? density : undefined;
 }

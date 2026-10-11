@@ -30,7 +30,7 @@
  * 4. **`group_by` / `having` / `avg` を1つも測っていない** —— **実装が1バイトも無いからである。**
  */
 import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -807,4 +807,530 @@ test("(D) post-filter 分岐は SQL で合計していない(限定7)", async ()
   // **「0件」と丸めずに、在る場所を名指しする。**
   const codeLines = source.split("\n").filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line));
   expect(codeLines.filter((line) => line.includes("SUM("))).toEqual([]);
+});
+
+// =====================================================================================
+// **【2026-10-02。`V23-M9-T02`】未ログインが送る「消せない」「直接作れない」の印の2列の名指し**
+// (ユーザ決定 `D-V23-235`・`D-V23-261`、メインの裁定 `D-V23-264`・`D-V23-265`・`D-V23-266`。
+// 門A `ADR-0549` §Decision 1-3、その第2箇条を引き直した `ADR-0550` §Decision 4-1)。
+//
+// - 未ログインの窓の一覧の口で、要求の引数が印の2列を名指ししたときは、名乗った画面(`?view=` の
+//   `list_view`)の宣言(元の定義)と同じときだけ通す。 名乗りの無い要求は、詳細画面の関連一覧の読み方
+//   (`via` の等値1つと、未ログインに開く詳細画面の関連一覧の宣言と同じ並べ替え)だけ通す。
+// - それ以外は存在しない項目を名指ししたときと同じ断り(合計は、H の無い表では存在しない列と同じく
+//   200 で合計 0。`D-V23-265`)。 2列を名指ししない引数とログインした読み手は今日どおり。
+// - **この器に置いた理由**: 新しい検査ファイルにすると `src/kernel` から値として取り込む名が増え、
+//   `scripts/kernel-import-drift.test.ts` が赤くなる(`D-V23-266`)。 この器は同じ名を既に取り込んでいる。
+//   上の `beforeEach` / `afterEach` はこの節の検査にも走るが、この節は自分の台(`mqDataRoot`)だけを使う。
+// =====================================================================================
+describe("V23-M9-T02: 未ログインの印の2列(D-V23-235・D-V23-261・D-V23-264・D-V23-265)", () => {
+  const MQ_APP_ID = "marker-query";
+
+  const SEARCH_PREFIX = { field: "st_undeletable", equals: true } as const;
+
+  function markerQueryManifest(): Manifest {
+    const markerFields = [
+      { id: "title", name: "件名", type: "text" },
+      { id: "rank", name: "順位", type: "number" },
+      { id: "st_undeletable", name: "消せない", type: "boolean" },
+      { id: "st_no_direct_create", name: "直接作れない", type: "boolean" },
+      { id: "parent", name: "親", type: "reference", reference_table: "pp" },
+    ];
+    // **詳細画面の関連一覧**(`D-V23-264`)。 `?view=` を名乗らずに子の表へ送る。
+    const relatedSort = [
+      { field: "st_undeletable", order: "desc" },
+      { field: "title", order: "asc" },
+    ];
+    const views: Record<string, unknown>[] = [
+      {
+        id: "v-sort",
+        name: "印で並べる",
+        type: "list_view",
+        table: "flags",
+        columns: ["title"],
+        sort: [
+          { field: "st_undeletable", order: "desc" },
+          { field: "title", order: "asc" },
+        ],
+      },
+      {
+        id: "v-sort-one",
+        name: "印1つで並べる",
+        type: "list_view",
+        table: "flags",
+        columns: ["title"],
+        sort: { field: "st_no_direct_create", order: "asc" },
+      },
+      {
+        id: "v-eq",
+        name: "印で絞る",
+        type: "list_view",
+        table: "flags",
+        columns: ["title"],
+        filter: [{ field: "st_undeletable", equals: true }],
+        sort: { field: "title", order: "asc" },
+      },
+      {
+        id: "v-bool",
+        name: "印のブール式",
+        type: "list_view",
+        table: "flags",
+        columns: ["title"],
+        filter: { not: { field: "st_no_direct_create", equals: true } },
+        sort: { field: "title", order: "asc" },
+        search_fields: ["title"],
+      },
+      {
+        id: "v-eq-search",
+        name: "印で絞って検索",
+        type: "list_view",
+        table: "flags",
+        columns: ["title"],
+        filter: [SEARCH_PREFIX],
+        sort: { field: "title", order: "asc" },
+        search_fields: ["title"],
+      },
+      {
+        id: "v-group",
+        name: "印で束ねる",
+        type: "list_view",
+        table: "flags",
+        columns: ["title", "st_undeletable"],
+        sort: { field: "title", order: "asc" },
+        group_by: { field: "st_undeletable" },
+      },
+      {
+        id: "v-plain",
+        name: "印を書かない",
+        type: "list_view",
+        table: "flags",
+        columns: ["title"],
+        sort: { field: "title", order: "asc" },
+      },
+      {
+        id: "v-detail",
+        name: "詳細",
+        type: "detail_view",
+        table: "flags",
+        fields: ["title"],
+      },
+      {
+        id: "d-public",
+        name: "公開の親の詳細",
+        type: "detail_view",
+        table: "pp",
+        fields: ["name"],
+        related: [{ table: "flags", via: "parent", columns: ["title"], sort: relatedSort }],
+      },
+      {
+        id: "vt-sort",
+        name: "表ごとの読取で並べる",
+        type: "list_view",
+        table: "tflags",
+        columns: ["title"],
+        sort: [
+          { field: "st_undeletable", order: "desc" },
+          { field: "title", order: "asc" },
+        ],
+      },
+    ];
+    // **未ログインに開かない詳細画面**(子の表 `tflags` を関連に持つが、運営にだけ開く)。
+    const staffDetail = {
+      id: "d-staff",
+      name: "運営の親の詳細",
+      type: "detail_view",
+      table: "pp",
+      fields: ["name"],
+      related: [{ table: "tflags", via: "parent", columns: ["title"], sort: relatedSort }],
+    };
+    const anonymousRules: Record<string, unknown>[] = views.map((view) => ({
+      target: "view",
+      view: view.id,
+      can: ["read"],
+    }));
+    anonymousRules.push({ target: "table", table: "flags", can: ["read"] });
+    anonymousRules.push({ target: "table", table: "tflags", can: ["read"] });
+    anonymousRules.push({ target: "table", table: "pp", can: ["read"] });
+    return {
+      app: {
+        id: MQ_APP_ID,
+        name: "印の検査",
+        tables: [
+          {
+            id: "pp",
+            name: "親",
+            fields: [
+              { id: "name", name: "名前", type: "text" },
+              { id: "st_public", name: "公開", type: "boolean" },
+            ],
+          },
+          {
+            id: "flags",
+            name: "公開の印の表",
+            fields: [...markerFields, { id: "st_public", name: "公開", type: "boolean" }],
+          },
+          // **更新者の列を持つ表**(未ログインに隠す項目 H が在るので、合計の列の実在を写しで確かめる枝を通る)。
+          {
+            id: "tflags",
+            name: "表ごとの読取の表",
+            fields: [...markerFields, { id: "st_updated_by", name: "更新者", type: "text" }],
+          },
+        ],
+        views: [...views, staffDetail],
+        roles: [{ id: "anonymous", name: "未ログイン", rules: anonymousRules }],
+      },
+    } as unknown as Manifest;
+  }
+
+  let mqDataRoot: string;
+  let mqApp: ReturnType<typeof createServerApp>;
+  let mqOwner: ReturnType<typeof seedSession>;
+
+  beforeAll(async () => {
+    mqDataRoot = await mkdtemp(join(tmpdir(), "gp-marker-query-"));
+    const store = KernelMetaStore.open(mqDataRoot);
+    try {
+      createApp(store, "印の検査", { app_id: MQ_APP_ID });
+    } finally {
+      store.close();
+    }
+    const applied = applyManifest(
+      mqDataRoot,
+      MQ_APP_ID,
+      withDefaultRoleRules(markerQueryManifest()),
+    );
+    expect(applied.valid ? [] : applied.errors).toEqual([]);
+    expect(applied.valid).toBe(true);
+    // **行は DB に直に置く**(`st_no_direct_create` の列があると画面からの作成は断られる)。
+    const db = new Database(appDbPath(mqDataRoot, MQ_APP_ID));
+    try {
+      const now = new Date().toISOString();
+      db.run(
+        "INSERT INTO pp (_id, _created_at, _updated_at, name, st_public) VALUES ('p1', ?, ?, '親1', 1), ('p2', ?, ?, '親2', 1)",
+        [now, now, now, now],
+      );
+      for (const [id, title, rank, isPublic, undeletable, noDirect, parent] of [
+        ["a", "A", 3, 1, 1, 0, "p1"],
+        ["b", "B", 1, 1, 0, 1, "p1"],
+        ["c", "C", 5, 0, 0, 0, "p1"],
+        ["d", "D", 2, 1, 1, 1, "p1"],
+        ["e", "E", 4, 1, 0, 0, "p2"],
+      ] as const) {
+        db.run(
+          "INSERT INTO flags (_id, _created_at, _updated_at, title, rank, st_public, st_undeletable, st_no_direct_create, parent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, now, now, title, rank, isPublic, undeletable, noDirect, parent],
+        );
+        db.run(
+          "INSERT INTO tflags (_id, _created_at, _updated_at, title, rank, st_undeletable, st_no_direct_create, parent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          [id, now, now, title, rank, undeletable, noDirect, parent],
+        );
+      }
+    } finally {
+      db.close();
+    }
+    mqOwner = seedSession(mqDataRoot, MQ_APP_ID, { role: "owner" });
+    mqApp = createServerApp({ dataRoot: mqDataRoot });
+  });
+
+  afterAll(async () => {
+    await rm(mqDataRoot, { recursive: true, force: true });
+  });
+
+  type ListBody = {
+    records?: Record<string, unknown>[];
+    groups?: unknown;
+    errors?: { path?: string; message: string; allowed_values?: string[] }[];
+  };
+
+  async function mqGet(
+    table: string,
+    query: string,
+    session?: ReturnType<typeof seedSession>,
+  ): Promise<{ status: number; body: ListBody }> {
+    const res = await mqApp.request(`/api/apps/${MQ_APP_ID}/tables/${table}/records${query}`, {
+      headers: session === undefined ? {} : { cookie: session.cookie, origin: TEST_ORIGIN },
+    });
+    return { status: res.status, body: (await res.json()) as ListBody };
+  }
+
+  const titles = (body: ListBody): unknown[] => (body.records ?? []).map((row) => row.title);
+  const json = (value: unknown): string => encodeURIComponent(JSON.stringify(value));
+
+  const MARKERS = ["st_undeletable", "st_no_direct_create"];
+
+  /**
+   * 存在しない項目 `no_such` を同じ位置で名指ししたときの応答と、綴りだけを替えて同じか。
+   * **`allowed_values` は印の2列を除いて比べる** —— 2列を名指ししない要求(`no_such`)の 400 は今日どおりで
+   * 2列の綴りが並ぶ(`ADR-0550` §Decision 4-1「2列を名指ししない引数は今日どおり」)。
+   * **合計の列は、未ログインの窓で H の無い表では実在を見ない**(`app.ts` の一覧の口。存在しない列でも 200 で
+   * 合計 0)ので、そこでは「存在しない項目と同じ」は 200 である。
+   */
+  async function expectSameAsUnknownField(
+    table: string,
+    query: string,
+    marker: string,
+    status = 400,
+  ) {
+    const got = await mqGet(table, query);
+    const unknown = await mqGet(table, query.split(marker).join("no_such"));
+    expect(unknown.status).toBe(status);
+    expect(got.status).toBe(status);
+    const withoutMarkers = JSON.stringify(unknown.body, (key, value) =>
+      key === "allowed_values" && Array.isArray(value)
+        ? value.filter((item) => !MARKERS.includes(item))
+        : value,
+    );
+    expect(JSON.stringify(got.body).split(marker).join("no_such")).toBe(withoutMarkers);
+    for (const error of got.body.errors ?? []) {
+      expect(error.allowed_values ?? []).not.toContain("st_undeletable");
+      expect(error.allowed_values ?? []).not.toContain("st_no_direct_create");
+    }
+  }
+
+  describe("D-V23-235 / D-V23-261: 未ログインが名乗らずに印の2列を名指しすると、存在しない項目と同じ 400", () => {
+    for (const table of ["flags", "tflags"]) {
+      for (const marker of ["st_undeletable", "st_no_direct_create"]) {
+        test(`D-V23-235: ${table} の ${marker} の並べ替え・絞り込み・区切り・合計は 400`, async () => {
+          await expectSameAsUnknownField(table, `?sort=${marker}`, marker);
+          await expectSameAsUnknownField(table, `?sort=${marker}&order=desc`, marker);
+          await expectSameAsUnknownField(table, `?filter.${marker}=true`, marker);
+          await expectSameAsUnknownField(table, `?filter.${marker}=false`, marker);
+          await expectSameAsUnknownField(
+            table,
+            `?filter=${json({ field: marker, equals: true })}`,
+            marker,
+          );
+          await expectSameAsUnknownField(table, `?group_by=${marker}`, marker);
+          await expectSameAsUnknownField(
+            table,
+            `?sum=${marker}`,
+            marker,
+            table === "tflags" ? 400 : 200,
+          );
+        });
+      }
+    }
+  });
+
+  describe("D-V23-261: 名乗った画面の宣言と同じ引数は通り、着手前と同じ行を同じ順で返す", () => {
+    test("D-V23-261: 並べ替えの宣言(2キー)と同じ", async () => {
+      const got = await mqGet(
+        "flags",
+        "?sort=st_undeletable&order=desc&sort=title&order=asc&limit=50&view=v-sort",
+      );
+      expect(got.status).toBe(200);
+      expect(titles(got.body)).toEqual(["A", "D", "B", "E"]);
+      const table = await mqGet(
+        "tflags",
+        "?sort=st_undeletable&order=desc&sort=title&order=asc&limit=50&view=vt-sort",
+      );
+      expect(table.status).toBe(200);
+      expect(titles(table.body)).toEqual(["A", "D", "B", "C", "E"]);
+    });
+    test("D-V23-261: 並べ替えの宣言(1キー・向きの省略は asc)と同じ", async () => {
+      const omitted = await mqGet("flags", "?sort=st_no_direct_create&limit=50&view=v-sort-one");
+      expect(omitted.status).toBe(200);
+      const explicit = await mqGet(
+        "flags",
+        "?sort=st_no_direct_create&order=asc&limit=50&view=v-sort-one",
+      );
+      expect(explicit.status).toBe(200);
+      expect(titles(explicit.body)).toEqual(titles(omitted.body));
+      expect(titles(omitted.body).slice(0, 2).sort()).toEqual(["A", "E"]);
+    });
+    test("D-V23-261: 等値の絞り込みの宣言と同じ(値は表の型で読む)", async () => {
+      const got = await mqGet(
+        "flags",
+        "?sort=title&order=asc&filter.st_undeletable=true&limit=50&view=v-eq",
+      );
+      expect(got.status).toBe(200);
+      expect(titles(got.body)).toEqual(["A", "D"]);
+    });
+    test("D-V23-261: ブール式の宣言と同じ・宣言に検索の語を足した形", async () => {
+      const declared = { not: { field: "st_no_direct_create", equals: true } };
+      const got = await mqGet(
+        "flags",
+        `?sort=title&order=asc&filter=${json(declared)}&limit=50&view=v-bool`,
+      );
+      expect(got.status).toBe(200);
+      expect(titles(got.body)).toEqual(["A", "E"]);
+      const searched = await mqGet(
+        "flags",
+        `?sort=title&order=asc&filter=${json({ and: [declared, { or: [{ field: "title", contains: "E" }] }] })}&limit=50&view=v-bool`,
+      );
+      expect(searched.status).toBe(200);
+      expect(titles(searched.body)).toEqual(["E"]);
+      const eqSearched = await mqGet(
+        "flags",
+        `?sort=title&order=asc&filter=${json({ and: [{ and: [SEARCH_PREFIX] }, { or: [{ field: "title", contains: "D" }] }] })}&limit=50&view=v-eq-search`,
+      );
+      expect(eqSearched.status).toBe(200);
+      expect(titles(eqSearched.body)).toEqual(["D"]);
+    });
+    test("D-V23-261: 区切りの宣言と同じ", async () => {
+      const got = await mqGet(
+        "flags",
+        "?sort=title&order=asc&limit=50&view=v-group&group_by=st_undeletable",
+      );
+      expect(got.status).toBe(200);
+      expect([...titles(got.body)].sort()).toEqual(["A", "B", "D", "E"]);
+    });
+  });
+
+  describe("D-V23-261: 名乗った画面の宣言と違う引数は 400", () => {
+    test("D-V23-261: 向きだけ逆・キーを足した・一部だけの並べ替え", async () => {
+      for (const query of [
+        "?sort=st_undeletable&order=asc&sort=title&order=asc&view=v-sort",
+        "?sort=st_undeletable&order=desc&view=v-sort",
+        "?sort=st_undeletable&order=desc&sort=title&order=asc&sort=rank&order=asc&view=v-sort",
+        "?sort=title&order=asc&sort=st_undeletable&order=desc&view=v-sort",
+        "?sort=st_no_direct_create&order=desc&view=v-sort-one",
+      ]) {
+        const got = await mqGet("flags", query);
+        expect([query, got.status]).toEqual([query, 400]);
+      }
+    });
+    test("D-V23-261: 値だけ違う・形の違う絞り込み、印を名指しした検索の語", async () => {
+      for (const query of [
+        "?filter.st_undeletable=false&view=v-eq",
+        `?filter=${json({ field: "st_undeletable", equals: true })}&view=v-eq`,
+        `?filter=${json({ not: { field: "st_no_direct_create", equals: false } })}&view=v-bool`,
+        `?filter=${json({ and: [{ not: { field: "st_no_direct_create", equals: true } }, { field: "st_undeletable", equals: true }] })}&view=v-bool`,
+        `?filter=${json({ or: [{ not: { field: "st_no_direct_create", equals: true } }, { field: "title", contains: "E" }] })}&view=v-bool`,
+      ]) {
+        const got = await mqGet("flags", query);
+        expect([query, got.status]).toEqual([query, 400]);
+      }
+    });
+    test("D-V23-261 / D-V23-265: 区切りの粒度が違う・合計(合計は存在しない列と同じ)", async () => {
+      expect(
+        (await mqGet("flags", "?group_by=st_undeletable&granularity=day&view=v-group")).status,
+      ).toBe(400);
+      await expectSameAsUnknownField(
+        "flags",
+        "?sum=st_undeletable&view=v-group",
+        "st_undeletable",
+        200,
+      );
+      await expectSameAsUnknownField(
+        "tflags",
+        "?sum=st_undeletable&view=vt-sort",
+        "st_undeletable",
+      );
+    });
+    test("D-V23-261: 区切りを宣言していない画面を名乗って印で区切る・宣言と違う印で区切るは 400", async () => {
+      // 並べ替えは v-sort の宣言と同じ(区切りの一致判定だけで断られることを確かめる。T13b・点検B 中2)。
+      await expectSameAsUnknownField(
+        "flags",
+        "?view=v-sort&sort=st_undeletable&order=desc&sort=title&order=asc&group_by=st_undeletable",
+        "st_undeletable",
+      );
+      await expectSameAsUnknownField(
+        "flags",
+        "?view=v-group&sort=title&order=asc&limit=50&group_by=st_no_direct_create",
+        "st_no_direct_create",
+      );
+    });
+    test("D-V23-261: 宣言に印を書かない画面・list_view でない画面・別の画面の宣言", async () => {
+      await expectSameAsUnknownField(
+        "flags",
+        "?view=v-plain&sort=st_undeletable&order=desc",
+        "st_undeletable",
+      );
+      expect(
+        (await mqGet("flags", "?view=v-detail&sort=st_undeletable&order=desc&sort=title&order=asc"))
+          .status,
+      ).toBe(400);
+      expect(
+        (await mqGet("flags", "?view=v-eq&sort=st_undeletable&order=desc&sort=title&order=asc"))
+          .status,
+      ).toBe(400);
+    });
+  });
+
+  describe("D-V23-264: 名乗りの無い関連一覧の並べ替えは、未ログインに開く詳細画面の関連一覧の宣言と同じときだけ通る", () => {
+    const relatedQuery = "sort=st_undeletable&order=desc&sort=title&order=asc";
+    test("D-V23-264: 公開の詳細画面の関連一覧と同じ読み方は、着手前と同じ行を同じ順で返す", async () => {
+      const got = await mqGet("flags", `?filter.parent=p1&${relatedQuery}`);
+      expect(got.status).toBe(200);
+      expect(titles(got.body)).toEqual(["A", "D", "B"]);
+      const other = await mqGet("flags", `?filter.parent=p2&${relatedQuery}`);
+      expect(other.status).toBe(200);
+      expect(titles(other.body)).toEqual(["E"]);
+    });
+    test("D-V23-264: 並べ替えが違う・via 以外の絞り込みが付く・via が違う・印の絞り込みは 400", async () => {
+      for (const query of [
+        "?filter.parent=p1&sort=st_undeletable&order=asc&sort=title&order=asc",
+        "?filter.parent=p1&sort=st_undeletable&order=desc",
+        `?filter.parent=p1&filter.title=A&${relatedQuery}`,
+        `?filter.title=A&${relatedQuery}`,
+        `?${relatedQuery}`,
+        `?filter=${json({ field: "parent", equals: "p1" })}&${relatedQuery}`,
+        "?filter.parent=p1&filter.st_undeletable=true",
+        `?filter.parent=p1&${relatedQuery}&group_by=st_undeletable`,
+      ]) {
+        const got = await mqGet("flags", query);
+        expect([query, got.status]).toEqual([query, 400]);
+      }
+    });
+    test("D-V23-264: via の葉1つでも等値でない(in・contains・gte・not・キーの多い葉)は 400", async () => {
+      // 点検B 中1(T13b): 通すのは via の等値 `{ field, equals }` ちょうど1つだけ。
+      for (const leaf of [
+        { field: "parent", in: ["p1", "p2"] },
+        { field: "parent", contains: "p" },
+        { field: "parent", gte: "p" },
+        { field: "parent", not_equals: "p2" },
+        { field: "parent", equals: "p1", contains: "p" },
+        { not: { field: "parent", equals: "p2" } },
+      ]) {
+        const query = `?filter=${json([leaf])}&${relatedQuery}`;
+        const got = await mqGet("flags", query);
+        expect([query, got.status]).toEqual([query, 400]);
+      }
+      // 等値の葉1つを配列で送った形は通る(関連一覧の読み方と同じ)。
+      const same = await mqGet(
+        "flags",
+        `?filter=${json([{ field: "parent", equals: "p1" }])}&${relatedQuery}`,
+      );
+      expect(same.status).toBe(200);
+      expect(titles(same.body)).toEqual(["A", "D", "B"]);
+    });
+    test("D-V23-264: その子の表を関連に持つ公開の詳細画面が無ければ 400", async () => {
+      await expectSameAsUnknownField(
+        "tflags",
+        `?filter.parent=p1&${relatedQuery}`,
+        "st_undeletable",
+      );
+      const staff = await mqGet("tflags", `?filter.parent=p1&${relatedQuery}`, mqOwner);
+      expect(staff.status).toBe(200);
+      expect(titles(staff.body)).toEqual(["A", "D", "B", "C"]);
+    });
+  });
+
+  describe("D-V23-235: 2列を名指ししない引数とログインした読み手は今日どおり", () => {
+    test("D-V23-235: 未ログインの印を名指ししない並べ替え・絞り込みは通る", async () => {
+      const got = await mqGet("flags", "?sort=title&order=desc");
+      expect(got.status).toBe(200);
+      expect(titles(got.body)).toEqual(["E", "D", "B", "A"]);
+      const plain = await mqGet("flags", "?sort=title&order=asc&limit=50&view=v-plain");
+      expect(plain.status).toBe(200);
+      expect(titles(plain.body)).toEqual(["A", "B", "D", "E"]);
+      const unknown = await mqGet("flags", "?filter.no_such=1");
+      expect(unknown.status).toBe(400);
+    });
+    test("D-V23-235: ログインした読み手は名乗らずに印で並べ替え・絞り込みができる", async () => {
+      const sorted = await mqGet(
+        "flags",
+        "?sort=st_undeletable&order=desc&sort=title&order=asc",
+        mqOwner,
+      );
+      expect(sorted.status).toBe(200);
+      expect(titles(sorted.body)).toEqual(["A", "D", "B", "C", "E"]);
+      const filtered = await mqGet("flags", "?filter.st_no_direct_create=true&sort=title", mqOwner);
+      expect(filtered.status).toBe(200);
+      expect(titles(filtered.body)).toEqual(["B", "D"]);
+      const grouped = await mqGet("tflags", "?group_by=st_undeletable", mqOwner);
+      expect(grouped.status).toBe(200);
+    });
+  });
 });

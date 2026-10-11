@@ -119,6 +119,7 @@ import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { SYSTEM_TABLE_IDS } from "../../src/shared/system-tables.ts";
+import { themeSlotsToCssProperties } from "../src/theme-role-map.ts";
 
 const WEB_ROOT = dirname(import.meta.dir);
 /**
@@ -264,6 +265,12 @@ test("(A3) DIFF_OPS の集合が着手前と一致する(取り込み用の op �
       // テーマとは無関係の別の門A 判定(軸3 = 権限)で足された op である。****下の禁止
       // リスト5語は1語も緩めていない。****期待値を書き換えた理由はこの1点だけである。**
       "set_roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】18種目 `remember_design`(選んだ形の記録と型)。** テーマの取り込み用の op ではない
+      // (テーマに1バイトも触らない)。 **下の禁止リスト5語は1語も緩めていない。**
+      "remember_design",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行32)】19種目 `set_workspace`(メニューの位置の全置換)。** テーマの取り込み用の op ではない
+      // (テーマに1バイトも触らない)。 **下の禁止リスト5語は1語も緩めていない。** 旧の期待値はこの行を持たない18要素(逐語)。
+      "set_workspace",
       "update_function",
       "update_view",
       "update_workflow",
@@ -315,33 +322,49 @@ test("(A5) スキーマの5つの $defs の properties キー集合が着手前�
       // **テーマの持ち込みと1ミリも関係しない** —— 運ぶのは役割の宣言であって、
       // 配色・書体・余白のスロットを1つも持たない。**列挙を件数に丸めない。**
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory`(選んだ形の記録と型)。**
+      // **テーマの持ち込みと1ミリも関係しない** —— 運ぶのは選んだ案の名前・トレードオフ・理由と型の文であって、
+      // 配色・書体・余白のスロットを1つも持たない(型は描画を1つも決めない)。**列挙を件数に丸めない。**
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行32)】10本目 `workspace`(メニューの位置)。** テーマの持ち込みと1ミリも関係しない(配色・書体・余白のスロットを1つも持たない)。
+      // 旧の期待値はこの行を持たない(逐語)。
+      "workspace",
     ],
+    // **【V20-M8 / ADR-0473。役割名への建て替え】** 23件を役割名へ改名した(2件は名前のまま。
+    // D-V20-12)。**キーの数は25のまま、取り込みの当たり先は1つも増えていない**(名前だけが
+    // 変わった。CSS 名への写像は `web/src/theme-role-map.ts` の1本)。**列挙を件数に丸めない。**
+    // **【V20-M9 / ADR-0474 §1-3】2件(`--detail-label-width` / `--login-max-width`)を語彙から外した。**
+    // 旧(逐語): 配列の先頭に `"--detail-label-width",` と `"--login-max-width",` の2行が在った。
     "manifest:theme": [
-      "--border-width",
-      "--color-border",
-      "--color-danger",
-      "--color-page-background",
-      "--color-surface-highlight",
-      "--color-text",
-      "--color-text-label",
-      "--color-text-placeholder",
-      "--color-text-secondary",
-      "--control-border-radius",
-      "--detail-label-width",
-      "--focus-outline-color",
-      "--focus-outline-width",
-      "--font-family-base",
-      "--font-size-note",
-      "--font-size-secondary",
-      "--line-height-base",
-      "--login-max-width",
-      "--space-1",
-      "--space-2",
-      "--space-3",
-      "--space-4",
-      "--space-5",
-      "--space-6",
-      "--surface-shadow",
+      "body_font",
+      "body_line_height",
+      "body_text",
+      "border_color",
+      "border_width",
+      "control_radius",
+      "danger",
+      "focus_ring",
+      "focus_ring_width",
+      "highlight_surface",
+      "label_text",
+      "note_font_size",
+      "page_background",
+      "placeholder_text",
+      "secondary_font_size",
+      "secondary_text",
+      "space_1",
+      "space_2",
+      "space_3",
+      "space_4",
+      "space_5",
+      "space_6",
+      "surface_shadow",
+      // **【V20-M9 / ADR-0474 §1-2(D-V20-28)】4枠を足した(主ボタンと小窓の地色・文字色)。**
+      // 取り込みの当たり先は、この4件の分だけ増えた(持ち出した theme.css から戻せる名前が4つ増える)。
+      "primary_fill",
+      "on_primary",
+      "overlay_background",
+      "overlay_text",
     ],
     "manifest:view": [
       "actions",
@@ -384,6 +407,14 @@ test("(A5) スキーマの5つの $defs の properties キー集合が着手前�
        * **列挙を消して件数に丸めない。**
        */
       "flow",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 が足した32キー目 `field_width`】** 入力欄の幅(3値)。**テーマの持ち込みと1ミリも関係しない**(配色・書体・余白のスロットを1つも持たない)。**列挙を件数に丸めない。**
+      "field_width",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470` が足した33キー目 `group_by`】** 一覧の束ねるキー。**テーマの持ち込みと1ミリも関係しない**(配色・書体・余白のスロットを1つも持たない)。**列挙を件数に丸めない。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471` が足した `layout`】** 画面の中の並べ方の木。**テーマの持ち込みと1ミリも関係しない** —— 間隔(`gap`)は余白のトークンを**名前で選ぶだけ**で、配色・書体・余白のスロットの値を1つも持たず、テーマの器を1バイトも動かさない。**列挙を件数に丸めない。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行101】`history`(変更履歴。決定 `D-V23-205`)を足した。 テーマの持ち込みと1ミリも関係しない(配色・書体・余白のスロットを1つも持たない真偽値)。 旧の期待値はこの行が無い並び(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
       "id",
       "name",
       "preset_column_align",
@@ -413,7 +444,8 @@ test("(A5) スキーマの5つの $defs の properties キー集合が着手前�
        * **本ファイルが守る「持ち込みの当たり先が黙って増えない」という主張は1ミリも
        * 緩んでいない。** 列挙を消して件数に丸めない。
        */
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **V4-M16-T13 / `P-G24` の (C) 側 / ADR-0093 限定1 が足した22キー目 `preset_list_shape`**
       // (一覧の器の形。8つ目の `preset_` キー)。**門A の本審査(`V4-M14` 本審査② の単位11)を
       // 通って限定採用された増分である。列挙を消して件数に丸めない**(`custom_css` /
@@ -491,6 +523,14 @@ test("(A5) スキーマの5つの $defs の properties キー集合が着手前�
        * **列挙を消して件数に丸めない。**
        */
       "flow",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 が足した28キー目 `field_width`】** 入力欄の幅(3値)。**テーマの持ち込みと1ミリも関係しない**(配色・書体・余白のスロットを1つも持たない)。**列挙を件数に丸めない。**
+      "field_width",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470` が足した29キー目 `group_by`】** 一覧の束ねるキー。**テーマの持ち込みと1ミリも関係しない**(配色・書体・余白のスロットを1つも持たない)。**列挙を件数に丸めない。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471` が足した `layout`】** 画面の中の並べ方の木。**テーマの持ち込みと1ミリも関係しない** —— 間隔(`gap`)は余白のトークンを**名前で選ぶだけ**で、配色・書体・余白のスロットの値を1つも持たず、テーマの器を1バイトも動かさない。**列挙を件数に丸めない。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行101】`history`(変更履歴。決定 `D-V23-205`)を足した。 テーマの持ち込みと1ミリも関係しない(配色・書体・余白のスロットを1つも持たない真偽値)。 旧の期待値はこの行が無い並び(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
       "name",
       "preset_column_align",
       "preset_column_width",
@@ -505,7 +545,8 @@ test("(A5) スキーマの5つの $defs の properties キー集合が着手前�
       "menu_listed",
       // **V4-M16-T12 / ADR-0092 限定2 が足した15キー目。**
       // **テーマの持ち込みと1ミリも関係しない**(上と同じ理由)。
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **V4-M16-T13 / `P-G24` の (C) 側 / ADR-0093 限定2 が足した16キー目 `preset_list_shape`。**
       // **`update_view` で後から書けて、カーネルが値を実際に運ぶ**(`applyViewChanges` の
       // `list_view` 分岐。**`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは運ばれない**)。
@@ -574,6 +615,11 @@ test("(A5) スキーマの5つの $defs の properties キー集合が着手前�
       // **テーマの持ち込みと1ミリも関係しない** —— 運ぶのは役割の宣言であって、
       // 配色・書体・余白のスロットを1つも持たない。**列挙を件数に丸めない。**
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory`(`remember_design` の引数)。** テーマの持ち込みと1ミリも関係しない。
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行32)】11キー目 `workspace`(`set_workspace` の引数)。** テーマの持ち込みと1ミリも関係しない。
+      // 旧の期待値はこの行を持たない(逐語)。
+      "workspace",
     ],
   };
   for (const [label, keys] of Object.entries(expected)) {
@@ -603,6 +649,11 @@ test("(A6) :root のスロット集合(28件)が着手前と一致する", () =>
       "--color-text-secondary",
       "--control-border-radius",
       "--detail-label-width",
+      // 【V20-M9 / ADR-0474 §1-2】:root に4件を足した(28 → 32。テスト名の「28件」「着手前」は引き直しの前の逐語)。
+      "--color-primary-fill",
+      "--color-on-primary",
+      "--color-overlay-background",
+      "--color-overlay-text",
       "--focus-outline-color",
       "--focus-outline-style",
       "--focus-outline-width",
@@ -648,6 +699,10 @@ test("(A7) 公開 MCP ツールの名前集合が着手前と一致する(取り
       //   (`import` / `theme` / `brand` / `screenshot` / `asset` / `template` を名前に含まない)
       //   を1つも踏まない。** **テスト名は1バイトも書き換えていない。**
       "list_comments",
+      // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行102】** **27本目 = 行の変更履歴を読む参照系の道具。**
+      // **線5(取り込み用の MCP ツールを1本も足さない)は今日も守られている** ——
+      //   **足した1本はテーマの取り込みに1文字も触れておらず、下の否定側を1つも踏まない。**
+      "list_record_history",
       "list_records",
       "preview_redo",
       "preview_undo",
@@ -737,14 +792,37 @@ test("(B) storage-paths.ts の公開関数の集合が着手前の10本と一致
 // ---------------------------------------------------------------------------
 
 test("(C) :root の28変数と $defs/theme の25スロットの差集合が、正確にこの3つである", () => {
+  // **【V20-M8 / ADR-0473】** `$defs/theme` のキーは役割名なので、写像
+  // `web/src/theme-role-map.ts` で CSS 名に写してから `:root` と比べる(写像に無いキーは
+  // 写らずに落ちるので、逆向きの検査が赤くなる)。
   const theme = new Set<string>(
-    Object.keys(readJson("schemas", "manifest.schema.json").$defs.theme.properties),
+    Object.keys(
+      themeSlotsToCssProperties(
+        Object.fromEntries(
+          Object.keys(readJson("schemas", "manifest.schema.json").$defs.theme.properties).map(
+            (slot) => [slot, "x"],
+          ),
+        ),
+      ),
+    ),
+  );
+  expect(theme.size).toBe(
+    Object.keys(readJson("schemas", "manifest.schema.json").$defs.theme.properties).length,
   );
   const notImportable = rootSlots().filter((slot) => !theme.has(slot));
   // **片方だけを数えても捕まらない** —— スロットを1つ足せば差は2件になり、
   // CSS 変数を1つ足せば差は4件になる。**どちらでも赤になる。**
+  // 【V20-M9 / ADR-0474 §1-3(限定15)】語彙から外した2件は `:root` に残るので、取り込めない側へ移った(3 → 5)。
+  // テスト名の「正確にこの3つ」は撤去の前の逐語である。旧(逐語):
+  // `["--border-style", "--focus-outline-style", "--shell-max-width"].sort(),`
   expect([...notImportable].sort()).toEqual(
-    ["--border-style", "--focus-outline-style", "--shell-max-width"].sort(),
+    [
+      "--border-style",
+      "--detail-label-width",
+      "--focus-outline-style",
+      "--login-max-width",
+      "--shell-max-width",
+    ].sort(),
   );
   // 逆向き: `$defs/theme` に `:root` に無いスロットが在ってはならない(**対称性**)。
   expect([...theme].filter((slot) => !rootSlots().includes(slot))).toEqual([]);

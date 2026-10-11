@@ -286,3 +286,72 @@ test("(T01-8) 器の実装にダークモードの機構が1バイトも無い(A
   }
   expect(/\bdark:/.test(body)).toBe(false);
 });
+
+// ---------------------------------------------------------------------------
+// (V22-M2-T05) 開くメニューの任意の口(出し先・aria-current・data-testid)
+// **追加だけである**(`ADR-0487` 行55)。 既存の検査は1本も書き換えていない。
+// ---------------------------------------------------------------------------
+
+test("(V22-T05-1) 出し先(container)を渡すと、メニューはその要素の内側に出る", async () => {
+  const host = document.createElement("div");
+  host.className = "app-theme";
+  document.body.appendChild(host);
+  try {
+    render(
+      <OverlayMenu
+        trigger="開く"
+        container={host}
+        items={[{ label: "一つ目", onSelect: () => {} }]}
+      />,
+    );
+    fireEvent.click(screen.getByText("開く"));
+    await settle();
+    const menu = document.querySelector('[data-slot="overlay-menu"]');
+    expect(menu).not.toBeNull();
+    expect(host.contains(menu)).toBe(true);
+  } finally {
+    cleanup();
+    host.remove();
+  }
+});
+
+test("(V22-T05-2) 出し先を渡さなければ今日どおり、テーマの器の外(body の直下の差し込み口)に出る", async () => {
+  const host = document.createElement("div");
+  host.className = "app-theme";
+  document.body.appendChild(host);
+  try {
+    render(<OverlayMenu trigger="開く" items={[{ label: "一つ目", onSelect: () => {} }]} />);
+    fireEvent.click(screen.getByText("開く"));
+    await settle();
+    const menu = document.querySelector('[data-slot="overlay-menu"]');
+    expect(menu).not.toBeNull();
+    expect(host.contains(menu)).toBe(false);
+    expect(menu?.closest(".app-theme")).toBeNull();
+  } finally {
+    cleanup();
+    host.remove();
+  }
+});
+
+test("(V22-T05-3) 項目に aria-current と data-testid を渡せる。 渡さない項目には属性が出ない", async () => {
+  render(
+    <OverlayMenu
+      trigger="開く"
+      triggerTestId="menu-toggle"
+      triggerClassName="toggle-look"
+      items={[
+        { label: "一つ目", onSelect: () => {}, "data-testid": "item" },
+        { label: "二つ目", onSelect: () => {}, "aria-current": "page", "data-testid": "item" },
+        { label: "三つ目", onSelect: () => {} },
+      ]}
+    />,
+  );
+  const toggle = screen.getByTestId("menu-toggle");
+  expect(toggle.getAttribute("data-slot")).toBe("overlay-menu-trigger");
+  expect(toggle.getAttribute("class")).toBe("toggle-look");
+  fireEvent.click(toggle);
+  await settle();
+  const items = [...document.querySelectorAll('[role="menuitem"]')];
+  expect(items.map((item) => item.getAttribute("aria-current"))).toEqual([null, "page", null]);
+  expect(items.map((item) => item.getAttribute("data-testid"))).toEqual(["item", "item", null]);
+});

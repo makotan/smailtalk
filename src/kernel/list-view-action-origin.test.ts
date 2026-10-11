@@ -245,7 +245,13 @@ describe("(T01-3) 限定10 の順序拘束は解けた —— 一覧にも set �
    */
   test("閉じていた1箇所(items.properties.set)が外れている", () => {
     const actions = branchProperties("list_view").actions as Any;
-    expect(((actions.items ?? {}) as Any).properties).toBeUndefined();
+    // **【`V20-M2-T01` / `ADR-0459` 限定4。2026-09-24】** **旧行の逐語**:
+    // `expect(((actions.items ?? {}) as Any).properties).toBeUndefined();`
+    // **`items.properties` は戻ったが、中身は強調(`action_emphasis`)を閉じる1本だけで、
+    // `set` は閉じていない。****テスト名の主張(`set` の閉じが外れている)は今日も真である。**
+    const properties = ((actions.items ?? {}) as Any).properties as Any;
+    expect(properties).toEqual({ action_emphasis: false });
+    expect(properties.set).toBeUndefined();
   });
 });
 
@@ -403,9 +409,15 @@ describe("(T01-7) 限定2: 複数行を対象にする形を1つも作ってい�
    * 「誰に見せるか」のキーであって、対象行を増やすキーではない。****旧文を1バイトも
    * 消していない。**
    */
-  test("view_action の properties は8キーで、複数行を指す語が1つも無い", () => {
+  /*
+   * **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧テスト名(逐語)**: 「**view_action の properties は8キーで、
+   * 複数行を指す語が1つも無い**」。**9本目 `action_emphasis`(ボタンの強調)は見た目の
+   * 強さを選ぶキーであり、対象行を増やすキーではない。****主張の核は1ミリも弱めていない。**
+   */
+  test("view_action の properties は9キーで、複数行を指す語が1つも無い", () => {
     const properties = Object.keys((defs().view_action as Any).properties as Any).sort();
     expect(properties).toEqual([
+      "action_emphasis",
       "form",
       "id",
       "name",

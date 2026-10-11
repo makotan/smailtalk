@@ -131,6 +131,11 @@ const REQUIRED: readonly { readonly label: string; readonly marker: string }[] =
   { label: "アプリ単位テーマのスコープ要素(AppThemeScope)", marker: "app-theme" },
   { label: "一覧レンダラ(ListViewRenderer の 0 件表示)", marker: "list-empty" },
   { label: "ログイン画面(LoginPage の器)", marker: "login-page" },
+  // **【`V22-M3-T05`。授権 `ADR-0489` 行49(追加だけ)】配る版にもマイページが入る**(計画 V22-M3「配る版も同じ」)。
+  { label: "マイページのアカウントの節(MyPage の器)", marker: "my-page-account" },
+  // **【`V23-M5-T06`。授権 `ADR-0533` 行47(追加だけ)・`D-V23-129`】配る版にも招待の受け取り画面と、行の詳細の招待が入る。**
+  { label: "招待の受け取り画面(InvitationInbox の器)", marker: "invitation-inbox" },
+  { label: "行の詳細の招待(RowInvitationsPanel の器)", marker: "row-invitations" },
 ];
 
 type Artifact = { readonly path: string; readonly bytes: Buffer };

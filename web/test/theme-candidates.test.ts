@@ -53,7 +53,12 @@ const REPO_ROOT = dirname(dirname(import.meta.dir));
 const MANIFEST_SCHEMA_PATH = join(REPO_ROOT, "schemas", "manifest.schema.json");
 
 type ThemeSchema = {
-  $defs: { theme: { required: string[]; properties: Record<string, { pattern?: string }> } };
+  $defs: {
+    theme: {
+      required: string[];
+      properties: Record<string, { pattern?: string; anyOf?: { pattern?: string }[] }>;
+    };
+  };
 };
 
 function themeSchema(): ThemeSchema["$defs"]["theme"] {
@@ -118,7 +123,9 @@ describe("候補集合は有限で列挙できる(D-M4-2 = 組み込み固定候
 describe("候補は25スロット全部の実値である($defs/theme は全キー required)", () => {
   test("スロット名の集合がスキーマの properties と完全一致する", () => {
     const expected = Object.keys(themeSchema().properties).sort();
-    expect(expected.length).toBe(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(expected.length).toBe(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(expected.length).toBe(23);
+    expect(expected.length).toBe(27);
     for (const candidate of THEME_CANDIDATES) {
       const actual = Object.keys(candidate.slots).sort();
       const added = actual.filter((name) => !expected.includes(name));
@@ -144,11 +151,30 @@ describe("候補は25スロット全部の実値である($defs/theme は全キ�
     const properties = themeSchema().properties;
     for (const candidate of THEME_CANDIDATES) {
       for (const [slot, value] of Object.entries(candidate.slots)) {
-        const pattern = properties[slot]?.pattern;
+        // 【V20-M7-T01】色スロット9件の値域は anyOf の2枝(16進 / oklch)になった。素の pattern か、
+        // anyOf の枝の pattern のどれかに当たれば値域の中である(Ajv の anyOf と同じ読み方)。
+        const property = properties[slot];
+        // 【V20-M9 / ADR-0474 §1-1】色の値域は入れ子の anyOf(外側 = [実値(内側に16進 / oklch), 参照])になった。
+        // 葉の pattern を再帰で集め、**参照の枝(`^\\$palette_…`)は数えない**(実値だけで書いていることを見る)。
+        // 旧(逐語): `(property?.anyOf ?? []).flatMap((branch) => branch.pattern === undefined ? [] : [branch.pattern])`
+        const leaves = (node: { pattern?: string; anyOf?: unknown[] } | undefined): string[] =>
+          node === undefined
+            ? []
+            : node.pattern !== undefined
+              ? [node.pattern]
+              : (node.anyOf ?? []).flatMap((branch) =>
+                  leaves(branch as { pattern?: string; anyOf?: unknown[] }),
+                );
+        const patterns = leaves(property).filter((each) => !each.startsWith("^\\$palette_"));
+        const pattern = patterns.length > 0 ? patterns : undefined;
         if (pattern === undefined) {
           throw new Error(`スキーマに pattern が無いスロット: ${slot}`);
         }
-        expect({ candidate: candidate.id, slot, ok: new RegExp(pattern).test(value) }).toEqual({
+        expect({
+          candidate: candidate.id,
+          slot,
+          ok: pattern.some((each) => new RegExp(each).test(value)),
+        }).toEqual({
           candidate: candidate.id,
           slot,
           ok: true,
@@ -158,9 +184,7 @@ describe("候補は25スロット全部の実値である($defs/theme は全キ�
   });
 
   test("候補どうしは配色が1色も重ならない(並べても見分けが付く)", () => {
-    const backgrounds = THEME_CANDIDATES.map(
-      (candidate) => candidate.slots["--color-page-background"],
-    );
+    const backgrounds = THEME_CANDIDATES.map((candidate) => candidate.slots.page_background);
     expect(new Set(backgrounds).size).toBe(THEME_CANDIDATES.length);
   });
 });
@@ -187,7 +211,7 @@ describe("同梱する候補は全部コントラスト検査を通る(ADR-0046 
     }
     const broken = {
       ...base.slots,
-      "--color-text": base.slots["--color-page-background"] as string,
+      body_text: base.slots.page_background as string,
     };
     expect(checkThemeContrast(broken).length).toBeGreaterThan(0);
   });

@@ -1,0 +1,26 @@
+{
+  "app": {
+    "id": "order-desk",
+    "name": "注文受付",
+    "tables": [
+      {
+        "id": "orders",
+        "name": "注文",
+        "fields": [
+          { "id": "title", "name": "件名", "type": "text", "required": true },
+          { "id": "category", "name": "種類", "type": "select", "options": ["食品", "雑貨"] },
+          { "id": "ordered_on", "name": "注文日", "type": "date" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "order-list",
+        "type": "list_view",
+        "table": "orders",
+        "columns": ["title", "ordered_on"],
+        "group_by": { "field": "category" }
+      }
+    ]
+  }
+}

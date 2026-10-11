@@ -1,0 +1,29 @@
+{
+  "app": {
+    "id": "member-desk",
+    "name": "会員受付",
+    "tables": [
+      {
+        "id": "members",
+        "name": "会員",
+        "fields": [
+          { "id": "full_name", "name": "氏名", "type": "text", "required": true },
+          { "id": "email", "name": "メール", "type": "text" },
+          { "id": "phone", "name": "電話", "type": "text" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "member-form",
+        "type": "form",
+        "table": "members",
+        "fields": ["full_name", "email", "phone"],
+        "field_sections": {
+          "基本情報": ["full_name", "email"],
+          "連絡先": ["email", "phone"]
+        }
+      }
+    ]
+  }
+}

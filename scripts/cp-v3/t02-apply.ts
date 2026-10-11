@@ -52,36 +52,42 @@ const TARGET_APP_ID = "ref-ec";
  * 25件すべてに実値を書く**(1件でも欠けると適用が拒否される)。
  *
  * 値は「落ち着いた温かみのある店」という意図で選んだ。**この製品の既定配色は
- * そのままではテンプレートにできない** —— `--color-border` の既定 `#ddd` が非テキスト
+ * そのままではテンプレートにできない** —— `border_color` の既定 `#ddd` が非テキスト
  * 閾値 3:1 を通らない(`docs/adr/0046-design-token-slots.md` 限界7 /
  * `web/test/theme-template.test.ts` の `TEMPLATE_SLOTS` の注)。
  */
 const TEMPLATE_SLOTS: Record<string, string> = {
-  "--color-text": "#1a1a1a",
-  "--color-text-secondary": "#5b5b5b",
-  "--color-text-label": "#4a4a4a",
-  "--color-text-placeholder": "#636363",
-  "--color-danger": "#8f2320",
-  "--color-page-background": "#fdfaf5",
-  "--color-surface-highlight": "#f3e7d3",
-  "--color-border": "#7a6a52",
-  "--focus-outline-color": "#0b4fa8",
-  "--focus-outline-width": "3px",
-  "--font-family-base": "Georgia, Hiragino Mincho ProN, serif",
-  "--font-size-secondary": "0.8em",
-  "--font-size-note": "0.813rem",
-  "--line-height-base": "1.9",
-  "--space-1": "0.5rem",
-  "--space-2": "0.75rem",
-  "--space-3": "1rem",
-  "--space-4": "1.5rem",
-  "--space-5": "1.75rem",
-  "--space-6": "2.5rem",
-  "--border-width": "2px",
-  "--control-border-radius": "6px",
-  "--surface-shadow": "0 2px 6px #00000026",
-  "--detail-label-width": "6rem",
-  "--login-max-width": "24rem",
+  body_text: "#1a1a1a",
+  secondary_text: "#5b5b5b",
+  label_text: "#4a4a4a",
+  placeholder_text: "#636363",
+  danger: "#8f2320",
+  page_background: "#fdfaf5",
+  highlight_surface: "#f3e7d3",
+  border_color: "#7a6a52",
+  focus_ring: "#0b4fa8",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠。今日の見た目と同じ値(ページ地色の地に本文の文字色)。
+  primary_fill: "#fdfaf5",
+  on_primary: "#1a1a1a",
+  overlay_background: "#fdfaf5",
+  overlay_text: "#1a1a1a",
+  focus_ring_width: "3px",
+  body_font: "Georgia, Hiragino Mincho ProN, serif",
+  secondary_font_size: "0.8em",
+  note_font_size: "0.813rem",
+  body_line_height: "1.9",
+  space_1: "0.5rem",
+  space_2: "0.75rem",
+  space_3: "1rem",
+  space_4: "1.5rem",
+  space_5: "1.75rem",
+  space_6: "2.5rem",
+  border_width: "2px",
+  control_radius: "6px",
+  surface_shadow: "0 2px 6px #00000026",
+  // 【V20-M9 / ADR-0474 §Decision 1-3】2枠を語彙から外したので2行を外した。旧(逐語):
+  // "--detail-label-width": "6rem",
+  // "--login-max-width": "24rem",
 };
 
 /**

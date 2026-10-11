@@ -184,6 +184,30 @@ export function dropTableSql(tableId: string): string {
 }
 
 /**
+ * **名簿への自動登録を宣言した名簿の `account` 列に張る一意索引の名前**
+ * (`V23-M1-T02`。`SC-G2` / `ADR-0497` 限定4 / `ADR-0510` §Decision 1 の5)。
+ *
+ * 表と列の名前だけを受ける(宣言を読むのは `apply-diff.ts`)。 索引の名前は
+ * `_auto_enroll__<表>__<列>` に固定する。 `sqlite_` で始めない(SQLite の予約)。
+ */
+export function autoEnrollAccountIndexName(tableId: string, column: string): string {
+  return `_auto_enroll__${tableId}__${column}`;
+}
+
+/**
+ * 上の索引を張る文。 **カーネルが張る索引はこの1種だけ**(非一意の索引は張らない。
+ * 書込時検査は残し、索引は最後の砦にする)。 既に在れば何もしない。
+ */
+export function createAutoEnrollAccountIndexSql(tableId: string, column: string): string {
+  // **索引の名前は `quoteIdentifier` に通さない**(先頭が `_` で、長さが64を超えうるため)。
+  // 表と列の名前は `quoteIdentifier` が規約どおりかを見るので、それをつないだ名前にも
+  // `"` は入らない。 先頭の `_` は、表のID(英小文字で始まる)と索引の名前がぶつからないためである。
+  const table = quoteIdentifier(tableId);
+  const col = quoteIdentifier(column);
+  return `CREATE UNIQUE INDEX IF NOT EXISTS "${autoEnrollAccountIndexName(tableId, column)}" ON ${table} (${col})`;
+}
+
+/**
  * マニフェストの全テーブルを DB に作る(空の app.sqlite への初期投入用)。
  *
  * すべての `CREATE TABLE` を1トランザクションで実行するため、

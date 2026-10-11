@@ -334,6 +334,7 @@ export type RequirementTemplateId =
   | "features.role_rule_field_write"
   | "features.role_rule_view_read"
   | "features.role_rule_action_read"
+  | "features.role_rule_hidden_field"
   | "features.role_condition_and"
   | "features.role_condition_or"
   | "features.role_condition_not"
@@ -341,6 +342,18 @@ export type RequirementTemplateId =
   | "features.role_condition_equals_current_user"
   // **【`V8-M26` / `D-V8-70`】葉の3種目(その項目が空か)。**
   | "features.role_condition_is_empty"
+  // **【役割の見せ方。`ADR-0475`(`ADR-0315` 限定1 を「4つ目 = 利用文脈を1種だけ」に引き直した)】**
+  // **役割の要素の `density` を「利用文脈」として述べる1本。5つ目の種類を足さない。**
+  | "features.role_density"
+  // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)】アプリの型(`app.design_memory.patterns`)を
+  // 1件ずつ述べる1本。screens 節の先頭に置く。** **選んだ記録とその理由を述べる本は1本も足さない。**
+  | "screens.design_pattern"
+  // **【`V22-M2-T09a` / `ADR-0486`(独立点検の指摘 [軽-4])】メニューの位置のアプリの既定を1文だけ述べる1本。**
+  // **役割ごとの上書きは件数だけ**(役割の id を述べない。`ADR-0475` の「役割について出す種類を足さない」)。
+  | "screens.navigation_placement"
+  // **【`V22-M3-T02` / `ADR-0488` 限定6】マイページを置くことを1文だけ述べる1本。** **件数だけ**(表・画面の id を
+  // 述べない)。 **2本目を足さない**(文面は 154 を超えない)。
+  | "screens.my_page"
   | "screens.target"
   | "screens.display_name"
   | "screens.column"
@@ -491,6 +504,7 @@ export type RequirementTemplateId =
   | "data.field_unique"
   | "data.field_unique_owner"
   | "data.field_not_unique"
+  | "data.field_unique_message"
   | "data.field_unit"
   | "data.field_emphasis"
   | "data.field_hide_when_empty"
@@ -542,6 +556,42 @@ export type RequirementTemplateId =
   | "data.table_access_member_table"
   | "data.table_access_group_table"
   | "data.table_access_inherit_from"
+  /*
+   * **【`V23-M5-T08`。`ADR-0532` §Decision 1-8・限定7(決定 `D-V23-130`)】行の招待の宣言(`access_control` の
+   * 10キー目 `invitations`)を1文で述べる1本。** **足すのはこの1本だけ**(名前に `invitation` を含むのはこれだけで、
+   * 上の `table_access` の12本には入れない)。 **スロットは既存の `id` と `number` だけ**で、識別子グループも
+   * 語彙グループもスロットの種類も増えない。 権限名・役割の id は述べず件数だけにする(`screens.my_page` と同じ形)。
+   */
+  | "data.table_invitation"
+  /*
+   * **【`V23-M6-T10`。`ADR-0538` §Decision 1-8・限定7(決定 `D-V23-159`)】行を相手にした付与の宣言(`access_control.grant` の
+   * 6キー目 `principal_row`)を1文で述べる1本。** **足すのはこの1本だけ**(名前に `principal_row` を含むのはこれだけで、
+   * `table_access` を名に持つので上の12本と合わせて13本になる)。 **スロットは既存の `id` と `number` だけ**で、
+   * 識別子グループも語彙グループもスロットの種類も増えない。 付与表のどの列が相手を指すかと権限名は述べない
+   * (`ADR-0300` 限定2 の「列の役割は1文も出さない」と、`data.table_invitation` の件数だけの形に合わせる)。
+   */
+  | "data.table_access_principal_row"
+  /*
+   * **【`V23-M7-T07`。`ADR-0542` §1-6・限定6(決定 `D-V23-195`)】子の表に行を作れる権限の宣言(`access_control.permissions[]` の
+   * 7キー目 `create_child`)を1文で述べる1本。** **足すのはこの1本だけ**(名前に `create_child` を含むのはこれだけ)。
+   * **名に `table_access` を含めない**(名に `table_access` を含む本数は13のまま)。 **スロットは既存の `id` と `number` だけ**で、
+   * 識別子グループも語彙グループもスロットの種類も増えない。 子の表ごとに1文で、権限名は述べず件数だけにする。
+   */
+  | "data.permission_create_child"
+  /*
+   * **【`V23-M8-T08`。`ADR-0544` 限定7・式12(決定 `D-V23-216`)】表の変更履歴の宣言(`$defs/table` の7キー目 `history`)を
+   * 1文で述べる1本。** **足すのはこの1本だけ**(詳細画面の `history` は文を出さない画面の鍵)。 スロットは既存の `id` だけで、
+   * 識別子グループも語彙グループもスロットの種類も増えない。 `history: true` を書いた表にだけ1文。
+   */
+  | "data.table_history"
+  /*
+   * **【`V23-M9-T05`。`ADR-0549` §Decision 1-2・`ADR-0550` §Decision 4-3(決定 `D-V23-238`・`D-V23-252`・`D-V23-254`・`D-V23-263`)】
+   * 名簿への自動登録と、行の最後の管理者を述べる2本。** 名は `data.table_access_` で始め、`admin` を含めない。
+   * スロットは既存の `id`(表の ID と役割の ID)だけで、識別子グループも語彙グループもスロットの種類も増えない。
+   * 権限名と `creator_permission` の値は述べない(`ADR-0300` §限界1)。 文の型の総数は 159 → 161。
+   */
+  | "data.table_access_auto_enroll"
+  | "data.table_access_last_row_manager"
   | "automation.workflow"
   | "automation.trigger_on_create"
   | "automation.trigger_on_update"
@@ -687,6 +737,13 @@ export const REQUIREMENT_TEMPLATES: Record<RequirementTemplateId, string> = {
     "役割 {role_id} の {position} 番目の規則は、画面 {view_id} を見られると宣言している。",
   "features.role_rule_action_read":
     "役割 {role_id} の {position} 番目の規則は、画面 {view_id} のボタン {view_action_id} を使えると宣言している。",
+  // **【`V21-M2B`。`ADR-0482` の `AN-G2` §2-7 / §7 の追1(`ADR-0315` 限定3 を破る)】**
+  // **未ログインの表の読取規則が名指しした隠す項目(`hidden_fields`)を1項目1文で述べる。**
+  // **出さないと、要件定義書が「未ログインは表を読める」とだけ書いて全項目が見えるように読める
+  // (逆向きの嘘)。** **役割について出す種類は増やさない**(規則の出力の中の注記であり、
+  // `ADR-0475` の「5つ目を足さない」を守る)。
+  "features.role_rule_hidden_field":
+    "役割 {role_id} の {position} 番目の規則は、テーブル {table_id} のフィールド {field_id} をログインしていない人から隠すと宣言している。",
   "features.role_condition_and":
     "役割 {role_id} の {position} 番目の規則の条件の {node_position} 番目の要素(深さ {depth})は、その下に続く条件をすべて満たす行にだけ当たる。",
   "features.role_condition_or":
@@ -702,7 +759,28 @@ export const REQUIREMENT_TEMPLATES: Record<RequirementTemplateId, string> = {
   // 済むようにするためであり、`0` と `false` が空でないことも同じ1文に入れてある。**
   "features.role_condition_is_empty":
     "役割 {role_id} の {position} 番目の規則の条件の {node_position} 番目の要素(深さ {depth})は、フィールド {field_id} が空の行にだけ当たる(空とみなすのは null と、値が入っていないことと、長さ0の文字列の3つで、0 と false は空ではない)。",
+  // **【`ADR-0475`】利用文脈(役割の `density`)。** **値は語彙グループ `density`
+  // (`screens.preset_density` と同じ2値)で出すので、識別子グループも語彙グループも増えない。**
+  // **述べるのは宣言だけである** —— **画面が実際にその詰まり具合で描かれることは書かない。**
+  "features.role_density":
+    "役割 {role_id} は、利用文脈として、この役割の人が開く画面を詰まり具合 {density} で表示すると宣言している(画面の宣言が在る画面では、画面の宣言が勝つ)。",
 
+  // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)】アプリの型を1件ずつ逐語で述べる。**
+  // **「宣言している」と書く** —— **画面が実際にその形で描かれることは書かない**(型は描画を1つも決めない。
+  // 読むのは AI と要件定義書だけである)。**スロットは既存の `number` と `verbatim` だけで、
+  // 識別子グループも語彙グループもスロットの種類も増えない。** **選んだ記録(案の名前・トレードオフ・
+  // 理由)を述べる本は無い** —— ユーザの決定 `D-V20-61` が「型だけ」を選んだためである。
+  "screens.design_pattern":
+    "このアプリは、画面の型の {position} 番目として次を宣言している:\n{design_pattern}",
+  // **【`V22-M2-T09a` / `ADR-0486`】メニューの位置のアプリの既定を逐語で述べる。** **スロットは既存の
+  // `number` と `verbatim` だけで、識別子グループも語彙グループもスロットの種類も増えない。**
+  // **役割ごとの上書きは件数だけ** —— 役割の id と、役割ごとの位置は述べない。
+  "screens.navigation_placement":
+    "このアプリは、画面の一覧(メニュー)を並べる位置のアプリの既定を次のとおり宣言している(side は左、top は上)。役割ごとの上書きは {override_count} 件である:\n{placement}",
+  // **【`V22-M3-T02` / `ADR-0488` 限定6】マイページを置くことを述べる。** **スロットは既存の `number` だけで、
+  // 識別子グループも語彙グループもスロットの種類も増えない。** 足す表・外す表・並べる画面は件数だけを述べる。
+  "screens.my_page":
+    "このアプリは、ログインした人ごとのマイページを置く。自分の記録に足す表は {include_count} 件、外す表は {exclude_count} 件、開くボタンとして並べる画面は {view_count} 件である。",
   "screens.target": "画面 {view_id} は種別 {view_type} で、テーブル {table_id} を対象とする。",
   "screens.display_name": "画面 {view_id} の表示名は {view_name} である。",
   "screens.column": "画面 {view_id} は {position} 番目の列としてフィールド {field_id} を表示する。",
@@ -906,6 +984,10 @@ export const REQUIREMENT_TEMPLATES: Record<RequirementTemplateId, string> = {
   //   `"data.field_writable_by"`: 「テーブル {table_id} のフィールド {field_id} は、
   //     {position} 番目の書ける相手として {audience_role} を宣言している。」
   // **`$defs/field` の `audience` / `writable_by` が廃止されたので、出典を失った。**
+  // **【`V23-M2-T02b` / `D-V23-62` / 授権 `ADR-0518`】一意違反の文言(`unique_message`)。**
+  // 重複のときに断る文言を、利用者が読む言葉のまま逐語で写す(`data.field_unit` と同じ形)。
+  "data.field_unique_message":
+    "テーブル {table_id} のフィールド {field_id} は、同じ値の行がすでにあるとき、次の文言を出して断ると宣言している:\n{unique_message}",
   "data.field_unit":
     "テーブル {table_id} のフィールド {field_id} の値の単位は次のとおり記録されている:\n{unit}",
   "data.field_emphasis":
@@ -965,6 +1047,31 @@ export const REQUIREMENT_TEMPLATES: Record<RequirementTemplateId, string> = {
     "テーブル {table_id} は、グループをテーブル {group_table} に記録すると宣言している。",
   "data.table_access_inherit_from":
     "テーブル {table_id} は、{position} 番目の親を辿る項目としてフィールド {field_id} を宣言している。",
+  // **【`V23-M5-T08`】行の招待の宣言を1文で述べる。** **件数と日数だけ**を述べ、0 の意味を本文に書く
+  // (`by` を省けば作成者に与える権限、`target_roles` を省けば役割を問わない、`expires_days` を省けば 7 日)。
+  // **「招待が届く」「守られる」とは書かない**(宣言は保証ではない。`ADR-0126` A4 と同じ線)。
+  // **【`V23-M6-T10`】行を相手にした付与の宣言を1文で述べる。** 相手の行の表の名前と `via` の件数だけを述べる。
+  // **「読める」「守られる」とは書かない**(宣言は保証ではない。`ADR-0126` A4 と同じ線)。
+  "data.table_access_principal_row":
+    "テーブル {table_id} は、付与の相手として、人やグループの代わりにテーブル {principal_table} の行を指せると宣言している。その行について指定した権限({via_count} 件)のどれかを持つ人を相手とみなす宣言で、相手の行の側でたどるのは1段だけである。",
+  // **【`V23-M7-T07`】子の表に行を作れる権限の宣言を1文で述べる。** 子の表ごとに1文で、書いた権限の件数だけを述べる。
+  // **「作れる」は宣言の言い換えで、保証ではない**(子の表の `creatable_by` が重なり、親の行を読めない人は作れない)。
+  // **【`V23-M8-T08`】表の変更履歴の宣言を1文で述べる。** **「読める」は宣言の言い換えで、保証ではない**
+  // (読めるのは行を読めるログインした人だけで、読めない項目は落とす。消した行・undo・表を消したときの限界は文にしない)。
+  "data.table_history":
+    "テーブル {table_id} は、行の作成・更新・削除を、行ごとの変更履歴に残すと宣言している。履歴を読めるのは、その行を読めるログインした人だけで、その人に読めない項目は変更前と変更後の両方を落とす。",
+  // **【`V23-M9-T05`】名簿への自動登録の宣言を、役割ごとに1文で述べる。** 載るのは利用者として登録したときと役割を配られたときで、
+  // ログインでは載らない(`D-V23-252`)。 **「載る」は宣言の言い換えで、保証ではない**(運営者が消した名簿の行は、役割を配り直すまで戻らない)。
+  "data.table_access_auto_enroll":
+    "テーブル {table_id} の名簿への自動登録の宣言により、役割 {role_id} の人は、利用者として登録したときと、その役割を配られたときに、テーブル {members_table} の名簿に載る。",
+  // **【`V23-M9-T05`】行の最後の管理者の付与は外せないことを1文で述べる。** 管理者という考えのある表(名簿を宣言した表)にだけ出す。
+  // 権限名と `creator_permission` の値は述べない。 運営者が直接外せることと、断らない場合の全部は文にしない。
+  "data.table_access_last_row_manager":
+    "テーブル {table_id} は、行ごとの付与で、行の最後の管理者の付与は外せないと宣言している。",
+  "data.permission_create_child":
+    "テーブル {table_id} は、行について指定した権限({permission_count} 件)のどれかを持つ人が、その行に書けなくても、その行を親にしてテーブル {child_table} に行を作れると宣言している。作るときだけに効き、別の親への付け替えには使えない。",
+  "data.table_invitation":
+    "テーブル {table_id} は、行への招待を宣言している。招待できる権限の指定は {by_count} 件(0 件なら、行を作った人に与える権限を持つ人が招待できる)、渡せる権限は {grantable_count} 件、受け取れる役割の指定は {target_role_count} 件(0 件なら、役割を問わない)、招待の期限の指定は {expires_days} 日(0 日なら書いていない。そのときは 7 日)、承諾で名簿のグループ欄に招待した行の項目の値を書く指定は {group_from_count} 件である。",
 
   "automation.workflow":
     "自動化 {workflow_id}(表示名 {workflow_name})の実行履歴はテーブル {history_table} に記録される。",
@@ -1502,9 +1609,12 @@ function actionKeyNames(workflows: readonly Workflow[]): string[] {
  * 自己言及。§限界6)。照合できるのは「他のパスから来た値が混ざっていないこと」までである。
  */
 function fieldGroupNames(views: readonly View[]): string[] {
+  // **【`V20-M3-T01` / `ADR-0469`】綴りを `field_sections` に改め、入力フォームのまとまりの名前も
+  // 実在集合に入れる**(下の文の出し口は `form` と `detail_view` の両方を通るので、ここで
+  // `detail_view` に絞ったままだと入力フォームのまとまりの名前が実在集合に無く fail-closed で落ちる)。
   return views.flatMap((view) =>
-    view.type === "detail_view" && view.field_groups !== undefined
-      ? Object.keys(view.field_groups)
+    (view.type === "detail_view" || view.type === "form") && view.field_sections !== undefined
+      ? Object.keys(view.field_sections)
       : [],
   );
 }
@@ -1656,6 +1766,17 @@ function historicalIdentifierSets(entries: readonly ChangelogEntry[]): Historica
           // ワークフロー・関数のどれでもなく、`identifiers` の5つの集合のどれにも
           // 属さない。****この switch は silent な1つである**(落としても tsc も
           // bun test も教えてくれない)。
+          break;
+        case "remember_design":
+          // **【`V20-M15-T01A`。18種目。`ADR-0479` §Decision 2 の 9 / 計画 §10-5 の軽13】**
+          // **識別子を1つも足さない**(`set_roles` と同型)。選んだ記録と型は app に1つしか無い器に
+          // 書かれ、対象IDを取らない。 **選んだ案の名前・トレードオフ・理由を集めない**
+          // (`D-V20-61`。履歴節に1文字も出さない)。 **この switch は silent な1つである。**
+          break;
+        case "set_workspace":
+          // **【`V22-M2-T02`。19種目。`ADR-0486` §Decision 1】** **識別子を1つも足さない**(`set_roles` /
+          // `remember_design` と同型)。メニューの位置は app に1つしか無い器に書かれ、対象IDを取らない
+          // (`by_role` の役割名は役割の宣言の識別子であって、新しい識別子ではない)。 **この switch は silent な1つである。**
           break;
         // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11` / `T-G12`。判定値 = 廃止】**
         // **ここに在った `case "set_user_kinds":`(識別子を1つも足さない silent な分岐)を
@@ -1992,6 +2113,15 @@ function foldOperationIntoAttribution(
       // **役割の宣言はそのどれでもない**(リソース種を増やしていない)。
       // **要件定義書は宣言の内容を1文も述べない**ので、出典を付ける先そのものが無い。
       // **この switch も silent な1つである。**
+      return;
+    case "remember_design":
+      // **【`V20-M15-T01A`。18種目。`ADR-0479` §Decision 2 の 9 / 計画 §10-5 の軽13】**
+      // **帰属表に1件も足さない**(`set_roles` と同型)。 帰属表の5つの集合のどれでもない。
+      // **この switch も silent な1つである。**
+      return;
+    case "set_workspace":
+      // **【`V22-M2-T02`。19種目。`ADR-0486` §Decision 1】** **帰属表に1件も足さない**(`remember_design` と同型)。
+      // **要件定義書はメニューの位置を1文も述べない**ので、出典を付ける先そのものが無い。 **この switch も silent な1つである。**
       return;
     // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11` / `T-G12`。判定値 = 廃止】**
     // **ここに在った `case "set_user_kinds":` を取り除いた。** **`DIFF_OPS` から op が
@@ -2343,6 +2473,22 @@ function roleStatements(ctx: Context): DraftStatement[] {
         ),
       );
     }
+    /*
+     * **【`ADR-0475`】利用文脈 —— `density` を書いた役割にだけ1文を出す。**
+     * **書いていない役割には1文も出さない**(既定値を推測して書かない)。
+     * **描き方は決めない** —— **画面の詰まり具合を導く箇所は表示層の1本だけである**
+     * (`ADR-0464` 限定5)。**ここは宣言を文にするだけで、判定の写しではない。**
+     */
+    if (role.density !== undefined) {
+      out.push(
+        draft(
+          "features",
+          "features.role_density",
+          { role_id: roleIdSlot(), density: termSlot("density", role.density) },
+          manifestSource(`${base}/density`),
+        ),
+      );
+    }
     (role.rules ?? []).forEach((rule, ruleIndex) => {
       const rulePath = `${base}/rules/${ruleIndex}`;
       const position = () => numberSlot(ruleIndex + 1);
@@ -2444,6 +2590,31 @@ function roleStatements(ctx: Context): DraftStatement[] {
                 view_action_id: idSlot(ctx.sets, "view_action_id", rule.action),
               },
               manifestSource(rulePath),
+            ),
+          );
+        }
+      }
+      /*
+       * **【`V21-M2B`。`ADR-0482` の `AN-G2` §2-7】隠す項目は1項目1文**(上の動詞の文の後ろ)。
+       * **書けるのは未ログインの表の規則だけ**(スキーマ)なので、ここで役割を絞り直さない。
+       * **実在しない項目は語らない**(上の `missing` と同じ沈黙。適用時検査が実在を保証する)。
+       */
+      if (rule.target === "table" && rule.table !== undefined) {
+        for (const hiddenField of rule.hidden_fields ?? []) {
+          if (!ctx.sets.field_id.has(hiddenField)) {
+            continue;
+          }
+          out.push(
+            draft(
+              "features",
+              "features.role_rule_hidden_field",
+              {
+                role_id: roleIdSlot(),
+                position: position(),
+                table_id: idSlot(ctx.sets, "table_id", rule.table),
+                field_id: idSlot(ctx.sets, "field_id", hiddenField),
+              },
+              manifestSource(`${rulePath}/hidden_fields`),
             ),
           );
         }
@@ -2772,7 +2943,7 @@ function pushReportStatements(
  * **プリセット9キー(ADR-0050 限界8 / ADR-0093 / ADR-0118)と `custom_css`
  * (ADR-0055 限定14)は、`ADR-0068` 共通10 / `ADR-0126` B1 が名指しで「足さない」と定めて
  * いたが、門A の本審査(`V4-M39-G1` / `G2` / `G3` = いずれも限定採用)がそれを覆した。**
- * **覆っていないのはテーマ25スロットだけである**(`ADR-0144` B1)。
+ * **覆っていないのはテーマ25スロットだけである**(`ADR-0144` B1)。 【V20-M9 で偽になった】「25」は当時の数で、今日の役割の枠は27個と生の色(ADR-0474)。要件ドキュメントに文を出さないことは変わらない。
  *
  * **述べるのは「そう宣言している」ことまでである** —— **宣言と描画は一致するとは限らない**
  * (`ADR-0144` A4 / C9 / `ADR-0145` A6 / C1)。
@@ -3355,9 +3526,73 @@ function viewStatements(ctx: Context, view: View, index: number): DraftStatement
     );
   }
 
+  /*
+   * ADR-0126 A2 の 3(`view.field_groups`。`P-G17` の (C) 側 / `ADR-0092`)。
+   *
+   * **まとまり1件につき1文 + 所属項目1件につき1文。** 「名前 → 項目の配列」の1段であり、
+   * **入れ子はスキーマが禁じているので深さの語彙は要らない**(`screens.filter_*` が
+   * `depth` を持つのと対照的である)。
+   *
+   * **名前は自由文字列なので自己言及の識別子グループ `field_group_name` に入れる**
+   * (A5。`action_key_name` と同型)。**pointer にはマップのキーがそのまま入るので
+   * RFC6901 のエスケープを掛ける。**
+   */
+  // **【`V20-M3-T01` / `ADR-0469`】綴りを `field_sections` に改め、入力フォームのまとまりも
+  // 同じ2種の文で述べる**(文面は画面の種別を名指ししない。3種目のテンプレートを足していない)。
+  // **着手前はこの本文が `viewStatements` の末尾(`detail_view` だけが届く位置)に直接在った。**
+  // **入力フォームは下の `if (view.type !== "detail_view")` で先に `return` するので、本文を
+  // このクロージャに移し、`form` はその `return` の直前で、`detail_view` は着手前と同じ末尾で
+  // 呼ぶ**(`detail_view` の文の並びは1文も動かない)。
+  const pushFieldSections = (
+    // **型は `DetailView` の宣言をそのまま引く**(import を1本も足さない。`form` 側も同じ形である)。
+    sections: Extract<View, { type: "detail_view" }>["field_sections"],
+  ): void => {
+    for (const [position, [name, group]] of Object.entries(sections ?? {}).entries()) {
+      const groupPointer = `${base}/field_sections/${escapePointer(name)}`;
+      out.push(
+        draft(
+          "screens",
+          "screens.field_group",
+          {
+            view_id: viewIdSlot(),
+            position: numberSlot(position + 1),
+            field_group_name: idSlot(ctx.sets, "field_group_name", name),
+          },
+          manifestSource(groupPointer),
+          attributed,
+        ),
+      );
+      /*
+       * **【`CM-G24` / `V10-M24-T03`】まとまりの値は2形ある**(`ADR-0371`)—— 配列そのものか、
+       * 名札を持つ `{ id?, fields }`。**出す文は `screens.field_group` と
+       * `screens.field_group_item` の2種のままである**(`ADR-0374` 限定8)——
+       * **名札のための3種目のテンプレートを1文も足していない。****名札を1度も読まない。**
+       */
+      const fields = Array.isArray(group) ? group : group.fields;
+      fields.forEach((field, itemPosition) => {
+        out.push(
+          draft(
+            "screens",
+            "screens.field_group_item",
+            {
+              view_id: viewIdSlot(),
+              position: numberSlot(position + 1),
+              item_position: numberSlot(itemPosition + 1),
+              field_id: idSlot(ctx.sets, "field_id", field),
+            },
+            manifestSource(`${groupPointer}/${itemPosition}`),
+            attributed,
+          ),
+        );
+      });
+    }
+  };
+
   // **`related` / `actions` は detail_view でだけ書ける**(schema の `allOf` が
   // list_view / form では `false` にしている)。型の上でも DetailView にしか無い。
   if (view.type !== "detail_view") {
+    // **【`V20-M3-T01` / `ADR-0469`】入力フォームのまとまりの文はここで出す**(上の注)。
+    pushFieldSections(view.field_sections);
     return out;
   }
 
@@ -3426,61 +3661,98 @@ function viewStatements(ctx: Context, view: View, index: number): DraftStatement
 
   pushActionOrigins();
 
-  /*
-   * ADR-0126 A2 の 3(`view.field_groups`。`P-G17` の (C) 側 / `ADR-0092`)。
-   *
-   * **まとまり1件につき1文 + 所属項目1件につき1文。** 「名前 → 項目の配列」の1段であり、
-   * **入れ子はスキーマが禁じているので深さの語彙は要らない**(`screens.filter_*` が
-   * `depth` を持つのと対照的である)。
-   *
-   * **名前は自由文字列なので自己言及の識別子グループ `field_group_name` に入れる**
-   * (A5。`action_key_name` と同型)。**pointer にはマップのキーがそのまま入るので
-   * RFC6901 のエスケープを掛ける。**
-   */
-  for (const [position, [name, group]] of Object.entries(view.field_groups ?? {}).entries()) {
-    const groupPointer = `${base}/field_groups/${escapePointer(name)}`;
-    out.push(
-      draft(
-        "screens",
-        "screens.field_group",
-        {
-          view_id: viewIdSlot(),
-          position: numberSlot(position + 1),
-          field_group_name: idSlot(ctx.sets, "field_group_name", name),
-        },
-        manifestSource(groupPointer),
-        attributed,
-      ),
-    );
-    /*
-     * **【`CM-G24` / `V10-M24-T03`】まとまりの値は2形ある**(`ADR-0371`)—— 配列そのものか、
-     * 名札を持つ `{ id?, fields }`。**出す文は `screens.field_group` と
-     * `screens.field_group_item` の2種のままである**(`ADR-0374` 限定8)——
-     * **名札のための3種目のテンプレートを1文も足していない。****名札を1度も読まない。**
-     */
-    const fields = Array.isArray(group) ? group : group.fields;
-    fields.forEach((field, itemPosition) => {
-      out.push(
-        draft(
-          "screens",
-          "screens.field_group_item",
-          {
-            view_id: viewIdSlot(),
-            position: numberSlot(position + 1),
-            item_position: numberSlot(itemPosition + 1),
-            field_id: idSlot(ctx.sets, "field_id", field),
-          },
-          manifestSource(`${groupPointer}/${itemPosition}`),
-          attributed,
-        ),
-      );
-    });
-  }
+  pushFieldSections(view.field_sections);
   return out;
 }
 
 function screenStatements(ctx: Context): DraftStatement[] {
-  return ctx.manifest.app.views.flatMap((view, index) => viewStatements(ctx, view, index));
+  return [
+    ...designPatternStatements(ctx),
+    ...navigationPlacementStatements(ctx),
+    ...myPageStatements(ctx),
+    ...ctx.manifest.app.views.flatMap((view, index) => viewStatements(ctx, view, index)),
+  ];
+}
+
+/**
+ * **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)】アプリの型を screens 節の先頭に1件ずつ出す。**
+ *
+ * - **読むのは `app.design_memory.patterns` だけである。** 同じ器の中の選んだ記録(案の名前・
+ *   トレードオフ・理由)は1バイトも読まない —— 要件定義書に載せないとユーザが決めた(`D-V20-61`)。
+ * - **型が無い(器が無い・配列が無い)アプリでは1文も出さない** —— 文書は1バイトも変わらない。
+ * - 出典は `/app/design_memory/patterns`、逐語引用の `field` は添字の文字列(`"0"` から)。
+ * - **画面ごとの文より前に置く** —— アプリ全体の宣言なので、画面の文に紛れさせない。
+ */
+function designPatternStatements(ctx: Context): DraftStatement[] {
+  const patterns = ctx.manifest.app.design_memory?.patterns ?? [];
+  const source = manifestSource("/app/design_memory/patterns");
+  return patterns.map((pattern, index) =>
+    draft(
+      "screens",
+      "screens.design_pattern",
+      {
+        position: numberSlot(index + 1),
+        design_pattern: verbatimSlot(pattern, source, String(index)),
+      },
+      source,
+    ),
+  );
+}
+
+/**
+ * **【`V22-M2-T09a` / `ADR-0486`(独立点検の指摘 [軽-4])】メニューの位置のアプリの既定を1文だけ出す。**
+ *
+ * - **読むのは `app.workspace.navigation` の `placement`(逐語)と `by_role` の件数だけである。**
+ *   役割の id と役割ごとの位置は述べない。
+ * - **宣言が無い・アプリの既定(`placement`)を書いていない宣言では1文も出さない** —— 文書は1バイトも変わらない
+ *   (`GET /public` が上書きだけの宣言でキーごと出さないのと同じ線)。
+ * - 出典は `/app/workspace/navigation`、逐語引用の `field` は `placement`。 型の文の後、画面ごとの文の前に置く。
+ */
+function navigationPlacementStatements(ctx: Context): DraftStatement[] {
+  const navigation = ctx.manifest.app.workspace?.navigation;
+  if (navigation?.placement === undefined) {
+    return [];
+  }
+  const source = manifestSource("/app/workspace/navigation");
+  return [
+    draft(
+      "screens",
+      "screens.navigation_placement",
+      {
+        override_count: numberSlot(navigation.by_role?.length ?? 0),
+        placement: verbatimSlot(navigation.placement, source, "placement"),
+      },
+      source,
+    ),
+  ];
+}
+
+/**
+ * **【`V22-M3-T02` / `ADR-0488` 限定6】マイページを置くことを1文だけ出す。**
+ *
+ * - **読むのは `app.workspace.my_page` の `tables.include` / `tables.exclude` / `views` の件数だけである。**
+ *   表・画面の id と `open_after_login` は述べない。
+ * - **宣言が無ければ1文も出さない** —— 文書は1バイトも変わらない。 `my_page: {}` なら件数0で1文出る。
+ * - 出典は `/app/workspace/my_page`。 メニューの位置の文の後、画面ごとの文の前に置く。
+ */
+function myPageStatements(ctx: Context): DraftStatement[] {
+  const myPage = ctx.manifest.app.workspace?.my_page;
+  if (myPage === undefined || myPage === null) {
+    return [];
+  }
+  const source = manifestSource("/app/workspace/my_page");
+  return [
+    draft(
+      "screens",
+      "screens.my_page",
+      {
+        include_count: numberSlot(myPage.tables?.include?.length ?? 0),
+        exclude_count: numberSlot(myPage.tables?.exclude?.length ?? 0),
+        view_count: numberSlot(myPage.views?.length ?? 0),
+      },
+      source,
+    ),
+  ];
 }
 
 /** テーブル1つぶんの記述(規模・各フィールドの型・必須・選択肢・参照先)。 */
@@ -3608,6 +3880,29 @@ function tableStatements(ctx: Context, table: Table, index: number): DraftStatem
      * 番号との対応が読めなくなる。
      */
 
+    // 9b. `unique_message`(`ADR-0498` / `D-V23-62` / 授権 `ADR-0518`)。**書いた項目にだけ1文。**
+    // 文言は作者が書いた自由な1文なので **`verbatim`** で写す。 `unique` の無い列・`false` の列には
+    // 書けない(適用時に `referential-integrity.ts` が断る)ので、ここで `unique` を見直さない。
+    if (field.unique_message !== undefined) {
+      out.push(
+        draft(
+          "data",
+          "data.field_unique_message",
+          {
+            table_id: tableIdSlot(),
+            field_id: fieldIdSlot(),
+            unique_message: verbatimSlot(
+              field.unique_message,
+              manifestSource(fieldBase),
+              "unique_message",
+            ),
+          },
+          manifestSource(`${fieldBase}/unique_message`),
+          attributed,
+        ),
+      );
+    }
+
     // 12. `unit`(`E-G14` / `ADR-0086`)。**`number` にだけ書ける。** 値は自由文字列
     // (8文字以下)なので、識別子でも閉じた語彙でもなく **`verbatim`** で写す(A7)。
     if (field.type === "number" && field.unit !== undefined) {
@@ -3712,6 +4007,20 @@ function tableStatements(ctx: Context, table: Table, index: number): DraftStatem
    * **帰属は表と同じもの**(どの差分がこの表を書いたか)を使う —— **宣言専用の帰属先を
    * 新しく作らない**(`Attribution` の形を1バイトも変えていない)。
    */
+  // **【`V23-M8-T08`。`ADR-0544` 限定7(決定 `D-V23-216`)】表の変更履歴の宣言。** `history: true` の表にだけ1文
+  // (出典は表の `history` のキー。帰属は表と同じもの)。 **書いていない表では1文も出ず、ほかの文は1バイトも変わらない。**
+  if (table.history === true) {
+    out.push(
+      draft(
+        "data",
+        "data.table_history",
+        { table_id: tableIdSlot() },
+        manifestSource(`${base}/history`),
+        attributionOf(ctx.attribution.tables, table.id),
+      ),
+    );
+  }
+
   const access = table.access_control;
   if (access?.enabled) {
     const accessBase = `${base}/access_control`;
@@ -3835,6 +4144,112 @@ function tableStatements(ctx: Context, table: Table, index: number): DraftStatem
         ),
       );
     });
+
+    // (d2) **【`V23-M6-T10`。`ADR-0538` 限定7】行を相手にした付与の宣言。** 書いた表にだけ1文。 相手の行の表の名前と
+    // `via` の件数だけを述べ、付与表の列の ID と権限名は述べない。 **書いていない表では1文も出ず、(a)〜(d) と (e) は1バイトも変わらない。**
+    const principalRow = access.grant.principal_row;
+    if (principalRow !== undefined) {
+      out.push(
+        draft(
+          "data",
+          "data.table_access_principal_row",
+          {
+            table_id: tableIdSlot(),
+            principal_table: idSlot(ctx.sets, "table_id", principalRow.table),
+            via_count: numberSlot(principalRow.via.length),
+          },
+          manifestSource(`${accessBase}/grant/principal_row`),
+          accessAttribution,
+        ),
+      );
+    }
+
+    // (d3) **【`V23-M7-T07`。`ADR-0542` 限定6】子の表に行を作れる権限の宣言。** 子の表ごとに1文(権限の宣言順に、
+    // 最初に名の出た順)。 書いた権限の件数だけを述べ、権限名は述べない。 出典は最初に名の出た要素。
+    // **書いていない表では1文も出ず、(a)〜(d2) と (e) は1バイトも変わらない。**
+    const childOrder: string[] = [];
+    const childFirst: Record<string, string> = {};
+    const childCount: Record<string, number> = {};
+    access.permissions.forEach((permission, permissionIndex) => {
+      (permission.create_child ?? []).forEach((childId, childIndex) => {
+        if (childFirst[childId] === undefined) {
+          childOrder.push(childId);
+          childFirst[childId] =
+            `${accessBase}/permissions/${permissionIndex}/create_child/${childIndex}`;
+          childCount[childId] = 0;
+        }
+        childCount[childId] = (childCount[childId] ?? 0) + 1;
+      });
+    });
+    for (const childId of childOrder) {
+      out.push(
+        draft(
+          "data",
+          "data.permission_create_child",
+          {
+            table_id: tableIdSlot(),
+            permission_count: numberSlot(childCount[childId] ?? 0),
+            child_table: idSlot(ctx.sets, "table_id", childId),
+          },
+          manifestSource(childFirst[childId] ?? `${accessBase}/permissions`),
+          accessAttribution,
+        ),
+      );
+    }
+
+    // (d4) **【`V23-M9-T05`。`ADR-0549` §Decision 1-2(決定 `D-V23-238`・`D-V23-252`・`D-V23-254`)】名簿への自動登録と、行の最後の管理者。**
+    // 自動登録は書いた宣言にだけ、役割ごとに1文(出典は `roles` の要素)。 最後の管理者は、名簿を宣言した表(管理者の数え方が
+    // 成り立ち、最後の管理者の断りが効く表)に1文で、v23 の宣言を書かない既存のアプリにも出る(`D-V23-254`)。 権限名は述べない。
+    // **名簿を宣言しない表と、自動登録を書かない表では、それぞれ1文も出ず、ほかの文は1バイトも変わらない。**
+    const members = access.members;
+    if (members !== undefined) {
+      (members.auto_enroll?.roles ?? []).forEach((roleId, roleIndex) => {
+        out.push(
+          draft(
+            "data",
+            "data.table_access_auto_enroll",
+            {
+              table_id: tableIdSlot(),
+              role_id: idSlot(ctx.sets, "role_id", roleId),
+              members_table: idSlot(ctx.sets, "table_id", members.table),
+            },
+            manifestSource(`${accessBase}/members/auto_enroll/roles/${roleIndex}`),
+            accessAttribution,
+          ),
+        );
+      });
+      out.push(
+        draft(
+          "data",
+          "data.table_access_last_row_manager",
+          { table_id: tableIdSlot() },
+          manifestSource(`${accessBase}/creator_permission`),
+          accessAttribution,
+        ),
+      );
+    }
+
+    // (e) **【`V23-M5-T08`。`ADR-0532` 限定7】行の招待の宣言。** 書いた表にだけ1文。 **件数と日数だけ**を述べ、
+    // 権限名・役割の id・項目の id は述べない。 **書いていない表では1文も出ず、上の (a)〜(d) は1バイトも変わらない。**
+    const invitations = access.invitations;
+    if (invitations !== undefined) {
+      out.push(
+        draft(
+          "data",
+          "data.table_invitation",
+          {
+            table_id: tableIdSlot(),
+            by_count: numberSlot(invitations.by?.length ?? 0),
+            grantable_count: numberSlot(invitations.grantable.length),
+            target_role_count: numberSlot(invitations.target_roles?.length ?? 0),
+            expires_days: numberSlot(invitations.expires_days ?? 0),
+            group_from_count: numberSlot(invitations.group_from === undefined ? 0 : 1),
+          },
+          manifestSource(`${accessBase}/invitations`),
+          accessAttribution,
+        ),
+      );
+    }
   }
   return out;
 }
@@ -4230,6 +4645,12 @@ function functionStatements(ctx: Context, fn: FunctionDef, index: number): Draft
   const declaredInput = fn.input;
   if (Array.isArray(declaredInput)) {
     declaredInput.forEach((element, position) => {
+      // **【`V23-M4-T02` / `ADR-0500` 限定22】** 島の入力の `actor` / `previous` には文を出さない
+      // (要件定義書の文面を1本も足さない)。 `termSlot` の写し(`FUNCTION_INPUT_SOURCES`)に
+      // 2値を足さないので、ここで先に外す(外さないと生成そのものが止まる)。
+      if (element.source === "actor" || element.source === "previous") {
+        return;
+      }
       const elementSource = manifestSource(`${base}/input/${position}`);
       const sourceTerm = termSlot("function_input_source", element.source);
       const common = { function_id: functionIdSlot(), position: numberSlot(position + 1) };
@@ -4274,7 +4695,12 @@ function functionStatements(ctx: Context, fn: FunctionDef, index: number): Draft
       }
     });
   }
-  if (!Array.isArray(declaredInput)) {
+  // **【`V23-M4-T02` / `ADR-0500` 限定22】** 単体形の `actor` / `previous` も文を出さない(上と同じ理由)。
+  if (
+    !Array.isArray(declaredInput) &&
+    declaredInput.source !== "actor" &&
+    declaredInput.source !== "previous"
+  ) {
     const sourceTerm = termSlot("function_input_source", declaredInput.source);
     if (declaredInput.source === "table") {
       out.push(
@@ -4526,6 +4952,18 @@ function operationTargetStatements(
       // `ADR-0025` §3 の閉じた union にテンプレートを足すことになり、それは本タスクの
       // 範囲外である。**「要件定義書が役割を説明する」とは書かない。**
       return [];
+    case "remember_design":
+      // **【`V20-M15-T01A`。18種目。`ADR-0479` §Decision 2 の 9】** **対象を述べる文を1つも作らない**
+      // (`set_roles` と同型。3箇所のうち loud な1つ)。 **履歴節には `history.operation`
+      // (差分 X の N 番目の操作は remember_design である)だけが出る。** **選んだ案の名前・
+      // トレードオフ・理由を述べる文を作らない**(`D-V20-61`)。
+      return [];
+    case "set_workspace":
+      // **【`V22-M2-T02`。19種目。`ADR-0486` §Decision 1】** **対象を述べる文を1つも作らない**
+      // (`set_roles` / `remember_design` と同型。3箇所のうち loud な1つ)。 **履歴節には `history.operation`
+      // (差分 X の N 番目の操作は set_workspace である)だけが出る。** **メニューの位置(左 / 上・役割ごとの上書き)を
+      // 述べる文を作らない** —— `$defs/app` の `workspace` は「文を出さない」側である(`requirements-doc.test.ts` の表)。
+      return [];
     // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11` / `T-G12`。判定値 = 廃止】**
     // **ここに在った `case "set_user_kinds":`(3箇所のうち loud な1つ)を取り除いた。**
     // **`Operation` の union から `SetUserKindsOperation` が消えたので、残したままだと
@@ -4543,7 +4981,7 @@ function operationTargetStatements(
       // **履歴節には `history.operation`(差分 X の N 番目の操作は set_theme である)が
       // そのまま出る**(`diff_op` の語彙は `DIFF_OPS` から来るので自動追随する)。
       //
-      // **テーマの中身(25スロットの値)を述べる文も作っていない。** 作るには
+      // **テーマの中身(25スロットの値)を述べる文も作っていない。** 作るには 【V20-M9 で偽になった】今日は役割の枠27個と生の色(ADR-0474)。
       // ADR-0025 §3 の閉じた union にテンプレートを足すことになり、それは本タスクの
       // 範囲外である。**「要件定義書がテーマを説明する」とは書かない**(v3-m1-t03a.md
       // の限界に、述べていないこととして記録した)。

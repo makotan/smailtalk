@@ -45,9 +45,11 @@
  * ただし description には「必須である」ことを書き続ける —— `tools/list` に出る
  * 説明は LLM への指示として機能し、スキーマの緩さとは別の話だからである。
  */
+
 import { Database } from "bun:sqlite";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { effectiveRolesOnDb } from "../../auth/store.ts";
 import type { Role } from "../../auth/types.ts";
 import { AiCapabilityStore } from "../../kernel/ai-capability-store.ts";
 import { CapabilityStore } from "../../kernel/capability-store.ts";
@@ -85,7 +87,12 @@ import {
   type WorkflowHistoryWriteFailure,
   writeRecords,
 } from "../../kernel/index.ts";
-import { recordAccessLimitError } from "../../server/errors.ts";
+import { autoEnrollBackfill } from "../../server/auto-enroll-backfill.ts";
+import {
+  grantWriteRefusalError,
+  lastRowAdminError,
+  recordAccessLimitError,
+} from "../../server/errors.ts";
 import {
   // **【`V18-M6-T02`】親の関門の答えの型**(翻訳の関数が受け取る。判定の式は写していない)。
   type CreateParentAccessVerdict,
@@ -108,6 +115,7 @@ import {
   // **【`V18-M5-T02`(2026-09-12)/ `PM-G3` / `ADR-0432` / `ADR-0442`】**
   // **判定の家は `owner-scope.ts` の述語1本のままである**(判定の式を1行も写していない)。
   judgeRootCreatableRoles,
+  lastRowAdminVanishes,
   OWNER_FIELD,
   personalOwnerField,
   recordAccessSourceTables,
@@ -115,6 +123,7 @@ import {
   resolveRecordDeleteCascade,
   roleGateBlocksWithoutGrants,
 } from "../../server/owner-scope.ts";
+import { collectDesignNotices, type DesignNotice } from "../../shared/design-notices.ts";
 import { routePath } from "../../shared/route.ts";
 import { isSystemTableId } from "../../shared/system-tables.ts";
 import { requireActor, requireActorAndApp } from "../actor-guard.ts";
@@ -208,6 +217,13 @@ function withAppDb<T>(dataRoot: string, appId: string, run: (db: Database) => T)
   // `src/server/app.ts` の同名ヘルパーと**同じ定数**を流すので、入口で値がずれない。
   // **この経路には外側 tx が無いので、待ち時間だけで昇格デッドロックは起きない**
   // (`createRecord` / `updateRecord` は検証の SELECT を器の外で行う)。
+  // 【2026-09-29。`V23-M2-T06` の訂正。上の2行を消していない】`insert_sample_data` は行ごとに
+  // 行と作成者への付与を deferred の器1つで包むようになった(`D-V23-58`)。 その器の中では
+  // 検証の SELECT の後に書込へ昇格するので、他の接続が書込中なら待たずに断られうる
+  // (断りは `records.ts` の器が順番待ちの断りに翻訳し、その行が `failed` に入る)。
+  // 【2026-09-29。`V23-M2-T11` の訂正。上の4行を消していない】上の2行目から4行目は今日は偽である。
+  // その器は IMMEDIATE になった(`D-V23-75`)。 器の始まりで書込の鍵を取りに行くので、他の接続が
+  // 書込中なら今日どおり待つ(待ちの上限を過ぎたときだけ順番待ちの断りがその行の `failed` に入る)。
   db.exec(CONCURRENT_WRITE_WAIT_PRAGMA);
   try {
     return run(db);
@@ -243,6 +259,138 @@ function collectWorkflowHistoryFailures<T>(run: () => T): {
     // 前ハンドラ(本番では常に既定の `console.error`)へ戻す。カーネルには getter を
     // 足さない(門外の担保)ので、reset で既定へ復帰する = 本番では前ハンドラへの復帰と一致。
     resetWorkflowHistoryFailureHandler();
+  }
+}
+
+// --- 【`V23-M2-T06`】作成者への付与を、行の作成と同じ書込の器の内側で書く ------------------
+//
+// **`D-V23-13`・`D-V23-48`・`D-V23-55`・`D-V23-58`。** `src/server/app.ts` の同じ役の補助と同じ形
+// (`withAppDb` と同じく、実体は入口ごとに置く)。 付与の判定(誰に何を付与するか)は今日どおり
+// `denyRecordCreate` が返す計画であり、ここに条件式は無い。
+
+/** 付与の計画(`denyRecordCreate` が下見の答えと一緒に返す)。 */
+type McpCreatorGrantPlan = ReturnType<typeof creatorGrantPlan>;
+
+/** 巻き戻しの後に書き直す、自動処理の失敗の履歴の1行(表と5列)。 */
+type McpHeldHistoryRow = { table: string; values: Record<string, unknown> };
+
+/**
+ * **付与表の検査で付与が落ちたとき、行ごと巻き戻すための内部の例外。** 書込の器の内側で投げ、
+ * 外側で捕まえて付与表の失敗(`errors`)を道具の失敗に翻訳する。 `history` は付与表の自動処理の
+ * 失敗の履歴の控え(巻き戻しの後に書き直す)。
+ */
+class McpCreatorGrantRollback extends Error {
+  constructor(
+    readonly errors: ValidationError[],
+    readonly history: McpHeldHistoryRow[],
+  ) {
+    super("creator grant rollback");
+  }
+}
+
+/** 履歴の表の5列(`workflow-runner.ts` の `WORKFLOW_HISTORY_COLUMNS` と同じ並び)。 */
+const MCP_HELD_HISTORY_COLUMNS = ["ran_at", "workflow", "trigger_type", "status", "error"] as const;
+
+function mcpQuoted(id: string): string {
+  return `"${id.replaceAll('"', '""')}"`;
+}
+
+/** 付与を書く直前の、履歴の表ごとの最後の行の位置(`rowid`)。 読めない表は控えない。 */
+function markMcpHistory(db: Database, manifest: Manifest): Map<string, number> {
+  const marks = new Map<string, number>();
+  const tables = new Set<string>();
+  for (const workflow of manifest.app.workflows ?? []) {
+    if (typeof workflow.history_table === "string") {
+      tables.add(workflow.history_table);
+    }
+  }
+  for (const table of tables) {
+    try {
+      const row = db
+        .query<{ last: number | null }, []>(`SELECT max(rowid) AS last FROM ${mcpQuoted(table)}`)
+        .get();
+      marks.set(table, row?.last ?? 0);
+    } catch {
+      // 表が無い・壊れている: 控えない。
+    }
+  }
+  return marks;
+}
+
+/**
+ * 付与が落ちた後に、付与を書く直前より後ろに書かれた履歴の行を控える(付与の作成は自分の器を
+ * 巻き戻した後に失敗の履歴だけを書き直しているので、ここに在るのはその行だけである)。
+ */
+function holdMcpHistorySince(db: Database, marks: Map<string, number>): McpHeldHistoryRow[] {
+  const held: McpHeldHistoryRow[] = [];
+  const columns = MCP_HELD_HISTORY_COLUMNS.map((column) => mcpQuoted(column)).join(", ");
+  for (const [table, mark] of marks) {
+    try {
+      const rows = db
+        .query<Record<string, unknown>, [number]>(
+          `SELECT ${columns} FROM ${mcpQuoted(table)} WHERE rowid > ? ORDER BY rowid`,
+        )
+        .all(mark);
+      for (const values of rows) {
+        held.push({ table, values });
+      }
+    } catch {
+      // 5列を持たない表: 控えない。
+    }
+  }
+  return held;
+}
+
+/** 巻き戻した後で、控えた失敗の履歴を書き直す(`D-V23-55`)。 断られたらサーバのログに残す。 */
+function rewriteMcpHistory(db: Database, manifest: Manifest, held: McpHeldHistoryRow[]): void {
+  for (const row of held) {
+    const rewritten = createRecord(db, manifest, row.table, row.values);
+    if (!rewritten.ok) {
+      console.error(
+        "[mcp] 自動処理の失敗の履歴を書き直せませんでした:",
+        row.table,
+        rewritten.errors,
+      );
+    }
+  }
+}
+
+/**
+ * **【`V23-M4-T03` / `D-V23-93`】名乗った利用者から、連鎖の起点の操作者(`$actor`)を作る。**
+ * `login` はログイン名。 `role` はアカウントの役割1つ(`_auth_users.role`。`D-V23-90`)で、
+ * 実効ロール集合の先頭がその列の値である(`src/auth/store.ts` の `effectiveRoles`)ので、
+ * 利用者の表を引き直さない。 **送信内容から1バイトも読まない**(`ADR-0500` 限定16)。
+ */
+function mcpOriginOf(actor: { id: string; username: string; roles: readonly string[] }): {
+  id: string;
+  login: string;
+  role: string;
+  entry: "mcp";
+} {
+  // **【`V23-M8-T03`】MCP の入口は `mcp`**(変更履歴の入口の値。`$actor` としては解かない)。
+  return { id: actor.id, login: actor.username, role: actor.roles[0] ?? "", entry: "mcp" };
+}
+
+/**
+ * **作成者への付与を書く。必ず書込の器の中で呼ぶこと。** 付与表の検査で落ちたら
+ * {@link McpCreatorGrantRollback} を投げる(器ごと巻き戻る)。 検査の外の例外は包まずに投げる
+ * (今日の書込の想定外の例外と同じく、器ごと巻き戻って呼び出し元へ伝わる)。
+ */
+function writeMcpCreatorGrant(
+  db: Database,
+  manifest: Manifest,
+  plan: McpCreatorGrantPlan,
+  recordId: string,
+  /** **【`V23-M4-T03`】起点の操作者**(名乗った利用者。`D-V23-93`)。 */
+  origin?: { readonly id: string; readonly login: string; readonly role: string },
+): void {
+  if (plan?.kind !== "grant") {
+    return;
+  }
+  const marks = markMcpHistory(db, manifest);
+  const granted = createRecord(db, manifest, plan.grantTable, plan.grantValues(recordId), origin);
+  if (!granted.ok) {
+    throw new McpCreatorGrantRollback(granted.errors, holdMcpHistorySince(db, marks));
   }
 }
 
@@ -613,11 +761,19 @@ function parentUpdateDenial(verdict: CreateParentAccessVerdict): ValidationError
 // **写しである以上、片方だけを変えると黙ってずれる。**
 
 /** 参加者・グループの表そのものへの書込(HTTP の `forbiddenMembershipWriteError` の写し)。 */
-function forbiddenMembershipWriteError(kind: "member" | "group"): ValidationError {
+// **【`V23-M12-T05`。`D-V23-360` (5)・`D-V23-407`】HTTP と同じく引数を1つ足した。旧の宣言の行(逐語)**:
+//     `function forbiddenMembershipWriteError(kind: "member" | "group"): ValidationError {`
+function forbiddenMembershipWriteError(
+  kind: "member" | "group",
+  ownNameColumn?: true,
+): ValidationError {
   const what = kind === "member" ? "参加者" : "グループ";
   return {
     path: "",
-    message: `${what}の表は、アプリの運営者だけが書き換えられます。`,
+    message:
+      ownNameColumn === true
+        ? "参加者の表で書き換えられるのは、自分の行の名前だけです。ほかの欄と、ほかの人の行は、アプリの運営者だけが書き換えられます。"
+        : `${what}の表は、アプリの運営者だけが書き換えられます。`,
     hint:
       "自分の所属や、自分のアカウントの結びつきを自分で書き換えることはできません" +
       "(書き換えられると、他の人に配ってある権限を受け取れてしまうためです)。" +
@@ -626,13 +782,16 @@ function forbiddenMembershipWriteError(kind: "member" | "group"): ValidationErro
 }
 
 /** 作成者でも運営者でもない(HTTP の `forbiddenGrantWriteError` の写し)。 */
-function forbiddenGrantWriteError(): ValidationError {
-  return {
-    path: "",
-    message: "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
-    hint: "この行を作った人か、アプリの運営者に頼んでください。",
-  };
-}
+// --- 【`V23-M12-T05`。`D-V23-360` (2)・`D-V23-407`】この写しは撤去し、HTTP と同じ1本
+// (`src/server/errors.ts` の `grantWriteRefusalError`)を呼ぶ。 **ここに在ったもの(逐語)**:
+//
+//     function forbiddenGrantWriteError(): ValidationError {
+//       return {
+//         path: "",
+//         message: "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
+//         hint: "この行を作った人か、アプリの運営者に頼んでください。",
+//       };
+//     }
 
 /** 自分に権限を付ける要求(HTTP の `forbiddenSelfGrantError` の写し)。**運営者も例外ではない。** */
 function forbiddenSelfGrantError(): ValidationError {
@@ -640,6 +799,24 @@ function forbiddenSelfGrantError(): ValidationError {
     path: "",
     message: "自分に権限を付けることはできません。",
     hint: "他の人やグループに権限を渡すことはできます。自分の権限は、この行を作った人か運営者に付けてもらってください。",
+  };
+}
+
+/** 【`V23-M6-T04`】相手の行を指す欄を承諾の外で書く(HTTP の `forbiddenPrincipalRowWriteError` の写し)。 */
+function forbiddenPrincipalRowWriteError(): ValidationError {
+  return {
+    path: "",
+    message: "相手の行を指す欄は、招待の承諾でだけ書けます。",
+    hint: "相手の行の管理者に招待を承諾してもらってください。権限の欄の変更と、行ごとの削除は今までどおりできます。",
+  };
+}
+
+/** 【`V23-M6-T04`】相手の欄と利用者・グループの欄を同じ行に書く(HTTP の `mixedPrincipalRowHolderError` の写し)。 */
+function mixedPrincipalRowHolderError(): ValidationError {
+  return {
+    path: "",
+    message: "相手の行を指す欄と、利用者やグループの欄を、同じ行に書くことはできません。",
+    hint: "利用者やグループに権限を渡すときは、別の行として作ってください。",
   };
 }
 
@@ -712,25 +889,40 @@ function forbiddenCascadeDeleteError(): ValidationError {
  * **【HTTP と揃っていない点を隠さない】** **HTTP 側のこの断りの `path` は `""` である。**
  * **本段はそれを揃えない**(同 追記1 の末尾。`V18-M7-T07` が塞がない穴として書く)。
  *
- * @param total 合計(下の段まで)/ @param tableIds 子が居る表のID / @param seal 印(無ければ ④)。
+ * @param total 合計(下の段まで)/ @param parentName 親の表の表示名 / @param perTable 子が居る表の表示名と件数(`V23-M14-T02` までは表のIDの並び `tableIds`)/ @param seal 印(無ければ ④)。
  */
 function cascadeChildrenConfirmationError(
   total: number,
-  tableIds: readonly string[],
+  parentName: string | undefined,
+  perTable: readonly { readonly name: string | undefined; readonly count: number }[],
   seal: number | undefined,
 ): ValidationError {
-  const where = tableIds.length > 0 ? `(${tableIds.join(" / ")})` : "";
+  // 【V23-M14-T02。D-V23-451・D-V23-458・D-V23-465】message は使う人の言葉で言う —— 行の主語は親の表の
+  // 表示名、内訳は子の居る表ごとの表示名と件数。 表の ID とヘッダの名は message に1つも書かない
+  // (印の付け方は hint だけが言う)。 表示名を引けないとき(定義の表に name が無い・空)は、親は
+  // 「この行」、子の表は「別の表」と言い、表の ID には落とさない。 旧の文(逐語)は
+  // 「この行には、ぶら下がっている行が N 件あります(表の ID を「 / 」でつないだもの)。…」。
+  const subject =
+    parentName === undefined || parentName.trim() === "" ? "この行" : `この「${parentName}」`;
+  const breakdown = perTable
+    .map((entry) =>
+      entry.name === undefined || entry.name.trim() === ""
+        ? `別の表 ${entry.count} 件`
+        : `「${entry.name}」${entry.count} 件`,
+    )
+    .join("、");
+  const where = breakdown.length > 0 ? `(${breakdown})` : "";
   if (seal === undefined) {
     return {
       path: "/if_match_children",
-      message: `この行には、ぶら下がっている行が ${total} 件あります${where}。まとめて消してよければ、件数の印を付けて同じ操作をもう一度実行してください。1行も消していません。`,
-      hint: `件数の印は if_match_children(10進の整数)で、値は ${total} です。版の印(if_match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。`,
+      message: `${subject}を消すと、一緒に消える行が全部で ${total} 件あります${where}。まとめて消してよければ、件数を確かめたうえで、もう一度削除してください。まだ1行も消していません。`,
+      hint: `まとめて消すには、件数の印として if_match_children に10進の整数 ${total} を付けて、同じ削除をもう一度送ってください。版の印(if_match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。`,
     };
   }
   return {
     path: "/if_match_children",
-    message: `ぶら下がっている行の件数が、指定された件数の印(${seal})と合いません。今は ${total} 件です${where}。1行も消していません。`,
-    hint: `件数の印(if_match_children)に ${total} を指定して、同じ操作をもう一度実行してください。版の印(if_match)ではありません。ぶら下がっている行は、数えた後にも増えたり減ったりします。`,
+    message: `${subject}と一緒に消える行の件数が、確かめた件数(${seal} 件)から変わりました。今は全部で ${total} 件です${where}。まだ1行も消していません。`,
+    hint: `件数の印(if_match_children)に ${total} を指定して、同じ削除をもう一度送ってください。版の印(if_match)ではありません。一緒に消える行は、数えた後にも増えたり減ったりします。`,
   };
 }
 
@@ -810,6 +1002,42 @@ function createAppFailure(
 }
 
 /** 更新系6ツールをサーバに登録する。 */
+/**
+ * **利用者IDが実在するか**を問う関数を作る(`V23-M1-T07`。`ADR-0497` 限定11)。 判定の家は
+ * `_auth_users` を読まないので、ここで読んで渡す(HTTP の `app.ts` と同じ形)。
+ */
+function userExistsOn(db: Database): (userId: string) => boolean {
+  const known = new Map<string, boolean>();
+  return (userId) => {
+    let exists = known.get(userId);
+    if (exists === undefined) {
+      exists = effectiveRolesOnDb(db, userId) !== null;
+      known.set(userId, exists);
+    }
+    return exists;
+  };
+}
+
+/**
+ * **親の行を消す連鎖が、連鎖に入らない行の最後の管理者の付与を消すか**(`V23-M1-T07`。
+ * `D-V23-28` / `ADR-0510` §Decision 4)。 判定は `owner-scope.ts` の1本。 **`delete_record` の本文の
+ * 付与まわりの綴り(`ADR-0444` 限定15)を増やさないため、本文の外に置いた。**
+ */
+function cascadeLastAdminBlocked(
+  db: Database,
+  manifest: Manifest,
+  roles: Role[],
+  removed: readonly { readonly tableId: string; readonly recordId: string }[],
+): boolean {
+  return lastRowAdminVanishes({
+    manifest,
+    readRows: (id) => accessSourceRows(db, manifest, id),
+    userExists: userExistsOn(db),
+    removed,
+    role: roles,
+  });
+}
+
 export function registerWriteTools(server: McpServer, options: CreateMcpServerOptions): void {
   const { dataRoot, previewBaseUrl, actor } = options;
 
@@ -861,6 +1089,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
   //    (`ADR-0016` 実装追記 (E) の既知の非対称)。
   //  - **作成できた行に「作成者への付与」を1件も書いていない**(HTTP の単件 `POST` は書く)。
   //    **したがって、点を宣言した表に MCP から作った行は、作った本人にも見えないことがある。**
+  //    【2026-09-29。`V23-M2-T06` の訂正。上の2行を消していない】**上の2行は今日は偽である。**
+  //    `write_records` と `insert_sample_data` の作成は、行と同じ書込の器の中で作成者への付与を
+  //    1件書く(`D-V23-13`・`D-V23-48`)。 付与が付与表の検査で落ちたら行ごと巻き戻す。
+  //    受信口と自動処理の作成は今日どおり付与しない(`D-V23-49`)。
   //  - **監査(誰の権限で動いたか)は `_auth_activity` に1行も残らない**(裁定 `M31-9`)。
 
   // --- 【`V10-M28-T01`】**`denyAppSettingWrite` はこの位置から**モジュールの外**へ出た ---
@@ -1075,6 +1307,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
    * 通る**(裁定 `M31-8` が綴りを固定しており、点の判定そのものを名指しで呼べない ——
    * **その綴りが `src/mcp/**` に1文字も無いことを、別の番人が substring で見張っている**)。
    * **カーネルの自動処理の関門とは同じ向きである。**
+   *
+   * 【2026-09-29。`V23-M2-T06`】返す値は、断りなら `{ denied }`、通るなら `{ plan }`(作成者への
+   * 付与の計画。宣言の無い表では `undefined`)。 呼び出し側はこの計画で付与を書く
+   * (`creatorGrantPlan` を2回呼ばない。`D-V23-48`)。 旧は、断りの配列か `null` を返した。
    */
   const denyRecordCreate = (
     db: Database,
@@ -1089,10 +1325,12 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
      * **したがってこの引数は「行ごとに」渡さなければならない。**
      */
     values: Record<string, unknown>,
-  ): ValidationError[] | null => {
+  ): { denied: ValidationError[] } | { plan: McpCreatorGrantPlan } => {
+    // **【`V23-M2-T06` / `D-V23-48`】下見の答えと付与の計画を一緒に返す**(`creatorGrantPlan` を
+    // 2回呼ばない)。 旧は、断りの配列か `null` を返し、計画は返さなかった(返す値の中身は変えていない)。
     const sources = recordAccessSourceTables(manifest, tableId);
     if (sources === undefined) {
-      return null;
+      return { plan: undefined };
     }
     // **【`V18-M5-T02`(2026-09-12)/ 審査の単位 `PM-G3` / `ADR-0432`(決定の本体)/
     // `ADR-0442`(授権)/ `D-V18-3` / `D-V18-27` / `D-V18-28`】**
@@ -1124,10 +1362,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
     // **運営ロールの例外を1つも置いていない**(`D-V18-28`)。
     const rootCreatable = judgeRootCreatableRoles({ manifest, tableId, roles });
     if (rootCreatable === "not_listed") {
-      return [forbiddenRootCreatableRoleError()];
+      return { denied: [forbiddenRootCreatableRoleError()] };
     }
     if (rootCreatable === "undeclared") {
-      return [forbiddenUndeclaredRootCreateError()];
+      return { denied: [forbiddenUndeclaredRootCreateError()] };
     }
     // **【`V17-M2-T01b`(2026-09-07)/ `AC-G7a` / `ADR-0411` §Decision の 2 の 2】**
     // **前提の関門。** **`creatorGrantPlan` の直前に置く**(HTTP の単件 `POST` と同じ並び)。
@@ -1154,16 +1392,16 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
       },
     });
     if (parent.kind === "limit_exceeded") {
-      return [recordAccessLimitError(parent.limit)];
+      return { denied: [recordAccessLimitError(parent.limit)] };
     }
     if (parent.kind === "ungoverned_parent") {
-      return [forbiddenUngovernedParentCreateError()];
+      return { denied: [forbiddenUngovernedParentCreateError()] };
     }
     if (parent.kind === "missing_named_permission") {
-      return [forbiddenNamedPermissionCreateError()];
+      return { denied: [forbiddenNamedPermissionCreateError()] };
     }
     if (parent.kind !== "allowed") {
-      return [forbiddenParentCreateError()];
+      return { denied: [forbiddenParentCreateError()] };
     }
     const plan = creatorGrantPlan({
       manifest,
@@ -1175,10 +1413,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           : accessSourceRows(db, manifest, sources.memberTable),
     });
     if (plan?.kind === "no_member") {
-      return [notAMemberError()];
+      return { denied: [notAMemberError()] };
     }
     if (plan?.kind === "unusable") {
-      return [creatorGrantUnreachableError()];
+      return { denied: [creatorGrantUnreachableError()] };
     }
     return combineRoleAndCreatorGrant({
       role: judgeRoleAccess({
@@ -1190,8 +1428,8 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
       }),
       plan,
     }).allowed
-      ? null
-      : [creatorGrantUnreachableError()];
+      ? { plan }
+      : { denied: [creatorGrantUnreachableError()] };
   };
 
   /**
@@ -1219,8 +1457,12 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
     values: Record<string, unknown>,
     actorId: string,
     roles: Role[],
+    // **【`V23-M1-T07`】行の最後の管理者の判定を掛けるか。** 親の行を消す連鎖の子1件ずつの判定だけが
+    // 偽を渡す(連鎖は全体を1度に数える。`ADR-0510` §Decision 4)。
+    lastRowAdmin = true,
   ): ValidationError[] | null => {
     const verdict = judgeGrantWrite({
+      ...(lastRowAdmin ? { userExists: userExistsOn(db) } : {}),
       manifest,
       tableId,
       op,
@@ -1238,24 +1480,38 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
     if (verdict === undefined || verdict.kind === "allowed") {
       return null;
     }
+    if (verdict.kind === "last_row_admin") {
+      // **【`V23-M1-T07`。`SC-G5`】HTTP の 409 と同じ文面。**
+      return [lastRowAdminError()];
+    }
     if (verdict.kind === "invisible_target") {
       // **見えない行への付与は「存在しません」で伏せる**(HTTP は 404)。
       return [invisibleRecordError(verdict.tableId, verdict.recordId)];
     }
     if (verdict.kind === "not_creator") {
-      return [forbiddenGrantWriteError()];
+      // **【`V23-M12-T05`】旧の1行(逐語)**: `return [forbiddenGrantWriteError()];`
+      return [grantWriteRefusalError(verdict.op, verdict.authorityNames)];
     }
     if (verdict.kind === "self") {
       return [forbiddenSelfGrantError()];
     }
     if (verdict.kind === "membership_locked") {
-      return [forbiddenMembershipWriteError(verdict.role)];
+      // **【`V23-M12-T05`】旧の1行(逐語)**: `return [forbiddenMembershipWriteError(verdict.role)];`
+      return [forbiddenMembershipWriteError(verdict.role, verdict.ownNameColumn)];
     }
     if (verdict.kind === "no_target") {
       return [unknownGrantTargetError()];
     }
     if (verdict.kind === "parent_denied") {
       return [forbiddenGrantParentAccessError()];
+    }
+    if (verdict.kind === "principal_row_locked") {
+      // **【`V23-M6-T04`】HTTP の 403 / 400 と同じ文面。**
+      return [
+        verdict.reason === "mixed_holder"
+          ? mixedPrincipalRowHolderError()
+          : forbiddenPrincipalRowWriteError(),
+      ];
     }
     return [unknownGrantHolderError()];
   };
@@ -1453,7 +1709,8 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
       }
       // **(5) 付与表を対象にした削除かどうかの判定。**
       return (
-        denyGrantWrite(db, manifest, child.tableId, "delete", child.row, actorId, roles) === null
+        denyGrantWrite(db, manifest, child.tableId, "delete", child.row, actorId, roles, false) ===
+        null
       );
     };
   };
@@ -1564,6 +1821,27 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           "**訂正します。上の set_user_kinds と「計18」「上の18」は今日は偽です** —— " +
           "**set_user_kinds は廃止され、operations に書けるのは set_roles までの計17だけです** " +
           "(利用者の種類の宣言という語彙そのものがありません)。" +
+          // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】18種目 `remember_design` を足した。**
+          // **直前の「計17だけ」は今日は偽である。数字は1文字も書き換えず、追記で訂正する(上の作法)。**
+          "**訂正します。直前の「set_roles までの計17だけ」は今日は偽です** —— " +
+          "18種目 remember_design(このアプリで選んだ案の記録を1件足す / アプリの型を丸ごと差し替える)が加わり、" +
+          "operations に書けるのは remember_design までの計18です。" +
+          // **【`V22-M2-T03` / `ADR-0486`(門A。`MN-G1`〜`MN-G3`)】19種目 `set_workspace` を足した。**
+          // **直前の「計18です」は今日は偽である。数字は1文字も書き換えず、追記で訂正する(上の作法)。**
+          "**訂正します。直前の「remember_design までの計18」は今日は偽です** —— " +
+          "19種目 set_workspace(メニューを左に置くか上に置くかを、アプリの既定と役割ごとの上書きで丸ごと差し替える。{} で宣言を消す)が加わり、" +
+          "operations に書けるのは set_workspace までの計19です。" +
+          // **【`V22-M3-T03` / `ADR-0488`(門A。`MP-G4`)】直前の2行を1文字も消していない。** `set_workspace` は
+          // `V22-M3-T02` で直下のキーごとの置き換えに改めた(`D-V22-21`)。 旧文の「丸ごと差し替える。{} で宣言を消す」は
+          // 今日は偽なので、追記で訂正する(上の作法)。 マイページの書き方の全文は語彙の全量(resources/read)の (9) に置いた。
+          "**訂正します。直前の「丸ごと差し替える。{} で宣言を消す」は今日は偽です** —— " +
+          "set_workspace は workspace の直下のキーごとに置き換え(キーは navigation と my_page)、書かなかったキーは残します" +
+          "(メニューの位置だけを変えてもマイページの宣言は消えません)。値に null を書いたキーだけが消え、" +
+          "**空の {} は断られます。**my_page はマイページを置く宣言です(書き方は語彙の全量の (9) にあります)。" +
+          // **【`V23-M5-T08`(2026-09-30)。直前の行を1文字も消していない】3つ目のキー `invitations`。** 内部の記号を書かない。
+          // 接続直後に渡る説明なので短くし、書き方と限界は語彙の全量と vocabulary://cannot-do へ送る。
+          "訂正します。キーは今日3つで、3つ目の invitations は行への招待の受け取り画面の見出しです" +
+          "(書き方は語彙の全量にあります。あなたには招待を出す道具はありません)。" +
           "足すだけの4つでは既存のデータは失われません(追加された列は既存レコードでは空になります)。" +
           "remove_view でも失われません —— 消えるのは画面の定義だけで、" +
           "テーブル・フィールド・レコードには触れず、add_view で作り直せます。" +
@@ -1574,7 +1852,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           "何がいつ動くようになるか/動かなくなるかを伝え、同意を得てから呼んでください。" +
           "エラーが返った場合、アプリは1バイトも変わっていないので" +
           "(変換できない値が1件でもあれば差分全体が拒否され、部分適用はされません)、" +
-          "エラーの path と message を読んで差分を直し、そのまま再実行して構いません。\n" +
+          "エラーの path と message を読んで差分を直し、そのまま再実行して構いません。" +
+          "成功したときの design_notices は、適用後のアプリ全体の画面の作りについての注意です" +
+          "(主ボタンが2つ以上・ボタンが多すぎる・長い入力フォームに区切りが無い)。" +
+          "注意があっても保存は止めないので、直すかどうかは注意を見せてユーザに聞いてください。\n" +
           // V1-M1-T06: 推奨フローと undo の限界。**焼き込んでも守られはしない**(F-41)。
           // 実際にこの順で使うかを見るのが本タスクの検証方法である
           // (証跡は `docs/evidence/cp-v1-1/transcripts/`)。
@@ -1647,9 +1928,24 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
       }
 
       // R3: `applyDiff` は内部で `KernelMetaStore` を開閉するので、外側では開かない。
-      const result = applyDiff(dataRoot, app_id, diff);
+      // **【`V23-M1-T03`。`ADR-0510` §Decision 1 の1】名簿への自動登録の埋め戻しを、適用と同じ
+      // トランザクションの後段として渡す(`POST /diffs` と同じ1本)。**
+      // **【`V23-M4-T03`】埋め戻しが起こす発火の `$actor` は差分を適用した(名乗った)人。**
+      const origin = mcpOriginOf(guard.value);
+      const result = applyDiff(dataRoot, app_id, diff, {
+        afterMigrate: (db, next, previous) => autoEnrollBackfill(db, next, previous, origin),
+      });
       if (!result.valid) {
         return toolError(result.errors);
+      }
+      // **画面の点検は適用を確定させた後に走る。** ここで例外が出ても `isError` を返さない ——
+      // 差分は保存済みであり、`isError` を返すと「エラーが返った場合、アプリは1バイトも
+      // 変わっていない」の約束を破る。点検は拒否ではないので、壊れたときは注意を `[]` にする。
+      let designNotices: DesignNotice[];
+      try {
+        designNotices = collectDesignNotices(result.manifest).notices;
+      } catch {
+        designNotices = [];
       }
       return toolOk({
         manifest: result.manifest,
@@ -1664,6 +1960,11 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         // `src/kernel/apply-diff.ts` の `collectRoleConditionNotices` の doc コメントに
         // 名指しで書いてある。****「矛盾を全部見つける」わけではない。**
         role_condition_notices: result.role_condition_notices,
+        // **画面の作りの注意**(`design_notices`)。**適用後のマニフェストのアプリ全体の画面**を
+        // `collectDesignNotices` で点検した `notices` を**常に**載せる(無ければ `[]`)。
+        // **拒否ではない** —— **差分は適用済みであり、注意は適用を止めない。**
+        // **カーネルの `applyDiff` の返り値には足さず、この層で足す。**
+        design_notices: designNotices,
       });
     },
   );
@@ -2009,6 +2310,9 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         // `rows: []` は、今日も「成功・0件投入」のままである**(同 `(E-2)`)。
         // **上の3点(契約1 / 部分成功に混ぜない / 引き継ぎを宣言していない表)は
         // 1つも変わっていない。**
+        // **【`V23-M2-T06`】下見の答えと一緒に返る付与の計画を、行ごとに控える**(`creatorGrantPlan`
+        // を2回呼ばない)。 旧は、断りが `null` でないかだけを見ていた(断りの扱いは変えていない)。
+        const creatorPlans: McpCreatorGrantPlan[] = [];
         for (const row of rows.length === 0 ? [{} as Record<string, unknown>] : rows) {
           const denied = denyRecordCreate(
             db,
@@ -2018,18 +2322,60 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             guard.value.roles,
             row,
           );
-          if (denied !== null) {
-            return toolError(denied);
+          if ("denied" in denied) {
+            return toolError(denied.denied);
           }
+          creatorPlans.push(denied.plan);
         }
         const inserted: RecordRow[] = [];
         const failed: { index: number; errors: ValidationError[] }[] = [];
 
         // V1-M9-T12: on_create の履歴書き込み失敗を、この行ループ全体を1つの同期区間として
         // 収集する(行ごとに開閉せず、全行ぶんの失敗をまとめる)。
+        //
+        // **【`V23-M2-T06` / `D-V23-13`・`D-V23-58`】行ごとに、行と作成者への付与を1つの
+        // トランザクション(deferred)で包む。** 付与が付与表の検査で落ちたら、その行ごと巻き戻して
+        // `failed` に付与表の失敗を入れる(他の行は今日どおり残る。`failed[].errors` の形は変えない)。
+        // 付与表の自動処理の失敗の履歴は、巻き戻しの後に書き直す(`D-V23-55`)。 検査の外の例外は
+        // 今日の書込の想定外の例外と同じく投げ直す。 旧は、行ごとに行だけを書いていた。
+        // **【2026-09-29。`V23-M2-T11` / `D-V23-75` の訂正。上の「deferred」は今日は偽である】**
+        // 器は IMMEDIATE である。 deferred の器では、検証の読みの後の書込への昇格が待たずに断られ、
+        // M2 前に待てていた書込が待てなくなった(T11 の測定で 100回中100回)。 IMMEDIATE は器の
+        // 始まりで書込の鍵を待つので、今日どおり待てる。 断られた行の自動処理の失敗の履歴も残る
+        // (行の失敗は戻り値で返り、器は確定する)。
         const { failures } = collectWorkflowHistoryFailures(() => {
           for (const [index, row] of rows.entries()) {
-            const created = createRecord(db, manifest, table_id, row);
+            let created: ReturnType<typeof createRecord>;
+            try {
+              const tx = db.transaction(() => {
+                const origin = mcpOriginOf(guard.value);
+                // **【`V23-M10-T02c-c` / `D-V23-300`】付与を、作成の自動処理より先に書く。**
+                // **旧(逐語。並びだけを変えた)**:
+                //   const one = createRecord(db, manifest, table_id, row, origin);
+                //   if (one.ok) {
+                //     writeMcpCreatorGrant(db, manifest, creatorPlans[index], one.value._id, origin);
+                //   }
+                const one = createRecord(db, manifest, table_id, row, origin, (created) =>
+                  writeMcpCreatorGrant(db, manifest, creatorPlans[index], created._id, origin),
+                );
+                return one;
+              });
+              created = tx.immediate();
+            } catch (error) {
+              if (!(error instanceof McpCreatorGrantRollback)) {
+                // **【`V23-M2-T11` / `D-V23-75`】待ちの上限を過ぎて器の始まりで断られたら、M2 前と
+                // 同じく順番待ちの断りをその行の `failed` に入れる**(M2 前は `records.ts` の器が
+                // 同じ文面に翻訳していた)。 それ以外の想定外の例外は今日どおり投げ直す。
+                const busy = concurrentWriteBusyErrors(error);
+                if (busy === null) {
+                  throw error;
+                }
+                created = { ok: false, errors: busy };
+              } else {
+                rewriteMcpHistory(db, manifest, error.history);
+                created = { ok: false, errors: error.errors };
+              }
+            }
             if (created.ok) {
               inserted.push(created.value);
             } else {
@@ -2315,7 +2661,15 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
         // カーネルの `versionConflictError` をそのまま返す = HTTP 409 と同一 message/hint。
         // V1-M9-T12: on_update の履歴書き込み失敗を、この同期書き込みが生んだぶんだけ収集する。
         const { value: result, failures } = collectWorkflowHistoryFailures(() =>
-          updateRecord(db, manifest, table_id, record_id, changes, if_match),
+          updateRecord(
+            db,
+            manifest,
+            table_id,
+            record_id,
+            changes,
+            if_match,
+            mcpOriginOf(guard.value),
+          ),
         );
         if (!result.ok) {
           return toolError(result.errors);
@@ -2607,16 +2961,49 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
             if (cascade.hasUndeletableChild) {
               return toolError([forbiddenCascadeDeleteError()]);
             }
-            const tableIds = cascade.perTable.map((entry) => entry.tableId);
+            // **【`V23-M1-T07`。`D-V23-28`】③ の後・④ の前**: 連鎖に入らない行の最後の管理者が
+            // 消えるなら、連鎖ごと断る(何も消さない)。 HTTP と同じ判定・同じ文面。
+            if (
+              cascadeLastAdminBlocked(db, manifest, guard.value.roles, [
+                { tableId: table_id, recordId: record_id },
+                ...cascade.deleteOrder.map((entry) => ({
+                  tableId: entry.tableId,
+                  recordId: entry.recordId,
+                })),
+              ])
+            ) {
+              return toolError([lastRowAdminError()]);
+            }
+            // 【V23-M14-T02。D-V23-465】表の ID でなく、定義の表の表示名を渡す。
+            const tableNameOf = (id: string): string | undefined =>
+              manifest.app.tables.find((table) => table.id === id)?.name;
+            const perTableNamed = cascade.perTable.map((entry) => ({
+              name: tableNameOf(entry.tableId),
+              count: entry.count,
+            }));
             // **④ / ⑤** —— **どちらも1行も消さない。** **文面は別である。**
             if (seal === undefined || seal !== cascade.total) {
-              return toolError([cascadeChildrenConfirmationError(cascade.total, tableIds, seal)]);
+              return toolError([
+                cascadeChildrenConfirmationError(
+                  cascade.total,
+                  tableNameOf(table_id),
+                  perTableNamed,
+                  seal,
+                ),
+              ]);
             }
             // **⑥ 深い段から消す**(述語が返した順序に従う。親はいちばん最後)。 **子には版の印を
             // 渡さない** —— **利用者が版を持っているのは親1件だけで、子の版まで要求すると
             // この操作は誰にも実行できなくなる**(HTTP と同じ扱い)。
             for (const child of cascade.deleteOrder) {
-              const removed = deleteRecord(db, manifest, child.tableId, child.recordId);
+              const removed = deleteRecord(
+                db,
+                manifest,
+                child.tableId,
+                child.recordId,
+                undefined,
+                mcpOriginOf(guard.value),
+              );
               if (!removed.ok) {
                 return toolError(removed.errors);
               }
@@ -2624,7 +3011,14 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           }
         }
         // 版不一致(conflict)はカーネルの `versionConflictError` をそのまま返す = HTTP 409 と同一。
-        const result = deleteRecord(db, manifest, table_id, record_id, if_match);
+        const result = deleteRecord(
+          db,
+          manifest,
+          table_id,
+          record_id,
+          if_match,
+          mcpOriginOf(guard.value),
+        );
         if (!result.ok) {
           return toolError(result.errors);
         }
@@ -2742,7 +3136,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           // **旧のうち「実在しない表はカーネルが落とす」は今日は成り立たない** ——
           // **下の実在検査が `denyRoleTableWrite` より前に立つようになったためである**
           // (第5波・裁定 `M31-12` の適用)。**「形の不正」の側は今日も成り立つ。**
-          for (const raw of ops) {
+          // **【`V23-M2-T06`】create の op ごとの付与の計画を、op の索引で控える**
+          // (下の `writeRecords` の `onWritten` が同じ索引で引く)。 旧は索引を持たない `for...of` だった。
+          const opCreatorPlans = new Map<number, McpCreatorGrantPlan>();
+          for (const [opIndex, raw] of ops.entries()) {
             const opKind = raw.op;
             const opTable = typeof raw.table === "string" ? raw.table : undefined;
             if (opTable === undefined || (opKind !== "create" && opKind !== "update")) {
@@ -2823,9 +3220,10 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
                 // すぐ上に在る** —— **移動は1行もしていない。**
                 opValueObject,
               );
-              if (denied !== null) {
-                return toolError(denied);
+              if ("denied" in denied) {
+                return toolError(denied.denied);
               }
+              opCreatorPlans.set(opIndex, denied.plan);
               // **面の**行ごと**の規則**(`V17-M3` / `AC-G15`)。**持ち主のスタンプの
               // あとの値を渡す**(`judgeOwnerScopedOp` が `values` を上書き済みである)。
               const deniedRow = denyRoleRowWrite(
@@ -2941,8 +3339,31 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           // の名乗りが必須になり、名乗った人の権限で判定される(ただし名乗りに証明は要らないので、
           // これは認可であって認証ではない)。** **監査を付けないことは今日も正である**
           // (`v8-m31.md` §13 の 8。MCP の書込15回で `_auth_activity` は0行)。
+          //
+          // **【`V23-M2-T06` / `D-V23-13`・`D-V23-48`】作成者への付与を、`writeRecords` の
+          // `onWritten` で同じ IMMEDIATE tx の中に書く。** 付与が付与表の検査で落ちたら内部の例外を
+          // 投げ、`writeRecords` がそれを投げ直すので tx ごと巻き戻る(`batch.ts` は変えない)。
+          // 例外は下の `catch` で道具の失敗に翻訳する。 旧は、`onWritten` を渡さずに書いていた。
           const { value: result, failures } = collectWorkflowHistoryFailures(() =>
-            writeRecords(db, manifest, ops as unknown as BatchOp[]),
+            writeRecords(
+              db,
+              manifest,
+              ops as unknown as BatchOp[],
+              {
+                // **【`V23-M10-T02c-c` / `D-V23-300`】付与を、作成の自動処理より先に書く**
+                // (旧は `onWritten` で書いていた。キーの名前だけを変えた)。
+                beforeWorkflows: (written) => {
+                  writeMcpCreatorGrant(
+                    db,
+                    manifest,
+                    opCreatorPlans.get(written.index),
+                    written.record._id,
+                    mcpOriginOf(guard.value),
+                  );
+                },
+              },
+              mcpOriginOf(guard.value),
+            ),
           );
           if (!result.ok) {
             return toolError(result.errors);
@@ -2969,6 +3390,13 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
           );
         });
       } catch (error) {
+        // **【`V23-M2-T06`】付与が付与表の検査で落ちて tx ごと巻き戻った**(`withAppDb` の中で
+        // 投げられ、ここへ届く)。 付与表の失敗を道具の失敗に翻訳し、付与表の自動処理の失敗の
+        // 履歴を巻き戻しの後に書き直す(`D-V23-55`)。
+        if (error instanceof McpCreatorGrantRollback) {
+          withAppDb(dataRoot, app_id, (db) => rewriteMcpHistory(db, manifest, error.history));
+          return toolError(error.errors);
+        }
         const busy = concurrentWriteBusyErrors(error);
         if (busy === null) {
           throw error;
@@ -3316,7 +3744,8 @@ export function registerWriteTools(server: McpServer, options: CreateMcpServerOp
     {
       description: describeTool(
         "プリセットにもテーマにも収まらない見た目の調整(任意 CSS の「逃げ道」)を **申請** します。" +
-          "会話で、用意された選択肢(add_view / update_view の preset_ キーや set_theme の25スロット)の" +
+          // 【V20-M9 で偽になった】旧(逐語): "…や set_theme の25スロット)の"(役割の枠は27個になり、数を名乗らない形へ直した)。
+          "会話で、用意された選択肢(add_view / update_view の preset_ キーや set_theme の役割の枠)の" +
           "外にある見た目を頼まれ、言い換えでも収まらないと分かったときに、このツールで申請を出してください。" +
           "**逃げ道は申請しかできません。CSS を書いて有効化するのは人間(owner)だけです。" +
           "AI は CSS の本文をどこにも書けず、この申請だけでは見た目は1ピクセルも変わりません。**" +

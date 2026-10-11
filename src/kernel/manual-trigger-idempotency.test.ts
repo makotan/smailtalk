@@ -83,7 +83,8 @@ describe("V5-M25-T03: 実行中の重複を拒む規則(ADR-0175 限定1 / 限�
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(defs)).toHaveLength(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(defs)).toHaveLength(31);
     expect(Object.keys(defs)).toContain("role_condition");
     const workflow = defs.workflow as { properties: Record<string, unknown> };
     // 冪等性を宣言するキーを `$defs/workflow` にも足していない(`ADR-0175` 限定2)。

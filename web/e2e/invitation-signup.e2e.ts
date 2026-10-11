@@ -79,15 +79,20 @@ test.describe("招待コードでの登録(`D-V8-112` / `D-V8-114`)", () => {
     await expect(page.getByTestId("login-page")).toBeVisible();
     // **欄が出る**(`GET /public` の `signup` を見た結果である)。
     await expect(page.getByTestId("auth-invitation-code")).toBeVisible();
-    await expect(page.getByTestId("auth-user-kind")).toBeVisible();
-    await expect(page.getByTestId("auth-user-kind").locator('option[value="staff"]')).toHaveCount(
-      1,
-    );
+    // **【2026-10-02。`V23-M10-T01c`。`D-V23-291`。授権 `ADR-0554`】旧(逐語)**:
+    //     await expect(page.getByTestId("auth-user-kind")).toBeVisible();
+    //     await expect(page.getByTestId("auth-user-kind").locator('option[value="staff"]')).toHaveCount(
+    //       1,
+    //     );
+    // **旧は、宣言していない `customer` が名乗れる値の末尾に足されて2件になり、欄が出ていた。**
+    // **今日この題材が名乗れるのは `staff` 1つだけなので、立場を選ぶ欄は出ない。**
+    await expect(page.getByTestId("auth-user-kind")).toHaveCount(0);
 
     // --- 招待コード無しでは通らない(サーバの文面がそのまま出る)------------------------
     await page.getByTestId("auth-username").fill(invited);
     await page.getByTestId("auth-password").fill("correct-horse-battery-staple");
-    await page.getByTestId("auth-user-kind").selectOption("staff");
+    // **旧(逐語)**: `await page.getByTestId("auth-user-kind").selectOption("staff");`
+    // **欄が出ないので選ばない。** **名乗らない登録の落ち先は今日も宣言の1本目(`staff`)である。**
     await page.getByTestId("customer-password-register").click();
     await expect(page.getByTestId("auth-error")).toBeVisible();
 
@@ -96,6 +101,46 @@ test.describe("招待コードでの登録(`D-V8-112` / `D-V8-114`)", () => {
     await page.getByTestId("customer-password-register").click();
     await expect(page.getByTestId("current-user")).toHaveText(invited);
     await expect(page.getByTestId("current-role")).toHaveAttribute("data-role", "staff");
+  });
+
+  /**
+   * **【`V22-M1`】ログアウトした後のログイン画面にも、招待コードの欄が出る。**
+   *
+   * **直す前は、ログアウト後のログイン画面に招待コードの欄が出なかった** —— ログイン中に取った
+   * 定義が残り、`GET /public` の `signup` がログイン画面に渡らなかったためである
+   * (計画 `docs/plan/v22/00-v22-plan.md` の「V22-M1」)。**再読み込みすると出ていた。**
+   * **ここでは再読み込みしていないことを、ログアウトの前に置いた印が残っていることで確かめる。**
+   */
+  test("【V22-M1】ログインしてからログアウトすると、再読み込みせずに招待コードの欄が出る", async ({
+    page,
+    context,
+    request,
+  }) => {
+    const app = await provisionApp(request);
+    await declareInviteRole(request, app);
+    await app.authenticate(context);
+
+    // --- ログインした状態で開く -----------------------------------------------------------
+    await page.goto(`/apps/${app.appId}`);
+    await expect(page.getByTestId("view-list")).toBeVisible();
+    await expect(page.getByTestId("logout")).toBeVisible();
+    // **再読み込みしていないことの印**(再読み込みすると消える)。
+    await page.evaluate(() => {
+      (window as unknown as { __v22m1?: string }).__v22m1 = "not-reloaded";
+    });
+
+    // --- ログアウトする -------------------------------------------------------------------
+    await page.getByTestId("logout").click();
+    await expect(page.getByTestId("login-page")).toBeVisible();
+    await expect(page.getByTestId("auth-invitation-code")).toBeVisible();
+    // **【2026-10-02。`V23-M10-T01c`。`D-V23-291`。授権 `ADR-0554`】旧(逐語)**:
+    //     await expect(page.getByTestId("auth-user-kind")).toBeVisible();
+    // **名乗れるのが `staff` 1つだけになったので、立場を選ぶ欄は出ない。**
+    await expect(page.getByTestId("auth-user-kind")).toHaveCount(0);
+    await expect(page.getByTestId("view-list")).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as { __v22m1?: string }).__v22m1)).toBe(
+      "not-reloaded",
+    );
   });
 
   test("招待を1つも宣言していないアプリでは、どちらの欄も出ない", async ({ page, request }) => {

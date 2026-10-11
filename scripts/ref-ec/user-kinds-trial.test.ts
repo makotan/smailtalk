@@ -140,8 +140,11 @@ function applyKinds(kinds: unknown): string | undefined {
 //   `expect(DIFF_OPS as readonly string[]).toContain("set_user_kinds");`
 // **`v5-m18.md` §5-1 の 1 が言った「差分操作が1つも存在しない」は、今日ふたたび成り立つ** ——
 // **ただし理由は「まだ無い」ではなく「廃止した」である。****同じことだと書かない。**
+// **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18(別の決定)。
+// **`set_roles` の位置(添字16)と `set_user_kinds` が無いことは1バイトも変えていない。** 末尾は今日 `remember_design` である(テスト名は当時の逐語のまま)。
 test("(U-1) `set_user_kinds` は今日 `DIFF_OPS` に無い(18 → 17。末尾は `set_roles`)", () => {
-  expect(DIFF_OPS).toHaveLength(17);
+  // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行31)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。 `set_roles` の位置(添字16)と `set_user_kinds` が無いことは1バイトも変えていない。
+  expect(DIFF_OPS).toHaveLength(19);
   expect(DIFF_OPS as readonly string[]).not.toContain("set_user_kinds");
   expect(DIFF_OPS[16]).toBe("set_roles");
 });

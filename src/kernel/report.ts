@@ -160,7 +160,7 @@ type ReportResult = {
  * **読めない値は `null` に倒す** —— **群から落とさない**(`D-V8-120` の「相手が無い行を
  * 落とさない」と同じ向き)。
  */
-function truncateToGranularity(
+export function truncateToGranularity(
   value: RecordValue,
   granularity: "day" | "week" | "month",
 ): RecordValue {
@@ -209,7 +209,7 @@ function truncateToGranularity(
  * コードユニット順で、`𠮷` と `Ａ` のような文字が混ざると順序が逆転する**
  * (`ADR-0347` 限界3)。
  */
-function compareGroupValue(a: RecordValue, b: RecordValue): number {
+export function compareGroupValue(a: RecordValue, b: RecordValue): number {
   if (a === b) {
     return 0;
   }

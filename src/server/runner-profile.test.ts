@@ -115,17 +115,30 @@ const OWNER_DROPPED_ROUTES: readonly string[] = [
 ];
 
 /**
+ * **【2026-09-26。`V20-M13-T02b` / `ADR-0476` §Decision 1 の 5 / `ADR-0419` 限定3】下見の前段1本。**
+ *
+ * **`profile === "full"` のときだけ登録する**(`src/server/preview-front.ts`)。 **配る版(`runner`)には
+ * MCP が無く、下見は作られないので、前段を1本も登録しない。** **`runner` の登録の全量(67)は
+ * 1エントリも動かない** —— 動くのは「`full` に在って `runner` に無いもの」の数だけである(15 → 16)。
+ */
+const PREVIEW_FRONT_ENTRIES: readonly string[] = ["ALL /api/apps/:app_id/*"];
+
+/**
  * **`runner` が落とす全量。**
  *
  * **【`V17-M4-T02` による改訂。旧の逐語(1バイトも書き換えていない)】**:
  *   `/** **`runner` が落とす全量(7 + 5 = 12エントリ)。** *\/`
  * **今日は 5 + 2 + 3 + 5 = **15エントリ** である**(読み物3本の関門が足された)。
+ * **【2026-09-26。`V20-M13-T02b`。上の行を1バイトも消していない】今日は 5 + 2 + 3 + 5 + 1 =
+ * **16エントリ** である**(下見の前段1本が `full` にだけ足された)。
  */
 const DROPPED_ENTRIES: readonly string[] = [
   ...EDIT_ROUTES,
   ...EDIT_MIDDLEWARE,
   ...READ_MIDDLEWARE,
   ...OWNER_DROPPED_ROUTES,
+  // **【`V20-M13-T02b`】旧の全量は上の4つだけだった**(5 + 2 + 3 + 5 = 15)。**今日は 16。**
+  ...PREVIEW_FRONT_ENTRIES,
 ];
 
 /**
@@ -239,7 +252,9 @@ describe("V5-M3-T02 実行専用の起動プロファイル", () => {
     });
     // **【`V17-M4-T02`】旧の逐語**: `expect(dropped.length).toBe(12);`
     // **読み物3本の関門(`READ_MIDDLEWARE`)が `full` に足されたぶんだけ増えた。**
-    expect(dropped.length).toBe(15);
+    // **【2026-09-26。`V20-M13-T02b`】旧の逐語**: `expect(dropped.length).toBe(15);`
+    // **下見の前段1本(`PREVIEW_FRONT_ENTRIES`)が `full` にだけ足されたぶんだけ増えた。**
+    expect(dropped.length).toBe(16);
   });
 
   test("(d) 【D-V5-96】残す12本は runner にも今日どおり登録されている", () => {
@@ -283,9 +298,25 @@ describe("V5-M3-T02 実行専用の起動プロファイル", () => {
   // **この口は `runner` にも登録する**(配って動かす版の運営者も同じ問いを持つ)。
   test("(d) 【V17-M4-T02】runner の登録の全量は着手前と同じ 65エントリである", () => {
     const runner = registeredRoutes("runner");
-    expect(runner.length).toBe(67);
+    // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行28】旧の逐語**: `expect(runner.length).toBe(67);`
+    // **行の招待の口4本(`POST`・`GET` 各2本)と、その関門の `app.use` 3本の、7エントリが増えた**
+    // (`app.use` は完全一致なので、口のパスごとに置いた。`ADR-0532` §Decision 1-6)。 **この口は `runner` にも登録する**
+    // (配る版にも同じ画面を出す。`D-V23-129`)。 **新しい値は検査の外の台本(`createServerApp` の `routes` を
+    // 数える bun の台本)で数えた: runner 74 / full 90。**
+    // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行15】旧の逐語**: `expect(runner.length).toBe(74);`
+    // **行の招待用コードの口2本(`GET`・`POST`)と、その関門の `app.use` 1本の、3エントリが増えた。** この口も `runner` に
+    // 登録する(配る版にも同じ画面を出す。`ADR-0538` §1-8)。 **新しい値は検査の外の台本(`createServerApp` の `routes` を
+    // 数える bun の台本)で数えた: runner 77 / full 93。**
+    expect(runner.length).toBe(77);
     // **陽性対照** —— **`full` 側は3本だけ増えている**(読み物3本の関門)。
-    expect(registeredRoutes("full").length).toBe(67 + 15);
+    // **【2026-09-26。`V20-M13-T02b` / `ADR-0476`】旧の逐語**:
+    //   `expect(registeredRoutes("full").length).toBe(67 + 15);`
+    // **下見の前段1本を `full` にだけ足した**(`runner` の 67 は動かしていない)。
+    // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行29】旧の逐語**: `expect(registeredRoutes("full").length).toBe(67 + 16);`
+    // **式の形は `N + 16` のまま**(`runner` から落ちる数は動いていない)。
+    // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行16】旧の逐語**: `expect(registeredRoutes("full").length).toBe(74 + 16);`
+    // **式の形は `N + 16` のまま**(`runner` から落ちる数は動いていない)。
+    expect(registeredRoutes("full").length).toBe(77 + 16);
   });
 
   test("(d) runner プロファイルにも実行系の代表が今日どおり登録されている", () => {

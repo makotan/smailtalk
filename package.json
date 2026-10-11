@@ -1,6 +1,6 @@
 {
   "name": "smailtalk",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "validate": "bun run src/cli/validate.ts",
+    "lint:design": "bun run src/cli/lint-design.ts",
     "requirements-doc": "bun run src/cli/requirements-doc.ts",
     "server": "bun run src/server/index.ts",
     "server:runner": "ST_SERVER_PROFILE=runner bun run src/server/index.ts",

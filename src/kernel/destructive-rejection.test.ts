@@ -367,7 +367,9 @@ describe("語彙として存在しない op は拒否される(憲法2)", () => 
     // **旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);`
     // **`set_user_kinds` を撤去したので 18 → 17。**型・スキーマ・エラーの三者が一致していることは
     // 下の `toEqual(ALL_OPS)` が今日も測る(三者一致の主張は1ミリも弱めていない)。
-    expect(DIFF_OPS).toHaveLength(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。破壊的な op にはしていない(`D-V20-52` の4つのまま)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行15)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19。 破壊的な op にはしていない(`D-V20-52` の4つのまま)。 三者一致は下の `toEqual(ALL_OPS)` が今日も測る。
+    expect(DIFF_OPS).toHaveLength(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)/【`V8-M16`】17 → 18(`set_roles` が18種目)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
     expect([...DIFF_OPS] as string[]).toEqual(ALL_OPS);
     // ADR-0012 限定1 / ADR-0013 限定2 / ADR-0024 限定9 が名指しで止めているものが、
     // 実際に入っていないこと。

@@ -1,4 +1,8 @@
 /**
+ * **【2026-09-24。`V20-M3-T01` / `ADR-0469`】まとまりの綴りを `field_groups` から `field_sections` に改めた。**
+ * **この検査は入力の綴りだけを替え、期待する DOM(クラス名 `.detail-field-group` を含む)を1文字も変えていない** ——
+ * 詳細画面の描画が統合の前と同じであることの見張りとして残る。以下の本文の旧綴りは旧綴りの時点の記述である。
+ *
  * 詳細画面の項目のまとまり —— 表示層(`P-G17` の (C) 側。`V4-M16-T12` / `ADR-0092`)。
  *
  * **限定表の正は [`docs/adr/0092-detail-field-grouping.md`](../../docs/adr/0092-detail-field-grouping.md) §Decision 2**。
@@ -187,7 +191,7 @@ test("(h) 限定8: related の子一覧はまとまりの器に入らない(当�
   noteRows = [{ _id: "note-1", _created_at: "", _updated_at: "", body: "めも", entry: RECORD_ID }];
   const manifest = baseManifest();
   detailView(manifest).related = [{ table: "notes", via: "entry", columns: ["body"] }];
-  (detailView(manifest) as DetailView).field_groups = { 補足: ["f_c", "f_d"] };
+  (detailView(manifest) as DetailView).field_sections = { 補足: ["f_c", "f_d"] };
   const section = await renderDetail(manifest);
   await waitFor(() => expect(screen.getByTestId("related-list")).toBeDefined());
 
@@ -204,7 +208,7 @@ test("(h) 限定8: related の子一覧はまとまりの器に入らない(当�
 
 test("(k) まとまりの見出しと区切りと項目が、DOM に1件ずつ描かれる", async () => {
   const manifest = baseManifest();
-  detailView(manifest).field_groups = { 連絡先: ["f_b"], 補足: ["f_c", "f_d"] };
+  detailView(manifest).field_sections = { 連絡先: ["f_b"], 補足: ["f_c", "f_d"] };
   const section = await renderDetail(manifest);
 
   const groups = [...section.querySelectorAll('[data-testid="detail-field-group"]')];
@@ -227,7 +231,7 @@ test("(k) まとまりの見出しと区切りと項目が、DOM に1件ずつ�
 test("(k) 描画順序: まとまりに属さない項目が先で、そのあとに記述順のまとまりが並ぶ", async () => {
   const manifest = baseManifest();
   // **記述順は「補足 → 連絡先」**(名前の五十音順でもフィールド定義順でもない)。
-  detailView(manifest).field_groups = { 補足: ["f_d"], 連絡先: ["f_b"] };
+  detailView(manifest).field_sections = { 補足: ["f_d"], 連絡先: ["f_b"] };
   const section = await renderDetail(manifest);
 
   const card = section.querySelector('[data-slot="card"]') as HTMLElement;
@@ -246,7 +250,7 @@ test("(k) 描画順序: まとまりに属さない項目が先で、そのあ�
 test("(k) fields を書いた detail_view でも、まとまりに属さない項目は fields の順で先に並ぶ", async () => {
   const manifest = baseManifest();
   detailView(manifest).fields = ["f_d", "f_c", "f_b", "f_a"];
-  detailView(manifest).field_groups = { 補足: ["f_c"] };
+  detailView(manifest).field_sections = { 補足: ["f_c"] };
   const section = await renderDetail(manifest);
   const ungrouped = section.querySelector('[data-slot="card"]')?.children[0] as Element;
   expect(ungrouped.getAttribute("data-testid")).toBe("detail-fields");
@@ -258,7 +262,7 @@ test("(k) 全項目がまとまりに属する画面では、属さない項目�
   // **当たり先の無い器を DOM に置かない**(既存の作法 —— `DetailViewRenderer` の
   // 「当たり先の無い注記を DOM に置かない」と同じ)。
   const manifest = baseManifest();
-  detailView(manifest).field_groups = { 全部: ["f_a", "f_b", "f_c", "f_d"] };
+  detailView(manifest).field_sections = { 全部: ["f_a", "f_b", "f_c", "f_d"] };
   const section = await renderDetail(manifest);
   const lists = [...section.querySelectorAll('[data-testid="detail-fields"]')];
   // **`detail-fields` の `data-testid` は落ちていない** —— まとまりの器の中に在る。
@@ -275,7 +279,7 @@ test("軸4 / 軸5 は、まとまりの器の中の dl.detail-fields にも今�
   const view = detailView(manifest);
   view.preset_label_placement = "stacked";
   view.preset_field_columns = 2;
-  view.field_groups = { 補足: ["f_c", "f_d"] };
+  view.field_sections = { 補足: ["f_c", "f_d"] };
   const section = await renderDetail(manifest);
 
   const lists = [...section.querySelectorAll(".detail-fields")];
@@ -290,7 +294,7 @@ test("軸4 / 軸5 は、まとまりの器の中の dl.detail-fields にも今�
 test("軸6 は今日どおり画面の器(.detail-view)に出る(まとまりの有無で当たり方が変わらない)", async () => {
   const manifest = baseManifest();
   detailView(manifest).preset_image_size = "medium";
-  detailView(manifest).field_groups = { 補足: ["f_c"] };
+  detailView(manifest).field_sections = { 補足: ["f_c"] };
   const section = await renderDetail(manifest);
   expect(section.getAttribute("data-preset-image")).toBe("medium");
   for (const list of section.querySelectorAll(".detail-fields")) {

@@ -37,6 +37,7 @@
  * **`V5-M3` の発注書はこのファイルの更新を停止条件にしている。** **層またぎの本数を1本も
  * 増やさないまま切り出すために、注入の形を採った。**
  */
+
 import type { Hono } from "hono";
 import type { MiddlewareHandler } from "hono/types";
 import type {
@@ -52,6 +53,7 @@ import type {
   ValidationError,
 } from "../kernel/index.ts";
 import type { AuthEnv } from "./auth-context.ts";
+import { autoEnrollBackfill } from "./auto-enroll-backfill.ts";
 
 /** ADR-0003 §3: エラーは常に `{ errors: [...] }`。1件でも配列。 */
 function errorBody(errors: ValidationError[]): { errors: ValidationError[] } {
@@ -294,7 +296,17 @@ export function registerChangeRoutes(app: Hono<AuthEnv>, deps: ChangeRouteDeps):
       return c.json(errorBody([lockout]), 409);
     }
 
-    const result = kernel.applyDiff(dataRoot, appId, body.value);
+    // **【`V23-M1-T03`。`ADR-0510` §Decision 1 の1】名簿への自動登録の埋め戻しを、適用と同じ
+    // トランザクションの後段として渡す(`apply_diff` と同じ1本)。**
+    // **【`V23-M4-T03`】埋め戻しが起こす発火の `$actor` は差分を適用した人**(`D-V23-93`)。
+    const applier = c.get("user");
+    const origin =
+      applier === undefined
+        ? { id: "", login: "", role: "", entry: "http" as const }
+        : { id: applier.id, login: applier.username, role: applier.role, entry: "http" as const };
+    const result = kernel.applyDiff(dataRoot, appId, body.value, {
+      afterMigrate: (db, next, previous) => autoEnrollBackfill(db, next, previous, origin),
+    });
     if (!result.valid) {
       return c.json(errorBody(result.errors), 400);
     }

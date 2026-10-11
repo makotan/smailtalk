@@ -46,6 +46,7 @@
  */
 
 import { ensureIslandRuntimeReady, recover } from "../kernel/index.ts";
+import { defaultPreviewRoot } from "../server/preview-store.ts";
 import { loadMcpHttpConfig, startMcpHttpServer } from "./http-transport.ts";
 
 const config = loadMcpHttpConfig(process.env);
@@ -94,13 +95,21 @@ try {
 // **期待オリジンを環境変数で指定していないときは、渡さない。**
 // ポートに `0` を渡すと実ポートはバインドの後まで決まらないので、
 // `startMcpHttpServer` に実ポートで組み立て直させる(`McpHttpConfig.expectedOriginsFromEnv`)。
+// **下見の置き場の根**(`V20-M13` 点検の処置 軽4)。 **着手前はここで渡しておらず、`ST_PREVIEW_ROOT` を
+// 書いても HTTP の入口だけは既定の根(`<dataRoot>.previews`)に下見を作っていた。** 印字する根と
+// サーバに渡す根を同じ1つの値にする。
+const previewRoot = config.previewRoot ?? defaultPreviewRoot(config.dataRoot);
 const running = await startMcpHttpServer({
   dataRoot: config.dataRoot,
   previewBaseUrl: config.previewBaseUrl,
   port: config.port,
   expectedOrigins: config.expectedOriginsFromEnv ? config.expectedOrigins : undefined,
   actor: config.actor,
+  previewRoot,
 });
+
+// 作った側と開く側で根が食い違うと作った直後の下見が 410 に見えるので、Web サーバの印字と並べられるように1行。
+console.error(`[smailtalk mcp/http] 下見の置き場(ST_PREVIEW_ROOT)= ${previewRoot}`);
 
 // ログは stderr のみ(モジュール冒頭の理由)。
 // **名乗りの有無をこの行に足した**(`V8-M31-T02`)—— 名乗り無しでも起動するので、
@@ -126,7 +135,9 @@ if (config.actor === undefined) {
       `(直前の「24本」は今日は25本です)。` +
       // **【`V10-M30-T02`。台帳 `CM-G37` / `ADR-0378`】** **直前の本数も今日は偽である**
       // (`V10-M30-T02` が `set_comment_visibility` を足した)。**旧文を1バイトも消していない。**
-      `(直前の「25本」は今日は26本です)。`,
+      `(直前の「25本」は今日は26本です)。` +
+      // **【`V23-M8-T05`】直前の本数も今日は偽である**(`list_record_history` を足した)。**旧文を1バイトも消していない。**
+      `(直前の「26本」は今日は27本です)。`,
   );
 } else {
   // **名乗った主体の権限は、この口に到達できる誰にでも渡る**(`T-G21b` と `ADR-0271` の合成)。

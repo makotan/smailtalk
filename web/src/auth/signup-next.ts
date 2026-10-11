@@ -60,7 +60,7 @@ import type { Manifest, View } from "../../../src/kernel/types.ts";
 import { personalOwnerField } from "../../../src/server/owner-scope.ts";
 import { fetchRecordPage, isForbidden } from "../api.ts";
 import { navigate, useRoute } from "../navigation.tsx";
-import { routePath } from "../route.ts";
+import { type Route, routePath } from "../route.ts";
 import {
   canUseView,
   canWriteRole,
@@ -113,21 +113,62 @@ export function signupNextFormViews(manifest: Manifest, role: string): View[] {
  * **2点目「二重に作られることを止めていない」は今日も真である**(保存の口に1バイトも触っていない)。
  * - **開いた先が実際に読めるかを測っていない。** 可否の最終防衛線はサーバ側である。
  */
-export function useSignupAutoOpen(appId: string, candidates: View[], justSignedUp: boolean): void {
+// **【`V22-M3-T05`。`ADR-0488` §Decision 1 の 7 / `MP-G3` / ユーザ決定 `D-V22-25`】旧の宣言の行の逐語(1バイトも消していない)**:
+//   `export function useSignupAutoOpen(appId: string, candidates: View[], justSignedUp: boolean): void {`
+// **第4引数 `afterwards` を足した(省略できる)。** **ログイン直後にマイページを開く調停は、この1本の効果の中で行う** ——
+// **登録直後の自動オープンの判定を先に行い、それが遷移しないと決まった後(`afterwards.ready`)にだけ `afterwards.to` へ移る。**
+// **2本目の独立した `useEffect` から `navigate()` を呼ばない**(計画の点検 軽-2 / `ADR-0364` 限定5)。
+// **第4引数を渡さない呼び出しの振る舞いは1ビットも変わらない**(下の1本目の枝は旧の本体そのままである)。
+export function useSignupAutoOpen(
+  appId: string,
+  candidates: View[],
+  justSignedUp: boolean,
+  afterwards?: SignupAutoOpenAfterwards | undefined,
+): void {
   const opened = useRef(false);
   const count = candidates.length;
   const firstId = candidates[0]?.id;
+  /** **【`V22-M3-T05`】`afterwards` を最後に使ったログインの印**(同じログインで2度移らない)。 */
+  const landedKey = useRef<number | undefined>(undefined);
+  const afterwardsRef = useRef(afterwards);
+  afterwardsRef.current = afterwards;
+  const afterwardsKey = afterwards?.key;
+  const afterwardsReady = afterwards?.ready === true;
   useEffect(() => {
-    if (opened.current) {
+    // **1本目(旧の本体そのまま): 登録直後の行き先がちょうど1本なら、その画面を1度だけ開く。**
+    if (!opened.current && justSignedUp && count === 1 && firstId !== undefined) {
+      opened.current = true;
+      navigate({ kind: "view", appId, viewId: firstId });
       return;
     }
-    if (!justSignedUp || count !== 1 || firstId === undefined) {
+    // **2本目(`V22-M3-T05`): 1本目が遷移しないと決まった後にだけ、呼び手が決めた行き先へ1度だけ移る。**
+    const next = afterwardsRef.current;
+    if (next === undefined || afterwardsKey === undefined || !afterwardsReady) {
       return;
     }
-    opened.current = true;
-    navigate({ kind: "view", appId, viewId: firstId });
-  }, [appId, count, firstId, justSignedUp]);
+    if (landedKey.current === afterwardsKey) {
+      return;
+    }
+    landedKey.current = afterwardsKey;
+    navigate(next.to);
+  }, [appId, count, firstId, justSignedUp, afterwardsKey, afterwardsReady]);
 }
+
+/**
+ * **【`V22-M3-T05`】登録直後の自動オープンが遷移しないと決まった後に移る先**({@link useSignupAutoOpen} の第4引数)。
+ *
+ * - `key` —— **ログイン1回ごとに変わる印。** 同じ印では1度しか移らない(利用者が自分で別の画面へ移った後に引き戻さない)。
+ * - `ready` —— **登録直後の自動オープンの判定が済んだか**({@link useSignupNextCandidates} の `decided`)。 偽のあいだは移らない。
+ * - `to` —— 移る先。
+ *
+ * **移ってよい局面か(ログインの直後か・画面を指して入っていないか・宣言があるか)は呼び手が決めて、
+ * 移らないときは `undefined` を渡す。** この関数は局面を1つも判定しない。
+ */
+export type SignupAutoOpenAfterwards = {
+  readonly key: number;
+  readonly ready: boolean;
+  readonly to: Route;
+};
 
 /**
  * **登録の直後の候補から、見える範囲に行がある候補を落とす**
@@ -235,7 +276,7 @@ export function useSignupNextCandidates(
   role: string,
   base: readonly View[],
   justSignedUp: boolean,
-): { views: View[]; autoOpenAllowed: boolean } {
+): { views: View[]; autoOpenAllowed: boolean; decided: boolean } {
   /**
    * **書けない候補を、読取より前に落とす**(`V10-M19-T03` / `FU-G8` / `ADR-0365` §Decision 2)。
    *
@@ -338,17 +379,29 @@ export function useSignupNextCandidates(
     };
   }, [appId, baseKey, justSignedUp]);
 
+  // **【`V22-M3-T05`】戻り値に `decided`(登録直後の自動オープンの判定が済んだか)を足した。** 旧の3つの `return` の
+  // 逐語は各行の直前のコメントに残した。 **`views` と `autoOpenAllowed` の値は1ビットも変えていない。**
+  // `decided` が偽なのは「登録の直後で、書ける候補が在り、読み終えていない」ときだけである
+  // (**読まない条件 = 登録の直後でない / 候補が0本 / 定義が無い** では、自動オープンは起きないと既に決まっている)。
   if (!justSignedUp) {
-    return { views: [...writable], autoOpenAllowed: false };
+    // 旧: `return { views: [...writable], autoOpenAllowed: false };`
+    return { views: [...writable], autoOpenAllowed: false, decided: true };
   }
   if (settled === null || settled.key !== baseKey) {
     // **読み終えるまでは候補を1本も出さない** —— **出してから消すと、案内が一瞬だけ
     // 現れて消える。** **`navigate()` もこのあいだは起きない**(`autoOpenAllowed` が偽)。
-    return { views: [], autoOpenAllowed: false };
+    // 旧: `return { views: [], autoOpenAllowed: false };`
+    return {
+      views: [],
+      autoOpenAllowed: false,
+      decided: baseKey === "" || manifest === undefined,
+    };
   }
   const keep = new Set(settled.keep);
+  // 旧: `return {` / `views: writable.filter((view) => keep.has(view.id)),` / `autoOpenAllowed: settled.autoOpenAllowed,` / `};`
   return {
     views: writable.filter((view) => keep.has(view.id)),
     autoOpenAllowed: settled.autoOpenAllowed,
+    decided: true,
   };
 }

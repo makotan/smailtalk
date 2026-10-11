@@ -62,31 +62,36 @@ import { type FixtureApp, provisionApp, seedRoleSession } from "./fixture-app.ts
  * このファイルの assert が落ちる**(下の (i) が HTTP のマニフェストと1バイト単位で突合する)。
  */
 const PROPOSAL: Record<string, string> = {
-  "--color-text": "#14281d",
-  "--color-text-secondary": "#405146",
-  "--color-text-label": "#33443a",
-  "--color-text-placeholder": "#4d5e53",
-  "--color-danger": "#8c1d18",
-  "--color-page-background": "#fffdf8",
-  "--color-surface-highlight": "#eef2ea",
-  "--color-border": "#6b7a70",
-  "--focus-outline-color": "#1a5fb4",
-  "--focus-outline-width": "2px",
-  "--font-family-base": "Hiragino Sans, Yu Gothic, sans-serif",
-  "--font-size-secondary": "0.875rem",
-  "--font-size-note": "0.75rem",
-  "--line-height-base": "1.7",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.5rem",
-  "--space-6": "2.5rem",
-  "--border-width": "1px",
-  "--control-border-radius": "6px",
-  "--surface-shadow": "0 1px 2px #14281d1a",
-  "--detail-label-width": "9rem",
-  "--login-max-width": "24rem",
+  body_text: "#14281d",
+  secondary_text: "#405146",
+  label_text: "#33443a",
+  placeholder_text: "#4d5e53",
+  danger: "#8c1d18",
+  page_background: "#fffdf8",
+  highlight_surface: "#eef2ea",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#fffdf8",
+  on_primary: "#14281d",
+  overlay_background: "#fffdf8",
+  overlay_text: "#14281d",
+  border_color: "#6b7a70",
+  focus_ring: "#1a5fb4",
+  focus_ring_width: "2px",
+  body_font: "Hiragino Sans, Yu Gothic, sans-serif",
+  secondary_font_size: "0.875rem",
+  note_font_size: "0.75rem",
+  body_line_height: "1.7",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.5rem",
+  space_6: "2.5rem",
+  border_width: "1px",
+  control_radius: "6px",
+  surface_shadow: "0 1px 2px #14281d1a",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "9rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "24rem",
 };
 
 /** `#fffdf8` / `#14281d` の chromium の計算値(`theme.e2e.ts` と同じく chromium 限定の期待値)。 */
@@ -105,7 +110,7 @@ const DEFAULT_TEXT = "rgb(0, 0, 0)";
  * 「今の見た目をそのまま提案として貼ることはできない」ということである**
  * (`v3-m6.md` §0-4 の10)。**架空の悪い値を作らずに、製品自身の値で落とせる。**
  */
-const FAILING_PROPOSAL: Record<string, string> = { ...PROPOSAL, "--color-border": "#ddd" };
+const FAILING_PROPOSAL: Record<string, string> = { ...PROPOSAL, border_color: "#ddd" };
 
 function jsonOf(slots: Record<string, string>): string {
   return JSON.stringify(slots, null, 2);
@@ -204,7 +209,7 @@ test.describe("V3-M6-T04 テーマの取り込み(chromium 実測)", () => {
     });
 
     // (4) サーバの状態でも裏を取る —— **25スロットが1バイトも変わらずに入っている**
-    //     (恒等写像。web は値を加工していない)。
+    //     (キーは役割名のまま。web は値もキーも加工せずに差分へ載せる。CSS 名への写像は画面の側だけ)。
     const stored = await themeOf(request, app);
     expect(stored?.slots).toEqual(PROPOSAL);
     // **`origin` は貼っていないので入っていない**(自己申告の由来。ADR-0047 限定7)。
@@ -260,14 +265,15 @@ test.describe("V3-M6-T04 テーマの取り込み(chromium 実測)", () => {
     const errors = page.getByTestId("errors");
     await expect(errors).toBeVisible();
     // **loud である** —— どのスロットが / いくつで / 閾値がいくつで / どう直すかが出る。
-    await expect(errors).toContainText("--color-border");
+    // **【V20-M8 / ADR-0473】** 誤りに出るスロットの名前は役割名である(旧: CSS 名の綴り)。
+    await expect(errors).toContainText("border_color");
     await expect(errors).toContainText("#ddd");
     await expect(errors).toContainText("コントラスト比");
     await expect(errors).toContainText("下回ります");
     await expect(errors).toContainText("3:1");
     // **背景が2つあるので、落ちた対は2件出る**(1件目で打ち切らない)。
-    await expect(errors).toContainText("--color-page-background");
-    await expect(errors).toContainText("--color-surface-highlight");
+    await expect(errors).toContainText("page_background");
+    await expect(errors).toContainText("highlight_surface");
     // 成功したとは書かれていない。
     await expect(page.getByTestId("theme-import-result")).toHaveCount(0);
 

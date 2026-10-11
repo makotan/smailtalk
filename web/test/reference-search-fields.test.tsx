@@ -295,8 +295,11 @@ test("(iv) 列のための新しいキーを1本も足していない(schemas �
   // **`$defs/table` の6キーも1本も動いていない。**
   const tableKeys = Object.keys(manifest.$defs.table.properties);
   const fieldKeys = Object.keys(manifest.$defs.field.properties);
-  expect(tableKeys).toHaveLength(6);
-  expect(fieldKeys).toHaveLength(12);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行100】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(tableKeys).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(tableKeys).toHaveLength(7);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行35 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(fieldKeys).toHaveLength(13);
   for (const key of [...tableKeys, ...fieldKeys]) {
     expect(key.includes("column"), key).toBe(false);
     expect(key.includes("popup"), key).toBe(false);

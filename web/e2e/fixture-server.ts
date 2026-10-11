@@ -610,7 +610,22 @@ async function readRole(request: Request): Promise<Role | undefined> {
  */
 await ensureIslandRuntimeReady();
 
-const app = createServerApp({ dataRoot, webDistDir: join(repoRoot, "web", "dist") });
+/*
+ * **【`V20-M13-T02c`】下見の置き場の根を明示する**(`<dataRoot>.previews`。自分の一時ディレクトリの隣で、
+ * 終わるときに消す)。下見の口(`preview-fixture.ts`)は**動的に読み込む** —— このファイルの先頭に
+ * import を足すと、`tools/ci/sweep-temp.test.ts` (7) が出所の行番号(上の `mkdtempSync` の行)を
+ * 逐語で固定しているので、行がずれて赤くなるためである。
+ */
+const previewRoot = `${dataRoot}.previews`;
+const { createPreviewFixture } = await import("./preview-fixture.ts");
+const previewFixture = createPreviewFixture({ dataRoot, previewRoot, origin: originOf(port) });
+
+// 【V20-M13-T02c】旧(逐語): `const app = createServerApp({ dataRoot, webDistDir: join(repoRoot, "web", "dist") });`
+const app = createServerApp({
+  dataRoot,
+  webDistDir: join(repoRoot, "web", "dist"),
+  preview: { root: previewRoot },
+});
 
 /**
  * **配る版(実行専用の版)を配る2本目のサーバ**(`V10-M7-T05`)。
@@ -677,6 +692,10 @@ const server = Bun.serve({
         await readCommentVisibilityPatch(request),
       );
     }
+    const previewHandled = await previewFixture.handle(request, pathname);
+    if (previewHandled !== undefined) {
+      return previewHandled;
+    }
     return app.fetch(request);
   },
 });
@@ -692,6 +711,7 @@ function cleanup(): void {
   runnerServer.stop(true);
   server.stop(true);
   rmSync(dataRoot, { recursive: true, force: true });
+  previewFixture.cleanup();
 }
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {

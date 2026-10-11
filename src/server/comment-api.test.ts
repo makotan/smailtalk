@@ -1027,7 +1027,17 @@ test("V10-M15-T01: 繋ぎの枝を足しても HTTP の口は 51本のままで�
   //   **走査**ではない** —— **走査は今日2本ある。**
   // **下の `/comments` の2本を撃つ式は1バイトも緩めていない**(足した口は `/comments` を
   //   1文字も含まないので、`writes` にも `reads` にも1件も入らない)。
-  expect(scanRoutes()).toHaveLength(53);
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行27】期待値を 53 → 57 へ書き換えた。テスト名も上の逐語も
+  //   1バイトも書き換えていない】** —— **行の招待の口4本(`app.ts`)を足した。**
+  // **旧の期待値(逐語)**: `expect(scanRoutes()).toHaveLength(53);`
+  //   **新しい値は検査の外の台本(同じ正規表現を python で同じ4ファイルに当てた)で数えた。** 足した口は
+  //   `/comments` を1文字も含まないので、下の `writes` にも `reads` にも1件も入らない。
+  // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行13】期待値を 57 → 59 へ書き換えた。テスト名も上の逐語も
+  //   1バイトも書き換えていない】** —— **行の招待用コードの口2本(`app.ts`)を足した。**
+  // **旧の期待値(逐語)**: `expect(scanRoutes()).toHaveLength(57);`
+  //   **新しい値は検査の外の台本(同じ正規表現を python で同じ4ファイルに当てた)で数えた。** 足した口は
+  //   `/comments` を1文字も含まないので、下の `writes` にも `reads` にも1件も入らない。
+  expect(scanRoutes()).toHaveLength(59);
   const writes = scanRoutes().filter(
     (entry) => entry.startsWith("POST ") && entry.includes("/comments"),
   );

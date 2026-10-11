@@ -17,7 +17,15 @@
  * ディスパッチ層(`ViewHost`)に渡す。ビューをどう描くかの知識はこの
  * ファイルには一切なく、すべて汎用コンポーネント側にある。
  */
-import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Manifest, Table, Theme, View, ViewType } from "../../src/kernel/types.ts";
 import {
   ApiError,
@@ -37,6 +45,7 @@ import {
   declaredRoleKinds,
   // **【`V8-M27-T04` / `T-G5`】`isReservedRole` の import は撤去した**
   // (`platformPortAudience` と「登録直後の導線」の2箇所ごと消えた)。
+  menuListedViews,
   RoleProvider,
   roleLabel,
   visibleViewsForRole,
@@ -44,6 +53,7 @@ import {
 import { ConnectionAdmin } from "./auth/ConnectionAdmin.tsx";
 import { EscapeHatchAdmin } from "./auth/EscapeHatchAdmin.tsx";
 import { LoginPage } from "./auth/LoginPage.tsx";
+import { OrphanRecordsAdmin } from "./auth/OrphanRecordsAdmin.tsx";
 // **【`V10-M19-T01` / `FU-G6` / `ADR-0363`】登録の直後の案内。**
 // **本ファイルに在った `<Alert>` をそのまま移した1本であり、配る版と共有している。**
 import { SignupNextNotice } from "./auth/SignupNextNotice.tsx";
@@ -57,6 +67,7 @@ import {
 } from "./auth/signup-next.ts";
 import { UserAdmin } from "./auth/UserAdmin.tsx";
 import { useAppAuth } from "./auth/useAppAuth.ts";
+import { ColorSchemeToggle, themeAllowsDark } from "./ColorSchemeToggle.tsx";
 import { CommentList } from "./CommentList.tsx";
 // **【`V10-M11-T01` の2手目。台帳 `CM-G4`】画面へのコメントを1件書く導線。**
 // **`web/src/` の書込導線1本はこれである**(`ADR-0007:1637` の歯止め1 の宣言)。
@@ -72,19 +83,28 @@ import { CommentList } from "./CommentList.tsx";
 // 育成用の版の器であり、ここに置けば配る版の成果物から落ちる。**
 // **部品はコンテキストのスロット(`CommentVisibilityProvider` の `panel`)で器へ渡す。**
 import { CommentPanel } from "./CommentPanel.tsx";
+import { type ColorScheme, forceLightColorScheme, useColorScheme } from "./color-scheme.ts";
 import { ErrorList } from "./ErrorList.tsx";
-import { RouteLink } from "./navigation.tsx";
+import { orphanListTables } from "./fields/user-account.ts";
+import { InvitationInbox, invitationsMenuLabel } from "./InvitationInbox.tsx";
+import { hasMyPage, type LoginArrival, MyPage, myPageLanding, useLoginArrival } from "./MyPage.tsx";
+// **【`V22-M3-T05`】旧の逐語**: `import { RouteLink } from "./navigation.tsx";` —— マイページへ移る `navigate` と現在地 `useRoute` を足した。
+import { navigate, RouteLink, useRoute } from "./navigation.tsx";
+import { PreviewUnavailable } from "./PreviewBanner.tsx";
+import { usePreviewState } from "./preview.ts";
 import { RequirementsDocPanel } from "./RequirementsDocPanel.tsx";
 import type { RoutePrefill } from "./route.ts";
 import { ThemeExportPanel } from "./ThemeExportPanel.tsx";
 import { ThemeImportPanel } from "./ThemeImportPanel.tsx";
 import { ThemePreviewPanel } from "./ThemePreviewPanel.tsx";
+import { themeSlotsToCssProperties } from "./theme-role-map.ts";
 import { Button } from "./ui/button.tsx";
 // **【`V10-M19-T01` / `FU-G6`】`Alert` の import はここから消えた** ——
 // **本ファイルで `<Alert>` を使っていた唯一の箇所(登録の直後の案内)を
 // `web/src/auth/SignupNextNotice.tsx` へ移したためであり、案内の中身は1バイトも変えていない。**
 import { Badge, Skeleton } from "./ui/surfaces.tsx";
 import { cn } from "./ui/utils.ts";
+import { resolveNavigationPlacement, ViewNavigation } from "./ViewNavigation.tsx";
 // **【`V10-M32-T02`】旧(逐語。1バイトも消していない)**:
 //   `import { CommentVisibilityProvider, ViewHost, viewDisplayName } from "./views/ViewHost.tsx";`
 // **`useCommentReadEnabled` を1本足した** —— **読む場所の導線と枝はこのファイルに在るので、
@@ -108,6 +128,25 @@ const VIEW_TYPE_LABELS: Record<ViewType, string> = {
   detail_view: "詳細",
   report_view: "集計表",
 };
+
+/**
+ * **育成用の版のメニューの項目の中身**(`V22-M2-T04`。`ViewNavigation` の `label` に渡す。ログイン中と未ログインの2か所が使う)。
+ *
+ * V1-M0-T02: 表示名があればそれを出し、無ければ従来どおり id を出す。
+ * 両方を並べないのは、名前を付けた画面でIDが残ると「表示名を付けた」ことに
+ * ならないためである(F-1 の要求は人間向けの名前を出すこと)。
+ * **画面の種別を添える**(配る版は名前だけで、種別を添えない)。
+ */
+function viewLabelWithType(view: View): ReactNode {
+  return (
+    <>
+      {viewDisplayName(view)}{" "}
+      <span className={cn("meta", "text-note text-muted-foreground")}>
+        {VIEW_TYPE_LABELS[view.type]}
+      </span>
+    </>
+  );
+}
 
 /**
  * **未ログインへ渡った画面の定義から、表の定義を外して素の {@link View} に戻す**
@@ -155,8 +194,40 @@ export function publicManifest(info: PublicAppInfo): Manifest {
       tables,
       views: info.views.map(stripPublicViewTables),
       ...(info.theme === undefined ? {} : { theme: info.theme }),
+      // **【`V22-M2-T05`。`T06` の `GET /public` の受け手】メニューの位置(アプリの既定)。** `GET /public` は宣言があるときだけ
+      // `workspace: {navigation: {placement}}` を載せる(役割の上書きは載らない)。 無ければキーごと出さない。
+      ...(info.workspace === undefined ? {} : { workspace: info.workspace }),
     },
   };
+}
+
+/**
+ * **未ログインの入口に出す画面**(`V21-M4` / `ADR-0482` §5-1(`AN-G5`)/ ユーザ決定 `D-V21-18` /
+ * メインの裁定 `D-V21-20`)。
+ *
+ * **`GET /public` の `views[]`(未ログインに開いた画面。サーバが規則で絞った結果)のうち、
+ * 行の ID 無しで開ける公開の一覧画面(`list_view`)で、画面の並び順で最初のもの。** 無ければ
+ * `undefined`(呼び手は今日どおりログイン画面を出す)。 **判定を持たない** —— どの画面が
+ * 開いているかはサーバが決めており、ここは並びと種別を見るだけである(`ADR-0314` 限定4 の作法)。
+ * **育成用の版と配布の器(`web/src/runner-app.tsx`)が同じ1本を呼ぶ。**
+ */
+export function publicAnonymousEntryView<T extends { type: string }>(
+  views: readonly T[],
+): T | undefined {
+  return views.find((view) => view.type === "list_view");
+}
+
+/**
+ * **未ログインの入口に出す画面(メニューに載せる画面を先に見る)**(`V22-M4-T01` / `ADR-0494` §Decision 1 の 3・6。
+ * 審査単位 `EN-G1`)。
+ *
+ * **メニューに載せる公開の一覧画面のうち並び順で最初のもの。 1つも無ければ、上の `publicAnonymousEntryView` の
+ * 今日の選び方(載せない画面も含めた最初の公開の一覧画面)。 それも無ければ `undefined`**(呼び手は今日どおり
+ * ログイン画面を出す)。 **入口の合成はこの1本だけに置き、育成用の版と配る版(`web/src/runner-app.tsx`)の
+ * 入口がこれを呼ぶ**(`ADR-0494` 限定5)。 入口を名指しするキーは読まない(限定3)。
+ */
+export function publicAnonymousMenuEntryView<T extends View>(views: readonly T[]): T | undefined {
+  return publicAnonymousEntryView(menuListedViews(views)) ?? publicAnonymousEntryView(views);
 }
 
 export function AppWorkspace({
@@ -164,6 +235,9 @@ export function AppWorkspace({
   viewId,
   recordId,
   prefill,
+  login,
+  myPage,
+  invitations,
 }: {
   appId: string;
   viewId?: string | undefined;
@@ -171,8 +245,31 @@ export function AppWorkspace({
   recordId?: string | undefined;
   /** 操作起点のプリフィル(EC-G14 / ADR-0045)。新規作成フォームの初期値に使う一時状態。 */
   prefill?: RoutePrefill | undefined;
+  /**
+   * **ログイン画面の専用の場所 `/apps/<id>/login` で開いたか**(`V21-M4` / `ADR-0482` §5-1 /
+   * `D-V21-17`)。 **未ログインでは必ずログイン画面を出す。** ログイン済みでは `/apps/<id>` と
+   * 同じ表示(この印を見ない)。
+   */
+  login?: boolean | undefined;
+  /**
+   * **【`V22-M3-T05`】マイページの場所 `/apps/<id>/my-page` で開いたか**(`ADR-0488` §Decision 1 の 6)。
+   * **未ログインでは `login` と同じく必ずログイン画面を出す**(マイページを描かない)。
+   */
+  myPage?: boolean | undefined;
+  /**
+   * **【`V23-M5-T06`】招待の受け取り画面の場所 `/apps/<id>/invitations` で開いたか**(`D-V23-129`)。
+   * **未ログインでは `myPage` と同じく必ずログイン画面を出す**(受け取り画面を描かず、口も呼ばない)。
+   */
+  invitations?: boolean | undefined;
 }) {
   const auth = useAppAuth(appId);
+  /**
+   * **【`V22-M3-T05`】ログインの直後であることの印**(`web/src/MyPage.tsx` の `useLoginArrival`)。
+   * **ログイン直後にマイページを開くかの調停に使う**(行き先を決める効果は `useSignupAutoOpen` の1本だけ)。
+   */
+  const loginArrival = useLoginArrival(auth.status);
+  /** **【`V20-M13-T02c`】下見の頭を受けているか**(`web/src/preview.ts`)。 */
+  const previewState = usePreviewState(appId);
   // **【`V10-M31-T01`(台帳 `CM-G38`)。2026-08-25】旧文の逐語(1バイトも消していない)**:
   //   `const [state, setState] = useState<AsyncState<Manifest>>({ status: "loading" });`
   // **今日から応答の**外側**に兄弟キー `comment_visibility` が1本載る**(`ADR-0377`)ので、
@@ -184,6 +281,26 @@ export function AppWorkspace({
    * **アプリ名と、未ログインでも見せると決めた画面の名前だけである。**
    */
   const [publicInfo, setPublicInfo] = useState<PublicAppInfo | null>(null);
+  /**
+   * **【`V21-M4-T07`】未ログインへ渡った分で組み立てた定義と画面の並びを、`publicInfo` が
+   * 変わるまで同じオブジェクトに保つ。** 着手前は描くたびに `publicManifest(publicInfo)` を
+   * 組み直しており、配下の一覧・詳細の取得の依存(定義から `useMemo` した値)が描き直しの
+   * たびに変わった —— **断られた取得を繰り返す輪の片側である**(もう片側は
+   * `web/src/auth/useAppAuth.ts` の失効の通知。計画 §10-1)。
+   */
+  const publicView = useMemo(
+    () =>
+      publicInfo === null
+        ? null
+        : {
+            manifest: publicManifest(publicInfo),
+            // **【`V22-M4-T01` / `ADR-0494` §Decision 1 の 1】メニューとログイン画面の画面リンクに並べる分だけ。**
+            // メニューに載せない画面を外す(開ける判定は下の `publicInfo.views` を見るので、URL を直に開けば今日どおり開く)。
+            // 定義(`manifest`)の画面は絞らない。
+            views: menuListedViews(publicInfo.views.map(stripPublicViewTables)),
+          },
+    [publicInfo],
+  );
 
   // **【`V8-M21` / `J-G24a` / `D-V8-21`】旧文の逐語(1バイトも消していない)**:
   //   「manifest は非保護なので、認証状態に関わらず取得する(ログイン画面の見出しにも使う)。」
@@ -191,7 +308,15 @@ export function AppWorkspace({
   // **したがって 401 のときだけ `GET /public`(アプリ名と匿名に開いた画面の名前だけ)へ倒す** ——
   // **「ログインするために定義が要り、定義を得るためにログインが要る」を避けるためである。**
   // **401 以外の失敗は今日どおりエラー表示に倒す**(丸めない)。
+  // **【`V22-M1`】ログアウト・セッション切れの後に `GET /public` を取り直すための印**(使い道は
+  // 下の「【`V22-M1`】」の effect)。 **`signedInRef` = このアプリで一度ログイン済みになったか。**
+  // **`discardGeneration` = 取り直しの応答を捨てる合図**(`appId` が変わったら進める)。
+  const signedInRef = useRef(false);
+  const discardGeneration = useRef(0);
   useEffect(() => {
+    // **【`V22-M1`】アプリが変わったら、前のアプリの印と取り直しの応答を捨てる。**
+    discardGeneration.current += 1;
+    signedInRef.current = false;
     let cancelled = false;
     setState({ status: "loading" });
     setPublicInfo(null);
@@ -263,6 +388,52 @@ export function AppWorkspace({
     };
   }, [appId, auth.status, publicInfo]);
 
+  // **【`V22-M1`】ログアウト・セッション切れで未ログインに落ちたら、ログイン中に取った定義を
+  // 捨てて `GET /public` を取り直す。**
+  //
+  // **直す前は、ログアウト(`useAppAuth` の `signOut`)が状態を `anonymous` にするだけで、
+  // 定義も `publicInfo` も取り直さなかった。** **そのため「ログイン中に取った定義 + 未ログイン」の
+  // 分岐(下の `auth.status === "anonymous"`)に入り、そこの `LoginPage` には `signup` が
+  // 渡らない —— 招待コードの欄(`auth-invitation-code`)も立場を選ぶ欄も出なかった。**
+  // **付随して、未ログインには渡らないはずの定義がメモリに残り、描画に使われていた。**
+  //
+  // **取り直すのは「一度ログイン済みになった後に未ログインへ落ちた」ときだけである**
+  // (`signedInRef`)。 **マウント時から未ログインのとき(定義が 401 で `/public` へ倒れた経路)は
+  // 上の1本目が既に `/public` を取っている。** **ログインしたままの人の取得は1回も増やさない**
+  // (`web/test/theme-preview.test.tsx` の回数検査。上の「1本目に混ぜていない理由」と同じ)。
+  // **応答の取り消しは `appId` の切り替えだけで行う**(`discardGeneration`)——
+  // 依存の `state.status` で取り消すと、自分が積んだ `loading` で自分の応答を捨ててしまう。
+  useEffect(() => {
+    if (auth.status === "authenticated") {
+      signedInRef.current = true;
+    }
+  }, [auth.status]);
+  useEffect(() => {
+    if (
+      auth.status !== "anonymous" ||
+      !signedInRef.current ||
+      state.status !== "ready" ||
+      publicInfo !== null
+    ) {
+      return;
+    }
+    signedInRef.current = false;
+    const generation = ++discardGeneration.current;
+    setState({ status: "loading" });
+    fetchPublicAppInfo(appId).then(
+      (info) => {
+        if (generation === discardGeneration.current) {
+          setPublicInfo(info);
+        }
+      },
+      (reason: unknown) => {
+        if (generation === discardGeneration.current) {
+          setState({ status: "error", errors: toValidationErrors(reason) });
+        }
+      },
+    );
+  }, [appId, auth.status, state.status, publicInfo]);
+
   /*
    * **未ログイン(定義が読めない)の分岐**(`V8-M21` / `D-V8-34`)。
    *
@@ -303,22 +474,48 @@ export function AppWorkspace({
    * 見るだけである**(`ADR-0314` 限定4 の作法)。**URL に他の画面IDを打っても、載っていない
    * のでログイン画面に落ちる。**
    */
-  if (publicInfo !== null) {
+  // **【`V20-M13-T02c`】下見の頭を受けているのに未ログインの扱いになったら、本物のアプリの
+  // ログイン画面(公開の画面の導線を含む)へ誘導せず、開けなかったことを出す。**
+  // 前段が頼んだ人のセッションを付けるので、今日の下見では来ない見込みの枝である。
+  if (previewState.status === "active" && (publicInfo !== null || auth.status === "anonymous")) {
+    return <PreviewUnavailable />;
+  }
+  if (publicInfo !== null && publicView !== null) {
     /*
      * **未ログインのまま開ける画面**(`V8-M26-T05` / `D-V8-57`)。
      * **載っている画面ちょうどが開ける** —— **サーバが `anonymous` の規則で絞った結果である。**
      */
+    // **【`V21-M4` / `ADR-0482` §5-1(`AN-G5`)/ `D-V21-18` / `D-V21-20`】旧行の逐語(1バイトも
+    // 消していない)**:
+    //   `const openView =`
+    //   `  viewId === undefined`
+    //   `    ? undefined`
+    //   `    : publicInfo.views.find((candidate) => candidate.id === viewId);`
+    // **画面を名乗らない URL(`/apps/<id>`)では、行の ID 無しで開ける公開の一覧画面のうち
+    // 並び順で最初のものを出す**(`publicAnonymousEntryView`)。 **`/apps/<id>/login` では
+    // 必ずログイン画面**(入口の公開画面を出さない)。 **上の冒頭の注釈の「画面を1枚も
+    // 開いていない URL(`/apps/<id>`)では今日どおりログイン画面が出る」は、公開の一覧画面を
+    // 持つアプリについて今日から偽である**(持たないアプリでは今日も真)。
+    // **【`V22-M3-T05`】旧の逐語**: `login === true` —— **`/apps/<id>/my-page` も未ログインでは必ずログイン画面**
+    // (入口の公開画面を出さない。`ADR-0488` §Decision 1 の 6「未ログインではマイページを描かない」)。
+    // **【`V22-M4-T01` / `ADR-0494` §Decision 1 の 3(`EN-G1`)】入口はメニューに載せる公開の一覧画面の先頭**
+    // (1つも無ければ今日の選び方)。 選び方は上の合成の1本(`publicAnonymousMenuEntryView`)を呼ぶ。
+    // **上の「並び順で最初のものを出す」は、メニューに載せない画面を先頭に持つアプリについて今日から偽である。**
+    // 画面を名乗った URL の開ける判定(`publicInfo.views` から探す)は絞らない(`ADR-0084` 限定5)。
+    // **【`V23-M5-T06`】旧の逐語**: `login === true || myPage === true` —— `/apps/<id>/invitations` も未ログインでは必ずログイン画面。
     const openView =
-      viewId === undefined
+      login === true || myPage === true || invitations === true
         ? undefined
-        : publicInfo.views.find((candidate) => candidate.id === viewId);
+        : viewId === undefined
+          ? publicAnonymousMenuEntryView(publicInfo.views)
+          : publicInfo.views.find((candidate) => candidate.id === viewId);
     if (openView !== undefined) {
       return (
         <AppThemeScope theme={publicInfo.theme}>
           <AnonymousWorkspace
             appId={appId}
-            manifest={publicManifest(publicInfo)}
-            views={publicInfo.views.map(stripPublicViewTables)}
+            manifest={publicView.manifest}
+            views={publicView.views}
             viewId={openView.id}
             recordId={recordId}
             prefill={prefill}
@@ -341,7 +538,9 @@ export function AppWorkspace({
           // **【`V8-M26-T05`】旧の逐語(1バイトも消していない)**:
           //   `publicInfo.views.map((view) => ({ id: view.id, name: view.name }) as unknown as View)`
           // **今日は画面の定義そのものが渡るので、`as unknown as View` の詰め物は要らない。**
-          anonymousViews={publicInfo.views.map(stripPublicViewTables)}
+          // **【`V22-M4-T01` / `ADR-0494` §Decision 1 の 1】メニューに載せない画面をリンクに並べない**
+          // (メニューと同じ並び `publicView.views` を渡す)。
+          anonymousViews={publicView.views}
           // **【`V8-M5-T04`。ユーザ決定 `D-V8-114`】登録に要る事実をそのまま渡す。**
           // **画面はこれを描くだけで、値域も可否も1つも組み立てていない。**
           // **宣言が無い応答(古いサーバ)では `undefined` になり、着手前の画面が出る。**
@@ -504,6 +703,9 @@ export function AppWorkspace({
           onSignOut={auth.signOut}
           justSignedUpAsCustomer={auth.justSignedUpAsCustomer}
           onDismissSignupNotice={auth.dismissSignupNotice}
+          myPage={myPage}
+          invitations={invitations}
+          loginArrival={loginArrival}
         />
       </CommentVisibilityProvider>
     </AppThemeScope>
@@ -559,43 +761,47 @@ function AnonymousWorkspace({
          * **「ここから先はログインが要る」ことを言える場所を画面に残す** —— 消すと、
          * 匿名で見えている範囲が全部だと誤解させる(憲法6)。
          */}
-        <RouteLink to={{ kind: "app", appId }}>
+        {/*
+         * **【`V21-M4` / `ADR-0482` §5-1 / `D-V21-17`】行き先をログイン画面の専用の場所へ移した。**
+         * **旧行の逐語(1バイトも消していない)**: `<RouteLink to={{ kind: "app", appId }}>`
+         * —— **入口 `/apps/<id>` に公開の一覧画面が出るようになったので、旧の行き先では同じ
+         * 公開画面に戻ってしまう。**
+         */}
+        <RouteLink to={{ kind: "app", appId, login: true }}>
           <span data-testid="anonymous-login-link">ログイン</span>
         </RouteLink>
+        {/* **【V20-M10-T05】明暗のスイッチ。** 公開の画面の帯にも置く(右寄せはスイッチ自身が持つ)。 */}
+        <ColorSchemeToggle theme={manifest.app.theme} className="ml-auto" />
       </header>
-      <div className="workspace-body">
-        <nav className="view-list" data-testid="view-list">
-          <ul className={cn("flex flex-col gap-s1")}>
-            {views.map((view) => (
-              // **【V4-M15-T14】いま開いている画面に `aria-current="page"` を付ける**
-              // (着手前 0件)。**当たり先は `viewId` と一致する1件だけである。**
-              // **属性を `<li>` に置くのは、`RouteLink` が `to` と `children` しか
-              // 受け取らず、本タスクが `navigation.tsx` を触らないためである。**
-              <li
-                key={view.id}
-                className={cn("flex flex-wrap items-baseline gap-s1")}
-                {...(view.id === viewId ? { "aria-current": "page" as const } : {})}
-              >
-                <RouteLink to={{ kind: "view", appId, viewId: view.id }}>
-                  {viewDisplayName(view)}{" "}
-                  <span className={cn("meta", "text-note text-muted-foreground")}>
-                    {VIEW_TYPE_LABELS[view.type]}
-                  </span>
-                </RouteLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
-        <div className="workspace-main" data-testid="workspace-main">
-          <SelectedView
-            appId={appId}
-            manifest={manifest}
-            viewId={viewId}
-            recordId={recordId}
-            prefill={prefill}
-          />
-        </div>
-      </div>
+      {/*
+       * **【`V22-M2-T04`】画面の一覧と本文の器を共通の部品 `ViewNavigation`(`web/src/ViewNavigation.tsx`)へ
+       * 抜き出した。 描く DOM は1バイトも変えていない**(`web/test/view-navigation-side-dom.test.tsx`)。
+       * **旧の項目の注釈(逐語。1バイトも消していない)**:
+       *   「**【V4-M15-T14】いま開いている画面に `aria-current="page"` を付ける**
+       *   (着手前 0件)。**当たり先は `viewId` と一致する1件だけである。**
+       *   **属性を `<li>` に置くのは、`RouteLink` が `to` と `children` しか
+       *   受け取らず、本タスクが `navigation.tsx` を触らないためである。**」
+       * **この画面は開いた画面が必ず1枚あるので、空のときの表し方(`empty`)を渡さない**(抜き出す前も出していない)。
+       */}
+      {/*
+       * **【`V22-M2-T05`】メニューの位置は未ログインなのでアプリの既定**(役割 `null`。`D-V22-10`)。
+       * 定義は `GET /public` から組んだもの(`publicManifest` が `workspace` を写す)か、定義そのもの。
+       */}
+      <ViewNavigation
+        appId={appId}
+        views={views}
+        viewId={viewId}
+        label={viewLabelWithType}
+        placement={resolveNavigationPlacement(manifest.app.workspace, null)}
+      >
+        <SelectedView
+          appId={appId}
+          manifest={manifest}
+          viewId={viewId}
+          recordId={recordId}
+          prefill={prefill}
+        />
+      </ViewNavigation>
     </section>
   );
 }
@@ -607,11 +813,12 @@ function AnonymousWorkspace({
  * マニフェスト由来の実値を**この1要素の inline style にだけ**立て、配下の CSS 規則は
  * `web/src/styles.css` の `var(--…)` でそれを読む。ビュー側は今までどおりテーマを知らない。
  *
- * ## 変換規則は1本(恒等写像)である
+ * ## 変換規則は1本(写像 `web/src/theme-role-map.ts`)である
  *
- * **`app.theme.slots` のキーは CSS カスタムプロパティ名そのもの**であり、変換を1つも
- * 挟まない(V3-M1-T03 段階B が定義した唯一の規則。定義と機械的固定は
- * `web/test/theme-slot-parity.test.ts` / 製品経路の固定は `web/test/app-theme.test.tsx`)。
+ * **`app.theme.slots` のキーは役割名(`body_text` など)であり**、CSS カスタムプロパティ名へは
+ * 写像 `themeSlotsToCssProperties` の1本で写す(V20-M8 / ADR-0473。以前の恒等写像を
+ * 名前のついた写像1本に建て替えた。機械的固定は `web/test/theme-slot-parity.test.ts` /
+ * 製品経路の固定は `web/test/app-theme.test.tsx`)。
  * **2本目の規則を作らないこと** —— 作ると V3-M1-T05 が持ち出す `theme.css` が
  * 「形式は安定しているが当たらない」状態になる。
  *
@@ -646,8 +853,19 @@ export function AppThemeScope({
   /** スコープ要素の `data-testid`。**製品の本体は既定値のままにする。** */
   testId?: string;
 }) {
+  const scheme = useColorScheme();
+  // **【V20-M10-T03 / D-V20-31】暗い側の組を持たないテーマのアプリを開いている間は明るく強制する。**
+  // **製品の器(既定の `testId`)だけが呼ぶ** —— 取り込みの事前表示(`theme-import-preview`)は呼ばない
+  // (計画 §10 の 5)。**記憶は書き換えない。** 器が外れたら(アプリを離れたら)戻る。
+  // 描く前に当てる(`useLayoutEffect`)。ただし定義が届くまでテーマの有無は分からないので、
+  // 読み込み中は既定の配色で描かれる(計画 §10 の 6。`records/v20-m10-t03.md` に実測)。
+  const forceLight = testId === "app-theme" && !themeAllowsDark(theme);
+  useLayoutEffect(() => {
+    if (!forceLight) return undefined;
+    return forceLightColorScheme();
+  }, [forceLight]);
   return (
-    <div className="app-theme" data-testid={testId} style={themeScopeStyle(theme)}>
+    <div className="app-theme" data-testid={testId} style={themeScopeStyle(theme, scheme)}>
       {children}
     </div>
   );
@@ -657,16 +875,22 @@ export function AppThemeScope({
  * テーマのスロットを inline style へ写す。**テーマが無ければ `style` 属性を付けない**
  * (既定値は `web/src/styles.css` の `:root` から来る = 既存マニフェストの後方互換)。
  *
- * キーはそのまま使う(恒等写像)。**`--` で始まるキーは React が `setProperty` で
- * 立てる**ので、CSS カスタムプロパティとして機能する。値域(色は16進・長さは px/rem/em 等)は
+ * キー(役割名)は写像 `themeSlotsToCssProperties` で CSS 名へ写す(表に無いキーは落ちる)。
+ * **`--` で始まる名前は React が `setProperty` で立てる**ので、CSS カスタムプロパティとして
+ * 機能する。値域(色は16進・長さは px/rem/em 等)は
  * `schemas/manifest.schema.json` の `$defs/theme` が適用時に縛っており、
  * ここで再検証しない(検証を二重化すると規則が2箇所に住む)。
  */
-function themeScopeStyle(theme?: Theme | undefined): CSSProperties | undefined {
+// 【V20-M10-T03】旧の逐語: `function themeScopeStyle(theme?: Theme | undefined): CSSProperties | undefined {` /
+// `  return themeSlotsToCssProperties(theme.slots) as CSSProperties;`。**効いているモードが暗く、テーマが
+// 暗い側の組(`slots_dark`)を持つときだけ、その組を同じ写像1本で立てる。**
+function themeScopeStyle(theme: Theme | undefined, scheme: ColorScheme): CSSProperties | undefined {
   if (theme === undefined) {
     return undefined;
   }
-  return { ...theme.slots } as CSSProperties;
+  const slots =
+    scheme === "dark" && theme.slots_dark !== undefined ? theme.slots_dark : theme.slots;
+  return themeSlotsToCssProperties(slots) as CSSProperties;
 }
 
 /**
@@ -687,6 +911,9 @@ function AuthenticatedWorkspace({
   onSignOut,
   justSignedUpAsCustomer = false,
   onDismissSignupNotice,
+  myPage = false,
+  invitations = false,
+  loginArrival = null,
 }: {
   appId: string;
   manifest: Manifest;
@@ -699,6 +926,12 @@ function AuthenticatedWorkspace({
   justSignedUpAsCustomer?: boolean | undefined;
   /** 登録直後の案内を閉じる。 */
   onDismissSignupNotice?: (() => void) | undefined;
+  /** **【`V22-M3-T05`】`/apps/<id>/my-page` で開いたか。** */
+  myPage?: boolean | undefined;
+  /** **【`V23-M5-T06`】`/apps/<id>/invitations` で開いたか。** */
+  invitations?: boolean | undefined;
+  /** **【`V22-M3-T05`】ログインの直後であることの印**(無ければ `null`)。 */
+  loginArrival?: LoginArrival | null | undefined;
 }) {
   const [adminOpen, setAdminOpen] = useState(false);
   /**
@@ -721,6 +954,11 @@ function AuthenticatedWorkspace({
    * が editor のセッションで実測している)。**UI は担保ではない。**
    */
   const [escapeHatchAdminOpen, setEscapeHatchAdminOpen] = useState(false);
+  /**
+   * **管理者のいない行の一覧の開閉**(`V23-M1-T10`)。 **運営だけ・読取専用。** 行ごとの権限を宣言した表が
+   * 1つも無いアプリでは導線を出さない(そのアプリの画面は1ピクセルも変わらない)。 遮断はサーバの 403 である。
+   */
+  const [orphanRecordsOpen, setOrphanRecordsOpen] = useState(false);
   /**
    * 要件定義書パネルの開閉(V1-M8-T02 / ADR-0025 §10-2)。
    *
@@ -1019,7 +1257,11 @@ function AuthenticatedWorkspace({
   // **`signupNextFormViews` の同期の4条件も1つも消していない**(`ADR-0364` 限定6)。
   // **足したのは5つ目の関門(行が見えるか)だけで、それは `useSignupNextCandidates` の中に在る。**
   // **判定式そのものはここに書き写していない** —— **式の全文は `ADR-0364` §Decision 5 に在る。**
-  const { views: signupNextForms, autoOpenAllowed } = useSignupNextCandidates(
+  const {
+    views: signupNextForms,
+    autoOpenAllowed,
+    decided: signupDecided,
+  } = useSignupNextCandidates(
     appId,
     manifest,
     user.role,
@@ -1041,7 +1283,22 @@ function AuthenticatedWorkspace({
   // **【`V10-M19-T02`】第3引数に `autoOpenAllowed` を AND した** ——
   // **読み終える前と、読み終えた時点で現在地が変わっていたときは自動で開かない**
   // (`ADR-0364` 限定5)。**`useSignupAutoOpen` の本体は1バイトも書き換えていない。**
-  useSignupAutoOpen(appId, signupNextForms, justSignedUpAsCustomer && autoOpenAllowed);
+  // **【`V22-M3-T05`。`ADR-0488` §Decision 1 の 7 / `D-V22-25`】旧の逐語(1バイトも消していない)**:
+  //   `const { views: signupNextForms, autoOpenAllowed } = useSignupNextCandidates(` —— 下の呼び出しの左辺は上のとおり。
+  //   `useSignupAutoOpen(appId, signupNextForms, justSignedUpAsCustomer && autoOpenAllowed);`
+  // **第4引数でログイン直後にマイページを開く。 登録直後の自動オープンの判定が済み(`signupDecided`)、それが遷移しないと
+  // 決まった後にだけ開く**(調停はこの1本の効果の中。2本目の `useEffect` から `navigate()` を呼ばない)。
+  const route = useRoute();
+  useSignupAutoOpen(
+    appId,
+    signupNextForms,
+    justSignedUpAsCustomer && autoOpenAllowed,
+    myPageLanding({ appId, manifest, arrival: loginArrival, route, ready: signupDecided }),
+  );
+  /** **【`V22-M3-T05`】このアプリにマイページがあるか**(`my_page` の宣言。ログインした全員に出す。`D-V22-16`)。 */
+  const myPageDeclared = hasMyPage(manifest);
+  /** **【`V23-M5-T06`】メニューの「招待」の文言**(`workspace.invitations` の宣言が無ければ `undefined` = 出さない)。 */
+  const invitationsLabel = invitationsMenuLabel(manifest);
 
   return (
     /*
@@ -1110,6 +1367,17 @@ function AuthenticatedWorkspace({
               逃げ道の管理
             </Button>
           )}
+          {/* **管理者のいない行の一覧**(`V23-M1-T10`)。 owner だけ。 行ごとの権限を宣言した表があるアプリだけ。 */}
+          {isOwner && orphanListTables(manifest).length > 0 && (
+            <Button
+              size="sm"
+              variant="secondary"
+              data-testid="open-orphan-records"
+              onClick={() => setOrphanRecordsOpen(true)}
+            >
+              管理者のいない行
+            </Button>
+          )}
           {/*
            * テーマ候補のプレビューも owner だけの導線(完了条件11)。押すとマニフェストを
            * 書き換えられる画面なので、読むだけの持ち出し口とは扱いを分ける。
@@ -1145,12 +1413,28 @@ function AuthenticatedWorkspace({
            * アカウント(パスワードの変更・退会)。**ロールで出し分けない**(`E-G68`)——
            * 買い物客も運営も、自分の資格情報は自分でやり直せる必要がある。
            */}
-          <Button size="sm" data-testid="open-account" onClick={() => setAccountOpen(true)}>
-            アカウント
-          </Button>
+          {/*
+           * **【`V22-M3-T05`。`D-V22-6`】マイページのあるアプリでは「アカウント」の代わりに「マイページ」を出す**
+           * (パスワード変更・退会はマイページの中へ)。 **無いアプリでは下の「アカウント」の行が今日と1バイトも同じ。**
+           */}
+          {myPageDeclared ? (
+            <Button
+              size="sm"
+              data-testid="open-my-page"
+              onClick={() => navigate({ kind: "app", appId, myPage: true })}
+            >
+              マイページ
+            </Button>
+          ) : (
+            <Button size="sm" data-testid="open-account" onClick={() => setAccountOpen(true)}>
+              アカウント
+            </Button>
+          )}
           <Button size="sm" data-testid="logout" onClick={() => void onSignOut()}>
             ログアウト
           </Button>
+          {/* **【V20-M10-T03 / D-V20-33】明暗のスイッチ。** 上端の帯の右寄せ(`.current-user` の `margin-left: auto` の後ろ)。 */}
+          <ColorSchemeToggle theme={manifest.app.theme} />
         </header>
         {/*
          * **登録の直後の案内**(`V4-M21-T03` / `E-G65` / `D-V4-82`)。
@@ -1213,6 +1497,12 @@ function AuthenticatedWorkspace({
           // owner 専用の状態なので、非 owner はそもそも `escapeHatchAdminOpen` を true に
           // できない。**それでも担保はサーバ側である**(この行は先回りにすぎない)。
           <EscapeHatchAdmin appId={appId} onClose={() => setEscapeHatchAdminOpen(false)} />
+        ) : isOwner && orphanRecordsOpen ? (
+          <OrphanRecordsAdmin
+            appId={appId}
+            manifest={manifest}
+            onClose={() => setOrphanRecordsOpen(false)}
+          />
         ) : isOwner && themePreviewOpen ? (
           /*
            * プレビューは**既に取得済みのマニフェスト**と、**ロールで絞ったあとの画面一覧**を
@@ -1295,37 +1585,41 @@ function AuthenticatedWorkspace({
            * 指定していない** —— したがって折り返したときは上下に積まれる(`@media` を
            * 1つも書かないための手段。`web/src/styles.css` の当該規則)。
            */
-          <div className="workspace-body">
-            <nav className="view-list" data-testid="view-list">
-              {listedViews.length === 0 && <EmptyViewList manifest={manifest} />}
-              <ul className={cn("flex flex-col gap-s1")}>
-                {listedViews.map((view) => (
-                  // **【V4-M15-T14】いま開いている画面に `aria-current="page"` を付ける**
-                  // (着手前 0件。`03` §4-1 の「選択中 0件」)。**当たり先は URL の
-                  // `viewId` と一致する1件だけで、選んでいなければ1件も出ない。**
-                  // **属性を `<li>` に置くのは、`RouteLink`(`web/src/navigation.tsx`)が
-                  // `to` と `children` しか受け取らず、本タスクがそのファイルを触らない
-                  // ためである。**
-                  <li
-                    key={view.id}
-                    className={cn("flex flex-wrap items-baseline gap-s1")}
-                    {...(view.id === viewId ? { "aria-current": "page" as const } : {})}
-                  >
-                    {/*
-                     * V1-M0-T02: 表示名があればそれを出し、無ければ従来どおり id を出す。
-                     * 両方を並べないのは、名前を付けた画面でIDが残ると「表示名を付けた」ことに
-                     * ならないためである(F-1 の要求は人間向けの名前を出すこと)。
-                     */}
-                    <RouteLink to={{ kind: "view", appId, viewId: view.id }}>
-                      {viewDisplayName(view)}{" "}
-                      <span className={cn("meta", "text-note text-muted-foreground")}>
-                        {VIEW_TYPE_LABELS[view.type]}
-                      </span>
-                    </RouteLink>
-                  </li>
-                ))}
-              </ul>
-            </nav>
+          /*
+           * **【`V22-M2-T04`】画面の一覧と本文の器を共通の部品 `ViewNavigation`(`web/src/ViewNavigation.tsx`)へ
+           * 抜き出した。 描く DOM は1バイトも変えていない**(`web/test/view-navigation-side-dom.test.tsx`)。
+           * **旧の開始の行の逐語(1バイトも消していない)**: `<div className="workspace-body">` /
+           * `<nav className="view-list" data-testid="view-list">` /
+           * `{listedViews.length === 0 && <EmptyViewList manifest={manifest} />}`。 **空のときの表し方は
+           * `empty` で渡す**(ここだけが `EmptyViewList` を使う)。
+           * **旧の項目の注釈(逐語。1バイトも消していない)**:
+           *   「**【V4-M15-T14】いま開いている画面に `aria-current="page"` を付ける**
+           *   (着手前 0件。`03` §4-1 の「選択中 0件」)。**当たり先は URL の
+           *   `viewId` と一致する1件だけで、選んでいなければ1件も出ない。**
+           *   **属性を `<li>` に置くのは、`RouteLink`(`web/src/navigation.tsx`)が
+           *   `to` と `children` しか受け取らず、本タスクがそのファイルを触らない
+           *   ためである。**」
+           *   「V1-M0-T02: 表示名があればそれを出し、無ければ従来どおり id を出す。
+           *   両方を並べないのは、名前を付けた画面でIDが残ると「表示名を付けた」ことに
+           *   ならないためである(F-1 の要求は人間向けの名前を出すこと)。」(今日は `viewLabelWithType` の注釈に在る)
+           */
+          <ViewNavigation
+            appId={appId}
+            views={listedViews}
+            viewId={viewId}
+            label={viewLabelWithType}
+            empty={<EmptyViewList manifest={manifest} />}
+            // **【`V22-M2-T05`】メニューの位置はアカウントの役割1つ(`user.role`)とアプリの定義で決める。**
+            placement={resolveNavigationPlacement(manifest.app.workspace, user.role)}
+            // **【`V22-M3-T05`。`D-V22-20`】マイページのあるアプリだけ、先頭に「マイページ」**(無いアプリは渡さない)。
+            myPage={myPageDeclared ? { current: myPage } : undefined}
+            // **【`V23-M5-T06`。`D-V23-129`】招待を宣言したアプリだけ、「マイページ」の次に「招待」**(無いアプリは渡さない)。
+            invitations={
+              invitationsLabel === undefined
+                ? undefined
+                : { label: invitationsLabel, current: invitations }
+            }
+          >
             {/*
              * **本文の器**(V4-M2-T03)。画面一覧の**右**に来るのはこの1つだけである。
              *
@@ -1334,95 +1628,126 @@ function AuthenticatedWorkspace({
              * おり、**通常導線を左へ移せとは1文字も書いていない。** 移すと選択中の画面との
              * 上下関係が変わるので、**動かさない側を採った。**
              */}
-            <div className="workspace-main" data-testid="workspace-main">
-              {/*
-               * 要件定義書への導線。ビュー一覧と同じ階層の通常導線であり、
-               * ロールによる出し分けをしない(ADR-0025 §10-2)。
-               *
-               * **【`V4-M19-T10` の追記。上の1文は今日から成り立たない】**
-               * **「ロールによる出し分けをしない」は 2026-08-04 の着手前までは真だったが、
-               * 今日は買い物客(`customer`)に出さない。** **owner 限定にはしていない** ——
-               * **owner / editor / viewer には今日どおり出る**(判定は `platformPortAudience`
-               * 1本。理由と限界はその宣言の注記にすべて書いてある)。
-               * **器そのものを出さない** —— 中身が2つとも消えた `<nav>` を残すと、
-               * 空の導線が1つ画面に残る。
-               */}
-              {platformPortAudience && (
-                <nav
-                  className={cn("workspace-links", "flex flex-wrap items-center gap-s2")}
-                  data-testid="workspace-links"
+            {/*
+             * **【`V22-M2-T04`】旧の行の逐語**: `<div className="workspace-main" data-testid="workspace-main">`
+             * —— **本文の器は `ViewNavigation` が描く。** 下はその中身である。
+             */}
+            {/*
+             * 要件定義書への導線。ビュー一覧と同じ階層の通常導線であり、
+             * ロールによる出し分けをしない(ADR-0025 §10-2)。
+             *
+             * **【`V4-M19-T10` の追記。上の1文は今日から成り立たない】**
+             * **「ロールによる出し分けをしない」は 2026-08-04 の着手前までは真だったが、
+             * 今日は買い物客(`customer`)に出さない。** **owner 限定にはしていない** ——
+             * **owner / editor / viewer には今日どおり出る**(判定は `platformPortAudience`
+             * 1本。理由と限界はその宣言の注記にすべて書いてある)。
+             * **器そのものを出さない** —— 中身が2つとも消えた `<nav>` を残すと、
+             * 空の導線が1つ画面に残る。
+             */}
+            {platformPortAudience && (
+              <nav
+                className={cn("workspace-links", "flex flex-wrap items-center gap-s2")}
+                data-testid="workspace-links"
+              >
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-testid="open-requirements-doc"
+                  onClick={() => setRequirementsOpen(true)}
                 >
+                  要件定義書
+                </Button>
+                {/*
+                 * テーマの持ち出しへの導線(V3-M1-T05 / D-G3b)。要件定義書と同じ階層の
+                 * 通常導線であり、ロールによる出し分けをしない。**テーマを持たないアプリでも
+                 * 出す** —— 出さないと「この画面が無い理由」を人間が確かめられない(憲法6)。
+                 *
+                 * **【`V4-M19-T10` の追記】こちらも買い物客には出さない**(上と同じ1つの
+                 * 判定である。2つの口で規則を割らない)。**「テーマを持たないアプリでも
+                 * 出す」は、出す相手については今日も真である。**
+                 */}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  data-testid="open-theme-export"
+                  onClick={() => setThemeExportOpen(true)}
+                >
+                  テーマの持ち出し
+                </Button>
+                {/*
+                 * **積まれたコメントを読み返す導線**(`V10-M32-T01`。3本目)。
+                 *
+                 * **運営者だけに絞っていない**(判断と、綴りを変えた理由は
+                 * `commentListOpen` の宣言の注記に書いた)。 **`platformPortAudience` を
+                 * 1バイトも書き換えていない** —— **この `<nav>` は今日 `true` に固定された
+                 * 1つの判定の下に在り、3本目もその下に置いただけである。**
+                 *
+                 * **コメントが1件も無いアプリでも出す** —— **出さないと「読むところが
+                 * 無い理由」を人間が確かめられない**(憲法6。テーマの持ち出しと同じ扱い)。
+                 *
+                 * ## 【`V10-M32-T02`(2026-08-26)】**アプリごとの設定で出し入れする**
+                 *
+                 * **上の注記を1バイトも消していない。** **「コメントが1件も無いアプリでも
+                 * 出す」は今日も真である** —— **件数では1つも出し入れしていない。**
+                 * **足したのは `comment_visibility.read` の1つだけである。**
+                 * **設定が OFF のアプリでは、この3本目だけが消える** —— **`<nav>` そのものも、
+                 * 要件定義書とテーマの持ち出しの2本も、今日どおり出る。**
+                 *
+                 * **【誇張しない】これは読取を止める壁ではない**(`D-V10-38`)——
+                 * **`GET /api/apps/:app_id/comments` は今日も設定を1度も見ない。**
+                 * **ボタンが消えても、口を直に叩けば読める。**
+                 */}
+                {commentReadEnabled && (
                   <Button
                     size="sm"
                     variant="secondary"
-                    data-testid="open-requirements-doc"
-                    onClick={() => setRequirementsOpen(true)}
+                    data-testid="open-comment-list"
+                    onClick={() => setCommentListOpen(true)}
                   >
-                    要件定義書
+                    コメント
                   </Button>
-                  {/*
-                   * テーマの持ち出しへの導線(V3-M1-T05 / D-G3b)。要件定義書と同じ階層の
-                   * 通常導線であり、ロールによる出し分けをしない。**テーマを持たないアプリでも
-                   * 出す** —— 出さないと「この画面が無い理由」を人間が確かめられない(憲法6)。
-                   *
-                   * **【`V4-M19-T10` の追記】こちらも買い物客には出さない**(上と同じ1つの
-                   * 判定である。2つの口で規則を割らない)。**「テーマを持たないアプリでも
-                   * 出す」は、出す相手については今日も真である。**
-                   */}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    data-testid="open-theme-export"
-                    onClick={() => setThemeExportOpen(true)}
-                  >
-                    テーマの持ち出し
-                  </Button>
-                  {/*
-                   * **積まれたコメントを読み返す導線**(`V10-M32-T01`。3本目)。
-                   *
-                   * **運営者だけに絞っていない**(判断と、綴りを変えた理由は
-                   * `commentListOpen` の宣言の注記に書いた)。 **`platformPortAudience` を
-                   * 1バイトも書き換えていない** —— **この `<nav>` は今日 `true` に固定された
-                   * 1つの判定の下に在り、3本目もその下に置いただけである。**
-                   *
-                   * **コメントが1件も無いアプリでも出す** —— **出さないと「読むところが
-                   * 無い理由」を人間が確かめられない**(憲法6。テーマの持ち出しと同じ扱い)。
-                   *
-                   * ## 【`V10-M32-T02`(2026-08-26)】**アプリごとの設定で出し入れする**
-                   *
-                   * **上の注記を1バイトも消していない。** **「コメントが1件も無いアプリでも
-                   * 出す」は今日も真である** —— **件数では1つも出し入れしていない。**
-                   * **足したのは `comment_visibility.read` の1つだけである。**
-                   * **設定が OFF のアプリでは、この3本目だけが消える** —— **`<nav>` そのものも、
-                   * 要件定義書とテーマの持ち出しの2本も、今日どおり出る。**
-                   *
-                   * **【誇張しない】これは読取を止める壁ではない**(`D-V10-38`)——
-                   * **`GET /api/apps/:app_id/comments` は今日も設定を1度も見ない。**
-                   * **ボタンが消えても、口を直に叩けば読める。**
-                   */}
-                  {commentReadEnabled && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      data-testid="open-comment-list"
-                      onClick={() => setCommentListOpen(true)}
-                    >
-                      コメント
-                    </Button>
-                  )}
-                </nav>
-              )}
-              {viewId !== undefined && (
-                <SelectedView
-                  appId={appId}
-                  manifest={manifest}
-                  viewId={viewId}
-                  recordId={recordId}
-                  prefill={prefill}
-                />
-              )}
-            </div>
-          </div>
+                )}
+              </nav>
+            )}
+            {/*
+             * **【`V22-M3-T05`】`/apps/<id>/my-page` ではマイページを描く。** 宣言の無いアプリでは黙って空にせず
+             * 「無い」と出す(憲法6)。 **その場所でないときは下の旧の行が今日と1バイトも同じに描く。**
+             */}
+            {myPage && myPageDeclared && (
+              <MyPage
+                appId={appId}
+                manifest={manifest}
+                user={user}
+                onWithdrawn={() => void onSignOut()}
+              />
+            )}
+            {myPage && !myPageDeclared && (
+              <p data-testid="my-page-missing" className={cn("m-0", "text-muted-foreground")}>
+                このアプリにはマイページがありません。
+              </p>
+            )}
+            {/*
+             * **【`V23-M5-T06`】`/apps/<id>/invitations` では受け取り画面を描く。** 宣言の無いアプリでは黙って空にせず
+             * 「無い」と出す(憲法6。口は呼ばない)。
+             */}
+            {invitations && invitationsLabel !== undefined && (
+              <InvitationInbox appId={appId} label={invitationsLabel} />
+            )}
+            {invitations && invitationsLabel === undefined && (
+              <p data-testid="invitations-missing" className={cn("m-0", "text-muted-foreground")}>
+                このアプリには招待の画面がありません。
+              </p>
+            )}
+            {viewId !== undefined && (
+              <SelectedView
+                appId={appId}
+                manifest={manifest}
+                viewId={viewId}
+                recordId={recordId}
+                prefill={prefill}
+              />
+            )}
+          </ViewNavigation>
         )}
       </section>
     </RoleProvider>

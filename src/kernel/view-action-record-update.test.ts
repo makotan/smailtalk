@@ -465,7 +465,9 @@ describe("(T01-6) 語彙の総量(ADR-0100 限定8)", () => {
     // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
     // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
     // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-    expect(Object.keys((defs().field as Any).properties as Any)).toHaveLength(12);
+    // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行23 で 12 → 13 に更新した】** `unique` の直後に
+    // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+    expect(Object.keys((defs().field as Any).properties as Any)).toHaveLength(13);
   });
 
   /*

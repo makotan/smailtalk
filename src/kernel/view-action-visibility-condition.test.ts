@@ -122,7 +122,9 @@ describe("(T02-1) 足すキーは view_action に1本だけ(ADR-0101 限定1)", 
     expect(keys.filter((key) => key === KEY)).toHaveLength(1);
     // **`V8-M17` 時点で9。****`V8-M20` が `audience` を消して8に戻った。**
     // **【`V8-M20-T01` / 台帳 `J-G29` / `ADR-0301`。2026-08-10】旧値の逐語は 9。**
-    expect(keys).toHaveLength(8);
+    // **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】旧値の逐語は 8。** **9本目 `action_emphasis` を足したのは
+    // `ADR-0101` ではない。****`ADR-0101` の増分は今日も `visible_when` 1本である。**
+    expect(keys).toHaveLength(9);
   });
 
   // 【`V5-M29-T04` / `ADR-0250` 限定10 + 限定11】ここにあった test を、ブロックごと消した。
@@ -174,7 +176,9 @@ describe("(T02-1) 足すキーは view_action に1本だけ(ADR-0101 限定1)", 
     // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
     // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
     // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-    expect(Object.keys((defs().field as Any).properties as Any)).toHaveLength(12);
+    // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行32 で 12 → 13 に更新した】** `unique` の直後に
+    // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+    expect(Object.keys((defs().field as Any).properties as Any)).toHaveLength(13);
   });
 });
 

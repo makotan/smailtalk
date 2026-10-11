@@ -37,9 +37,14 @@
  * 配る版には今日も1つも出ない。** **候補が2本以上のときと0本のときの配る版の見え方は、
  * 1ピクセルも変わっていない。**
  */
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type { Manifest, View } from "../../src/kernel/types.ts";
-import { AppThemeScope, publicManifest, stripPublicViewTables } from "./AppWorkspace.tsx";
+import {
+  AppThemeScope,
+  publicAnonymousMenuEntryView,
+  publicManifest,
+  stripPublicViewTables,
+} from "./AppWorkspace.tsx";
 import { ApiError, fetchManifest, fetchPublicAppInfo, type PublicAppInfo } from "./api.ts";
 import { type AsyncState, toValidationErrors } from "./async.ts";
 import { AccountPanel } from "./auth/AccountPanel.tsx";
@@ -47,6 +52,7 @@ import {
   ANONYMOUS,
   canUseView,
   declaredRoleKinds,
+  menuListedViews,
   RoleProvider,
   roleLabel,
   visibleViewsForRole,
@@ -62,13 +68,22 @@ import {
   useSignupNextCandidates,
 } from "./auth/signup-next.ts";
 import { useAppAuth } from "./auth/useAppAuth.ts";
+import { ColorSchemeToggle } from "./ColorSchemeToggle.tsx";
 import { ErrorList } from "./ErrorList.tsx";
-import { RouteLink, useRoute } from "./navigation.tsx";
+import { InvitationInbox, invitationsMenuLabel } from "./InvitationInbox.tsx";
+import { hasMyPage, MyPage, myPageLanding, useLoginArrival } from "./MyPage.tsx";
+// **【`V22-M3-T05`】旧の逐語**: `import { RouteLink, useRoute } from "./navigation.tsx";` —— マイページへ移る `navigate` を足した。
+import { navigate, RouteLink, useRoute } from "./navigation.tsx";
 import type { RoutePrefill } from "./route.ts";
 import { Button } from "./ui/button.tsx";
 import { resolveUiFamily } from "./ui/family.ts";
 import { Badge, Skeleton } from "./ui/surfaces.tsx";
 import { cn } from "./ui/utils.ts";
+import {
+  type NavigationPlacement,
+  resolveNavigationPlacement,
+  ViewNavigation,
+} from "./ViewNavigation.tsx";
 import { ViewHost, viewDisplayName } from "./views/ViewHost.tsx";
 
 /**
@@ -88,12 +103,21 @@ export function RunnerShell({ appId }: { appId: string }) {
   const viewId = route.kind === "view" ? route.viewId : undefined;
   const recordId = route.kind === "view" ? route.recordId : undefined;
   const prefill = route.kind === "view" ? route.prefill : undefined;
+  // **【`V21-M4` / `ADR-0482` §5-1】ログイン画面の専用の場所 `/apps/<id>/login`。** 器も育成用の版と同じにする。
+  const login = route.kind === "app" && route.login === true;
+  // **【`V22-M3-T05`】マイページの場所 `/apps/<id>/my-page`**(`ADR-0488` §Decision 1 の 6)。 育成用の版と同じ扱い。
+  const myPage = route.kind === "app" && route.myPage === true;
+  // **【`V23-M5-T06`】招待の受け取り画面の場所 `/apps/<id>/invitations`**(`D-V23-129`)。 育成用の版と同じ扱い。
+  const invitations = route.kind === "app" && route.invitations === true;
   return (
     <main className="shell group/ui" data-ui-family={uiFamily}>
       <SingleApp
         appId={appId}
         viewId={viewId}
         recordId={recordId}
+        login={login}
+        myPage={myPage}
+        invitations={invitations}
         {...(prefill === undefined ? {} : { prefill })}
       />
     </main>
@@ -112,13 +136,25 @@ function SingleApp({
   viewId,
   recordId,
   prefill,
+  login,
+  myPage,
+  invitations,
 }: {
   appId: string;
   viewId?: string | undefined;
   recordId?: string | undefined;
   prefill?: RoutePrefill | undefined;
+  /** **【`V21-M4`】`/apps/<id>/login` で開いたか。** 未ログインでは必ずログイン画面。 */
+  login?: boolean | undefined;
+  /** **【`V22-M3-T05`】`/apps/<id>/my-page` で開いたか。** 未ログインでは必ずログイン画面。 */
+  myPage?: boolean | undefined;
+  /** **【`V23-M5-T06`】`/apps/<id>/invitations` で開いたか。** 未ログインでは必ずログイン画面。 */
+  invitations?: boolean | undefined;
 }) {
   const auth = useAppAuth(appId);
+  /** **【`V22-M3-T05`】ログインの直後であることの印**(育成用の版と同じ1本。`web/src/MyPage.tsx`)。 */
+  const loginArrival = useLoginArrival(auth.status);
+  const route = useRoute();
   const [state, setState] = useState<AsyncState<Manifest>>({ status: "loading" });
   const [accountOpen, setAccountOpen] = useState(false);
   /**
@@ -126,6 +162,24 @@ function SingleApp({
    * **アプリ名と、未ログインでも見せると決めた画面の名前だけである。**
    */
   const [publicInfo, setPublicInfo] = useState<PublicAppInfo | null>(null);
+  /**
+   * **【`V21-M4-T07`】未ログインへ渡った分で組み立てた定義と画面の並びを、`publicInfo` が
+   * 変わるまで同じオブジェクトに保つ**(`web/src/AppWorkspace.tsx` の同名の値と同じ理由。
+   * 描くたびに組み直すと、配下の取得の依存が変わって断られた取得を繰り返す輪の片側になる)。
+   * **早期 return より前に置く**(フックの規則)。
+   */
+  const publicView = useMemo(
+    () =>
+      publicInfo === null
+        ? null
+        : {
+            manifest: publicManifest(publicInfo),
+            // **【`V22-M4-T01` / `ADR-0494` §Decision 1 の 1】メニューとログイン画面の画面リンクに並べる分だけ**
+            // (メニューに載せない画面を外す。開ける判定は `publicInfo.views` を見るので URL を直に開けば今日どおり開く)。
+            views: menuListedViews(publicInfo.views.map(stripPublicViewTables)),
+          },
+    [publicInfo],
+  );
 
   /**
    * マニフェストの取得。**`web/src/api.ts` の1本を呼ぶだけで、第2の取得経路を作らない。**
@@ -137,7 +191,15 @@ function SingleApp({
    * `GET /public`(アプリ名と匿名に開いた画面の名前だけ)へ倒す** ——
    * **倒さないと Runner が起動できない**(`D-V8-34` の問いそのもの)。
    */
+  // **【`V22-M1`】ログアウト・セッション切れの後に `GET /public` を取り直すための印**(使い道は
+  // 下の「【`V22-M1`】」の effect)。 **`signedInRef` = このアプリで一度ログイン済みになったか。**
+  // **`discardGeneration` = 取り直しの応答を捨てる合図**(`appId` が変わったら進める)。
+  const signedInRef = useRef(false);
+  const discardGeneration = useRef(0);
   useEffect(() => {
+    // **【`V22-M1`】アプリが変わったら、前のアプリの印と取り直しの応答を捨てる。**
+    discardGeneration.current += 1;
+    signedInRef.current = false;
     let cancelled = false;
     setState({ status: "loading" });
     setPublicInfo(null);
@@ -209,6 +271,44 @@ function SingleApp({
     };
   }, [appId, auth.status, publicInfo]);
 
+  // **【`V22-M1`】ログアウト・セッション切れで未ログインに落ちたら、ログイン中に取った定義を
+  // 捨てて `GET /public` を取り直す。** **`web/src/AppWorkspace.tsx` の同じ注記の箇所と同じ形を
+  // もう一度書いている**(このファイル冒頭の「切り出しても、複製は1本も減っていない」の通り、
+  // 片方だけ直すともう片方は直らないので、2ファイルとも直した)。
+  // **直す前は、ログアウト後のログイン画面に `signup` が渡らず、招待コードの欄が出なかった。**
+  // **取り直すのは一度ログイン済みになった後に未ログインへ落ちたときだけで、ログインしたままの
+  // 人の取得は1回も増やさない。** **応答の取り消しは `appId` の切り替えだけで行う。**
+  useEffect(() => {
+    if (auth.status === "authenticated") {
+      signedInRef.current = true;
+    }
+  }, [auth.status]);
+  useEffect(() => {
+    if (
+      auth.status !== "anonymous" ||
+      !signedInRef.current ||
+      state.status !== "ready" ||
+      publicInfo !== null
+    ) {
+      return;
+    }
+    signedInRef.current = false;
+    const generation = ++discardGeneration.current;
+    setState({ status: "loading" });
+    fetchPublicAppInfo(appId).then(
+      (info) => {
+        if (generation === discardGeneration.current) {
+          setPublicInfo(info);
+        }
+      },
+      (reason: unknown) => {
+        if (generation === discardGeneration.current) {
+          setState({ status: "error", errors: toValidationErrors(reason) });
+        }
+      },
+    );
+  }, [appId, auth.status, state.status, publicInfo]);
+
   /*
    * **登録の直後、行き先の候補がちょうど1本のときだけ、その画面を自動で開く**
    * (`V10-M6-T01b` / `NV-G14`。見張りは `web/src/auth/signup-next.ts` の `useSignupAutoOpen`)。
@@ -273,7 +373,11 @@ function SingleApp({
   // **【`justSignedUp` を渡す意味。ここが配る版で効く】** **上の `base` は「登録の直後か」を
   // 1ミリも見ていないので、渡さないとログインしているあいだずっと読取が走る。**
   // **`ADR-0364` が増やすと言ったのは「登録のたびに、候補1本につき1往復」だけである。**
-  const { views: signupNextForms, autoOpenAllowed } = useSignupNextCandidates(
+  const {
+    views: signupNextForms,
+    autoOpenAllowed,
+    decided: signupDecided,
+  } = useSignupNextCandidates(
     appId,
     state.status === "ready" ? state.value : undefined,
     auth.status === "authenticated" ? auth.user.role : "",
@@ -282,7 +386,21 @@ function SingleApp({
       : [],
     auth.justSignedUpAsCustomer,
   );
-  useSignupAutoOpen(appId, signupNextForms, auth.justSignedUpAsCustomer && autoOpenAllowed);
+  // **【`V22-M3-T05`。`ADR-0488` §Decision 1 の 7 / `D-V22-25`】旧の逐語(1バイトも消していない)**:
+  //   `useSignupAutoOpen(appId, signupNextForms, auth.justSignedUpAsCustomer && autoOpenAllowed);`
+  // **第4引数でログイン直後にマイページを開く**(育成用の版と同じ調停。登録直後の自動オープンが遷移しないと決まった後だけ)。
+  useSignupAutoOpen(
+    appId,
+    signupNextForms,
+    auth.justSignedUpAsCustomer && autoOpenAllowed,
+    myPageLanding({
+      appId,
+      manifest: state.status === "ready" ? state.value : undefined,
+      arrival: auth.status === "authenticated" ? loginArrival : null,
+      route,
+      ready: signupDecided,
+    }),
+  );
 
   /*
    * **未ログイン(定義が読めない)の分岐**(`V8-M21` / `D-V8-34`)。
@@ -296,28 +414,48 @@ function SingleApp({
    * **`web/src/AppWorkspace.tsx` と同じ形をもう一度書いている**(複製しているものに数える)
    * —— **組み立ての本体(`publicManifest`)だけはあちらから import しており、2度書いていない。**
    */
-  if (publicInfo !== null) {
+  if (publicInfo !== null && publicView !== null) {
+    // **【`V21-M4` / `ADR-0482` §5-1(`AN-G5`)】旧行の逐語(1バイトも消していない)**:
+    //   `const openPublicView =`
+    //   `  viewId === undefined`
+    //   `    ? undefined`
+    //   `    : publicInfo.views.find((candidate) => candidate.id === viewId);`
+    //   `const manifest = publicManifest(publicInfo);`
+    // **画面を名乗らない URL では最初の公開一覧画面、`/apps/<id>/login` では必ずログイン画面**
+    // (選び方は `web/src/AppWorkspace.tsx` の `publicAnonymousEntryView` 1本を呼ぶ。2本目を書かない)。
+    // **【`V22-M3-T05`】旧の逐語**: `login === true` —— `/apps/<id>/my-page` も未ログインでは必ずログイン画面。
+    // **【`V22-M4-T01` / `ADR-0494` §Decision 1 の 3・6(`EN-G1`)】上の「`publicAnonymousEntryView` 1本を呼ぶ」は今日から偽である。**
+    // **入口はメニューに載せる公開の一覧画面の先頭**(1つも無ければ今日の選び方)で、合成の1本
+    // `publicAnonymousMenuEntryView`(`web/src/AppWorkspace.tsx`)だけを呼ぶ。 2本目を書かない。
+    // **【`V23-M5-T06`】旧の逐語**: `login === true || myPage === true` —— `/apps/<id>/invitations` も未ログインでは必ずログイン画面。
     const openPublicView =
-      viewId === undefined
+      login === true || myPage === true || invitations === true
         ? undefined
-        : publicInfo.views.find((candidate) => candidate.id === viewId);
+        : viewId === undefined
+          ? publicAnonymousMenuEntryView(publicInfo.views)
+          : publicInfo.views.find((candidate) => candidate.id === viewId);
     if (openPublicView !== undefined) {
-      const manifest = publicManifest(publicInfo);
+      const manifest = publicView.manifest;
       return (
         <AppThemeScope theme={publicInfo.theme}>
           <section data-testid="anonymous-workspace" className={cn("font-sans text-foreground")}>
             <header className={cn("app-header", "flex-wrap")}>
               <h2>{manifest.app.name}</h2>
               {/* **ログインへの導線は残す**(`T-G26b` / `T-G28`)。 */}
-              <RouteLink to={{ kind: "app", appId }}>
+              {/* **【`V21-M4`】行き先を `/apps/<id>/login` へ。** 旧行の逐語: `<RouteLink to={{ kind: "app", appId }}>` */}
+              <RouteLink to={{ kind: "app", appId, login: true }}>
                 <span data-testid="anonymous-login-link">ログイン</span>
               </RouteLink>
+              {/* **【V20-M10-T05】明暗のスイッチ。** 公開の画面の帯にも置く。 */}
+              <ColorSchemeToggle theme={manifest.app.theme} className="ml-auto" />
             </header>
             <Body
               appId={appId}
               manifest={manifest}
-              views={publicInfo.views.map(stripPublicViewTables)}
+              views={publicView.views}
               viewId={openPublicView.id}
+              // **【`V22-M2-T05`】未ログインはアプリの既定**(`D-V22-10`)。
+              placement={resolveNavigationPlacement(manifest.app.workspace, null)}
               recordId={recordId}
               {...(prefill === undefined ? {} : { prefill })}
             />
@@ -339,7 +477,8 @@ function SingleApp({
           appName={publicInfo.app.name}
           // **【`V8-M26-T05`】旧の逐語(1バイトも消していない)**:
           //   `publicInfo.views.map((view) => ({ id: view.id, name: view.name }) as unknown as View)`
-          anonymousViews={publicInfo.views.map(stripPublicViewTables)}
+          // **【`V22-M4-T01` / `ADR-0494` §Decision 1 の 1】メニューに載せない画面をリンクに並べない**(メニューと同じ並び)。
+          anonymousViews={publicView.views}
           // **【`V8-M5-T04`。ユーザ決定 `D-V8-114`】登録に要る事実をそのまま渡す。**
           // **画面はこれを描くだけで、値域も可否も1つも組み立てていない。**
           // **宣言が無い応答(古いサーバ)では `undefined` になり、着手前の画面が出る。**
@@ -393,15 +532,20 @@ function SingleApp({
           <section data-testid="anonymous-workspace" className={cn("font-sans text-foreground")}>
             <header className={cn("app-header", "flex-wrap")}>
               <h2>{manifest.app.name}</h2>
-              <RouteLink to={{ kind: "app", appId }}>
+              {/* **【`V21-M4`】行き先を `/apps/<id>/login` へ。** 旧行の逐語: `<RouteLink to={{ kind: "app", appId }}>` */}
+              <RouteLink to={{ kind: "app", appId, login: true }}>
                 <span data-testid="anonymous-login-link">ログイン</span>
               </RouteLink>
+              {/* **【V20-M10-T05】明暗のスイッチ。** 公開の画面の帯にも置く。 */}
+              <ColorSchemeToggle theme={manifest.app.theme} className="ml-auto" />
             </header>
             <Body
               appId={appId}
               manifest={manifest}
               views={anonymousViews}
               viewId={openView.id}
+              // **【`V22-M2-T05`】未ログインはアプリの既定**(`D-V22-10`)。
+              placement={resolveNavigationPlacement(manifest.app.workspace, null)}
               recordId={recordId}
               {...(prefill === undefined ? {} : { prefill })}
             />
@@ -422,6 +566,12 @@ function SingleApp({
   }
 
   const user = auth.user;
+  /** **【`V22-M3-T05`】このアプリにマイページがあるか**(ログインした全員に出す。`D-V22-16`)。 */
+  const myPageDeclared = hasMyPage(manifest);
+  const myPageOpen = myPage === true;
+  /** **【`V23-M5-T06`】メニューの「招待」の文言**(`workspace.invitations` の宣言が無ければ `undefined` = 出さない)。 */
+  const invitationsLabel = invitationsMenuLabel(manifest);
+  const invitationsOpen = invitations === true;
   return (
     <AppThemeScope theme={manifest.app.theme}>
       <RoleProvider role={user.role} actorId={user.id}>
@@ -446,12 +596,25 @@ function SingleApp({
              * 話ではないので、配布物から外す理由が無い。** **外した7本との違いは
              * `docs/plan/v5/records/v5-m4.md` §2 に列挙してある。**
              */}
-            <Button size="sm" data-testid="open-account" onClick={() => setAccountOpen(true)}>
-              アカウント
-            </Button>
+            {/* **【`V22-M3-T05`。`D-V22-6`】マイページのあるアプリでは「アカウント」の代わりに「マイページ」。** 無いアプリは今日と同じ。 */}
+            {myPageDeclared ? (
+              <Button
+                size="sm"
+                data-testid="open-my-page"
+                onClick={() => navigate({ kind: "app", appId, myPage: true })}
+              >
+                マイページ
+              </Button>
+            ) : (
+              <Button size="sm" data-testid="open-account" onClick={() => setAccountOpen(true)}>
+                アカウント
+              </Button>
+            )}
             <Button size="sm" data-testid="logout" onClick={() => void auth.signOut()}>
               ログアウト
             </Button>
+            {/* **【V20-M10-T03 / D-V20-33】明暗のスイッチ。** 育成用の版と同じ位置(上端の帯の右寄せ)。 */}
+            <ColorSchemeToggle theme={manifest.app.theme} />
           </header>
           {/*
            * **登録の直後の案内**(`V10-M19-T01` / `FU-G6` / `ADR-0363`)。
@@ -498,8 +661,50 @@ function SingleApp({
               manifest={manifest}
               views={visibleViewsForRole(user.role, manifest)}
               viewId={viewId}
+              // **【`V22-M2-T05`】メニューの位置はアカウントの役割1つとアプリの定義で決める。**
+              placement={resolveNavigationPlacement(manifest.app.workspace, user.role)}
               recordId={recordId}
               {...(prefill === undefined ? {} : { prefill })}
+              // **【`V22-M3-T05`】マイページのあるアプリだけ、メニューの先頭に「マイページ」と、その場所での本文。**
+              {...(myPageDeclared ? { myPage: { current: myPageOpen } } : {})}
+              // **【`V23-M5-T06`。`D-V23-129`】招待を宣言したアプリだけ、「マイページ」の次に「招待」と、その場所での本文。**
+              {...(invitationsLabel === undefined
+                ? {}
+                : { invitations: { label: invitationsLabel, current: invitationsOpen } })}
+              {...(invitationsOpen && !myPageOpen
+                ? {
+                    main:
+                      invitationsLabel === undefined ? (
+                        <p
+                          data-testid="invitations-missing"
+                          className={cn("m-0", "text-muted-foreground")}
+                        >
+                          このアプリには招待の画面がありません。
+                        </p>
+                      ) : (
+                        <InvitationInbox appId={appId} label={invitationsLabel} />
+                      ),
+                  }
+                : {})}
+              {...(myPageOpen
+                ? {
+                    main: myPageDeclared ? (
+                      <MyPage
+                        appId={appId}
+                        manifest={manifest}
+                        user={user}
+                        onWithdrawn={() => void auth.signOut()}
+                      />
+                    ) : (
+                      <p
+                        data-testid="my-page-missing"
+                        className={cn("m-0", "text-muted-foreground")}
+                      >
+                        このアプリにはマイページがありません。
+                      </p>
+                    ),
+                  }
+                : {})}
             />
           )}
         </section>
@@ -520,6 +725,10 @@ function Body({
   viewId,
   recordId,
   prefill,
+  placement,
+  myPage,
+  invitations,
+  main,
 }: {
   appId: string;
   manifest: Manifest;
@@ -527,33 +736,39 @@ function Body({
   viewId?: string | undefined;
   recordId?: string | undefined;
   prefill?: RoutePrefill | undefined;
+  /** **【`V22-M2-T05`】メニューの位置**(呼び手が `resolveNavigationPlacement` で決める)。 */
+  placement: NavigationPlacement;
+  /** **【`V22-M3-T05`】先頭に「マイページ」を出すか**(`ViewNavigation` へそのまま渡す)。 省略すると出さない。 */
+  myPage?: { readonly current: boolean } | undefined;
+  /** **【`V23-M5-T06`】「招待」を出すか**(`ViewNavigation` へそのまま渡す)。 省略すると出さない。 */
+  invitations?: { readonly label: string; readonly current: boolean } | undefined;
+  /** **【`V22-M3-T05`】本文を差し替える**(マイページの場所)。 省略すると今日どおり選んだ画面。 */
+  main?: ReactNode;
 }) {
+  // **【`V22-M2-T04`】画面の並びと本文の器を共通の部品 `ViewNavigation`(`web/src/ViewNavigation.tsx`)へ抜き出した。
+  // 描く DOM は1バイトも変えていない**(`web/test/view-navigation-side-dom.test.tsx`)。 **旧の開始の行の逐語**:
+  // `<div className="workspace-body">` / `<nav className="view-list" data-testid="view-list">`。
+  // **配る版の違い(項目は名前だけ・空のときは1文)は `label` と `empty` で渡す。**
   return (
-    <div className="workspace-body">
-      <nav className="view-list" data-testid="view-list">
-        {views.length === 0 && (
-          // **黙って空の並びを出さない**(憲法6)。**「壊れている」と「何も無い」を
-          // 区別できない画面を出さない。**
-          <p data-testid="view-list-empty" className={cn("m-0", "text-muted-foreground")}>
-            いま使える画面がありません。壊れているわけではありません。
-          </p>
-        )}
-        <ul className={cn("flex flex-col gap-s1")}>
-          {views.map((view) => (
-            <li
-              key={view.id}
-              className={cn("flex flex-wrap items-baseline gap-s1")}
-              {...(view.id === viewId ? { "aria-current": "page" as const } : {})}
-            >
-              <RouteLink to={{ kind: "view", appId, viewId: view.id }}>
-                {viewDisplayName(view)}
-              </RouteLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      <div className="workspace-main" data-testid="workspace-main">
-        {viewId !== undefined && (
+    <ViewNavigation
+      appId={appId}
+      views={views}
+      viewId={viewId}
+      label={viewDisplayName}
+      placement={placement}
+      myPage={myPage}
+      invitations={invitations}
+      empty={
+        // **黙って空の並びを出さない**(憲法6)。**「壊れている」と「何も無い」を
+        // 区別できない画面を出さない。**
+        <p data-testid="view-list-empty" className={cn("m-0", "text-muted-foreground")}>
+          いま使える画面がありません。壊れているわけではありません。
+        </p>
+      }
+    >
+      {/* **【`V22-M3-T05`】旧の逐語**: `{viewId !== undefined && (` —— 本文の差し替え(`main`)が無ければ今日どおり。 */}
+      {main ??
+        (viewId !== undefined && (
           <Selected
             appId={appId}
             manifest={manifest}
@@ -561,9 +776,8 @@ function Body({
             recordId={recordId}
             {...(prefill === undefined ? {} : { prefill })}
           />
-        )}
-      </div>
-    </div>
+        ))}
+    </ViewNavigation>
   );
 }
 

@@ -53,7 +53,7 @@
 import { Database } from "bun:sqlite";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { applyDiff } from "./apply-diff.ts";
 import type { ValidationError } from "./errors.ts";
 import type { MigrationPlan } from "./migrate.ts";
@@ -141,7 +141,19 @@ export type DryRunReport = {
  * ドライラン固有の返し方を作らないことが、実適用との一致を構造的に保証している。
  */
 export type DryRunDiffResult =
-  | { valid: true; report: DryRunReport }
+  | {
+      valid: true;
+      report: DryRunReport;
+      /**
+       * **残した複製の置き場**(`V20-M13-T01`。`ADR-0476` §Decision 1 の 7)。
+       *
+       * **`keepUnder` を指定して成功したときだけ在る。** 省略したとき(= 今日の全呼び出し)は
+       * キーごと無い。`workspace` は `keepUnder` の直下に作った置き場の絶対パス、
+       * `data_root` はその中の複製のデータルート(3点が揃っている)。
+       * **レポートの中身はこの有無で1バイトも変わらない**(`ADR-0376` 限定4 の今日も有効な部分)。
+       */
+      kept?: { workspace: string; data_root: string };
+    }
   | { valid: false; errors: ValidationError[] };
 
 /** 複製上で観測したテーブルの状態。 */
@@ -156,10 +168,27 @@ type ObservedTable = { columns: string[]; rows: number };
  * @param dataRoot データルート(`data/` 相当)。環境変数に依存させず必ず引数で受ける。
  * @param appId 対象アプリのID。
  * @param diff 差分パッチ。未検証の入力(`unknown`)を受け付ける。
- * @throws 本体のマニフェスト/DBが読めない場合、複製の作成に失敗した場合。
+ * @param options `keepUnder` —— **省略可能な指定1つだけ**(`V20-M13-T01` / `ADR-0476` 2-6)。
+ *   `dataRoot` の外の絶対パスを渡すと、複製をその下に作り、**成功したときだけ**消さずに
+ *   置き場を返り値の `kept` に足す。**省略したときは1バイトも振る舞いが変わらない**
+ *   (OS の一時ディレクトリに作り、`finally` で必ず消す)。
+ * @throws 本体のマニフェスト/DBが読めない場合、複製の作成に失敗した場合、
+ *   `keepUnder` が相対パスか `dataRoot` の中を指す場合。
  */
-export function dryRunDiff(dataRoot: string, appId: string, diff: unknown): DryRunDiffResult {
-  const workspace = mkdtempSync(join(tmpdir(), "gp-dry-run-"));
+export function dryRunDiff(
+  dataRoot: string,
+  appId: string,
+  diff: unknown,
+  options: { keepUnder?: string } = {},
+): DryRunDiffResult {
+  const keepUnder = options.keepUnder;
+  if (keepUnder !== undefined) {
+    assertKeepUnderOutsideDataRoot(dataRoot, keepUnder);
+  }
+  // **複製を作る口はこの1箇所のままである**(`ADR-0465` 限定7)。残す指定は親を変えるだけ。
+  const workspace = mkdtempSync(join(keepUnder ?? tmpdir(), "gp-dry-run-"));
+  // **消さないのは「残す指定があり、かつ成功した」ときだけである。** 拒否・例外では今日どおり消す。
+  let keep = false;
   try {
     const shadowRoot = createShadowRoot(workspace, dataRoot, appId);
 
@@ -173,26 +202,49 @@ export function dryRunDiff(dataRoot: string, appId: string, diff: unknown): DryR
 
     const after = observeTables(appDbPath(shadowRoot, appId));
 
-    return {
-      valid: true,
-      report: {
-        manifest: applied.manifest,
-        schema: Object.fromEntries(
-          [...after.entries()]
-            .sort(([a], [b]) => (a < b ? -1 : 1))
-            .map(([id, t]) => [id, t.columns]),
-        ),
-        plan: applied.plan,
-        impacts: buildImpacts(before, after),
-        // **`V8-M18` / 台帳 `J-G16`** —— **複製の上の `applyDiff` が実際に作った知らせを
-        // そのまま載せる**(ドライラン固有の計算を1バイトも書かない)。
-        role_condition_notices: applied.role_condition_notices,
-        note: DRY_RUN_NOTE,
-      },
+    const report: DryRunReport = {
+      manifest: applied.manifest,
+      schema: Object.fromEntries(
+        [...after.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, t]) => [id, t.columns]),
+      ),
+      plan: applied.plan,
+      impacts: buildImpacts(before, after),
+      // **`V8-M18` / 台帳 `J-G16`** —— **複製の上の `applyDiff` が実際に作った知らせを
+      // そのまま載せる**(ドライラン固有の計算を1バイトも書かない)。
+      role_condition_notices: applied.role_condition_notices,
+      note: DRY_RUN_NOTE,
     };
+    if (keepUnder === undefined) {
+      return { valid: true, report };
+    }
+    keep = true;
+    return { valid: true, report, kept: { workspace, data_root: shadowRoot } };
   } finally {
     // レポートは既に値として完成している。複製は製造工程であって根拠ではない。
-    rmSync(workspace, { recursive: true, force: true });
+    // **残す指定で成功したときだけ消さない**(`V20-M13-T01`)。消す時機は置き場の側が持つ。
+    if (!keep) {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  }
+}
+
+/**
+ * 残す親が `dataRoot` の**外**の絶対パスであることを確かめる(`V20-M13-T01`)。
+ *
+ * **`dataRoot` の中に置くと、本ファイル冒頭「作業領域」の2つの理由が両方とも発火する**
+ * (証跡に説明のつかないファイルが載る / 本体を1バイトも変えないが偽になる)。
+ * 相対パスは起動したディレクトリで意味が変わるので受けない。
+ */
+function assertKeepUnderOutsideDataRoot(dataRoot: string, keepUnder: string): void {
+  if (!isAbsolute(keepUnder)) {
+    throw new Error(`複製を残す親は絶対パスで指定してください(受け取った値: ${keepUnder})。`);
+  }
+  const rel = relative(resolve(dataRoot), resolve(keepUnder));
+  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
+    throw new Error(
+      `複製を残す親 ${keepUnder} がデータルート ${dataRoot} の中にあります。` +
+        "データルートの外を指定してください。",
+    );
   }
 }
 

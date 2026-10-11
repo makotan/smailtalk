@@ -1244,7 +1244,12 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
     // **旧**: `expect(totalCalls).toBe(7);`
     // **【`V18-M8-T02` が 9 から 10 へ上げた。旧の式を逐語で残す。1バイトも消していない】**
     // **旧**: `expect(totalCalls).toBe(9);`
-    expect(totalCalls).toBe(10);
+    // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0535` 行2 / 裁定 `D-V23-138`。旧の期待(逐語)】**:
+    //   `expect(totalCalls).toBe(10);`
+    // 行の招待の承諾の判定(`owner-scope.ts` の `judgeRowInvitationAccept`)が、付与表への作成と同じ順に
+    // 親の関門を1件呼ぶ(`D-V23-133` 重2)。 **入口の4ファイルの内訳は1件も動かしていない。**
+    // 新しい値は検査の外の台本(ファイルごとに綴りを数える python)で得た。
+    expect(totalCalls).toBe(11);
     // **述語は今日も1本である**(`ADR-0411` 限定2「判定の式を2本に増やさない」)。
     expect(totalDefinitions).toBe(1);
     // **内訳** —— **各入口にちょうど1件。移し替えても赤くなる。**
@@ -1261,7 +1266,10 @@ describe("V7-M4-T04 (E): 8経路すべてで打ち切りが表に出る(丸め�
       // **4本の入口の内訳(`app.ts` 4 / `inbound-route.ts` 1 / `write.ts` 3 /
       // `workflow-runner.ts` 1)は **1件も** 動かしていない。**
       // **`definitions` は今日も 1 である**(判定の家を2本目にしていない)。
-      "server/owner-scope.ts": { calls: 1, definitions: 1 },
+      // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0535` 行2 が 1 から 2 へ上げた。旧の行(逐語)】**:
+      //   `"server/owner-scope.ts": { calls: 1, definitions: 1 },`
+      // 足した1件は承諾の判定 `judgeRowInvitationAccept` の中(招待者を主体に付与表の作成の関門を通す)。
+      "server/owner-scope.ts": { calls: 2, definitions: 1 },
       // **受信口**(`V17-M2-T02b`)。
       "server/inbound-route.ts": { calls: 1, definitions: 0 },
       // **AI(MCP)の作成経路**(`V17-M2-T01b`)——
@@ -1337,6 +1345,10 @@ describe("V7-M4-T04 (F): 上限は `src/server/` の定数であって語彙で�
         "grant",
         "groups",
         "inherit_from",
+        // **【2026-09-30。`V23-M5-T02` / 授権 `ADR-0533` 行5】10キー目 `invitations`(行の招待。`ADR-0532` 限定1)。
+        // 旧の期待値はこの行が無い9本であった(逐語で残す)。 これも上限を宣言するキーではない(`expires_days` は
+        // 招待の期限の日数で、件数の上限ではない)。 テスト名は1文字も書き換えていない。 新しい値はスキーマを python で読んで並べ替えて得た。**
+        "invitations",
         "members",
         "permissions",
       ].sort(),

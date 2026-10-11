@@ -54,6 +54,8 @@ test("Z-G2: $defs/table.properties は6キーで、6キー目が access_control 
     "representative_field",
     "reference_search_fields",
     KEY,
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行38】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `KEY` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
   ]);
 });
 
@@ -70,7 +72,8 @@ test("Z-G2: 新しい $defs を1つも作っていない($defs は 29 で、増�
   // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
   // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
   // **検査は消していない。**
-  expect(defs).toHaveLength(30);
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+  expect(defs).toHaveLength(31);
   expect(defs).toContain("role_condition");
 });
 
@@ -163,6 +166,8 @@ test("Z-G2: access_control は object・additionalProperties: false・必須4本
     "inherit_from",
     "creatable_by",
     "creatable_by_roles",
+    // **【2026-09-30。`V23-M5-T02` / 授権 `ADR-0533` 行1】10キー目 `invitations` を末尾に足した(行の招待。門A `ADR-0501` を補う `ADR-0532` 限定1)。 旧の期待値は直上の `"creatable_by_roles",` で終わる9本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。**
+    "invitations",
   ]);
 });
 
@@ -182,7 +187,9 @@ test("Z-G2: access_control は object・additionalProperties: false・必須4本
 // **検査は1本も消していない・`.skip` にしていない・緩めていない。**
 // **テスト名は「5キー」が今日は偽になるので打ち直した**(上に旧名を逐語で残した)。
 // ---------------------------------------------------------------------------------
-test("Z-G10: permissions は1〜8件で、要素は id / name / read / write / delete + restrictive の6キーである", () => {
+// **【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543`】7キー目 `create_child` を足したので、テスト名の「6キー」が今日は偽になる。打ち直した。**
+// **旧テスト名の逐語**: "Z-G10: permissions は1〜8件で、要素は id / name / read / write / delete + restrictive の6キーである"
+test("Z-G10: permissions は1〜8件で、要素は id / name / read / write / delete + restrictive + create_child の7キーである", () => {
   const permissions = accessControlSchema().properties.permissions as Any;
   expect(permissions.type).toBe("array");
   expect(permissions.minItems).toBe(1);
@@ -198,6 +205,8 @@ test("Z-G10: permissions は1〜8件で、要素は id / name / read / write / d
     "write",
     "delete",
     "restrictive",
+    // 【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543` 行2】7キー目 `create_child` を末尾に足した(子の表に行を作れる権限。門A `ADR-0503` を補う `ADR-0542` §Decision 1-1)。 旧の期待値は直上の `"restrictive",` で終わる6本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "create_child",
   ]);
   expect(item.properties.id.pattern).toBe("^[a-z0-9_]{1,32}$");
   for (const flag of ["read", "write", "delete"]) {
@@ -225,6 +234,8 @@ test("Z-G3 / Z-G4: grant は table / target / permission が必須で、member /
     "member",
     "group",
     "permission",
+    // **【2026-10-01。`V23-M6-T02` / 授権 `ADR-0539` 行1】6キー目 `principal_row` を末尾に足した(行を相手にした付与。門A `ADR-0502` を補う `ADR-0538` §1-1)。 旧の期待値は直上の `"permission",` で終わる5本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。 必須の3つは動かしていない。**
+    "principal_row",
   ]);
 });
 
@@ -233,7 +244,10 @@ test("Z-G7: members は table / account が必須で、group は任意である"
   expect(members.type).toBe("object");
   expect(members.additionalProperties).toBe(false);
   expect(members.required).toEqual(["table", "account"]);
-  expect(Object.keys(members.properties)).toEqual(["table", "account", "group"]);
+  // **【2026-09-29。`V23-M1-T02`。授権 `ADR-0510` §Decision 8 の行13(`ADR-0497` 限定1)】**
+  // members の4つ目のキー auto_enroll を足した。 旧の期待値は table / account / group の3キー。
+  // 必須が table / account の2本であることは動かしていない。
+  expect(Object.keys(members.properties)).toEqual(["table", "account", "group", "auto_enroll"]);
 });
 
 test("Z-G6: groups は table 1本だけである", () => {
@@ -476,7 +490,8 @@ function diffWithChanges(changes: unknown): unknown {
 }
 
 test("Z-G37: $defs/table_changes.properties は5キーで、5キー目が access_control である", () => {
-  expect(Object.keys(tableChanges().properties)).toEqual(DIFF_KEYS);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行39】6キー目 `history`(変更履歴。決定 `D-V23-205`)が末尾に足された。 旧行の逐語: `expect(Object.keys(tableChanges().properties)).toEqual(DIFF_KEYS);` 新しい値は diff.schema.json を python で読んで得た(`DIFF_KEYS` は他でも使うので動かさず、末尾に足す)。
+  expect(Object.keys(tableChanges().properties)).toEqual([...DIFF_KEYS, "history"]);
 });
 
 test("Z-G37: diff.schema.json に新しい $defs を1つも作っていない(5 のまま)", () => {
@@ -636,13 +651,27 @@ test("(g-2) AC-G4a: 6キー目は required に入っておらず、additionalPro
     "write",
     "delete",
     UPPER_BOUND_KEY,
+    // 【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543` 行3】7キー目 `create_child` を末尾に足した(子の表に行を作れる権限。門A `ADR-0503` を補う `ADR-0542` §Decision 1-1)。 旧の期待値は直上の `UPPER_BOUND_KEY,` で終わる6本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "create_child",
   ]);
   // **`required` に入っていないキーはちょうど1本で、その型は boolean である**
   // (`ADR-0429` 限定3 の第3列の式そのもの)。
+  //
+  // **【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543` 行4・行5】7キー目 `create_child` を末尾に足した(子の表に行を作れる権限。門A `ADR-0503` を補う `ADR-0542` §Decision 1-1)。** **旧の期待値の逐語**:
+  //
+  //     expect(optional).toEqual([UPPER_BOUND_KEY]);
+  //     expect((item.properties[key] as Any).type, key).toBe("boolean");
+  //
+  // **`required` の外のキーは2本になった。** `restrictive` は今日も `boolean` のまま見る(緩めていない)。
+  // `create_child` は子の表 ID の配列なので `array` と見る(`ADR-0503` §3 の行8 が予告した。配列のキーである
+  // 限り避けられない)。 `$ref` を直下に持たないことは2本とも見る(`create_child` の `$ref` は `items` の中)。
+  // 新しい値はスキーマを python で読んで `required` の外のキーと型を得た。
   const optional = Object.keys(item.properties).filter((key) => !item.required.includes(key));
-  expect(optional).toEqual([UPPER_BOUND_KEY]);
+  expect(optional).toEqual([UPPER_BOUND_KEY, "create_child"]);
   for (const key of optional) {
-    expect((item.properties[key] as Any).type, key).toBe("boolean");
+    expect((item.properties[key] as Any).type, key).toBe(
+      key === "create_child" ? "array" : "boolean",
+    );
     expect((item.properties[key] as Any).$ref, key).toBeUndefined();
   }
 });
@@ -693,7 +722,8 @@ test("(g-4) AC-G4a 陰性対照: 6キー目を書かない宣言は今日どお�
 test("(g-5) AC-G4a 陰性対照: $defs 30 / access_control 9キー / grant 5キー が1つも動いていない", () => {
   const schema = readSchema("manifest.schema.json");
   // **`$defs` を1つも増やさない(`ADR-0429` 限定1)** —— 値域をインラインで書いたことの実測。
-  expect(Object.keys(schema.$defs)).toHaveLength(30);
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+  expect(Object.keys(schema.$defs)).toHaveLength(31);
   const accessControl = accessControlSchema();
   // **`access_control` の10キー目を足さない(同 限定1)。**
   expect(Object.keys(accessControl.properties)).toEqual([
@@ -706,6 +736,8 @@ test("(g-5) AC-G4a 陰性対照: $defs 30 / access_control 9キー / grant 5キ�
     "inherit_from",
     "creatable_by",
     "creatable_by_roles",
+    // **【2026-09-30。`V23-M5-T02` / 授権 `ADR-0533` 行2】10キー目 `invitations` を末尾に足した(行の招待。門A `ADR-0501` を補う `ADR-0532` 限定1)。 旧の期待値は直上の `"creatable_by_roles",` で終わる9本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。**
+    "invitations",
   ]);
   // **`grant` の6キー目を足さない(同 限定1。道 (i) を採っていない)。**
   expect(Object.keys((accessControl.properties.grant as Any).properties)).toEqual([
@@ -714,16 +746,26 @@ test("(g-5) AC-G4a 陰性対照: $defs 30 / access_control 9キー / grant 5キ�
     "member",
     "group",
     "permission",
+    // **【2026-10-01。`V23-M6-T02` / 授権 `ADR-0539` 行2】6キー目 `principal_row` を末尾に足した(`ADR-0538` §1-1。直上のコメントの「足さない」は今日は偽。`ADR-0502` が `ADR-0429` 限定1 を引き直した)。 旧の期待値は直上の `"permission",` で終わる5本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。 同じ test の `$defs` 31 と `$defs/table` の6キーは動かしていない。**
+    "principal_row",
   ]);
   // **`$defs/table` も6キーのままである。**
-  expect(Object.keys(schema.$defs.table.properties)).toHaveLength(6);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行40】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(schema.$defs.table.properties)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(Object.keys(schema.$defs.table.properties)).toHaveLength(7);
 });
 
 test("(g-6) AC-G4a 陰性対照: 面(roles / rules / can)に1バイトも足していない", () => {
   // **`ADR-0429` 限定4。** **道 (iv) を採っていないことの実測である。**
   const roles = readSchema("manifest.schema.json").$defs.app.properties.roles as Any;
-  expect(Object.keys(roles.items.properties)).toEqual(["id", "name", "rules", "signup"]);
+  // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+  // **旧(逐語)**: `expect(Object.keys(roles.items.properties)).toEqual(["id", "name", "rules", "signup"]);`
+  // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
+  expect(Object.keys(roles.items.properties)).toEqual(["id", "name", "rules", "signup", "density"]);
   const rules = roles.items.properties.rules as Any;
+  // **【2026-09-27 追記(`V21-M2B`。`ADR-0482` の `AN-G2`。授権 `ADR-0483` 行21)。旧の期待値を消していない】**
+  // **旧(逐語)**: `expect(Object.keys(rules.items.properties)).toEqual(["target", "table", "field", "view", "action", "can", "when"]);`
+  // **8キー目 `hidden_fields`(未ログインにだけ隠す項目)を足したので 7 → 8。**
+  // **付与の宣言の器(`access_control`)は1バイトも動かしていない**(この検査が測る陰性対照の本体)。
   expect(Object.keys(rules.items.properties)).toEqual([
     "target",
     "table",
@@ -732,6 +774,7 @@ test("(g-6) AC-G4a 陰性対照: 面(roles / rules / can)に1バイトも足し�
     "action",
     "can",
     "when",
+    "hidden_fields",
   ]);
   const can = rules.items.properties.can as Any;
   expect(can.items.enum).toEqual(["read", "write", "delete"]);

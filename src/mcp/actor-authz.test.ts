@@ -326,16 +326,34 @@ beforeEach(async () => {
   bobMember = String((members[1] as Record<string, unknown>)._id);
 
   // メモ2件(**作るのは alice。作成者への付与は MCP では入らない**ので、次の付与を明示的に書く)。
-  const notes = await insert(
+  //
+  // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行41 / 決定 `D-V23-13`】**題材を直した。**
+  // **上の「作成者への付与は MCP では入らない」は今日は偽である** —— MCP の作成でも作った本人に
+  // `creator_permission`(`writer`)の付与が1件書かれる。 旧のまま alice が2件とも作ると、
+  // alice が `bob のメモ` に `writer` を持ってしまい「他人の行」という題材が成り立たない。
+  // そこで **`bob のメモ` は bob 自身が作る**(bob は `editor` で、名簿に居て、`creatable_by_roles` に
+  // `editor` がある)。 bob は `secret` を書く規則を持たないので、`bob のメモ` には `secret` を書かない
+  // (旧は `"い"` を書いていたが、それを読む検査は無い)。 旧の逐語:
+  //     const notes = await insert(
+  //       NOTES,
+  //       [
+  //         { title: "alice のメモ", secret: "あ" },
+  //         { title: "bob のメモ", secret: "い" },
+  //       ],
+  //       alice.username,
+  //     );
+  //     aliceNote = rowOf(notes[0] as Record<string, unknown>);
+  //     bobNote = rowOf(notes[1] as Record<string, unknown>);
+  // この結果、付与表には作成者への付与が2件(alice → `alice のメモ`、bob → `bob のメモ`。どちらも
+  // `writer`)増え、土台の付与は下の明示の2件と合わせて4件になる。
+  const [aliceCreated] = await insert(
     NOTES,
-    [
-      { title: "alice のメモ", secret: "あ" },
-      { title: "bob のメモ", secret: "い" },
-    ],
+    [{ title: "alice のメモ", secret: "あ" }],
     alice.username,
   );
-  aliceNote = rowOf(notes[0] as Record<string, unknown>);
-  bobNote = rowOf(notes[1] as Record<string, unknown>);
+  const [bobCreated] = await insert(NOTES, [{ title: "bob のメモ" }], bob.username);
+  aliceNote = rowOf(aliceCreated as Record<string, unknown>);
+  bobNote = rowOf(bobCreated as Record<string, unknown>);
 
   // **付与2件。** **alice 自身への付与は alice には作れない**(`judgeGrantWrite` の `self`)
   // ので、**2人目の持ち主 `dave` が作る。** **bob への付与は alice が作る**(通る側の実測を
@@ -641,7 +659,10 @@ test("(D-#1) 持ち主でも、自分に権限を付ける付与は insert_sampl
   const listed = okData(
     await callTool("list_records", { app_id: APP_ID, table_id: GRANTS }, alice.username),
   );
-  expect(listed.total).toBe(2);
+  // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行41】土台の付与は、明示の2件に作成者への付与2件を
+  // 足した4件になった(上の `beforeEach` の訂正)。 値は付与表を DB から直に数えて得た(4件。赤の出力から
+  // 写していない)。 旧の期待(逐語): `expect(listed.total).toBe(2);`
+  expect(listed.total).toBe(4);
 });
 
 test("(D-#1) 他人への付与は今日どおり作れる(通る側も測る)", async () => {
@@ -653,7 +674,10 @@ test("(D-#1) 他人への付与は今日どおり作れる(通る側も測る)",
   const listed = okData(
     await callTool("list_records", { app_id: APP_ID, table_id: GRANTS }, alice.username),
   );
-  expect(listed.total).toBe(3);
+  // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行41】土台の付与は、明示の2件に作成者への付与2件を
+  // 足した4件になった(上の `beforeEach` の訂正)。 値は付与表を DB から直に数えて得た(4件。赤の出力から
+  // 写していない)。 旧の期待(逐語): `expect(listed.total).toBe(3);`
+  expect(listed.total).toBe(5);
 });
 
 test("(D-#1) write_records からも、自分に権限を付ける付与は作れない", async () => {
@@ -675,7 +699,10 @@ test("(D-#1) write_records からも、自分に権限を付ける付与は作�
   const listed = okData(
     await callTool("list_records", { app_id: APP_ID, table_id: GRANTS }, alice.username),
   );
-  expect(listed.total).toBe(2);
+  // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行41】土台の付与は、明示の2件に作成者への付与2件を
+  // 足した4件になった(上の `beforeEach` の訂正)。 値は付与表を DB から直に数えて得た(4件。赤の出力から
+  // 写していない)。 旧の期待(逐語): `expect(listed.total).toBe(2);`
+  expect(listed.total).toBe(4);
 });
 
 // ===========================================================================
@@ -709,7 +736,12 @@ test("(D-#2) 書けないと宣言した項目は update_record で断られる(
   const listed = okData(
     await callTool("list_records", { app_id: APP_ID, table_id: NOTES }, alice.username),
   );
-  expect((listed.records as Record<string, unknown>[])[0]?.secret).toBe("あ");
+  // 【2026-09-29。`V23-M2-T06` / 授権 `ADR-0517` 行41 (ii) / 決定 `D-V23-59`】作成の時刻の並びに
+  // 依らない比べ方にした(行を識別子で選ぶ)。 期待する値は変えていない。 旧の逐語:
+  //     expect((listed.records as Record<string, unknown>[])[0]?.secret).toBe("あ");
+  expect(
+    (listed.records as Record<string, unknown>[]).find((row) => row._id === aliceNote.id)?.secret,
+  ).toBe("あ");
 });
 
 test("(D-#2) 書ける相手は update_record でその項目を書ける", async () => {

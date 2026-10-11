@@ -60,6 +60,7 @@ import {
   judgeCreateParentAccess,
   judgeOwnerScopedOp,
   judgeRoleAccess,
+  principalRowWriteRefused,
   recordAccessSourceTables,
   stripInboundReservedFields,
 } from "./owner-scope.ts";
@@ -98,6 +99,17 @@ export type InboundRouteDeps = {
   dataRoot: string;
   /** 受信口の rate-limit 設定(省略時は `DEFAULT_INBOUND_RATE_LIMIT`)。テストは小窓 + 注入 now を渡す。 */
   rateLimit?: RateLimitOptions | undefined;
+  /**
+   * **【`V23-M2-T03` / 決定 `D-V23-47`・`D-V23-56`】吸収しなかった書込の断りの状態コードと本文。**
+   * `app.ts` の `writeRefusal` の1本を受け取る(失敗の全部がアプリの理由なら 422 と
+   * `kind: "app_rejected"`、それ以外は今日の 400)。 **このファイルはカーネルから印を問う名前を
+   * 値で import しない**(判定を入口ごとに複製しないため)。
+   */
+  writeRefusal: (
+    errors: ValidationError[],
+  ) =>
+    | { status: 400; body: { errors: ValidationError[] } }
+    | { status: 422; body: { errors: ValidationError[]; kind: "app_rejected" } };
 };
 
 /** このルート内のエラー body(app.ts と同じ `{ errors: [...] }` 形。SQL も文面もカーネル/ここに閉じる)。 */
@@ -138,6 +150,9 @@ function malformedPayloadError(): ValidationError {
   };
 }
 
+/** 受信口の起点の操作者(`$actor`。`D-V23-93`)。 */
+const INBOUND_ORIGIN = { id: "", login: "", role: "inbound", entry: "inbound" } as const;
+
 /**
  * 受信 1行 create を **system actor の監査 INSERT と同一トランザクション**で行う
  * (`src/server/app.ts` の `writeWithAudit` と同型。ただし actor は固定の system actor)。
@@ -154,7 +169,9 @@ function createInboundRow(
 ): RecordResult<RecordRow> {
   ensureAuthActivitySchema(db);
   const tx = db.transaction((): RecordResult<RecordRow> => {
-    const result = createRecord(db, manifest, tableId, input);
+    // **【`V23-M4-T03` / `D-V23-93`】受信口の `$actor` は `id`・`login` が空、`role` は `inbound`。**
+    // 監査の名乗り(`SYSTEM_INBOUND_ACTOR`)とは別の値である(利用者の表に行が無いので空)。
+    const result = createRecord(db, manifest, tableId, input, INBOUND_ORIGIN);
     if (!result.ok) {
       return result;
     }
@@ -263,6 +280,15 @@ function inboundAccessDenied(
    */
   values: Record<string, unknown>,
 ): ValidationError | undefined {
+  // **【`V23-M6-T04`。`ADR-0538` §Decision 1-4】相手の行を指す欄は、招待の承諾でだけ書ける**(受信口は作成だけ)。
+  // 判定は `owner-scope.ts` の述語1本。 `principal_row` を宣言していないアプリでは何も読まずに素通りする。
+  if (principalRowWriteRefused({ manifest, tableId, op: "create", values })) {
+    return {
+      path: "",
+      message: "相手の行を指す欄は、招待の承諾でだけ書けます。",
+      hint: "受信口からは、相手の行を指す欄を空にして送ってください。",
+    };
+  }
   const sources = recordAccessSourceTables(manifest, tableId);
   const role = judgeRoleAccess({
     manifest,
@@ -591,6 +617,12 @@ export function registerInboundRoute(app: Hono<AuthEnv>, deps: InboundRouteDeps)
       return c.json({ idempotent: true, errors: result.errors }, 200);
     }
     // それ以外は書込先テーブルのフィールド制約違反(限定5 / 条件 e)。書かず 400 で正直に返す。
-    return c.json(errorBody(result.errors), 400);
+    //
+    // **【`V23-M2-T03` / `ADR-0517` §Decision 6 の2】吸収の判定は上の1本のまま(`path` だけを
+    // 見る)。** 吸収しなかった失敗の全部がアプリの理由(`unique: "owner"` の列の文言・連鎖の中の
+    // 違反。後者の `path` は空なので吸収されない)なら 422 と文言を返す。 **旧は、失敗を今日の
+    // 本文にして 400 を返す1行だった(それ以外の場合の応答は1バイトも変えていない)。**
+    const refusal = deps.writeRefusal(result.errors);
+    return c.json(refusal.body, refusal.status);
   });
 }

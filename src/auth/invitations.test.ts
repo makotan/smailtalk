@@ -423,7 +423,13 @@ test("(T06-a) MCP の道具は23本のまま(招待に触れる道具を1本も�
    * 1本であり、招待には1文字も触れていない。** **下の2行(招待の綴りが1つも無いこと)は
    * 1バイトも緩めていない。**
    */
-  expect(names).toHaveLength(26);
+  /*
+   * **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行208】**
+   * **期待値を 26 → 27 へ書き換えた。** **旧行の逐語**: `expect(names).toHaveLength(26);`
+   * **27本目は `list_record_history`(行の変更履歴を読む参照系)1本であり、招待の綴りを名前に持たない。**
+   * **下の2行(招待の綴りが1つも無いこと)は1バイトも緩めていない。**
+   */
+  expect(names).toHaveLength(27);
   expect(names.filter((name) => name.includes("invit"))).toEqual([]);
   // `src/mcp/` に招待の綴りが1つも無い(**0バイトの担保**)。
   expect(readSource("mcp/vocabulary.ts").includes("_auth_invitations")).toBe(false);

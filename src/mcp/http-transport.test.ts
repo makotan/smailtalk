@@ -155,7 +155,9 @@ test("段1: HTTP 越しに initialize が通り、tools/list が23本を返す",
   // **【2026-08-25。`V10-M30-T02`。台帳 `CM-G37` / `ADR-0378`】期待値を 25 → 26 へ
   // 書き換えた。** **旧行の逐語**: `expect(listBody.result?.tools?.length).toBe(25);`
   // **足したのは `set_comment_visibility`(コメントの出し入れを切り替える更新系)1本だけである。**
-  expect(listBody.result?.tools?.length).toBe(26);
+  // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行17】期待値を 26 → 27 へ書き換えた。**
+  // **旧行の逐語**: `expect(listBody.result?.tools?.length).toBe(26);` **足したのは `list_record_history`(参照系)1本だけである。**
+  expect(listBody.result?.tools?.length).toBe(27);
 });
 
 test("段1: MCP のパス以外は 404 を返す", async () => {

@@ -18,8 +18,8 @@
  * `GET /undo/preview` / `GET /requirements` は今日も未認証で通り、MCP 経路は1ミリも守られない。
  * 2. **N 枚が同時に在る**(完了条件1 / D-M4-3)。切替式ではないので、DOM 上に候補と同数の枠が
  *    同時に存在する。
- * 3. **各枠に25スロットちょうどが inline style で立つ**(恒等写像。`AppWorkspace` の
- *    `AppThemeScope` と同じ規則。**2本目の変換規則を作らない**)。
+ * 3. **各枠に25スロットちょうどが inline style で立つ**(写像 `web/src/theme-role-map.ts` を
+ *    通した CSS 名で。`AppWorkspace` の `AppThemeScope` と同じ写像。**2本目の変換規則を作らない**)。
  * 4. **枠の中身は当該アプリの実データである**(完了条件1 の「実物」の条件)。
  *    枠は同じ `ViewHost` を描き、レコードは製品と同じ API 経路から来る。
  * 5. **N 枚同時の代償を数える**(完了条件6 / D-M4-3)。**回数だけを数える。時間は測らない。**
@@ -42,6 +42,7 @@ import type { Role } from "../../src/auth/types.ts";
 import type { Manifest } from "../../src/kernel/types.ts";
 import { App } from "../src/App.tsx";
 import { THEME_CANDIDATES } from "../src/theme-candidates.ts";
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 import { ADMIN_ROLES, grantRules, tableCan, viewRead } from "./role-rules.ts";
 
 const APP_ID = "sample-app";
@@ -53,6 +54,13 @@ function themeSlotNames(): string[] {
     $defs: { theme: { properties: Record<string, unknown> } };
   };
   return Object.keys(schema.$defs.theme.properties);
+}
+
+/** スロット名(役割名)が写る CSS カスタムプロパティ名。**写像の表から引く**(書き下さない)。 */
+function cssNameOf(slot: string): string {
+  const name = THEME_ROLE_TO_CSS_PROPERTY[slot];
+  if (name === undefined) throw new Error(`写像に無いスロット: ${slot}`);
+  return name;
 }
 
 function sampleManifest(): Manifest {
@@ -222,16 +230,23 @@ describe("候補が同時に並ぶ(切替式にしない)", () => {
     }
   });
 
-  test("各枠に25スロットちょうどが inline style で立つ(恒等写像)", async () => {
+  test("各枠に25スロットちょうどが inline style で立つ(写像を通した CSS 名で)", async () => {
     await openWorkspace("owner");
     fireEvent.click(screen.getByTestId("open-theme-preview"));
     const frames = await screen.findAllByTestId("theme-preview-frame");
 
-    const expected = themeSlotNames().sort();
+    const expected = themeSlotNames().map(cssNameOf).sort();
     frames.forEach((frame, index) => {
       const injected = injectedProperties(frame);
       expect(Object.keys(injected).sort()).toEqual(expected);
-      expect(injected).toEqual({ ...THEME_CANDIDATES[index]?.slots });
+      expect(injected).toEqual(
+        Object.fromEntries(
+          Object.entries(THEME_CANDIDATES[index]?.slots ?? {}).map(([slot, value]) => [
+            cssNameOf(slot),
+            value,
+          ]),
+        ),
+      );
     });
   });
 

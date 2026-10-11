@@ -157,7 +157,9 @@ test("HTTP エントリ: 127.0.0.1 で待機し、tools/list が23本を返し�
     // **【2026-08-25。`V10-M30-T02`。台帳 `CM-G37` / `ADR-0378`】期待値を 25 → 26 へ
     // 書き換えた。** **旧行の逐語**: `expect(body.result?.tools?.length).toBe(25);`
     // **足したのは `set_comment_visibility`(コメントの出し入れを切り替える更新系)1本だけである。**
-    expect(body.result?.tools?.length).toBe(26);
+    // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行19】期待値を 26 → 27 へ書き換えた。**
+    // **旧行の逐語**: `expect(body.result?.tools?.length).toBe(26);` **足したのは `list_record_history`(参照系)1本だけである。**
+    expect(body.result?.tools?.length).toBe(27);
   } finally {
     started.proc.kill();
     await started.proc.exited;
@@ -208,4 +210,23 @@ test("HTTP エントリ: 起動時の復旧に失敗したら待機しない(std
   expect(proc.exitCode).toBe(1);
   const stdout = await new Response(proc.stdout as ReadableStream<Uint8Array>).text();
   expect(stdout).toBe("");
+});
+
+// **【`V20-M13` 点検の処置 軽4】** 起動時に下見の置き場の根(絶対パス)を1行印字する。
+test("HTTP エントリ: 起動時に下見の置き場の根を絶対パスで1行印字する", async () => {
+  const root = join(dataRoot, "pv-root-probe");
+  const started = await startHttpEntry({ ST_PREVIEW_ROOT: root });
+  try {
+    expect(started.stderr).toContain(`下見の置き場(ST_PREVIEW_ROOT)= ${root}`);
+  } finally {
+    started.proc.kill();
+    await started.proc.exited;
+  }
+  const byDefault = await startHttpEntry();
+  try {
+    expect(byDefault.stderr).toContain(`下見の置き場(ST_PREVIEW_ROOT)= ${dataRoot}.previews`);
+  } finally {
+    byDefault.proc.kill();
+    await byDefault.proc.exited;
+  }
 });

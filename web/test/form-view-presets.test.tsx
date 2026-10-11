@@ -115,8 +115,12 @@ test("(a) $defs/theme / $defs/field の件数が1つも動いていない", () =
   //   **総量ではなく名前と順序で見張る。**
   //   **どの決定がこの語彙を動かしたかは、ここでは分からなくなった**(`ADR-0250` §Decision 5 の (1))。
   // **テーマは 25 スロット / 25 required のまま**(`ADR-0091` は色を1バイトも触らない)。
-  expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(25);
-  expect(manifest.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(23);
+  expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(manifest.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(manifest.$defs.theme.required).toHaveLength(23);
+  expect(manifest.$defs.theme.required).toHaveLength(27);
   // **`$defs/field.properties` は 11 のまま**(`ADR-0090` が 11 キー目 `emphasis` を足した後)。
   // **【V4-M19-T07 / ADR-0119 限定1 で 11 → 12 に更新した】** 12キー目 `hide_when_empty`
   // (値が無いとき行ごと出さない)が門A を通って増えた(V4-M19 単位E-a。2回目の審査。
@@ -136,7 +140,9 @@ test("(a) $defs/theme / $defs/field の件数が1つも動いていない", () =
   // `{ target: "field", table: <表ID>, field: <項目ID>, can: ["read"] / ["write"] }` である。**
   // **`ADR-0091` の増分が0キーであることは今日も1ミリも変わっていない**(減らしたのは
   // `V8-M20` の側であって、本 ADR は今日も form 分岐の `false` を2つ外しただけである)。
-  expect(Object.keys(manifest.$defs.field.properties)).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行34 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(Object.keys(manifest.$defs.field.properties)).toHaveLength(13);
   // **`view_changes` は 14 のまま。** `schemas/diff.schema.json` に1バイトも触っていない。
   // **【V4-M16-T12 / ADR-0092 限定2 による更新】** 15キー目 `field_groups` が門A を通って
   // 加わったので 14 → 15 にした。**`ADR-0091` は今日も `diff.schema.json` に1バイトも
@@ -518,8 +524,13 @@ test("(i) list_view 分岐の preset_label_placement / preset_field_columns の 
     // (`detail_view` でだけ書ける)。**本 ADR の増分ではない。**
     "after_delete",
     "after_save",
-    "field_groups",
+    // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+    "field_sections",
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で足した】** list_view では入力欄の幅 `field_width` も `false` である(`form` でだけ書ける)。**`ADR-0091` が守った3本は1バイトも動いていない。**
+    "field_width",
     "fields",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行99】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `fields` の次は `"modal",` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
     "modal",
     "preset_field_columns",
     "preset_label_placement",

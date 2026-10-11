@@ -52,6 +52,9 @@
 
 - **オブジェクト**である(配列ではない)。キーはフィールドID。
 - 値はリテラルか `$record.<フィールドID>` の文字列。
+- **2026-09-30 追記(直前の行を消していない)**: 今日はほかに `$previous.<フィールドID>`(更新前の値。`on_update` だけ)・
+  `$actor.id` / `$actor.login` / `$actor.role`(操作した人)・`$now`(今の時刻)の5つの参照も書ける。
+  どれも値の全体が参照1つのときだけで、`target` には書けない。形・型・入口ごとの値は本体の §4a にある。
 
 `target` が受ける形は**3つだけ**:
 
@@ -70,6 +73,9 @@
 | `manual` | `table` | `at`, `older_than` |
 | `schedule` | `at` = `{ "hour": …, "minute": … }`(**両方必須**) | `table` を書かない場合は `older_than` も書けない |
 
+- **2026-09-30 追記(上の表の行を消していない)**: `on_update` だけは任意で `changed_fields`(項目 ID の配列)を書ける。
+  `on_create` / `manual` / `schedule` に書くと拒否される。
+
 ## 関数(コードの島)の形
 
 | キー | 必須か | 形 |
@@ -77,11 +83,13 @@
 | `id` | 必須 | ID |
 | `name` | 必須 | 文字列 |
 | `code` | 必須 | JavaScript のソース(1文字以上) |
-| `input` | 必須 | `source` が必須。`table` / `view` / `record` の3つだけ |
+| `input` | 必須 | `source` が必須。`table` / `view` / `record` / `actor` / `previous` の5つだけ |
 | `output` | 必須 | `fields` か `ops` の**どちらか一方**(排他) |
 | `capabilities` | 任意 | 文字列の配列 |
 
 - `input.source` が `table` → `table` が必須 / `view` → `view` が必須
+- `input.source` が `actor`(操作した人)/ `previous`(更新前の行)→ `table` / `view` を書かない。
+  `previous` は `on_update` のワークフローから呼ぶ関数だけが持てる
 - `output.fields` の各要素は `id` と `type` が必須。`type` はフィールド型9種のどれか
 - **`output.ops` は `run_function` の書込操作モードだけが使う。** 中身の形はスキーマに書かれておらず、
   実行時に検証される

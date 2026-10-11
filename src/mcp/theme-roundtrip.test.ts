@@ -82,11 +82,52 @@ function themeSlotNames(): string[] {
   return Object.keys(schema.$defs.theme.properties);
 }
 
+const THEME_ROLE_MAP_PATH = join(REPO_ROOT, "web", "src", "theme-role-map.ts");
+
+/** 写像ファイルの帯の始まりと終わり(**字面で固定している**。`V20-M8` / `ADR-0473`)。 */
+const ROLE_MAP_BAND_START =
+  "export const THEME_ROLE_TO_CSS_PROPERTY: Readonly<Record<string, string>> = Object.freeze({";
+const ROLE_MAP_BAND_END = "});";
+
+/**
+ * 役割名 → CSS カスタムプロパティ名の写像を、`web/src/theme-role-map.ts` の**文字列**から取り出す。
+ *
+ * **import しない**(`src/` から `web/` の値を引かない)し、**テストの側に2つ目の対応表を書かない**。
+ * 帯(`Object.freeze({` 〜 `});`)の中の1行1件 `  役割名: "CSS 名",` だけを拾う。
+ * 帯が見つからない・行の形が崩れていると0件になり、呼び出し側の件数の検査が赤くなる。
+ */
+function parseThemeRoleMap(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  const start = source.indexOf(ROLE_MAP_BAND_START);
+  if (start < 0) {
+    return out;
+  }
+  const end = source.indexOf(`\n${ROLE_MAP_BAND_END}`, start);
+  if (end < 0) {
+    return out;
+  }
+  const band = source.slice(start + ROLE_MAP_BAND_START.length, end);
+  for (const line of band.split("\n")) {
+    const match = /^ {2}(?:([a-z][a-z0-9_]*)|"(--[a-z0-9-]+)"): "(--[a-z0-9-]+)",$/.exec(line);
+    if (match !== null) {
+      out.set(String(match[1] ?? match[2]), String(match[3]));
+    }
+  }
+  return out;
+}
+
+function themeRoleMap(): Map<string, string> {
+  return parseThemeRoleMap(readFileSync(THEME_ROLE_MAP_PATH, "utf-8"));
+}
+
 /**
  * `web/src/styles.css` の `:root` に書かれている**この製品の既定値**を読む。
  *
  * 筋書き (i)(既定配色をそのまま投げる)を「本物の既定値」で測るため。
  * リテラルで書き写すと、`styles.css` が変わった日に静かに嘘になる。
+ *
+ * **【V20-M8 / ADR-0473】`:root` のキーは CSS カスタムプロパティ名、スキーマのキーは役割名である。**
+ * 2つは `web/src/theme-role-map.ts` の写像(文字列として読む)を通して突き合わせる。
  */
 function defaultSlotValues(): Record<string, string> {
   const css = readFileSync(STYLES_CSS_PATH, "utf-8");
@@ -101,11 +142,14 @@ function defaultSlotValues(): Record<string, string> {
       values[match[1]] = match[2].trim();
     }
   }
+  const roleMap = themeRoleMap();
   const slots = themeSlotNames();
   const picked: Record<string, string> = {};
   for (const name of slots) {
-    const value = values[name];
-    expect(value, `${name} の既定値が :root に無い`).toBeDefined();
+    const cssName = roleMap.get(name);
+    expect(cssName, `${name} が写像に無い`).toBeDefined();
+    const value = values[String(cssName)];
+    expect(value, `${name}(${cssName})の既定値が :root に無い`).toBeDefined();
     picked[name] = String(value);
   }
   return picked;
@@ -117,7 +161,7 @@ function defaultSlotValues(): Record<string, string> {
  * 枠線だけを `#767676` に濃くした形は T05 が実測で通している。
  */
 function passingSlots(): Record<string, string> {
-  return { ...defaultSlotValues(), "--color-border": "#767676" };
+  return { ...defaultSlotValues(), border_color: "#767676" };
 }
 
 let dataRoot = "";
@@ -196,10 +240,56 @@ async function storedSlots(): Promise<Record<string, string> | undefined> {
 // (1) 1往復で何を指定できるか + リクエストの大きさ
 // ===================================================================================
 
+describe("V20-M8: 役割名 → CSS 名の写像(`web/src/theme-role-map.ts` を文字列として読む)", () => {
+  test("写像は25件で、キーの集合と並びが $defs/theme の properties と一致する", () => {
+    const roleMap = themeRoleMap();
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(roleMap.size).toBe(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(roleMap.size).toBe(23);
+    expect(roleMap.size).toBe(27);
+    expect([...roleMap.keys()]).toEqual(themeSlotNames());
+  });
+
+  test("写像の値(CSS 名)はすべて styles.css の :root に実在し、名前を残した2件だけが恒等である", () => {
+    const css = readFileSync(STYLES_CSS_PATH, "utf-8");
+    const rootStart = css.indexOf(":root {");
+    const block = css.slice(rootStart, css.indexOf("\n}", rootStart));
+    const identity: string[] = [];
+    for (const [role, cssName] of themeRoleMap()) {
+      expect(block.includes(`${cssName}:`), `${role} → ${cssName}`).toBe(true);
+      if (role === cssName) {
+        identity.push(role);
+      }
+    }
+    // 【V20-M9 / ADR-0474 §1-3】2件を語彙から外し写像の帯からも外したので、恒等は0件。
+    // テスト名の「名前を残した2件だけが恒等」は撤去の前の逐語である。旧(逐語):
+    // `expect(identity).toEqual(["--detail-label-width", "--login-max-width"]);`
+    expect(identity).toEqual([]);
+  });
+
+  test("陽性対照: 帯の字面を壊すと取り出しが0件になる(件数の検査が赤くなる)", () => {
+    const source = readFileSync(THEME_ROLE_MAP_PATH, "utf-8");
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(parseThemeRoleMap(source).size).toBe(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(parseThemeRoleMap(source).size).toBe(23);
+    expect(parseThemeRoleMap(source).size).toBe(27);
+    // 帯の始まりの綴りを1文字壊す(注釈の中の同じ字面ではなく、宣言の行そのものを壊す)。
+    expect(
+      parseThemeRoleMap(
+        source.replace(ROLE_MAP_BAND_START, ROLE_MAP_BAND_START.replace("({", "( {")),
+      ).size,
+    ).toBe(0);
+    // 1行1件の形を崩す(値の引用符を単引用符に)。
+    expect(
+      parseThemeRoleMap(source.replaceAll('",\n', "',\n").replaceAll(': "--', ": '--")).size,
+    ).toBe(0);
+  });
+});
+
 describe("§4-8 (1) 1往復で何を指定できるか", () => {
   test("25スロット全部を1往復(apply_diff 1回)で指定でき、部分テーマは指定できない", async () => {
     const slots = passingSlots();
-    expect(Object.keys(slots)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(slots)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(slots)).toHaveLength(23);
+    expect(Object.keys(slots)).toHaveLength(27);
 
     const result = await sendTheme(slots);
     expect(result.isError).toBeFalsy();
@@ -231,21 +321,29 @@ describe("§4-8 (1) 1往復で何を指定できるか", () => {
     const fieldBytes = Buffer.byteLength(JSON.stringify(fieldArgs), "utf-8");
 
     // **実測値を期待値として固定する**(変わったら差分に出る)。
-    expect(themeOnlyBytes).toBe(710);
-    expect(themeBytes).toBe(940);
+    // 【V20-M8 / ADR-0473】旧(逐語): themeOnlyBytes 710 / themeBytes 940 / 倍率 3.1。スロット名が役割名に
+    // なって短くなった分(109バイト)だけ減った。25スロット必須の代償そのもの(全部送り直す)は変わっていない。
+    // 【V20-M9 / ADR-0474 §1-3】2枠(`"--detail-label-width":"8rem"` / `"--login-max-width":"22rem"`)を外した分
+    // (58バイト)だけ減った。旧(逐語): `toBe(601)` / `toBe(831)` / 倍率 `toBe(2.8)`。
+    // 【V20-M9 / ADR-0474 §1-2】4枠を足した分(92バイト)だけ増えた。旧(逐語): `toBe(543)` / `toBe(773)` / 倍率 `toBe(2.6)`。
+    expect(themeOnlyBytes).toBe(635);
+    expect(themeBytes).toBe(865);
     expect(fieldBytes).toBe(302);
     // 代償の大きさ: テーマ1往復は最小の構造変更の何倍か。
-    expect(Math.round((themeBytes / fieldBytes) * 10) / 10).toBe(3.1);
+    expect(Math.round((themeBytes / fieldBytes) * 10) / 10).toBe(2.9);
   });
 
   test("2スロットだけ変えたいときも25スロット全部を送り直す(部分更新の op が無い)", async () => {
     await sendTheme(passingSlots());
-    const tweaked = { ...passingSlots(), "--space-4": "1.25rem", "--line-height-base": "1.5" };
+    const tweaked = { ...passingSlots(), space_4: "1.25rem", body_line_height: "1.5" };
     const result = await sendTheme(tweaked);
     expect(result.isError).toBeFalsy();
     // 2スロットの変更でも、送った JSON の大きさは初回とほぼ同じである。
     const bytes = Buffer.byteLength(JSON.stringify({ slots: tweaked }), "utf-8");
-    expect(bytes).toBe(713);
+    // 【V20-M8】旧(逐語): 713。名前が役割名になって短くなった分だけ減った。
+    // 【V20-M9 / ADR-0474 §1-3】2枠を外した分だけ減った。旧(逐語): `expect(bytes).toBe(604);`
+    // 【V20-M9 / ADR-0474 §1-2】4枠を足した分だけ増えた。旧(逐語): `expect(bytes).toBe(546);`
+    expect(bytes).toBe(638);
     expect(calls).toEqual(["apply_diff", "apply_diff"]);
   });
 });
@@ -255,11 +353,13 @@ describe("§4-8 (1) 1往復で何を指定できるか", () => {
 // ===================================================================================
 
 describe("§4-8 (2)(i) 既定配色をそのまま投げる", () => {
-  test("必ず拒否される —— --color-border の2組。1往復めは常に無駄になる", async () => {
+  // 【V20-M9 / ADR-0474 §1-8 の 3】テスト名の「2組」は引き直しの前の逐語である(今日は小窓の組を足して3組)。
+  test("必ず拒否される —— border_color の2組。1往復めは常に無駄になる", async () => {
     const errors = errorsOf(await sendTheme(defaultSlotValues()));
-    expect(errors).toHaveLength(2);
+    // 旧(逐語): expect(errors).toHaveLength(2);
+    expect(errors).toHaveLength(3);
     for (const error of errors) {
-      expect(error.path).toBe("/app/theme/slots/--color-border");
+      expect(error.path).toBe("/app/theme/slots/border_color");
       expect(error.message).toContain("下回ります");
       expect(error.hint).toBeDefined();
       // **コントラストの拒否に allowed_values は無い**(色に有限の許可値が無いため)。
@@ -271,11 +371,16 @@ describe("§4-8 (2)(i) 既定配色をそのまま投げる", () => {
   test("エラーの逐語 —— 現在の比・閾値・両側の色と名前は入っているが、通る候補値は入っていない", async () => {
     const errors = errorsOf(await sendTheme(defaultSlotValues()));
     const messages = errors.map((error) => error.message).sort();
+    // 【V20-M8 / ADR-0473】文面と比は変わらない。`.sort()` の並びが役割名の字順(highlight_surface < page_background)になった。
     expect(messages[0]).toBe(
-      "前景 --color-border(#ddd)と背景 --color-page-background(#fff)のコントラスト比は 1.36:1 で、非テキスト(枠線・フォーカスリングなど)の閾値 3:1 を下回ります。",
+      "前景 border_color(#ddd)と背景 highlight_surface(#f2f2f2)のコントラスト比は 1.21:1 で、非テキスト(枠線・フォーカスリングなど)の閾値 3:1 を下回ります。",
     );
+    // 【V20-M9 / ADR-0474 §1-8】小窓の組が名前順で2番目に入った。旧(逐語)は messages[1] が page_background の文。
     expect(messages[1]).toBe(
-      "前景 --color-border(#ddd)と背景 --color-surface-highlight(#f2f2f2)のコントラスト比は 1.21:1 で、非テキスト(枠線・フォーカスリングなど)の閾値 3:1 を下回ります。",
+      "前景 border_color(#ddd)と背景 overlay_background(#fff)のコントラスト比は 1.36:1 で、非テキスト(枠線・フォーカスリングなど)の閾値 3:1 を下回ります。",
+    );
+    expect(messages[2]).toBe(
+      "前景 border_color(#ddd)と背景 page_background(#fff)のコントラスト比は 1.36:1 で、非テキスト(枠線・フォーカスリングなど)の閾値 3:1 を下回ります。",
     );
     /*
      * **hint には既存機構(`annotateAppliedManifestError`。v0 から在る)の注釈が
@@ -299,7 +404,7 @@ describe("§4-8 (2)(i) 既定配色をそのまま投げる", () => {
     let slots = defaultSlotValues();
     let attempts = 1;
     let result = await sendTheme(slots);
-    const trail: string[] = [String(slots["--color-border"])];
+    const trail: string[] = [String(slots.border_color)];
 
     while (result.isError === true && attempts < 20) {
       const errors = errorsOf(result);
@@ -314,7 +419,7 @@ describe("§4-8 (2)(i) 既定配色をそのまま投げる", () => {
         slots = { ...slots, [name]: darkenOneStep(String(current)) };
       }
 
-      trail.push(String(slots["--color-border"]));
+      trail.push(String(slots.border_color));
       attempts += 1;
       result = await sendTheme(slots);
     }
@@ -359,23 +464,28 @@ function darkenOneStep(value: string): string {
 describe("§4-8 (2)(ii) 24スロットだけ投げる(required 違反)", () => {
   test("1スロット欠けると拒否され、エラーは欠けた名前を名指しするが、値の候補は示さない", async () => {
     const slots = passingSlots();
-    delete slots["--space-4"];
-    expect(Object.keys(slots)).toHaveLength(24);
+    delete slots.space_4;
+    // 【V20-M9 / ADR-0474】24 → 22(2枠を外した)。describe 名の「24スロット」は撤去の前の逐語。
+    // 旧(逐語): `expect(Object.keys(slots)).toHaveLength(24);`
+    // 【V20-M9 / ADR-0474】22 → 26(4枠を足した)。旧(逐語): `expect(Object.keys(slots)).toHaveLength(22);`
+    expect(Object.keys(slots)).toHaveLength(26);
 
     const errors = errorsOf(await sendTheme(slots));
     expect(errors).toHaveLength(1);
     const error = errors[0];
     expect(error?.path).toBe("/operations/0/theme/slots");
-    expect(error?.message).toBe('必須プロパティ "--space-4" がありません。');
-    expect(error?.hint).toBe('/operations/0/theme/slots に "--space-4" を追加してください。');
+    expect(error?.message).toBe('必須プロパティ "space_4" がありません。');
+    expect(error?.hint).toBe('/operations/0/theme/slots に "space_4" を追加してください。');
     // **値の候補は無い** —— どんな値なら通るかはエラーからは分からない。
     expect(error?.allowed_values).toBeUndefined();
   });
 
   test("24スロット欠けても1往復で全件が返る(往復は1回しか増えない)", async () => {
-    const slots = { "--color-text": "#101010" };
+    const slots = { body_text: "#101010" };
     const errors = errorsOf(await sendTheme(slots));
-    expect(errors).toHaveLength(24);
+    // 【V20-M9 / ADR-0474】24 → 22(2枠を外した)。旧(逐語): `expect(errors).toHaveLength(24);`
+    // 【V20-M9 / ADR-0474】22 → 26(4枠を足した)。旧(逐語): `expect(errors).toHaveLength(22);`
+    expect(errors).toHaveLength(26);
     expect(new Set(errors.map((error) => error.path))).toEqual(
       new Set(["/operations/0/theme/slots"]),
     );
@@ -383,7 +493,7 @@ describe("§4-8 (2)(ii) 24スロットだけ投げる(required 違反)", () => {
 
   test("値の空間を知っている側なら +1往復で直る", async () => {
     const broken = passingSlots();
-    delete broken["--space-4"];
+    delete broken.space_4;
     expect((await sendTheme(broken)).isError).toBe(true);
     expect((await sendTheme(passingSlots())).isError).toBeFalsy();
     expect(calls).toHaveLength(2);
@@ -393,8 +503,8 @@ describe("§4-8 (2)(ii) 24スロットだけ投げる(required 違反)", () => {
 describe("§4-8 (2)(iii) スロット名を1つ間違える(additionalProperties 違反)", () => {
   test("拒否され、許可値25件が返る —— エラーだけで直せる唯一の筋書き", async () => {
     const slots: Record<string, string> = passingSlots();
-    slots["--color-txet"] = String(slots["--color-text"]);
-    delete slots["--color-text"];
+    slots.body_txet = String(slots.body_text);
+    delete slots.body_text;
 
     const first = await sendTheme(slots);
     const errors = errorsOf(first);
@@ -403,7 +513,9 @@ describe("§4-8 (2)(iii) スロット名を1つ間違える(additionalProperties
     const unknown = errors.find((error) => error.message.includes("未知のプロパティ"));
     const missing = errors.find((error) => error.message.includes("必須プロパティ"));
     expect(unknown?.path).toBe("/operations/0/theme/slots");
-    expect(unknown?.allowed_values).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(unknown?.allowed_values).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(unknown?.allowed_values).toHaveLength(23);
+    expect(unknown?.allowed_values).toHaveLength(27);
     expect(unknown?.allowed_values).toEqual(themeSlotNames());
     expect(missing?.allowed_values).toBeUndefined();
 
@@ -425,21 +537,23 @@ describe("§4-8 (2)(iii) スロット名を1つ間違える(additionalProperties
 
 describe("§4-8 (2)(iv) 「青系にしたい」を1回で通せるか", () => {
   const BLUE = {
-    "--color-text": "#0b1f3a",
-    "--color-text-secondary": "#274b7a",
-    "--color-text-label": "#274b7a",
-    "--color-text-placeholder": "#274b7a",
-    "--color-danger": "#8a0f1a",
-    "--color-page-background": "#f4f8ff",
-    "--color-surface-highlight": "#e4edfb",
-    "--focus-outline-color": "#1a4f9c",
+    body_text: "#0b1f3a",
+    secondary_text: "#274b7a",
+    label_text: "#274b7a",
+    placeholder_text: "#274b7a",
+    danger: "#8a0f1a",
+    page_background: "#f4f8ff",
+    highlight_surface: "#e4edfb",
+    focus_ring: "#1a4f9c",
   };
 
   test("素朴な青系(色だけ差し替えて枠線は既定のまま)は拒否される", async () => {
     const errors = errorsOf(await sendTheme({ ...defaultSlotValues(), ...BLUE }));
+    // 【V20-M9 / ADR-0474 §1-8】2 → 3(小窓の組 border_color × overlay_background)。旧(逐語)は path 2件。
     expect(errors.map((error) => error.path)).toEqual([
-      "/app/theme/slots/--color-border",
-      "/app/theme/slots/--color-border",
+      "/app/theme/slots/border_color",
+      "/app/theme/slots/border_color",
+      "/app/theme/slots/border_color",
     ]);
   });
 
@@ -447,7 +561,7 @@ describe("§4-8 (2)(iv) 「青系にしたい」を1回で通せるか", () => {
     const result = await sendTheme({
       ...defaultSlotValues(),
       ...BLUE,
-      "--color-border": "#5d739b",
+      border_color: "#5d739b",
     });
     expect(result.isError).toBeFalsy();
     expect(calls).toEqual(["apply_diff"]);
@@ -461,8 +575,8 @@ describe("§4-8 (2)(iv) 「青系にしたい」を1回で通せるか", () => {
 describe("§4-8 (3) 拒否の自己修正性", () => {
   test("拒否は段階的である —— 構造とコントラストは同じ往復で返らない(最低+2往復)", async () => {
     const slots: Record<string, string> = defaultSlotValues();
-    slots["--color-txet"] = String(slots["--color-text"]);
-    delete slots["--color-text"];
+    slots.body_txet = String(slots.body_text);
+    delete slots.body_text;
 
     // 1往復め: 構造のエラーだけが返る。**コントラストの2件は1つも見えない。**
     const structural = errorsOf(await sendTheme(slots));
@@ -482,7 +596,7 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
     const errors = errorsOf(await sendTheme(defaultSlotValues()));
     const path = String(errors[0]?.path);
     // 送ったのは `/operations/0/theme/slots/...` だが、返る path は結果側の座標である。
-    expect(path).toBe("/app/theme/slots/--color-border");
+    expect(path).toBe("/app/theme/slots/border_color");
     const sent = themeDiff(defaultSlotValues());
     expect(resolvePointer(sent, path)).toBeUndefined();
     expect(resolvePointer(sent, path.replace("/app/theme", "/operations/0/theme"))).toBe("#ddd");
@@ -494,7 +608,7 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
    * **T07 はここで「hint が誤っている」ことを実測した。** 旧稿が固定していた逐語は:
    *
    * ```
-   * message: --color-text の値 "blue" は識別子の規約に合いません。
+   * message: body_text の値 "blue" は識別子の規約に合いません。
    * hint:    英小文字で始まり、英小文字・数字・ハイフン・アンダースコアのみを使う
    *          1〜64文字にしてください(例: book-tracker, finished_at)。
    * ```
@@ -506,16 +620,31 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
    * 数字の対照は `docs/plan/v3/records/v3-m1-t07.md` §3-5 (A) に書いた。
    */
   test("色の書式を間違えたときの hint は色の書式を教え、従うと +1往復で通る(T08 で直した)", async () => {
-    const slots = { ...passingSlots(), "--color-text": "blue" };
+    const slots = { ...passingSlots(), body_text: "blue" };
     const errors = errorsOf(await sendTheme(slots));
     expect(errors).toHaveLength(1);
-    expect(errors[0]?.path).toBe("/operations/0/theme/slots/--color-text");
+    expect(errors[0]?.path).toBe("/operations/0/theme/slots/body_text");
     // **message は path を含まず、スロット名だけを言う**(汎用文面の `where`)。
-    expect(errors[0]?.message).toBe('--color-text の値 "blue" は色の書式に合いません。');
+    expect(errors[0]?.message).toBe('body_text の値 "blue" は色の書式に合いません。');
+    // 【V20-M7-T03】色の文面を2表記に打ち直した。旧(逐語):
+    // "色は16進表記だけです —— # に続けて3桁または6桁の16進数を書いてください(例: #333 / #1a4f9c)。" +
+    // "色名(blue / red)・rgb() / rgba() / hsl()・var() は書けません。" +
+    // "透明度付きの8桁(#rrggbbaa)もこのスロットでは書けません。"
+    // 【V20-M7B-T02】色の文面を打ち直した(ADR-0472 §Decision 2-4)。旧の5文目(逐語):
+    // "sRGB で表せない色(彩度の高い色の一部)は書けません —— 断られたら C を小さくしてください。"
+    // 旧の7文目(逐語):
+    // "透明度付きの8桁(#rrggbbaa)も、oklch の / で区切る透明度・none・カンマ区切り・単位(deg)も、このスロットでは書けません。"
     expect(errors[0]?.hint).toBe(
-      "色は16進表記だけです —— # に続けて3桁または6桁の16進数を書いてください(例: #333 / #1a4f9c)。" +
-        "色名(blue / red)・rgb() / rgba() / hsl()・var() は書けません。" +
-        "透明度付きの8桁(#rrggbbaa)もこのスロットでは書けません。",
+      "色は16進表記か、明るさ基準の oklch 表記です —— # に続けて3桁または6桁の16進数を書くか、" +
+        "oklch(L C H) の形で L(0〜1 の小数か 0%〜100%)・C(0 以上の小数)・H(0〜360 の度。単位は書かない)を" +
+        "半角空白1つで区切って書いてください(例: #333 / #1a4f9c / oklch(0.55 0.15 250))。" +
+        "小数は6桁まで、oklch は小文字だけです。" +
+        "H の位置にだけ none を書けます(0 と書いたのと同じ色になります)。L と C の位置には none を書けません。" +
+        "色名(blue / red)・rgb() / rgba() / hsl() / lch() / oklab()・var() は書けません。" +
+        "透明度付きの8桁(#rrggbbaa)も、oklch の / で区切る透明度・L と C の位置の none・カンマ区切り・単位(deg)も、このスロットでは書けません。" +
+        // 【V20-M9 / ADR-0474 §1-1】参照の綴りの1文を足した(旧の値は上の行で終わっていた)。
+        "生の色(palette_ で始まる名前。英小文字・数字・_ で1〜40字)を同じテーマに定義していれば、" +
+        "$palette_<名前> の形でその色を指すこともできます。",
     );
     // **リソースID の文面は1文字も残っていない**(T07 が見つけた誤誘導の本体)。
     expect(`${errors[0]?.message}${errors[0]?.hint ?? ""}`).not.toContain("英小文字で始まり");
@@ -524,20 +653,20 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
     // **「(例: …)」から最初の候補を取り出して、そのまま値にする。**
     const example = /\(例: ([^)]+)\)/.exec(String(errors[0]?.hint))?.[1]?.split(" / ")[0];
     expect(example).toBe("#333");
-    const retry = await sendTheme({ ...passingSlots(), "--color-text": String(example) });
+    const retry = await sendTheme({ ...passingSlots(), body_text: String(example) });
     expect(retry.isError).toBeFalsy();
     // **2往復で通った**(旧稿の実測は「4往復かけても収束しない」)。
     expect(calls).toHaveLength(2);
-    expect(await storedSlots()).toMatchObject({ "--color-text": "#333" });
+    expect(await storedSlots()).toMatchObject({ body_text: "#333" });
   });
 
   test("書式の hint は5族すべてで『従えば通る』(色以外の4族も +1往復で通る)", async () => {
     // **族ごとに1つずつ壊し、hint の最初の例で直す。**値の空間の知識は使わない。
     const broken: Record<string, string> = {
-      "--space-4": "8",
-      "--line-height-base": "1.6rem",
-      "--surface-shadow": "0 1px 3px rgba(0,0,0,.1)",
-      "--font-family-base": "var(--x)",
+      space_4: "8",
+      body_line_height: "1.6rem",
+      surface_shadow: "0 1px 3px rgba(0,0,0,.1)",
+      body_font: "var(--x)",
     };
     const errors = errorsOf(await sendTheme({ ...passingSlots(), ...broken }));
     // **4件が1往復で全部返る**(族ごとに往復しない)。
@@ -551,10 +680,10 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
       repaired[slot] = String(example);
     }
     // 取り出せた例(**hint が持っている字面そのもの**)。
-    expect(repaired["--space-4"]).toBe("0");
-    expect(repaired["--line-height-base"]).toBe("1.6");
-    expect(repaired["--surface-shadow"]).toBe("none");
-    expect(repaired["--font-family-base"]).toBe("system-ui, sans-serif");
+    expect(repaired.space_4).toBe("0");
+    expect(repaired.body_line_height).toBe("1.6");
+    expect(repaired.surface_shadow).toBe("none");
+    expect(repaired.body_font).toBe("system-ui, sans-serif");
 
     const retry = await sendTheme(repaired);
     expect(retry.isError).toBeFalsy();
@@ -565,18 +694,14 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
   test("【T08 の限界】色の hint に従うと書式は直るが、次段のコントラストで落ちることがある", async () => {
     // **地色のスロットを壊す。**書式の hint は前景か背景かを知らないので、
     // 例として濃い色(`#333`)を先に出す —— 地色に入れれば比が閾値を割る。
-    const errors = errorsOf(
-      await sendTheme({ ...passingSlots(), "--color-page-background": "white" }),
-    );
+    const errors = errorsOf(await sendTheme({ ...passingSlots(), page_background: "white" }));
     expect(errors).toHaveLength(1);
-    expect(errors[0]?.message).toBe(
-      '--color-page-background の値 "white" は色の書式に合いません。',
-    );
+    expect(errors[0]?.message).toBe('page_background の値 "white" は色の書式に合いません。');
     const example = /\(例: ([^)]+)\)/.exec(String(errors[0]?.hint))?.[1]?.split(" / ")[0];
     expect(example).toBe("#333");
 
     const second = errorsOf(
-      await sendTheme({ ...passingSlots(), "--color-page-background": String(example) }),
+      await sendTheme({ ...passingSlots(), page_background: String(example) }),
     );
     // **書式のエラーは消えている**(hint に従った結果である。ここは「従えば通る」)。
     expect(second.some((error) => error.message.includes("書式に合いません"))).toBe(false);
@@ -590,11 +715,11 @@ describe("§4-8 (3) 拒否の自己修正性", () => {
   test("path と message は全エラーが持つが、allowed_values を持つのは1種類だけである", async () => {
     const kinds: Record<string, ValidationError[]> = {};
     const missing = passingSlots();
-    delete missing["--space-4"];
+    delete missing.space_4;
     kinds.required = errorsOf(await sendTheme(missing));
     const unknownName: Record<string, string> = { ...passingSlots(), "--color-nope": "#111111" };
     kinds.additionalProperties = errorsOf(await sendTheme(unknownName));
-    kinds.pattern = errorsOf(await sendTheme({ ...passingSlots(), "--space-4": "1 rem" }));
+    kinds.pattern = errorsOf(await sendTheme({ ...passingSlots(), space_4: "1 rem" }));
     kinds.contrast = errorsOf(await sendTheme(defaultSlotValues()));
 
     for (const [kind, errors] of Object.entries(kinds)) {
@@ -632,3 +757,31 @@ function resolvePointer(root: unknown, pointer: string): unknown {
   }
   return node;
 }
+
+// ===================================================================================
+// V20-M9-T02: AI が作った名前の生の色と参照を含む set_theme(計画 §9-8 条件2 の代わり)
+// ===================================================================================
+
+describe("V20-M9-T02: AI が名付けた生の色と参照を含む set_theme(ADR-0474 §1-1 / §1-5)", () => {
+  test("palette_ocean_700 と別名 palette_brand を含む set_theme が1往復で適用でき、get_manifest で名前と参照がそのまま返る", async () => {
+    // **名前はスキーマに列挙されていない**(`patternProperties` の `^palette_[a-z0-9_]{1,40}$`)。
+    // 主ボタンだけを濃い青にし、白い文字を載せる(`D-V20-28` の狙い)。参照は2段(役割 → 別名 → 実値)。
+    const slots = {
+      ...passingSlots(),
+      palette_ocean_700: "#1d4ed8",
+      palette_brand: "$palette_ocean_700",
+      primary_fill: "$palette_brand",
+      on_primary: "#ffffff",
+    };
+    const result = await sendTheme(slots);
+    expect(result.isError, JSON.stringify(result.structuredContent)).toBeFalsy();
+    expect(calls).toEqual(["apply_diff"]);
+
+    const stored = await storedSlots();
+    // 解いた実値に書き換えず、AI が書いた名前と参照の綴りがそのまま返る。
+    expect(stored).toEqual(slots);
+    expect(stored?.palette_ocean_700).toBe("#1d4ed8");
+    expect(stored?.palette_brand).toBe("$palette_ocean_700");
+    expect(stored?.primary_fill).toBe("$palette_brand");
+  });
+});

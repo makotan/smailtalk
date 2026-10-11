@@ -21,6 +21,8 @@ labels: enhancement
 - 定義を変える操作(17種): add_table / add_field / add_view / update_view / remove_field / remove_table /
   change_table / change_field / remove_view / add_workflow / update_workflow / remove_workflow /
   add_function / update_function / remove_function / set_theme / set_roles
+(2026-09-27 訂正。見出しと上の行を消していません)見出しと上の「17種」は今日は偽です。定義を変える操作は今日18種で、上の並びに無い18種目は remember_design です。
+(2026-09-28 訂正。見出しと上の行を消していません)定義を変える操作は今日19種で、上の並びに無い19種目は set_workspace です(18種目は remember_design)。
 
 今ある組み合わせだけで実現できないか、一度試してみてから書いてください。
 この一覧を増やす要望かどうかで、扱い方が変わります。

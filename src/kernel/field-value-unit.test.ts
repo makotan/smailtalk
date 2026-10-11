@@ -66,11 +66,16 @@ test("限定1: $defs/field.properties は 11 で、10キー目は unit である
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行29 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   // **【`V8-M20-T01` / 台帳 `J-G27` / `J-G28` / `ADR-0301` で見る位置を2つ手前へ直した】**
   // **8キー目だった `audience` と9キー目だった `writable_by` が廃止されたので、それより後ろの
   // キーの添字が2つずつ繰り上がった。****期待値を緩めていない。**
-  expect(properties[7]).toBe("unit");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行29】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[7]`。**
+  expect(properties[8]).toBe("unit");
 });
 
 // 【`V5-M29-T03` / `ADR-0250` 限定10 + 限定11】ここにあった test を、ブロックごと消した。
@@ -123,11 +128,16 @@ test("限定8: field_changes.properties は 10 で、9キー目は unit であ�
   // **【`V8-M20-T01` / 台帳 `J-G28` / 手続きは `ADR-0301` で 13 → 12 に更新した】** 8個目だった
   // `writable_by` が**廃止された**(判定 = 廃止)。**差し替えは差分操作 `set_roles` の全体差し替え
   // であり、`change_field` に相当する部分更新は面に1つも無い。****旧値の逐語は 13。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行29 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   // **【`V8-M20-T01` / 台帳 `J-G28` / `ADR-0301` で見る位置を1つ手前へ直した】** **8個目だった
   // `writable_by` が廃止されたので、それより後ろのキーの添字が1つずつ繰り上がった。**
   // **期待値を緩めていない。**
-  expect(properties[7]).toBe("unit");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行29】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[7]`。**
+  expect(properties[8]).toBe("unit");
   // **定義を二重に持たない**(manifest 側を `$ref` する。`unique` と同じ作法)。
   expect((readSchema("diff.schema.json").$defs.field_changes.properties.unit as Any).$ref).toBe(
     "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/field/properties/unit",
@@ -286,8 +296,12 @@ test("限定9: 書かなかったフィールドに unit キーは生えない(�
 
 test("限定11: $defs/theme の required 25スロットが1つも動いていない", () => {
   const theme = readSchema("manifest.schema.json").$defs.theme as Any;
-  expect(theme.required).toHaveLength(25);
-  expect(Object.keys(theme.properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(theme.required).toHaveLength(23);
+  expect(theme.required).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(theme.properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(theme.properties)).toHaveLength(23);
+  expect(Object.keys(theme.properties)).toHaveLength(27);
 });
 
 test("限定11: $defs/field に色・寸法・書体のキーが1つも無い", () => {

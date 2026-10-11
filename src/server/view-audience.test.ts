@@ -91,7 +91,13 @@ test("(a) $defs/view.properties から audience が消えて、今日は 31キ�
   // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
   // 書け、集計表(`report_view`)には書けない**)。
   // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-  expect(properties).toHaveLength(31);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(31);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(32);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行10】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(properties).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+  expect(properties).toHaveLength(35);
   expect(properties).not.toContain("audience");
   // **19キー目(添字18)に居たのは `audience` だった。今日そこに居るのは `menu_listed` である**
   // —— **`audience` が抜けて後ろが1つずつ繰り上がった、という事実をそのまま固定する。**
@@ -121,7 +127,9 @@ test("(a) $defs/field.properties から audience と writable_by が消えて 12
   // **今日は 14 → 12** —— **`audience`(`ADR-0071`)と `writable_by`(`ADR-0076`)の2本が
   // 消えた。** **他の増分は1本も消えていない。**
   const keys = Object.keys(schema().$defs.field?.properties ?? {});
-  expect(keys).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行12 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(keys).toHaveLength(13);
   expect(keys).not.toContain("audience");
   expect(keys).not.toContain("writable_by");
 });
@@ -497,11 +505,13 @@ test("(f) 予約規約フィールドは 4本である(V8-M20 / J-G30 で st_adm
   const declared = [...source.matchAll(/^export const ([A-Z_]+_FIELD) = "(st_[a-z_]+)";$/gm)].map(
     (m) => m[1] as string,
   );
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行12(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(declared.sort()).toEqual(["NO_DIRECT_CREATE_FIELD", "OWNER_FIELD", "PUBLIC_FIELD", "UNDELETABLE_FIELD"]);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に5本目)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
   expect(declared.sort()).toEqual([
     "NO_DIRECT_CREATE_FIELD",
     "OWNER_FIELD",
     "PUBLIC_FIELD",
     "UNDELETABLE_FIELD",
+    "UPDATED_BY_FIELD",
   ]);
   expect(declared).not.toContain("ADMIN_READABLE_FIELD");
 

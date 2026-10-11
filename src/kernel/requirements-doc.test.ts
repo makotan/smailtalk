@@ -481,6 +481,18 @@ function historicalIdentifiers(entries: ChangelogEntry[]): string[] {
           // **この網羅性の番人は実際に働いた** —— 本タスクではまず
           // `tsc` が `Type 'SetRolesOperation' is not assignable to type 'never'` で落ちた。
           return [];
+        case "remember_design":
+          // **【`V20-M15-T01A`。18種目。`ADR-0479`】識別子を1つも返さない**(`set_roles` と同型)。
+          // 選んだ記録と型は app に1つしか無い器に書かれ、対象IDを取らない。 **選んだ案の名前も
+          // 理由も集めない。** **この網羅性の番人は実際に働いた** —— `V20-M15-T00` の使い捨ての作業台で `tsc` が
+          // この行の番人(`requirements-doc.test.ts(503,17): error TS2322`)で落ちた(記録 `v20-m15-t00.md` §2-3)。
+          return [];
+        case "set_workspace":
+          // **【`V22-M2-T02`。19種目。`ADR-0486`】識別子を1つも返さない**(`set_roles` / `remember_design` と同型)。
+          // メニューの位置は app に1つしか無い器に書かれ、対象IDを取らない。 **`by_role` の役割名も集めない**
+          // (役割の宣言の識別子であり、監査側が持つ5集合のどれにも属さない)。 **この網羅性の番人は実際に働いた** ——
+          // `V22-M2-T02` で `tsc` がこの行の番人(`requirements-doc.test.ts(509,17): error TS2322`)で落ちた。
+          return [];
         // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】**
         // **`set_user_kinds` が `DiffOperation` の union から消えたので、この `case` は
         // 型として到達できなくなった**(`tsc` が
@@ -611,6 +623,10 @@ describe("テンプレート定数表の不変条件(ADR-0025 §3)", () => {
       "features.role_rule_field_write",
       "features.role_rule_view_read",
       "features.role_rule_action_read",
+      // **【`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)】未ログインに隠す項目を述べる1本。**
+      // **上の「「できないと宣言している」側の本は1本も無い」は今日は偽である**(旧文を消していない)——
+      // **`ADR-0482` §7 の追1 が `ADR-0315` 限定3 を引き直した。** 役割について出す種類は増やしていない。
+      "features.role_rule_hidden_field",
       "features.role_condition_and",
       "features.role_condition_or",
       "features.role_condition_not",
@@ -618,6 +634,15 @@ describe("テンプレート定数表の不変条件(ADR-0025 §3)", () => {
       "features.role_condition_equals_current_user",
       // **【`V8-M26` / ユーザ決定 `D-V8-70`(2026-08-11)】葉の3種目(その項目が空か)。**
       "features.role_condition_is_empty",
+      // **【`V20-M11-T06` / `ADR-0475`】利用文脈(役割の `density`)の1本。**
+      "features.role_density",
+      // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)】アプリの型の1本。screens 節の先頭。**
+      // **旧一覧はこの行を持たない。** **選んだ記録とその理由を述べる本は1本も足していない。**
+      "screens.design_pattern",
+      // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】メニューの位置のアプリの既定の1本。** **旧一覧はこの行を持たない。**
+      "screens.navigation_placement",
+      // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】マイページを置くことを述べる1本。** **旧一覧はこの行を持たない。**
+      "screens.my_page",
       "screens.target",
       "screens.display_name",
       "screens.column",
@@ -698,6 +723,8 @@ describe("テンプレート定数表の不変条件(ADR-0025 §3)", () => {
       "data.field_unique",
       "data.field_unique_owner",
       "data.field_not_unique",
+      // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】1本増えた。旧一覧はこの行を持たない。** 一意違反の文言(`unique_message`)を写す1本。
+      "data.field_unique_message",
       // **【`V8-M20` / 台帳 `J-G28` / `ADR-0301`】`"data.field_audience"` と
       // `"data.field_writable_by"` をこの列から落とした。****旧: この位置に2本が
       // 並んでいた。****`$defs/field` の `audience` / `writable_by` と
@@ -729,6 +756,17 @@ describe("テンプレート定数表の不変条件(ADR-0025 §3)", () => {
       "data.table_access_member_table",
       "data.table_access_group_table",
       "data.table_access_inherit_from",
+      // **【`V23-M5-T08` / 授権 `ADR-0533` 行30(`D-V23-130`)】1本増えた。旧一覧はこの行を持たない。** 行の招待の宣言を1文で述べる1本。
+      "data.table_invitation",
+      // **【`V23-M6-T10` / 授権 `ADR-0539` 行17(`D-V23-159`)】1本増えた。旧一覧はこの行を持たない。** 行を相手にした付与の宣言を1文で述べる1本。
+      "data.table_access_principal_row",
+      // **【`V23-M7-T07` / 授権 `ADR-0543` 行13(`D-V23-195`)】1本増えた。旧一覧はこの行を持たない。** 子の表に行を作れる権限の宣言を1文で述べる1本。
+      "data.permission_create_child",
+      // **【`V23-M8-T08` / 授権 `ADR-0545` 行41(`D-V23-216`)】1本増えた。旧一覧はこの行を持たない。** 表の変更履歴の宣言を1文で述べる1本。
+      "data.table_history",
+      // **【`V23-M9-T05` / 授権 `ADR-0550` 行1(`D-V23-238`・`D-V23-254`)】2本増えた。旧一覧はこの2行を持たない。** 名簿への自動登録と行の最後の管理者。
+      "data.table_access_auto_enroll",
+      "data.table_access_last_row_manager",
       "automation.workflow",
       "automation.trigger_on_create",
       "automation.trigger_on_update",
@@ -836,7 +874,35 @@ describe("テンプレート定数表の不変条件(ADR-0025 §3)", () => {
     // **【`V8-M13-T03` / 台帳 `Q-G31a` / `Q-G31b` で 137 → 149 に更新した】**
     // **旧: `toHaveLength(137)`。** **増えたのは集計表の中身を述べる12本ちょうどである**
     // (束ねるキー6 + 集計3 + 突き合わせ1 + グラフ2)。**減った本数・改名は0である。**
-    expect(bodies).toHaveLength(149);
+    // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 149 → 150 に更新した】**
+    // **旧: `toHaveLength(149)`。** **増えたのは利用文脈(役割の `density`)を述べる
+    // `features.role_density` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)で 150 → 151 に更新した】**
+    // **旧(逐語)**: `expect(bodies).toHaveLength(150);` **増えたのはアプリの型を述べる
+    // `screens.design_pattern` の1本ちょうどである**(減った本数・改名は0。選んだ記録を述べる本は0)。
+    // **【2026-09-27。`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)で 151 → 152 に更新した】**
+    // **旧(逐語)**: `expect(bodies).toHaveLength(151);` **増えたのは未ログインに隠す項目を述べる
+    // `features.role_rule_hidden_field` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】152 → 153 に更新した】**
+    // **旧(逐語)**: `expect(bodies).toHaveLength(152);` **増えたのはメニューの位置のアプリの既定を述べる
+    // `screens.navigation_placement` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】153 → 154 に更新した】**
+    // **旧(逐語)**: `expect(bodies).toHaveLength(153);` **増えたのはマイページを置くことを述べる
+    // `screens.my_page` の1本ちょうどである**(減った本数・改名は0。本数は `ADR-0488` 式6 の python で別に数えて 154)。
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】154 → 155 に更新した。**
+    // **旧(逐語)**: `expect(bodies).toHaveLength(154);` **増えたのは一意違反の文言を述べる
+    // `data.field_unique_message` の1本ちょうどである**(減った本数・改名は0。本数は `REQUIREMENT_TEMPLATES` を別に読んで 155)。
+    // **【`V23-M5-T08` / 授権 `ADR-0533` 行31(`D-V23-130`)】155 → 156。** **旧(逐語)**: `expect(bodies).toHaveLength(155);`
+    // **増えたのは行の招待の宣言を述べる `data.table_invitation` の1本ちょうどである**(減った本数・改名は0。本数は `REQUIREMENT_TEMPLATES` を別に読んで 156)。
+    // **【`V23-M6-T10` / 授権 `ADR-0539` 行18(`D-V23-159`)】156 → 157。** **旧(逐語)**: `expect(bodies).toHaveLength(156);`
+    // **増えたのは行を相手にした付与の宣言を述べる `data.table_access_principal_row` の1本ちょうどである**(減った本数・改名は0。本数は `REQUIREMENT_TEMPLATES` を別に読んで 157)。
+    // **【`V23-M7-T07` / 授権 `ADR-0543` 行14(`D-V23-195`)】157 → 158。** **旧(逐語)**: `expect(bodies).toHaveLength(157);`
+    // **増えたのは子の表に行を作れる権限の宣言を述べる `data.permission_create_child` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 158)。
+    // **【`V23-M8-T08` / 授権 `ADR-0545` 行42(`D-V23-216`)】158 → 159。** **旧(逐語)**: `expect(bodies).toHaveLength(158);`
+    // **増えたのは表の変更履歴の宣言を述べる `data.table_history` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 159)。
+    // **【`V23-M9-T05` / 授権 `ADR-0550` 行2(`D-V23-238`・`D-V23-254`)】159 → 161。** **旧(逐語)**: `expect(bodies).toHaveLength(159);`
+    // **増えたのは名簿への自動登録と行の最後の管理者を述べる `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 161)。
+    expect(bodies).toHaveLength(161);
     for (const [id, body] of bodies) {
       const withoutSlots = body.replace(/\{[a-z_]+\}/g, "");
       for (const token of FORBIDDEN) {
@@ -1866,11 +1932,24 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
      * (`ADR-0025`)に1文も現れない」は、今日は事実でなくなった** —— **`ADR-0126` D2 の判定に
      * より `ADR-0092` 本文には1バイトも追記していない**(申告は `ADR-0126` Consequences 4)。
      */
-    field_groups: {
+    /*
+     * **【2026-09-24。`V20-M3-T01` / `ADR-0469` 限定1・限定2 で書き換えた】** **旧行の逐語**:
+     * キーは旧綴り `field_groups`、`form` のマスは `"unwritable"`。
+     * **綴りを `field_sections` に改め、入力フォームでも書けるようにした**(一覧2形と集計表は
+     * 今日も `unwritable` = スキーマの `allOf` が `false` で閉じている)。
+     * **`form` は `emits` にした** —— 文を出す関数は `form` と `detail_view` の両方を同じ1箇所で
+     * 通るので、入力フォームのまとまりにも既存の2種の文(`screens.field_group` /
+     * `screens.field_group_item`)が出る。**新しい文面を1本も足していない**(文面は画面の種別を
+     * 名指ししない)。**`silent` にすると `ADR-0126` A10 / `ADR-0144` A9 が 0 にした (b) 型の
+     * `silent` を門無しで1マス足すことになるので選ばなかった。**
+     * **【正直に書く】本葉の時点では入力フォームの描画はまとまりを読まない** —— 要件定義書は
+     * 「宣言している」までしか述べない(A4)ので文は事実だが、画面はまだ束ねて描かない(`V20-M3-T03`)。
+     */
+    field_sections: {
       list_view_equals_filter: "unwritable",
       list_view_boolean_filter: "unwritable",
       detail_view: "emits",
-      form: "unwritable",
+      form: "emits",
       report_view: "unwritable",
     },
     /*
@@ -2244,6 +2323,87 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
       form: "silent",
       report_view: "unwritable",
     },
+    /**
+     * **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4〜限定7】32キー目 `field_width`(入力欄の幅)。**
+     *
+     * **`form` の1マスが `silent`、残る4マスが `unwritable` である**(`form` でだけ書ける)。
+     *
+     * **`emits` にしなかった理由**: 今日ある文面のどれを使っても事実を述べられない
+     * (一覧の列の幅の文面 `screens.preset_column_width` は「列」を主語にしており、入力欄を指さない)。
+     * **専用の文面を新設するのは `ADR-0144` §3a の 2 の門を通す決定であり、`ADR-0460` はその門を
+     * 通していない**(同 ADR の本文に要件定義書の語は1度も現れない)。**`flow` / `after_delete` と
+     * 同じ向きである** —— 通していないから `emits` にしなかった。
+     *
+     * **【正直に書く】その代償として、要件定義書は入力欄の幅を1文も述べない。** 幅を書いたアプリと
+     * 書いていないアプリの要件定義書は1バイトも変わらない(`src/kernel/field-width.test.ts` の (g))。
+     */
+    field_width: {
+      list_view_equals_filter: "unwritable",
+      list_view_boolean_filter: "unwritable",
+      detail_view: "unwritable",
+      form: "silent",
+      report_view: "unwritable",
+    },
+    /**
+     * **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by`(一覧の束ねるキー)。**
+     *
+     * **一覧の2形が `silent`、残る3マスが `unwritable` である**(`list_view` でだけ書ける)。
+     *
+     * **`emits` にしなかった理由**: 今日ある文面のどれを使っても事実を述べられない
+     * (並び順の文面 `screens.sort` は「並べる」を述べ、見出しで区切ることを述べない)。
+     * **専用の文面を新設するのは `ADR-0144` §3a の 2 の門を通す決定であり、`ADR-0470` も
+     * `ADR-0461` もその門を通していない**(両 ADR の本文に要件定義書の語は1度も現れない)。
+     * **`field_width` / `flow` / `after_delete` と同じ向きである** —— 通していないから `emits` にしなかった。
+     *
+     * **【正直に書く】その代償として、要件定義書は一覧の区切りを1文も述べない。** 区切った一覧と
+     * 区切っていない一覧の要件定義書は1バイトも変わらない(`src/kernel/list-group-by.test.ts` の (f))。
+     */
+    group_by: {
+      list_view_equals_filter: "silent",
+      list_view_boolean_filter: "silent",
+      detail_view: "unwritable",
+      form: "unwritable",
+      report_view: "unwritable",
+    },
+    /**
+     * **【2026-09-24。`V20-M5-T04` / `ADR-0471` / `ADR-0462`】34キー目 `layout`(画面の中の並べ方の木)。**
+     *
+     * **一覧の2形・詳細画面・入力フォームの4マスが `silent`、集計表の1マスが `unwritable` である**
+     * (`report_view` の分岐だけが `false`。一覧で書けるのはカードの形のときだけだが、それは適用時の拒否であり
+     * スキーマの分岐は開いている)。
+     *
+     * **`emits` にしなかった理由**: 今日ある文面のどれを使っても事実を述べられない(並べ方を述べる文面が無い)。
+     * **専用の文面を新設するのは `ADR-0144` §3a の 2 の門を通す決定であり、`ADR-0462` も `ADR-0471` もその門を
+     * 通していない。** **`field_width` / `group_by` と同じ向きである** —— 通していないから `emits` にしなかった。
+     *
+     * **【正直に書く】その代償として、要件定義書は画面の中の並べ方を1文も述べない**
+     * (`src/kernel/layout-tree.test.ts` の (j))。
+     */
+    layout: {
+      list_view_equals_filter: "silent",
+      list_view_boolean_filter: "silent",
+      detail_view: "silent",
+      form: "silent",
+      report_view: "unwritable",
+    },
+    /**
+     * **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行43(書き足し。期待値を緩めない)/ 決定 `D-V23-205`・`D-V23-216`】35キー目 `history`(詳細画面に行の変更履歴を出すか)。**
+     *
+     * **詳細画面の1マスが `silent`、残る4マスが `unwritable` である**(`list_view`・`form`・`report_view` の分岐は `false`)。
+     *
+     * **`emits` にしなかった理由**: 決定 `D-V23-216` が、表の側の `table.history` にだけ文の型を1つ足し、
+     * 画面の側の `history` は文を出さない画面の鍵とした。 画面が履歴を出すかどうかは、表が履歴を残すと宣言したことの
+     * 見せ方であり、表の文が要件として述べる(画面の鍵で同じ事実を二度述べない)。
+     *
+     * **【正直に書く】その代償として、要件定義書はどの詳細画面が履歴を出すかを1文も述べない。**
+     */
+    history: {
+      list_view_equals_filter: "unwritable",
+      list_view_boolean_filter: "unwritable",
+      detail_view: "silent",
+      form: "unwritable",
+      report_view: "unwritable",
+    },
   };
 
   function canonicalViewSchema(): {
@@ -2317,7 +2477,16 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
   // `V5-M21-T01` / `V6-M2-T01` / `V6-M6-T02` / `V8-M8` / `V8-M13-T03` / `V8-M20` の
   // 更新に追随していなかった。****本タスクは数を動かすので、その食い違いも同時に直す。**
   // **数の正は assertion 側であり、名前は読み手のための写しである。**
-  test("150マスの内訳は emits 76 / silent 1 / unwritable 73 である(数で残す)", () => {
+  // **【2026-09-24。`V20-M3-T01` / `ADR-0469`。テスト名の数を今日の assertion に合わせた】**
+  // **旧名の逐語**: 「150マスの内訳は emits 76 / silent 1 / unwritable 73 である(数で残す)」。
+  // **着手前の assertion は 155 / 76 / 5 / 74 であり、名前が既に食い違っていた。**
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460`。テスト名の数を今日の assertion に合わせた】**
+  // **旧名の逐語**: 「155マスの内訳は emits 77 / silent 5 / unwritable 73 である(数で残す)」。
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`。テスト名の数を今日の assertion に合わせた】**
+  // **旧名の逐語**: 「160マスの内訳は emits 77 / silent 6 / unwritable 77 である(数で残す)」。
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`。テスト名の数を今日の assertion に合わせた】**
+  // **旧名の逐語**: 「165マスの内訳は emits 77 / silent 8 / unwritable 80 である(数で残す)」。
+  test("170マスの内訳は emits 77 / silent 12 / unwritable 81 である(数で残す)", () => {
     // **【V4-M3-T02 / `B-G1` / ADR-0070 による更新】** 19キー目 `audience` が4形とも
     // 書けるので、マスは 72 → 76、silent は 18 → 22 になった。**emits は26 のまま1つも
     // 増えていない** —— **`audience` を書いても要件ドキュメントの文は1文も増えない。**
@@ -2432,7 +2601,17 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
     // **31キー目 `flow`(一続きの流れの中の段)が加わり、5形ぶんの5マスが増えた** ——
     // **31 × 5 = 155。****新たに書いた判断は5マスちょうどで、既存150マスは
     // 1マスも書き換えていない。**
-    expect(all).toHaveLength(155);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で 155 → 160 に更新した】**
+    // **旧行の逐語**: `expect(all).toHaveLength(155);`
+    // **32キー目 `field_width`(入力欄の幅)が加わり、5形ぶんの5マスが増えた** —— **32 × 5 = 160。**
+    // **新たに書いた判断は5マスちょうどで、既存155マスは1マスも書き換えていない。**
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で 160 → 165 に更新した】**
+    // **旧行の逐語**: `expect(all).toHaveLength(160);`
+    // **33キー目 `group_by`(一覧の束ねるキー)が加わり、5形ぶんの5マスが増えた** —— **33 × 5 = 165。**
+    // **新たに書いた判断は5マスちょうどで、既存160マスは1マスも書き換えていない。**
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】`layout` の5マスが加わった。旧の期待値は 165。**
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行1 / 決定 `D-V23-205`・`D-V23-216`】`history` の5マス(35キー目 × 5形)が加わった。 旧行の逐語: `expect(all).toHaveLength(170);` 新しい値は 35 × 5 を表の行数から数えた。
+    expect(all).toHaveLength(175);
     // **【`V6-M6-T02` / `ADR-0291` A1 で 71 → 72 になった】** `reference_pickers/form` の
     // 1マスが `silent` から移った。**マスの総数(116)は1マスも動いていない。**
     // **【2026-08-15。`V8-M13-T03` で 68 → 75 に更新した】** **旧: `toHaveLength(68)`。**
@@ -2453,7 +2632,14 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
     // **【2026-08-20。`V10-M4-T01` / `NV-G9` / `ADR-0359` / `ADR-0360`】76 のまま1マスも動かない。**
     // **`flow` は5形とも `emits` ではない**(4形が `silent`、`report_view` が `unwritable`)——
     // **`flow` を書いても要件定義書の文は1文も増えない。**
-    expect(all.filter(([, e]) => e === "emits")).toHaveLength(76);
+    // **【2026-09-24。`V20-M3-T01` / `ADR-0469` で 76 → 77 に更新した】**
+    // **旧行の逐語**: 期待する本数は 76(`emits` の本数)。
+    // **増えたのは `field_sections/form` の1マスちょうどである**(`unwritable` から移った)。
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460`】77 のまま1マスも動かない。** **`field_width` は5形とも
+    // `emits` ではない**(`form` が `silent`、残る4マスが `unwritable`)。
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】77 のまま1マスも動かない。** **`group_by` は5形とも
+    // `emits` ではない**(一覧の2形が `silent`、残る3マスが `unwritable`)。
+    expect(all.filter(([, e]) => e === "emits")).toHaveLength(77);
     // **「書けるのに1文も出ない」26マスは、プリセット7キーと custom_css と audience と
     // menu_listed である** ——`ADR-0068` 共通10 が名指しで維持した欠落 + `ADR-0070` 限定5 の
     // 帰結 + `ADR-0084` の限定表が要件ドキュメントを1点も要求していないことの帰結であり、
@@ -2516,12 +2702,29 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
     // **`ADR-0126` §3a の 2 / `ADR-0144` §3a の 2 が求める門を素通りしていない** ——
     // **通していないから `emits` にしなかった、という向きである。**
     const silent = all.filter(([, e]) => e === "silent").map(([name]) => name);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` で 5 → 6 になった。述語を1つ足した】**
+    // **旧の列挙は `field_width/form` の1行が無い形である。** **由来は `flow` と同じで、専用の文面を
+    // 新設する門(`ADR-0144` §3a の 2)を `ADR-0460` が通していないことである**(理由の全文は上の
+    // `VIEW_KEY_EMITS_STATEMENT` の `field_width` の JSDoc)。
     expect(silent).toEqual([
       "after_delete/detail_view",
       "flow/list_view_equals_filter",
       "flow/list_view_boolean_filter",
       "flow/detail_view",
       "flow/form",
+      "field_width/form",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で 6 → 8 になった。述語を1つ足した】** **旧の列挙はこの2行が無い形である。**
+      // **由来は `field_width` と同じで、専用の文面を新設する門(`ADR-0144` §3a の 2)を `ADR-0470` が通していないことである。**
+      "group_by/list_view_equals_filter",
+      "group_by/list_view_boolean_filter",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471` で 8 → 12 になった。述語を1つ足した】** **旧の列挙はこの4行が無い形である。**
+      // **由来は `group_by` と同じで、専用の文面を新設する門(`ADR-0144` §3a の 2)を `ADR-0462` / `ADR-0471` が通していないことである。**
+      "layout/list_view_equals_filter",
+      "layout/list_view_boolean_filter",
+      "layout/detail_view",
+      "layout/form",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行2】`history` の詳細画面の1マスが `silent` に加わった(由来は `layout` と同じ。文面を新設する門を通していない)。 旧の列挙はこの1行が無い形である。
+      "history/detail_view",
     ]);
     for (const name of silent) {
       expect(
@@ -2529,7 +2732,12 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
           name.startsWith("custom_css/") ||
           name.startsWith("reference_pickers/") ||
           name.startsWith("after_delete/") ||
-          name.startsWith("flow/"),
+          name.startsWith("flow/") ||
+          name.startsWith("field_width/") ||
+          name.startsWith("group_by/") ||
+          name.startsWith("layout/") ||
+          // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行3】`history/` を1つ足した(旧の並びは直上の行が `name.startsWith("layout/"),` で終わっていた。逐語)。
+          name.startsWith("history/"),
       ).toBe(true);
     }
     // **【V4-M23-T01 / ADR-0104 限定4 で 41 → 43 に更新した】** `sum_field` の
@@ -2562,7 +2770,20 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
     // **旧行の逐語**: `expect(all.filter(([, e]) => e === "unwritable")).toHaveLength(73);`
     // **増えたのは `flow/report_view` の1マスちょうどである**(**集計表は流れの段に
     // なれない**。`V10-M4` の決1)。**76 + 5 + 74 = 155。**
-    expect(all.filter(([, e]) => e === "unwritable")).toHaveLength(74);
+    // **【2026-09-24。`V20-M3-T01` / `ADR-0469` で 74 → 73 に更新した】**
+    // **旧行の逐語**: 期待する本数は 74(`unwritable` の本数)。
+    // **減ったのは `field_sections/form` の1マスちょうどである**(`emits` へ移った)。**77 + 5 + 73 = 155。**
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で 73 → 77 に更新した】**
+    // **旧行の逐語**: `expect(all.filter(([, e]) => e === "unwritable")).toHaveLength(73);`
+    // **増えたのは `field_width` の4マスちょうどである**(`list_view` 2形 / `detail_view` / `report_view`。
+    // **書けるのは `form` だけだからである**)。**77 + 6 + 77 = 160。**
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で 77 → 80 に更新した】**
+    // **旧行の逐語**: `expect(all.filter(([, e]) => e === "unwritable")).toHaveLength(77);`
+    // **増えたのは `group_by` の3マスちょうどである**(`detail_view` / `form` / `report_view`。
+    // **書けるのは `list_view` だけだからである**)。**77 + 8 + 80 = 165。**
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】`layout/report_view` の1マスが加わった。旧の期待値は 80。**
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行4】`history` の4マス(一覧の2形・入力・集計表。`allOf` が `false`)が加わった。 旧行の逐語: `expect(all.filter(([, e]) => e === "unwritable")).toHaveLength(81);`
+    expect(all.filter(([, e]) => e === "unwritable")).toHaveLength(85);
     // **【V4-M16-T13 / ADR-0093 限定1 で 21 → 22 に更新した】** 門A の本審査(`V4-M14` 本審査② の単位11。判定 = 限定採用)が22キー目 `preset_list_shape`(一覧の器の形)を足した。
     // **【V4-M18-T03 / ADR-0095 限定1 で 22 → 23 に更新した】** 門A の本審査(V4-M18 単位3。
     // 判定 = 限定採用)が23キー目 `modal` を足した。
@@ -2596,7 +2817,15 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
     // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。門A 本審査 = `V10-M0` 群B】30 → 31 に更新した。**
     // **旧行の逐語**: `expect(Object.keys(VIEW_KEY_EMITS_STATEMENT)).toHaveLength(30);`
     // **門A の本審査(`V10-M0` 群B)が31キー目 `flow`(一続きの流れの中の段)を足した。**
-    expect(Object.keys(VIEW_KEY_EMITS_STATEMENT)).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】31 → 32 に更新した。**
+    // **旧行の逐語**: `expect(Object.keys(VIEW_KEY_EMITS_STATEMENT)).toHaveLength(31);`
+    // **門A の本審査(`V20-M0` の `DS-S4`)が32キー目 `field_width`(入力欄の幅)を足した。**
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】32 → 33 に更新した。**
+    // **旧行の逐語**: `expect(Object.keys(VIEW_KEY_EMITS_STATEMENT)).toHaveLength(32);`
+    // **33キー目 `group_by`(一覧の束ねるキー)を足した(条文は `ADR-0470` / `ADR-0461`)。**
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0546` 行5】35キー目 `history`。 旧行の逐語: `expect(Object.keys(VIEW_KEY_EMITS_STATEMENT)).toHaveLength(34);` 新しい値はスキーマを python で読んで数えた。
+    expect(Object.keys(VIEW_KEY_EMITS_STATEMENT)).toHaveLength(35);
   });
 
   // **【2026-08-20。`V10-M1-T01` / `ADR-0358`。テスト名の食い違いを先に申告する】**
@@ -2606,7 +2835,19 @@ describe("V3-M2-T01 / V3-M13-T12: view のキー × 形 のうち要件ドキュ
   // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359` / `0360`。題名の数を直した】**
   // **旧名の逐語**: `` `unwritable` の73マスは schema の allOf が実際に `false` にしている(散文で決めない) ``
   // **`expect` は本数を1つも持たないので緑のままだった** —— **嘘になるのは題名だけである。**
-  test("`unwritable` の74マスは schema の allOf が実際に `false` にしている(散文で決めない)", () => {
+  // **【2026-09-24。`V20-M3-T01` / `ADR-0469`。題名の数を直した】**
+  // **旧名の逐語**: `` `unwritable` の74マスは schema の allOf が実際に `false` にしている(散文で決めない) ``
+  // **`field_sections/form` が `emits` へ移ったので1マス減った。**
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460`。題名の数を直した】**
+  // **旧名の逐語**: `` `unwritable` の73マスは schema の allOf が実際に `false` にしている(散文で決めない) ``
+  // **`field_width` の4マスが加わった。**
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`。題名の数を直した】**
+  // **旧名の逐語**: `` `unwritable` の77マスは schema の allOf が実際に `false` にしている(散文で決めない) ``
+  // **`group_by` の3マスが加わった。**
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`。題名の数を直した】**
+  // **旧名の逐語**: `` `unwritable` の80マスは schema の allOf が実際に `false` にしている(散文で決めない) ``
+  // **`layout` の1マスが加わった。**
+  test("`unwritable` の81マスは schema の allOf が実際に `false` にしている(散文で決めない)", () => {
     const branches = canonicalViewSchema().allOf;
     for (const form of VIEW_FORMS) {
       const branch = branches.find(
@@ -3186,6 +3427,21 @@ describe("V3-M11-T06: workflow_trigger のキーのうち要件ドキュメン�
       schedule: "emits",
       manual: "unwritable",
     },
+    /*
+     * **【`V23-M4-T02` / `SC-G14` / `ADR-0500` 限定22 / 授権 `ADR-0525` 行29】5キー目 `changed_fields`。**
+     * **判断: `on_update` では `silent`(書けるが要件ドキュメントに文を出さない)、他の3種別では
+     * `unwritable`(schema の `allOf` が `false` にしている)。**
+     * **`silent` にした理由を隠さない**: `ADR-0500` 限定22 が「要件定義書の文面を1本も足さない」と
+     * 決めたためである(`REQUIREMENT_TEMPLATES` の本数は動かさない)。 **帰結**: `changed_fields` を
+     * 書いた宣言の要件ドキュメントは、「更新されたら動く」の文をそのまま出す —— **「列挙した項目が
+     * 変わったときだけ」であることが文面に現れない。**
+     */
+    changed_fields: {
+      on_create: "unwritable",
+      on_update: "silent",
+      schedule: "unwritable",
+      manual: "unwritable",
+    },
   };
 
   function canonicalTriggerSchema(): {
@@ -3239,9 +3495,18 @@ describe("V3-M11-T06: workflow_trigger のキーのうち要件ドキュメン�
    * **`ADR-0174` が種別を1つ足したのでマスは 12 → 16 になった。**
    * **キーは1本も増えていない**(4本のまま)。
    */
-  test("16マスの内訳は emits 10 / silent 0 / unwritable 6 である(数で残す)", () => {
+  /*
+   * **【`V23-M4-T02` / 授権 `ADR-0526` §1 / 裁定 `D-V23-108`】5キー目 `changed_fields` で 16 → 20 マス。**
+   * **旧の題(逐語)**: 「16マスの内訳は emits 10 / silent 0 / unwritable 6 である(数で残す)」。
+   * **旧の値(逐語)**: `expect(all).toHaveLength(16);` / `expect(all.filter(([, e]) => e === "silent")).toHaveLength(0);` /
+   * unwritable の並びは `"at/on_create", "at/on_update", "at/manual", "older_than/on_create", "older_than/on_update", "older_than/manual"` の6つ。
+   * **下の注釈「「書けるのに1文も出ない」マスは0件になった」は今日は偽である** —— `changed_fields/on_update` の
+   * 1マスが silent(`ADR-0500` 限定22 で要件書の文面を足さないため)。 注釈は1バイトも書き換えていない。
+   * emits の10マスの並びは動いていない。 新しい値は表を検査の外の python で数えて得た。
+   */
+  test("20マスの内訳は emits 10 / silent 1 / unwritable 9 である(数で残す)", () => {
     const all = cells();
-    expect(all).toHaveLength(16);
+    expect(all).toHaveLength(20);
     expect(all.filter(([, e]) => e === "emits").map(([name]) => name)).toEqual([
       "type/on_create",
       "type/on_update",
@@ -3256,7 +3521,9 @@ describe("V3-M11-T06: workflow_trigger のキーのうち要件ドキュメン�
     ]);
     // **「書けるのに1文も出ない」マスは0件になった。** V3-M10 が作った2マスは
     // V3-M13-T12 が塞いだ。
-    expect(all.filter(([, e]) => e === "silent")).toHaveLength(0);
+    expect(all.filter(([, e]) => e === "silent").map(([name]) => name)).toEqual([
+      "changed_fields/on_update",
+    ]);
     expect(all.filter(([, e]) => e === "unwritable").map(([name]) => name)).toEqual([
       "at/on_create",
       "at/on_update",
@@ -3264,6 +3531,9 @@ describe("V3-M11-T06: workflow_trigger のキーのうち要件ドキュメン�
       "older_than/on_create",
       "older_than/on_update",
       "older_than/manual",
+      "changed_fields/on_create",
+      "changed_fields/schedule",
+      "changed_fields/manual",
     ]);
   });
 
@@ -4146,6 +4416,28 @@ describe("V3-M12-T11: app のキーのうち要件ドキュメントに文を出
     // **したがって「このアプリの役割」は要件ドキュメントに出ない。**
     // **これは限界であって、判定の実装が入る `V8-M17` 以降で改めて判断する。**
     roles: false,
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory`(選んだ記録 `choices` と型 `patterns`)。**
+    // **今日(`T01A` の時点)は文を出さない** —— `src/kernel/requirements-doc.ts` は `app.design_memory` を
+    // 読む行を1つも持たない(履歴節の `remember_design` の `case` は識別子も帰属も返さない)。
+    // **`T01D` が `screens.design_pattern`(型だけ。`D-V20-61`)を足して `true` にする予定である。**
+    // **選んだ記録(`choices`)は `T01D` の後も1文も出さない** —— 同じキーの中で `patterns` だけを読む。
+    // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)】false → true。** **旧(逐語)**: `design_memory: false,`
+    // **文を出す**: `screens.design_pattern`(screens 節の先頭。型1件につき1文。出典 `/app/design_memory/patterns`)。
+    // **同じキーの中で読むのは `patterns` だけである** —— 選んだ記録(`choices`)とその理由は1文も出さない
+    // (実測は `V20-M15-T01D` の describe の T01D-3 / T01D-4 / T01D-6)。
+    // **テーマを述べる側には当たらない** —— 型はテーマ25スロットでも `app.theme` でもなく、`theme: false` の行と
+    // `screens.theme` で始まる文面の数(0)は動かない(`ADR-0144` B1。検査は下の `screens.theme` の1本)。
+    design_memory: true,
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行14)】10本目 `workspace`(メニューの位置。左 / 上と役割ごとの上書き)。**
+    // **文を出さない。** **`src/kernel/requirements-doc.ts` は `app.workspace` を読む行を1つも持たない**
+    // (履歴節の `set_workspace` の `case` は識別子も帰属も返さず、対象を述べる文も作らない)。
+    // **`ADR-0486` は要件ドキュメントの出力を決めていない** —— **決めていないものを黙って足さない**側に倒した
+    // (`roles` と同じ扱い)。 **したがって「メニューの位置」は要件ドキュメントに出ない。** 役割について出す種類は
+    // 1つも増やしていない(`ADR-0475` の「5つ目を足さない」)。 実測は `src/kernel/workspace-navigation.test.ts` の (5) の最後の1本。
+    // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】false → true。** **旧(逐語)**: `workspace: false,`
+    // **文を出す**: `screens.navigation_placement`(型の文の後・画面ごとの文の前。アプリの既定の位置を逐語で1文、
+    // 役割ごとの上書きは件数だけ。出典 `/app/workspace/navigation`)。 **既定の位置を書いていない宣言では出さない。**
+    workspace: true,
   };
 
   function canonicalAppSchema(): { properties: Record<string, unknown>; allOf?: unknown } {
@@ -4177,6 +4469,10 @@ describe("V3-M12-T11: app のキーのうち要件ドキュメントに文を出
       "views",
       "workflows",
       "functions",
+      // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61`)】7キー目。旧一覧はこの行を持たない**(6キー → 7キー)。
+      "design_memory",
+      // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】8キー目。旧一覧はこの行を持たない**(7キー → 8キー)。
+      "workspace",
     ]);
     // **【`V5-M17-T02` の追随】7 → 8**(`ADR-0158` 限定8 が `user_kinds` を足した)。
     // **テスト名の「6キー・1キー」は当時の逐語であり、今日は「6キー・2キー」である。
@@ -4187,7 +4483,13 @@ describe("V3-M12-T11: app のキーのうち要件ドキュメントに文を出
     // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G9a`。判定値 = 廃止】9 → 8**(`user_kinds` の器を撤去した)。
     // **旧(逐語)**: `expect(Object.keys(APP_KEY_EMITS_STATEMENT)).toHaveLength(9);`
     // **今日は「6キー・2キー」である**(出さないのは `theme` と `roles` の2つ)。
-    expect(Object.keys(APP_KEY_EMITS_STATEMENT)).toHaveLength(8);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】8 → 9**(9本目 `design_memory` を足した)。**旧(逐語)**: `expect(Object.keys(APP_KEY_EMITS_STATEMENT)).toHaveLength(8);`
+    // **今日は「6キー・3キー」である**(出さないのは `theme` / `roles` / `design_memory`。`design_memory` は `T01D` が出す側へ移す)。
+    // **【`V20-M15-T01D`】今日は「7キー・2キー」である**(出さないのは `theme` と `roles`。`design_memory` は出す側へ移した。
+    // 表の本数 9 は動かない)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行14)】旧(逐語)**: `expect(Object.keys(APP_KEY_EMITS_STATEMENT)).toHaveLength(9);` —— 10本目 `workspace` を
+    // 「出さない」側に足したので 9 → 10。 **今日は「7キー・3キー」である**(出さないのは `theme` / `roles` / `workspace`)。
+    expect(Object.keys(APP_KEY_EMITS_STATEMENT)).toHaveLength(10);
   });
 
   test("8キー目が増えると上の照合が赤くなる(schemas/ を1バイトも変えずに確かめる)", () => {
@@ -4213,31 +4515,36 @@ describe("V3-M12-T11: app のキーのうち要件ドキュメントに文を出
   function sampleTheme(): Theme {
     return {
       slots: {
-        "--color-danger": "#a00000",
-        "--color-text": "#000000",
-        "--color-text-label": "#595959",
-        "--color-text-placeholder": "#595959",
-        "--color-text-secondary": "#595959",
-        "--color-border": "#767676",
-        "--color-page-background": "#ffffff",
-        "--color-surface-highlight": "#f2f2f2",
-        "--font-family-base": "system-ui, sans-serif",
-        "--font-size-note": "0.875rem",
-        "--font-size-secondary": "0.85em",
-        "--line-height-base": "1.6",
-        "--space-1": "0.25rem",
-        "--space-2": "0.5rem",
-        "--space-3": "0.75rem",
-        "--space-4": "1rem",
-        "--space-5": "1.25rem",
-        "--space-6": "2rem",
-        "--border-width": "1px",
-        "--control-border-radius": "4px",
-        "--surface-shadow": "none",
-        "--focus-outline-color": "#005fcc",
-        "--focus-outline-width": "2px",
-        "--detail-label-width": "8rem",
-        "--login-max-width": "22rem",
+        danger: "#a00000",
+        body_text: "#000000",
+        label_text: "#595959",
+        placeholder_text: "#595959",
+        secondary_text: "#595959",
+        border_color: "#767676",
+        page_background: "#ffffff",
+        highlight_surface: "#f2f2f2",
+        // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+        primary_fill: "#ffffff",
+        on_primary: "#000000",
+        overlay_background: "#ffffff",
+        overlay_text: "#000000",
+        body_font: "system-ui, sans-serif",
+        note_font_size: "0.875rem",
+        secondary_font_size: "0.85em",
+        body_line_height: "1.6",
+        space_1: "0.25rem",
+        space_2: "0.5rem",
+        space_3: "0.75rem",
+        space_4: "1rem",
+        space_5: "1.25rem",
+        space_6: "2rem",
+        border_width: "1px",
+        control_radius: "4px",
+        surface_shadow: "none",
+        focus_ring: "#005fcc",
+        focus_ring_width: "2px",
+        // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+        // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
       },
     };
   }
@@ -4356,36 +4663,44 @@ describe("V3-M12-T11: $defs/theme(25スロット)のキーのうち要件ドキ�
    * 他の3件と同じ「ベタ書きの列挙」に直した。**下のテストはこの回り道の実測を記録している。
    */
   const THEME_SLOT_EMITS_STATEMENT: Record<string, boolean> = {
-    "--color-danger": false,
-    "--color-text": false,
-    "--color-text-label": false,
-    "--color-text-placeholder": false,
-    "--color-text-secondary": false,
-    "--color-border": false,
-    "--color-page-background": false,
-    "--color-surface-highlight": false,
-    "--font-family-base": false,
-    "--font-size-note": false,
-    "--font-size-secondary": false,
-    "--line-height-base": false,
-    "--space-1": false,
-    "--space-2": false,
-    "--space-3": false,
-    "--space-4": false,
-    "--space-5": false,
-    "--space-6": false,
-    "--border-width": false,
-    "--control-border-radius": false,
-    "--surface-shadow": false,
-    "--focus-outline-color": false,
-    "--focus-outline-width": false,
-    "--detail-label-width": false,
-    "--login-max-width": false,
+    danger: false,
+    body_text: false,
+    label_text: false,
+    placeholder_text: false,
+    secondary_text: false,
+    border_color: false,
+    page_background: false,
+    highlight_surface: false,
+    // 【V20-M9 / ADR-0474 §1-2】足した4枠。どれも文を出さない(silent)。
+    primary_fill: false,
+    on_primary: false,
+    overlay_background: false,
+    overlay_text: false,
+    body_font: false,
+    note_font_size: false,
+    secondary_font_size: false,
+    body_line_height: false,
+    space_1: false,
+    space_2: false,
+    space_3: false,
+    space_4: false,
+    space_5: false,
+    space_6: false,
+    border_width: false,
+    control_radius: false,
+    surface_shadow: false,
+    focus_ring: false,
+    focus_ring_width: false,
+    // 【V20-M9 / ADR-0474 §1-3】2枠を語彙から外したので2行を外した。旧(逐語):
+    // "--detail-label-width": false,
+    // "--login-max-width": false,
   };
 
   test("$defs/theme の25キー全部が required である(完了条件5。歯止めの形が違う理由の実測)", () => {
     const schema = canonicalThemeSchema();
-    expect(schema.required).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(schema.required).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(schema.required).toHaveLength(23);
+    expect(schema.required).toHaveLength(27);
     // **required の集合と properties の集合が完全に一致する** —— 任意のキーが1つも無い。
     expect([...schema.required].sort()).toEqual([...canonicalThemeKeys()].sort());
   });
@@ -4394,7 +4709,9 @@ describe("V3-M12-T11: $defs/theme(25スロット)のキーのうち要件ドキ�
     expect(canonicalThemeKeys()).toEqual(Object.keys(THEME_SLOT_EMITS_STATEMENT));
     // **25キー全部が `false`(silent)である。** `emits` は0マス。
     expect(Object.values(THEME_SLOT_EMITS_STATEMENT).every((v) => v === false)).toBe(true);
-    expect(Object.keys(THEME_SLOT_EMITS_STATEMENT)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(THEME_SLOT_EMITS_STATEMENT)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(THEME_SLOT_EMITS_STATEMENT)).toHaveLength(23);
+    expect(Object.keys(THEME_SLOT_EMITS_STATEMENT)).toHaveLength(27);
   });
 
   test("26キー目が増えると上の照合が赤くなる(schemas/ を1バイトも変えずに確かめる)", () => {
@@ -4434,31 +4751,36 @@ describe("V3-M12-T11: $defs/theme(25スロット)のキーのうち要件ドキ�
       });
 
       const baseSlots: Record<string, string> = {
-        "--color-danger": "#a00000",
-        "--color-text": "#000000",
-        "--color-text-label": "#595959",
-        "--color-text-placeholder": "#595959",
-        "--color-text-secondary": "#595959",
-        "--color-border": "#767676",
-        "--color-page-background": "#ffffff",
-        "--color-surface-highlight": "#f2f2f2",
-        "--font-family-base": "system-ui, sans-serif",
-        "--font-size-note": "0.875rem",
-        "--font-size-secondary": "0.85em",
-        "--line-height-base": "1.6",
-        "--space-1": "0.25rem",
-        "--space-2": "0.5rem",
-        "--space-3": "0.75rem",
-        "--space-4": "1rem",
-        "--space-5": "1.25rem",
-        "--space-6": "2rem",
-        "--border-width": "1px",
-        "--control-border-radius": "4px",
-        "--surface-shadow": "none",
-        "--focus-outline-color": "#005fcc",
-        "--focus-outline-width": "2px",
-        "--detail-label-width": "8rem",
-        "--login-max-width": "22rem",
+        danger: "#a00000",
+        body_text: "#000000",
+        label_text: "#595959",
+        placeholder_text: "#595959",
+        secondary_text: "#595959",
+        border_color: "#767676",
+        page_background: "#ffffff",
+        highlight_surface: "#f2f2f2",
+        // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+        primary_fill: "#ffffff",
+        on_primary: "#000000",
+        overlay_background: "#ffffff",
+        overlay_text: "#000000",
+        body_font: "system-ui, sans-serif",
+        note_font_size: "0.875rem",
+        secondary_font_size: "0.85em",
+        body_line_height: "1.6",
+        space_1: "0.25rem",
+        space_2: "0.5rem",
+        space_3: "0.75rem",
+        space_4: "1rem",
+        space_5: "1.25rem",
+        space_6: "2rem",
+        border_width: "1px",
+        control_radius: "4px",
+        surface_shadow: "none",
+        focus_ring: "#005fcc",
+        focus_ring_width: "2px",
+        // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+        // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
       };
       // **25キー全部がここで埋まっていることを、`schemas/` 側の実測(canonicalThemeKeys)と突き合わせる。**
       expect(Object.keys(baseSlots).sort()).toEqual(canonicalThemeKeys().sort());
@@ -4470,7 +4792,7 @@ describe("V3-M12-T11: $defs/theme(25スロット)のキーのうち要件ドキ�
       });
       const docA = generateRequirementsDoc(root, PROBE_APP_ID);
 
-      const changedSlots = { ...baseSlots, "--color-danger": "#123456", "--space-1": "9rem" };
+      const changedSlots = { ...baseSlots, danger: "#123456", space_1: "9rem" };
       applyHere({
         diff_id: "d-003-theme-b",
         intent: "見た目Bへ差し替える。",
@@ -4941,10 +5263,26 @@ describe("V3-M13-T12: ADR-0068 A群 —— スカラ形7宣言が要件ドキュ
    *   **地の文に出すのはマニフェストの**値**であって、キーの名前ではない**
    *   (`ADR-0025` §4-2 の描き方を1バイトも変えていない)。
    */
+  /** `$defs/theme` の properties のキー(**ファイルとして読む**。V20-M8 で役割名になった)。 */
+  const THEME_KEYS_FOR_TEMPLATE_GUARD: readonly string[] = Object.keys(
+    (
+      JSON.parse(
+        readFileSync(join(import.meta.dir, "..", "..", "schemas", "manifest.schema.json"), "utf-8"),
+      ) as { $defs: { theme: { properties: Record<string, unknown> } } }
+    ).$defs.theme.properties,
+  );
+
   test("テーマ25スロットには今日も1本も足していない(プリセット / custom_css は門A が覆した。ID にだけ現れ、本文には現れない)", () => {
     for (const [id, body] of Object.entries(REQUIREMENT_TEMPLATES)) {
       // **覆されていない1件。全数で禁じ続ける。**
       expect(`${id}:${body}`).not.toContain("--color");
+      // **【V20-M8 / ADR-0473】キーが役割名になったので、上の `--color` だけでは役割名の23件を
+      // 1つも見ない(黙って意味を失う)。** 役割名そのものが ID にも本文にも現れないことを足す
+      // (`--` で始まる名前を残した2件は上の形のまま `--` を含むので、ID と本文の両方で見る)。
+      for (const key of THEME_KEYS_FOR_TEMPLATE_GUARD) {
+        expect(id, key).not.toContain(key);
+        expect(body, key).not.toContain(key);
+      }
       // **本文にはキーの名前が1文字も現れない**(**ID は対象外** —— `screens.preset_*` /
       // `screens.custom_css*` の11本の ID にはもちろん現れる)。
       expect(body).not.toContain("preset_");
@@ -5365,6 +5703,19 @@ describe("V4-M32-T02: $defs/field のキー × 型 のうち要件ドキュメ�
       image: "emits",
       file: "emits",
     },
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】13キー目。** `data.field_unique_message`(文言を逐語で写す1文)。
+    // **`unique` を書ける9型すべてに書ける**(`unique` の無い列・`false` の列は適用時に断る)。
+    unique_message: {
+      text: "emits",
+      long_text: "emits",
+      number: "emits",
+      boolean: "emits",
+      date: "emits",
+      select: "emits",
+      reference: "emits",
+      image: "emits",
+      file: "emits",
+    },
     /*
      * **【`V8-M20` / 台帳 `J-G28` / `ADR-0301`】`audience` と `writable_by` の
      * 2行(どちらも9型とも `emits`)をこの表から落とした。**
@@ -5578,10 +5929,13 @@ describe("V4-M32-T02: $defs/field のキー × 型 のうち要件ドキュメ�
     // `emits` は 77 → 59 になった。****`silent`(1)と `unwritable`(48)は1マスも
     // 動いていない。****このファイルで `$defs/field` のキーが減るのは初めてである。**
     const all = cells();
-    expect(all).toHaveLength(108);
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】108 → 117(13キー目 `unique_message` × 9型)。**
+    // **旧(逐語)**: `expect(all).toHaveLength(108);` **足したのは `unique_message` の1行(9マスとも `emits`)だけである。**
+    expect(all).toHaveLength(117);
     // **【`V6-M6-T02` / `ADR-0291` A1 で 76 → 77 になった】** `reference_picker/reference` の
     // 1マスが `silent` から移った。**マスの総数(126)は1マスも動いていない。**
-    expect(all.filter(([, e]) => e === "emits")).toHaveLength(59);
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】59 → 68(`unique_message` の9マス)。** **旧(逐語)**: `expect(all.filter(([, e]) => e === "emits")).toHaveLength(59);`
+    expect(all.filter(([, e]) => e === "emits")).toHaveLength(68);
     // **`silent` が0であることを明示的に検査する。**
     // **今日、`$defs/field` に書けるキーは全部が要件定義書に文を出す。**
     // **これは `$defs/view` 側とは違う**(view 側は今日も26マスが `silent` であり、
@@ -5625,7 +5979,8 @@ describe("V4-M32-T02: $defs/field のキー × 型 のうち要件ドキュメ�
     // **【`V8-M20` / 台帳 `J-G28` / `ADR-0301` で 14 → 12 に縮んだ】** **旧:
     // `toHaveLength(14)`。** **`$defs/field` から `audience` / `writable_by` が
     // 廃止されたためである。**
-    expect(Object.keys(FIELD_KEY_EMITS_STATEMENT)).toHaveLength(12);
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】12 → 13。** **旧(逐語)**: `expect(Object.keys(FIELD_KEY_EMITS_STATEMENT)).toHaveLength(12);`
+    expect(Object.keys(FIELD_KEY_EMITS_STATEMENT)).toHaveLength(13);
   });
 
   test("`unwritable` の48マスは schema の allOf が実際に `false` にしている(散文で決めない)", () => {
@@ -5745,7 +6100,7 @@ describe("V4-M32-T02: ADR-0126 A2 —— v4 が足した14キーが要件ドキ�
         {
           op: "update_view",
           view: "book-detail",
-          changes: { field_groups: { 基本情報: ["title", "memo"] } },
+          changes: { field_sections: { 基本情報: ["title", "memo"] } },
         },
         { op: "update_view", view: "book-form", changes: { after_save: "book-detail" } },
         { op: "change_field", table: "books", field: "title", changes: { unique: true } },
@@ -5900,7 +6255,8 @@ describe("V4-M32-T02: ADR-0126 A2 —— v4 が足した14キーが要件ドキ�
     ]);
   });
 
-  test("3: view.field_groups —— まとまり1件につき1文 + 所属項目1件につき1文", () => {
+  // **【2026-09-24。`V20-M3-T01`】旧テスト名の逐語**: 「3: view.field_groups —— まとまり1件につき1文 + 所属項目1件につき1文」。綴りだけを改めた。
+  test("3: view.field_sections —— まとまり1件につき1文 + 所属項目1件につき1文", () => {
     seedAllV4Keys();
     expect(textsOf("screens.field_group")).toEqual([
       "画面 `book-detail` の `1` 番目の項目のまとまりの名前は 「基本情報」 である。",
@@ -6330,7 +6686,34 @@ describe("V4-M39-T01: ADR-0144 / ADR-0145 —— 画面の見せ方9キーと逃
     // **【`V8-M13-T03` / 台帳 `Q-G31a` / `Q-G31b` で 137 → 149 に更新した】**
     // **旧: `toHaveLength(137)`。** **増えたのは集計表の中身を述べる12本ちょうどである。**
     // **本 ADR の増分ではない。**
-    expect(ids).toHaveLength(149);
+    // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 149 → 150 に更新した】**
+    // **旧: `toHaveLength(149)`。** **増えたのは利用文脈(役割の `density`)を述べる
+    // `features.role_density` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)で 150 → 151 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(150);` **増えたのはアプリの型を述べる
+    // `screens.design_pattern` の1本ちょうどである**(減った本数・改名は0。選んだ記録を述べる本は0)。
+    // **【2026-09-27。`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)で 151 → 152 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(151);` **増えたのは未ログインに隠す項目を述べる
+    // `features.role_rule_hidden_field` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】152 → 153 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(152);` **増えたのはメニューの位置のアプリの既定を述べる
+    // `screens.navigation_placement` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】153 → 154 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(153);` **増えたのはマイページを置くことを述べる
+    // `screens.my_page` の1本ちょうどである**(減った本数・改名は0。本数は `ADR-0488` 式6 の python で別に数えて 154)。
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】154 → 155。** **旧(逐語)**: `expect(ids).toHaveLength(154);`
+    // **増えたのは `data.field_unique_message` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M5-T08` / 授権 `ADR-0533` 行32(`D-V23-130`)】155 → 156。** **旧(逐語)**: `expect(ids).toHaveLength(155);`
+    // **増えたのは `data.table_invitation` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M6-T10` / 授権 `ADR-0539` 行19(`D-V23-159`)】156 → 157。** **旧(逐語)**: `expect(ids).toHaveLength(156);`
+    // **増えたのは `data.table_access_principal_row` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M7-T07` / 授権 `ADR-0543` 行14(`D-V23-195`)】157 → 158。** **旧(逐語)**: `expect(ids).toHaveLength(157);`
+    // **増えたのは子の表に行を作れる権限の宣言を述べる `data.permission_create_child` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 158)。
+    // **【`V23-M8-T08` / 授権 `ADR-0545` 行44(`D-V23-216`)】158 → 159。** **旧(逐語)**: `expect(ids).toHaveLength(158);`
+    // **増えたのは表の変更履歴の宣言を述べる `data.table_history` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 159)。
+    // **【`V23-M9-T05` / 授権 `ADR-0550` 行3(`D-V23-238`・`D-V23-254`)】159 → 161。** **旧(逐語)**: `expect(ids).toHaveLength(159);`
+    // **増えたのは名簿への自動登録と行の最後の管理者を述べる `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 161)。
+    expect(ids).toHaveLength(161);
     for (const template of NEW_TEMPLATES) {
       expect(ids).toContain(template);
     }
@@ -6524,6 +6907,14 @@ describe("V4-M39-T01: ADR-0144 / ADR-0145 —— 画面の見せ方9キーと逃
       // **`screens.filter_equals` と同じ理由で、値を解釈せず逐語引用にした。**
       // **本 ADR(`ADR-0145`)の増分ではない。**
       "features.role_condition_equals",
+      // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61`)で1本増えた】** **旧一覧はこの行を持たない。**
+      // **アプリの型(`app.design_memory.patterns` の1件)を写す1本である** —— 型は自由な1文なので、
+      // `data.field_option` と同じ逐語引用の形を採った。 **本 ADR(`ADR-0145`)の増分ではない**
+      // (下の assertion がそれを別に固定している)。 `ADR-0479` §Decision 8 の「当たらない」の読み。
+      "screens.design_pattern",
+      // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】で1本増えた。旧一覧はこの行を持たない。** メニューの位置のアプリの既定
+      // (`side` / `top`)を写す1本である。 **本 ADR(`ADR-0145`)の増分ではない。**
+      "screens.navigation_placement",
       "screens.filter",
       "screens.filter_equals",
       "screens.filter_contains",
@@ -6532,6 +6923,9 @@ describe("V4-M39-T01: ADR-0144 / ADR-0145 —— 画面の見せ方9キーと逃
       "screens.filter_in_value",
       "screens.custom_css_digest",
       "data.field_option",
+      // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】1本増えた。旧一覧はこの行を持たない。** 一意違反の文言(自由な1文)を
+      // 逐語引用で写す1本である。 **本 ADR(`ADR-0145`)の増分ではない**(下の assertion が別に固定している)。
+      "data.field_unique_message",
       "data.field_unit",
       "data.field_emphasis",
       // **【`V7-M6-T03` / `Z-G28` で1本増えた】** **旧一覧はこの行を持たない。**
@@ -6845,7 +7239,34 @@ describe("V6-M6-T02: ADR-0291 —— 参照項目の選び方が要件ドキュ�
     // **【`V8-M13-T03` / 台帳 `Q-G31a` / `Q-G31b` で 137 → 149 に更新した】**
     // **旧: `toHaveLength(137)`。** **増えたのは集計表の中身を述べる12本ちょうどである。**
     // **本 ADR の増分ではない。**
-    expect(ids).toHaveLength(149);
+    // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 149 → 150 に更新した】**
+    // **旧: `toHaveLength(149)`。** **増えたのは利用文脈(役割の `density`)を述べる
+    // `features.role_density` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)で 150 → 151 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(150);` **増えたのはアプリの型を述べる
+    // `screens.design_pattern` の1本ちょうどである**(減った本数・改名は0。選んだ記録を述べる本は0)。
+    // **【2026-09-27。`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)で 151 → 152 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(151);` **増えたのは未ログインに隠す項目を述べる
+    // `features.role_rule_hidden_field` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】152 → 153 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(152);` **増えたのはメニューの位置のアプリの既定を述べる
+    // `screens.navigation_placement` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】153 → 154 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(153);` **増えたのはマイページを置くことを述べる
+    // `screens.my_page` の1本ちょうどである**(減った本数・改名は0。本数は `ADR-0488` 式6 の python で別に数えて 154)。
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】154 → 155。** **旧(逐語)**: `expect(ids).toHaveLength(154);`
+    // **増えたのは `data.field_unique_message` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M5-T08` / 授権 `ADR-0533` 行33(`D-V23-130`)】155 → 156。** **旧(逐語)**: `expect(ids).toHaveLength(155);`
+    // **増えたのは `data.table_invitation` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M6-T10` / 授権 `ADR-0539` 行20(`D-V23-159`)】156 → 157。** **旧(逐語)**: `expect(ids).toHaveLength(156);`
+    // **増えたのは `data.table_access_principal_row` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M7-T07` / 授権 `ADR-0543` 行14(`D-V23-195`)】157 → 158。** **旧(逐語)**: `expect(ids).toHaveLength(157);`
+    // **増えたのは子の表に行を作れる権限の宣言を述べる `data.permission_create_child` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 158)。
+    // **【`V23-M8-T08` / 授権 `ADR-0545` 行45(`D-V23-216`)】158 → 159。** **旧(逐語)**: `expect(ids).toHaveLength(158);`
+    // **増えたのは表の変更履歴の宣言を述べる `data.table_history` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 159)。
+    // **【`V23-M9-T05` / 授権 `ADR-0550` 行4(`D-V23-238`・`D-V23-254`)】159 → 161。** **旧(逐語)**: `expect(ids).toHaveLength(159);`
+    // **増えたのは名簿への自動登録と行の最後の管理者を述べる `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 161)。
+    expect(ids).toHaveLength(161);
     for (const template of NEW_TEMPLATES) {
       expect(ids).toContain(template);
     }
@@ -7262,12 +7683,43 @@ describe("V7-M6-T03: Z-G28 —— アクセス権管理の宣言が要件ドキ�
     // **【`V8-M13-T03` / 台帳 `Q-G31a` / `Q-G31b` で 137 → 149 に更新した】**
     // **旧: `toHaveLength(137)`。** **増えたのは集計表の中身を述べる12本ちょうどである。**
     // **本 ADR の増分ではない。**
-    expect(ids).toHaveLength(149);
+    // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 149 → 150 に更新した】**
+    // **旧: `toHaveLength(149)`。** **増えたのは利用文脈(役割の `density`)を述べる
+    // `features.role_density` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)で 150 → 151 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(150);` **増えたのはアプリの型を述べる
+    // `screens.design_pattern` の1本ちょうどである**(減った本数・改名は0。選んだ記録を述べる本は0)。
+    // **【2026-09-27。`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)で 151 → 152 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(151);` **増えたのは未ログインに隠す項目を述べる
+    // `features.role_rule_hidden_field` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】152 → 153 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(152);` **増えたのはメニューの位置のアプリの既定を述べる
+    // `screens.navigation_placement` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】153 → 154 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(153);` **増えたのはマイページを置くことを述べる
+    // `screens.my_page` の1本ちょうどである**(減った本数・改名は0。本数は `ADR-0488` 式6 の python で別に数えて 154)。
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】154 → 155。** **旧(逐語)**: `expect(ids).toHaveLength(154);`
+    // **増えたのは `data.field_unique_message` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M5-T08` / 授権 `ADR-0533` 行34(`D-V23-130`)】155 → 156。** **旧(逐語)**: `expect(ids).toHaveLength(155);`
+    // **増えたのは `data.table_invitation` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M6-T10` / 授権 `ADR-0539` 行21(`D-V23-159`)】156 → 157。** **旧(逐語)**: `expect(ids).toHaveLength(156);`
+    // **増えたのは `data.table_access_principal_row` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M7-T07` / 授権 `ADR-0543` 行14(`D-V23-195`)】157 → 158。** **旧(逐語)**: `expect(ids).toHaveLength(157);`
+    // **増えたのは子の表に行を作れる権限の宣言を述べる `data.permission_create_child` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 158)。
+    // **【`V23-M8-T08` / 授権 `ADR-0545` 行46(`D-V23-216`)】158 → 159。** **旧(逐語)**: `expect(ids).toHaveLength(158);`
+    // **増えたのは表の変更履歴の宣言を述べる `data.table_history` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 159)。
+    // **【`V23-M9-T05` / 授権 `ADR-0550` 行5(`D-V23-238`・`D-V23-254`)】159 → 161。** **旧(逐語)**: `expect(ids).toHaveLength(159);`
+    // **増えたのは名簿への自動登録と行の最後の管理者を述べる `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 161)。
+    expect(ids).toHaveLength(161);
     for (const template of NEW_TEMPLATES) {
       expect(ids).toContain(template);
     }
     // **`table_access` を名に持つのは12本ちょうどである。**
-    expect(ids.filter((id) => id.includes("table_access"))).toHaveLength(12);
+    // **【`V23-M6-T10` / 授権 `ADR-0539` 行22(`D-V23-159`)】12 → 13。** **旧(逐語)**: `expect(ids.filter((id) => id.includes("table_access"))).toHaveLength(12);`
+    // **増えたのは `data.table_access_principal_row` の1本ちょうどである**(`REQUIREMENT_TEMPLATES` を別に読んで 13)。 題の「12本ちょうど。13本目を足していない」は当時の逐語で、書き換えていない。
+    // **【`V23-M9-T05` / 授権 `ADR-0550` 行6(`D-V23-238`・`D-V23-254`)】13 → 15。** **旧(逐語)**: `expect(ids.filter((id) => id.includes("table_access"))).toHaveLength(13);`
+    // **増えたのは `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(`REQUIREMENT_TEMPLATES` を別に読んで 15)。
+    expect(ids.filter((id) => id.includes("table_access"))).toHaveLength(15);
   });
 
   test("A2: 宣言した表について4項目が逐語で出る(a: 使うこと / b: 権限名と3つの組 / c: 3つの表の名前 / d: 親を辿る項目)", () => {
@@ -7701,7 +8153,34 @@ describe("V8-M22: J-G34a —— 役割とできることが要件ドキュメン
     // **【`V8-M13-T03` / 台帳 `Q-G31a` / `Q-G31b` で 137 → 149 に更新した】**
     // **旧: `toHaveLength(137)`。** **増えたのは集計表の中身を述べる12本ちょうどである。**
     // **本 ADR の増分ではない。**
-    expect(ids).toHaveLength(149);
+    // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 149 → 150 に更新した】**
+    // **旧: `toHaveLength(149)`。** **増えたのは利用文脈(役割の `density`)を述べる
+    // `features.role_density` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)で 150 → 151 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(150);` **増えたのはアプリの型を述べる
+    // `screens.design_pattern` の1本ちょうどである**(減った本数・改名は0。選んだ記録を述べる本は0)。
+    // **【2026-09-27。`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)で 151 → 152 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(151);` **増えたのは未ログインに隠す項目を述べる
+    // `features.role_rule_hidden_field` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】152 → 153 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(152);` **増えたのはメニューの位置のアプリの既定を述べる
+    // `screens.navigation_placement` の1本ちょうどである**(減った本数・改名は0)。
+    // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】153 → 154 に更新した】**
+    // **旧(逐語)**: `expect(ids).toHaveLength(153);` **増えたのはマイページを置くことを述べる
+    // `screens.my_page` の1本ちょうどである**(減った本数・改名は0。本数は `ADR-0488` 式6 の python で別に数えて 154)。
+    // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】154 → 155。** **旧(逐語)**: `expect(ids).toHaveLength(154);`
+    // **増えたのは `data.field_unique_message` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M5-T08` / 授権 `ADR-0533` 行35(`D-V23-130`)】155 → 156。** **旧(逐語)**: `expect(ids).toHaveLength(155);`
+    // **増えたのは `data.table_invitation` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M6-T10` / 授権 `ADR-0539` 行23(`D-V23-159`)】156 → 157。** **旧(逐語)**: `expect(ids).toHaveLength(156);`
+    // **増えたのは `data.table_access_principal_row` の1本ちょうどである**(この describe の足した本数は動かない)。
+    // **【`V23-M7-T07` / 授権 `ADR-0543` 行14(`D-V23-195`)】157 → 158。** **旧(逐語)**: `expect(ids).toHaveLength(157);`
+    // **増えたのは子の表に行を作れる権限の宣言を述べる `data.permission_create_child` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 158)。
+    // **【`V23-M8-T08` / 授権 `ADR-0545` 行47(`D-V23-216`)】158 → 159。** **旧(逐語)**: `expect(ids).toHaveLength(158);`
+    // **増えたのは表の変更履歴の宣言を述べる `data.table_history` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 159)。
+    // **【`V23-M9-T05` / 授権 `ADR-0550` 行7(`D-V23-238`・`D-V23-254`)】159 → 161。** **旧(逐語)**: `expect(ids).toHaveLength(159);`
+    // **増えたのは名簿への自動登録と行の最後の管理者を述べる `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 161)。
+    expect(ids).toHaveLength(161);
     for (const template of ROLE_TEMPLATES) {
       expect(ids).toContain(template);
     }
@@ -7709,7 +8188,17 @@ describe("V8-M22: J-G34a —— 役割とできることが要件ドキュメン
     // **【`V8-M26` / ユーザ決定 `D-V8-70`(2026-08-11)で 14 → 15 に更新した】**
     // **旧: `toHaveLength(14)`。** **増えたのは `features.role_condition_is_empty` の1本
     // ちょうどで、減った本数・改名は0である。** **直前の1行の字面は1バイトも消していない。**
-    expect(ids.filter((id) => id.startsWith("features.role"))).toHaveLength(15);
+    // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 15 → 16 に更新した】**
+    // **旧: `toHaveLength(15)`。** **増えたのは利用文脈を述べる `features.role_density` の
+    // 1本ちょうどである。** **`ROLE_TEMPLATES`(`V8-M22` と `V8-M26` の15本)には入れていない** ——
+    // **R3 の「全部が使われている」は `declareRoles()` の試材で測る15本のままで、
+    // 16本目は下の `V20-M11-T06` の describe が自分の試材で測る。**
+    // **【2026-09-27。`V21-M2B`(授権 `ADR-0483` 行23)で 16 → 17 に更新した】**
+    // **旧(逐語)**: `expect(ids.filter((id) => id.startsWith("features.role"))).toHaveLength(16);`
+    // **増えたのは未ログインに隠す項目を述べる `features.role_rule_hidden_field` の1本ちょうどである。**
+    // **`ROLE_TEMPLATES` には入れていない**(`declareRoles()` の試材は未ログインの規則を持たない。
+    // 17本目は `src/kernel/anonymous-hidden-fields-apply.test.ts` の (Q-1) が自分の試材で測る)。
+    expect(ids.filter((id) => id.startsWith("features.role"))).toHaveLength(17);
   });
 
   // --- R2: 役割の名前とできることが逐語で出る ------------------------------------------
@@ -8298,5 +8787,1328 @@ test("V10-M34-T01 (4b): 文の型は1つも増えていない(REQUIREMENT_TEMPLA
   // **`ADR-0379` 限定6「要件定義書に出す文の型は1つちょうど」の前提は
   // 「その文が `REQUIREMENT_TEMPLATES` の1本である」ことであった。**
   // **本段は前書きの固定文を採ったので、テンプレートは1本も増えない。**
-  expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(149);
+  // **【`V20-M11-T06` / `ADR-0475`(`ADR-0315` 限定1 の引き直し)で 149 → 150 に更新した】**
+  // **旧: `toHaveLength(149)`。** **増えたのは利用文脈(役割の `density`)を述べる
+  // `features.role_density` の1本ちょうどである**(減った本数・改名は0)。
+  // **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)で 150 → 151 に更新した】**
+  // **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(150);` **増えたのはアプリの型を述べる
+  // `screens.design_pattern` の1本ちょうどである**(減った本数・改名は0。選んだ記録を述べる本は0)。
+  // **【2026-09-27。`V21-M2B` / `ADR-0482` の `AN-G2` §2-7(授権 `ADR-0483` 行23)で 151 → 152 に更新した】**
+  // **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(151);` **増えたのは未ログインに隠す項目を述べる
+  // `features.role_rule_hidden_field` の1本ちょうどである**(減った本数・改名は0)。
+  // **【`V22-M2-T09a` / `ADR-0486`(授権 `ADR-0487` 行14 の追補)】152 → 153 に更新した】**
+  // **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(152);` **増えたのはメニューの位置のアプリの既定を述べる
+  // `screens.navigation_placement` の1本ちょうどである**(減った本数・改名は0)。
+  // **【`V22-M3-T02` / `ADR-0488` 限定6(授権 `ADR-0489` 行3)】153 → 154 に更新した】**
+  // **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(153);` **増えたのはマイページを置くことを述べる
+  // `screens.my_page` の1本ちょうどである**(減った本数・改名は0。本数は `ADR-0488` 式6 の python で別に数えて 154)。
+  // **【`V23-M2-T02b` / 授権 `ADR-0518`(`D-V23-62`)】154 → 155。** **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(154);`
+  // **増えたのは `data.field_unique_message` の1本ちょうどである。**
+  // **【`V23-M5-T08` / 授権 `ADR-0533` 行36(`D-V23-130`)】155 → 156。** **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(155);`
+  // **増えたのは `data.table_invitation` の1本ちょうどである。** 題の「1つも増えていない」は当時の逐語で、書き換えていない(題の意図は `V10-M34-T01` の段で増えていないことである)。
+  // **【`V23-M6-T10` / 授権 `ADR-0539` 行24(`D-V23-159`)】156 → 157。** **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(156);`
+  // **増えたのは `data.table_access_principal_row` の1本ちょうどである。** 題の「1つも増えていない」は当時の逐語で、書き換えていない。
+  // **【`V23-M7-T07` / 授権 `ADR-0543` 行14(`D-V23-195`)】157 → 158。** **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(157);`
+  // **増えたのは子の表に行を作れる権限の宣言を述べる `data.permission_create_child` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 158)。
+  // **【`V23-M8-T08` / 授権 `ADR-0545` 行48(`D-V23-216`)】158 → 159。** **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(158);`
+  // **増えたのは表の変更履歴の宣言を述べる `data.table_history` の1本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 159)。
+  // **【`V23-M9-T05` / 授権 `ADR-0550` 行8(`D-V23-238`・`D-V23-254`)】159 → 161。** **旧(逐語)**: `expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(159);`
+  // **増えたのは名簿への自動登録と行の最後の管理者を述べる `data.table_access_auto_enroll` と `data.table_access_last_row_manager` の2本ちょうどである**(本数は `REQUIREMENT_TEMPLATES` を別に読んで 161)。
+  expect(Object.keys(REQUIREMENT_TEMPLATES)).toHaveLength(161);
 });
+
+/**
+ * **【`V20-M11-T06` / `ADR-0475`】役割の見せ方(`app.roles[].density`)を「利用文脈」として出す。**
+ *
+ * **根拠はユーザ要求である** —— 設計の要求書(PRD §F5)の逐語「プロファイルは
+ * `bun run requirements-doc` の出力に「利用文脈」として含める」。
+ * **`ADR-0315` 限定1(役割について出すのは3つに閉じる)を `ADR-0475` が
+ * 「4つ目 = 利用文脈を1種だけ足す。5つ目を足さない」に引き直した。**
+ *
+ * **足した文の型は1本ちょうど**(`features.role_density`)。**値は既存の語彙グループ
+ * `density`(`screens.preset_density` と同じ2値)で出すので、識別子グループも語彙グループも
+ * 1件も増えない。** **文は `features` 節に出る**(`ADR-0025` §7 の6節を増やさない)。
+ *
+ * **【この describe が主張していないこと】** 画面が実際にその詰まり具合で描かれることは
+ * 1文も検査していない(描き方の判定は表示層の1箇所 = `ADR-0464` 限定5)。
+ * **出るのは宣言だけである。**
+ */
+describe("V20-M11-T06: 役割の見せ方が「利用文脈」として要件定義書に現れる", () => {
+  const ROLE_DENSITY_TEMPLATE: RequirementTemplateId = "features.role_density";
+
+  function declareRolesWithDensity(): void {
+    apply({
+      diff_id: "d-v20m11-t06",
+      intent: "編集者の画面を詰めて、閲覧者の画面をゆったり表示する",
+      operations: [
+        {
+          op: "set_roles",
+          roles: [
+            {
+              id: "owner",
+              name: "持ち主",
+              rules: [
+                { target: "app", can: ["write"] },
+                { target: "role", can: ["write"] },
+              ],
+            },
+            { id: "editor", name: "編集者", density: "compact" },
+            { id: "viewer", name: "閲覧者", density: "comfortable" },
+          ],
+        },
+      ],
+    });
+  }
+
+  test("T06-1: テンプレートは1本ちょうどで、本文に「利用文脈」を含み、画面の宣言が勝つことを書く", () => {
+    const body = REQUIREMENT_TEMPLATES[ROLE_DENSITY_TEMPLATE];
+    expect(body).toContain("利用文脈");
+    expect(body).toContain("{role_id}");
+    expect(body).toContain("{density}");
+    expect(body).toContain("画面の宣言");
+    const ids = Object.keys(REQUIREMENT_TEMPLATES);
+    expect(ids.filter((id) => id.includes("density") && id.startsWith("features."))).toEqual([
+      ROLE_DENSITY_TEMPLATE,
+    ]);
+  });
+
+  test("T06-2: density を書いた役割にだけ1文ずつ出る(出典は /app/roles/<i>/density、節は features)", () => {
+    declareRolesWithDensity();
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const own = doc.statements.filter((s) => s.template === ROLE_DENSITY_TEMPLATE);
+    expect(own.map((s) => s.text)).toEqual([
+      "役割 `editor` は、利用文脈として、この役割の人が開く画面を詰まり具合 `compact` で表示すると宣言している(画面の宣言が在る画面では、画面の宣言が勝つ)。",
+      "役割 `viewer` は、利用文脈として、この役割の人が開く画面を詰まり具合 `comfortable` で表示すると宣言している(画面の宣言が在る画面では、画面の宣言が勝つ)。",
+    ]);
+    expect(own.map((s) => s.section)).toEqual(["features", "features"]);
+    expect(own.map((s) => JSON.stringify(s.sources))).toEqual([
+      JSON.stringify([{ kind: "manifest", pointer: "/app/roles/1/density" }]),
+      JSON.stringify([{ kind: "manifest", pointer: "/app/roles/2/density" }]),
+    ]);
+    // **利用文脈の文は markdown にも出る。**
+    const markdown = renderRequirementsMarkdown(doc.statements);
+    expect(markdown).toContain("利用文脈");
+    // **内部記号を1文字も出さない**(`DS-G` / `V20-M` / `CP-V20` / `D-V20`)。
+    for (const symbol of ["DS-G", "V20-M", "CP-V20", "D-V20"]) {
+      expect(`${symbol}:${String(markdown.includes(symbol))}`).toBe(`${symbol}:false`);
+    }
+  });
+
+  test("T06-3: どの役割にも density を書いていないアプリでは1文も出ない(既定の3役割でも0)", () => {
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(doc.statements.filter((s) => s.template === ROLE_DENSITY_TEMPLATE)).toHaveLength(0);
+    expect(renderRequirementsMarkdown(doc.statements)).not.toContain("利用文脈");
+  });
+
+  test("T06-4: 要件定義書の側に `resolveRoleDisplay` で始まる識別子を作らない(ADR-0464 限定5)", () => {
+    const source = readFileSync(join(import.meta.dir, "requirements-doc.ts"), "utf-8");
+    expect(source.match(/resolveRoleDisplay/g) ?? []).toHaveLength(0);
+  });
+});
+
+/**
+ * **【`V20-M15-T01D` / `ADR-0479`(`D-V20-61` = 型だけ載せる)】アプリの型(`app.design_memory.patterns`)を
+ * 要件定義書の `screens` 節の先頭に出す。**
+ *
+ * **根拠はユーザ要求である** —— 設計の要求書(PRD §F11)の末尾「要件定義書の出力に含める」と、
+ * それを「型だけ」に絞ったユーザの決定 `D-V20-61`。
+ *
+ * **足した文の型は1本ちょうど**(`screens.design_pattern`)。 **スロットは既存の `number`(`position`)と
+ * `verbatim`(`design_pattern`)だけで、識別子グループも語彙グループもスロットの種類も増えない。**
+ * **節は `screens`**(`ADR-0025` §7 の6節を増やさない)。
+ *
+ * **【この describe が主張していないこと】** 画面が実際にその型の形で描かれることは1文も検査していない
+ * (型は描画を1つも決めない —— `ADR-0479` §Decision 1 の 2)。 **出るのは宣言だけである。**
+ * **選んだ記録(`choices`)とその理由は1バイトも出さない**(`D-V20-61`)—— T01D-3 / T01D-4 が撃つ。
+ */
+describe("V20-M15-T01D: アプリの型が要件定義書の画面の節に現れる(選んだ記録と理由は出さない)", () => {
+  const DESIGN_PATTERN_TEMPLATE: RequirementTemplateId = "screens.design_pattern";
+  /** 選んだ記録の3欄。**他のどこにも現れない固有の綴り**を入れて、出力を丸ごと走査する。 */
+  const CHOICE = {
+    name: "QZX七三案名の固有綴り",
+    tradeoff: "QZX七三トレードオフの固有綴り",
+    reason: "QZX七三理由の固有綴り",
+  };
+  const PATTERNS = ["入力フォームは区切りのある1カラムにする", "一覧は新しい順に並べる"];
+
+  let seq = 0;
+  function rememberDesign(designMemory: { choice?: typeof CHOICE; patterns?: string[] }): void {
+    seq += 1;
+    apply({
+      diff_id: `d-v20m15-t01d-${seq}`,
+      intent: "選んだ形を覚える",
+      operations: [{ op: "remember_design", design_memory: designMemory }],
+    });
+  }
+
+  test("T01D-1: テンプレートは1本ちょうどで、「宣言している」と書き、末尾が型の逐語引用で、screens の先頭に並ぶ", () => {
+    const body = REQUIREMENT_TEMPLATES[DESIGN_PATTERN_TEMPLATE];
+    expect(body).toBe(
+      "このアプリは、画面の型の {position} 番目として次を宣言している:\n{design_pattern}",
+    );
+    const ids = Object.keys(REQUIREMENT_TEMPLATES);
+    expect(ids.filter((id) => id.includes("design"))).toEqual([DESIGN_PATTERN_TEMPLATE]);
+    // **screens 節の先頭**(画面ごとの文の前。アプリ全体の宣言なので画面の文に紛れさせない)。
+    expect(ids.find((id) => id.startsWith("screens."))).toBe(DESIGN_PATTERN_TEMPLATE);
+    // **選んだ記録を述べる文面は1本も無い**(`D-V20-61`)。
+    expect(ids.filter((id) => /choice|reason|tradeoff/.test(id))).toEqual([]);
+  });
+
+  test("T01D-2: 型の数だけ1文ずつ出る(出典は /app/design_memory/patterns、節は screens の先頭)", () => {
+    seedBase();
+    rememberDesign({ choice: CHOICE, patterns: PATTERNS });
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const own = doc.statements.filter((s) => s.template === DESIGN_PATTERN_TEMPLATE);
+    expect(own.map((s) => s.text)).toEqual([
+      "このアプリは、画面の型の `1` 番目として次を宣言している:\n> 入力フォームは区切りのある1カラムにする",
+      "このアプリは、画面の型の `2` 番目として次を宣言している:\n> 一覧は新しい順に並べる",
+    ]);
+    expect(own.map((s) => s.section)).toEqual(["screens", "screens"]);
+    expect(own.map((s) => JSON.stringify(s.sources))).toEqual([
+      JSON.stringify([{ kind: "manifest", pointer: "/app/design_memory/patterns" }]),
+      JSON.stringify([{ kind: "manifest", pointer: "/app/design_memory/patterns" }]),
+    ]);
+    // **逐語引用は出典の該当要素とバイト一致**(`field` = 添字の文字列)。
+    expect(own.map((s) => s.slots.design_pattern)).toEqual([
+      {
+        kind: "verbatim",
+        value: "入力フォームは区切りのある1カラムにする",
+        from: { source: { kind: "manifest", pointer: "/app/design_memory/patterns" }, field: "0" },
+      },
+      {
+        kind: "verbatim",
+        value: "一覧は新しい順に並べる",
+        from: { source: { kind: "manifest", pointer: "/app/design_memory/patterns" }, field: "1" },
+      },
+    ]);
+    // **screens 節の先頭の2文が型である**(画面ごとの `screens.target` より前)。
+    const screens = doc.statements.filter((s) => s.section === "screens");
+    expect(screens.slice(0, 3).map((s) => s.template)).toEqual([
+      DESIGN_PATTERN_TEMPLATE,
+      DESIGN_PATTERN_TEMPLATE,
+      "screens.target",
+    ]);
+    const markdown = renderRequirementsMarkdown(doc.statements);
+    expect(markdown).toContain("> 入力フォームは区切りのある1カラムにする");
+    expect(markdown).toContain("> 一覧は新しい順に並べる");
+  });
+
+  test("T01D-3: 選んだ記録の名前・トレードオフ・理由は、要件定義書のどこにも1バイトも出ない(型と一緒に書いても)", () => {
+    seedBase();
+    rememberDesign({ choice: CHOICE, patterns: PATTERNS });
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    // **陽性対照**: 選んだ記録は定義には確かに在る(在るものが出ないことを撃つ)。
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    expect(manifest.app.design_memory?.choices).toEqual([CHOICE]);
+    const markdown = renderRequirementsMarkdown(doc.statements);
+    const whole = `${markdown}\n${JSON.stringify(doc)}`;
+    for (const value of [CHOICE.name, CHOICE.tradeoff, CHOICE.reason, "QZX七三"]) {
+      expect(`${value}:${String(whole.includes(value))}`).toBe(`${value}:false`);
+    }
+    // **出典の位置にも選んだ記録を指すものが無い。**
+    expect(whole.includes("/app/design_memory/choices")).toBe(false);
+  });
+
+  test("T01D-4: 選んだ記録だけ(型が無い)のアプリでは型の文が1本も出ず、選んだ記録も出ない", () => {
+    seedBase();
+    rememberDesign({ choice: CHOICE });
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(doc.statements.filter((s) => s.template === DESIGN_PATTERN_TEMPLATE)).toHaveLength(0);
+    const whole = `${renderRequirementsMarkdown(doc.statements)}\n${JSON.stringify(doc)}`;
+    expect(whole.includes("QZX七三")).toBe(false);
+    expect(whole.includes("画面の型")).toBe(false);
+  });
+
+  test("T01D-5: 型を持たないアプリでは型の文が1本も出ない(型を外したアプリでも0)", () => {
+    seedBase();
+    let doc = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(doc.statements.filter((s) => s.template === DESIGN_PATTERN_TEMPLATE)).toHaveLength(0);
+    expect(renderRequirementsMarkdown(doc.statements)).not.toContain("画面の型");
+    rememberDesign({ patterns: PATTERNS });
+    rememberDesign({ patterns: [] });
+    doc = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(doc.statements.filter((s) => s.template === DESIGN_PATTERN_TEMPLATE)).toHaveLength(0);
+    expect(renderRequirementsMarkdown(doc.statements)).not.toContain("画面の型");
+  });
+
+  test("T01D-6: requirements-doc.ts は選んだ記録(`choices`)を読まない・テーマを述べる文面は0本のまま(ADR-0144 B1)", () => {
+    const source = readFileSync(join(import.meta.dir, "requirements-doc.ts"), "utf-8");
+    expect(source.match(/\bchoices\b/g) ?? []).toHaveLength(0);
+    expect(
+      source.match(/design_memory\.patterns|design_memory\?\.patterns/g)?.length ?? 0,
+    ).toBeGreaterThan(0);
+    expect(
+      Object.keys(REQUIREMENT_TEMPLATES).filter((id) => id.startsWith("screens.theme")),
+    ).toEqual([]);
+  });
+});
+
+/**
+ * **【`V23-M5-T08`。`ADR-0532` §Decision 1-8・限定7(決定 `D-V23-130`)】行の招待の宣言を1文で述べる。**
+ *
+ * - 足した文の型は **`data.table_invitation` の1本ちょうど**(名前に `invitation` を含むのはこれだけ。
+ *   `table_access` を名に持つ12本には入れない)。
+ * - **招待を宣言した表(`enabled: true`)にだけ1文**。 誰が招待できるか(`by` の件数。0件は作成者の権限)・
+ *   渡せる権限(`grantable` の件数)・受け取れる役割(`target_roles` の件数。0件は役割を問わない)・
+ *   期限の日数(書いていなければ0)・承諾で名簿のグループ欄を書くか(`group_from` の件数)を述べる。
+ * - スロットは既存の `id` と `number` だけで、逐語引用も識別子グループも語彙グループも足さない。
+ * - **宣言の無い表・`enabled: false` の表では1文も出ず、同じ表のほかの文は1バイトも変わらない。**
+ */
+describe("V23-M5-T08: 行の招待の宣言が要件定義書に1文で現れる", () => {
+  const INVITATION_TEMPLATE: RequirementTemplateId = "data.table_invitation";
+
+  function seedInvitationShop(): void {
+    apply({
+      diff_id: "d-v23m5-1",
+      intent: "組織・付与・名簿・チームの表を用意する",
+      operations: [
+        {
+          op: "add_table",
+          table: {
+            id: "teams",
+            name: "チーム",
+            fields: [{ id: "title", name: "名前", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "members",
+            name: "名簿",
+            fields: [
+              { id: "account", name: "アカウント", type: "text" },
+              { id: "team", name: "チーム", type: "reference", reference_table: "teams" },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "orgs",
+            name: "組織",
+            fields: [
+              { id: "title", name: "名前", type: "text" },
+              { id: "team", name: "チーム", type: "reference", reference_table: "teams" },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "org_grant",
+            name: "組織の付与",
+            fields: [
+              { id: "org", name: "組織", type: "reference", reference_table: "orgs" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              { id: "permission", name: "権限", type: "select", options: ["admin", "reader"] },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "vault",
+            name: "保管庫",
+            fields: [{ id: "title", name: "名前", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "vault_grant",
+            name: "保管庫の付与",
+            fields: [
+              { id: "vault", name: "保管庫", type: "reference", reference_table: "vault" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              { id: "permission", name: "権限", type: "select", options: ["reader"] },
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  function orgsAccess(invitations?: Record<string, unknown>): Record<string, unknown> {
+    return {
+      enabled: true,
+      permissions: [
+        { id: "admin", name: "管理", read: true, write: true, delete: true },
+        { id: "reader", name: "参照", read: true, write: false, delete: false },
+      ],
+      creator_permission: "admin",
+      grant: { table: "org_grant", target: "org", member: "member", permission: "permission" },
+      members: { table: "members", account: "account", group: "team" },
+      groups: { table: "teams" },
+      ...(invitations === undefined ? {} : { invitations }),
+    };
+  }
+
+  function vaultAccess(invitations?: Record<string, unknown>): Record<string, unknown> {
+    return {
+      enabled: false,
+      permissions: [{ id: "reader", name: "参照", read: true, write: false, delete: false }],
+      creator_permission: "reader",
+      grant: { table: "vault_grant", target: "vault", member: "member", permission: "permission" },
+      members: { table: "members", account: "account" },
+      ...(invitations === undefined ? {} : { invitations }),
+    };
+  }
+
+  let seq = 0;
+  function declareInvitations(
+    orgs: Record<string, unknown>,
+    vault: Record<string, unknown>,
+    workspace: boolean,
+  ): void {
+    seq += 1;
+    apply({
+      diff_id: `d-v23m5-decl-${seq}`,
+      intent: "組織で招待を使う",
+      operations: [
+        { op: "change_table", table: "orgs", changes: { access_control: orgs } },
+        { op: "change_table", table: "vault", changes: { access_control: vault } },
+        ...(workspace
+          ? [{ op: "set_workspace" as const, workspace: { invitations: { label: "招待" } } }]
+          : []),
+      ],
+    } as Diff);
+  }
+
+  function dataTextsOf(doc: RequirementsDoc): string[] {
+    return doc.statements
+      .filter((statement) => statement.section === "data")
+      .map((statement) => statement.text);
+  }
+
+  test("I-1: 文の型は1本ちょうどで、名前に invitation を含むのはこれだけ、table_access を名に持たない", () => {
+    const ids = Object.keys(REQUIREMENT_TEMPLATES);
+    expect(ids.filter((id) => id.includes("invitation"))).toEqual([INVITATION_TEMPLATE]);
+    expect(INVITATION_TEMPLATE.includes("table_access")).toBe(false);
+    const body = REQUIREMENT_TEMPLATES[INVITATION_TEMPLATE];
+    // スロットは表の ID と5つの数だけ(逐語引用を持たない)。
+    expect(body.match(/\{[a-z_]+\}/g)).toEqual([
+      "{table_id}",
+      "{by_count}",
+      "{grantable_count}",
+      "{target_role_count}",
+      "{expires_days}",
+      "{group_from_count}",
+    ]);
+    expect(body).toContain("宣言している");
+  });
+
+  test("I-2: 招待を宣言した表にだけ1文出る(件数・期限・グループ欄。出典は invitations、節は data)", () => {
+    seedBase();
+    seedInvitationShop();
+    declareInvitations(
+      orgsAccess({
+        by: ["admin"],
+        grantable: ["admin", "reader"],
+        target_roles: ["editor"],
+        expires_days: 14,
+        group_from: "team",
+      }),
+      vaultAccess({ grantable: ["reader"] }),
+      true,
+    );
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    const orgsIndex = manifest.app.tables.findIndex((table) => table.id === "orgs");
+    const found = doc.statements.filter((statement) => statement.template === INVITATION_TEMPLATE);
+    // `enabled: false` の保管庫には出ない。
+    expect(found).toHaveLength(1);
+    const statement = found[0];
+    if (statement === undefined) {
+      throw new Error("招待の文が出ていません。");
+    }
+    expect(statement.section).toBe("data");
+    expect(statement.sources[0]).toEqual({
+      kind: "manifest",
+      pointer: `/app/tables/${orgsIndex}/access_control/invitations`,
+    });
+    expect(statement.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "orgs" },
+      by_count: { kind: "number", value: 1 },
+      grantable_count: { kind: "number", value: 2 },
+      target_role_count: { kind: "number", value: 1 },
+      expires_days: { kind: "number", value: 14 },
+      group_from_count: { kind: "number", value: 1 },
+    });
+    expect(statement.text).toBe(
+      "テーブル `orgs` は、行への招待を宣言している。招待できる権限の指定は `1` 件(0 件なら、行を作った人に与える権限を持つ人が招待できる)、" +
+        "渡せる権限は `2` 件、受け取れる役割の指定は `1` 件(0 件なら、役割を問わない)、招待の期限の指定は `14` 日(0 日なら書いていない。そのときは 7 日)、" +
+        "承諾で名簿のグループ欄に招待した行の項目の値を書く指定は `1` 件である。",
+    );
+  });
+
+  test("I-3: 省いたキーは0件・期限は0(書いていない)で述べ、既定を推測しない", () => {
+    seedBase();
+    seedInvitationShop();
+    declareInvitations(orgsAccess({ grantable: ["reader"] }), vaultAccess(), true);
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const found = doc.statements.filter((statement) => statement.template === INVITATION_TEMPLATE);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "orgs" },
+      by_count: { kind: "number", value: 0 },
+      grantable_count: { kind: "number", value: 1 },
+      target_role_count: { kind: "number", value: 0 },
+      expires_days: { kind: "number", value: 0 },
+      group_from_count: { kind: "number", value: 0 },
+    });
+  });
+
+  test("I-4: 招待を宣言していないアプリ・表では1文も出ない(seedBase だけ・アクセス権管理だけ)", () => {
+    seedBase();
+    const bare = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(bare.statements.filter((s) => s.template === INVITATION_TEMPLATE)).toHaveLength(0);
+    seedInvitationShop();
+    declareInvitations(orgsAccess(), vaultAccess(), false);
+    const declared = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(declared.statements.filter((s) => s.template === INVITATION_TEMPLATE)).toHaveLength(0);
+  });
+
+  test("I-5: 招待を足しても、データの節のほかの文は1バイトも変わらない(足されるのは招待の1文だけ)", () => {
+    seedBase();
+    seedInvitationShop();
+    declareInvitations(orgsAccess(), vaultAccess(), false);
+    const before = dataTextsOf(generateRequirementsDoc(dataRoot, APP_ID));
+    declareInvitations(
+      orgsAccess({ grantable: ["reader"], group_from: "team" }),
+      vaultAccess(),
+      true,
+    );
+    const afterDoc = generateRequirementsDoc(dataRoot, APP_ID);
+    const invitationTexts = afterDoc.statements
+      .filter((statement) => statement.template === INVITATION_TEMPLATE)
+      .map((statement) => statement.text);
+    expect(invitationTexts).toHaveLength(1);
+    expect(dataTextsOf(afterDoc).filter((text) => !invitationTexts.includes(text))).toEqual(before);
+  });
+});
+
+/**
+ * **【`V23-M6-T10`。`ADR-0538` §Decision 1-8・限定7・式7(決定 `D-V23-159`)】行を相手にした付与の宣言を1文で述べる。**
+ *
+ * - 足した文の型は **`data.table_access_principal_row` の1本ちょうど**(名前に `principal_row` を含むのはこれだけ。
+ *   `table_access` を名に持つので、その本数は 12 → 13。授権 `ADR-0539` 行22)。
+ * - **`grant.principal_row` を書いた守る表(`enabled: true`)にだけ1文**。 相手の行の表の名前と、`via` の件数を述べる。
+ *   付与表のどの列が相手を指すかは述べない(`ADR-0300` 限定2 の「列の役割は1文も出さない」を崩さない)。
+ * - スロットは既存の `id` と `number` だけで、逐語引用も識別子グループも語彙グループも足さない。
+ * - **書いていない表・相手の行の表の側では1文も出ず、同じ表のほかの文は1バイトも変わらない。**
+ */
+describe("V23-M6-T10: 行を相手にした付与の宣言が要件定義書に1文で現れる", () => {
+  const PRINCIPAL_TEMPLATE: RequirementTemplateId = "data.table_access_principal_row";
+
+  function seedPrincipalShop(): void {
+    apply({
+      diff_id: "d-v23m6-1",
+      intent: "組織・評価機関・それぞれの付与・名簿の表を用意する",
+      operations: [
+        {
+          op: "add_table",
+          table: {
+            id: "members",
+            name: "名簿",
+            fields: [{ id: "account", name: "アカウント", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "evaluators",
+            name: "評価機関",
+            fields: [{ id: "title", name: "名前", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "ev_grant",
+            name: "評価機関の付与",
+            fields: [
+              { id: "ev", name: "評価機関", type: "reference", reference_table: "evaluators" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              { id: "permission", name: "権限", type: "select", options: ["manager", "staff"] },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "orgs",
+            name: "組織",
+            fields: [{ id: "title", name: "名前", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "org_grant",
+            name: "組織の付与",
+            fields: [
+              { id: "org", name: "組織", type: "reference", reference_table: "orgs" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              {
+                id: "evaluator",
+                name: "評価機関",
+                type: "reference",
+                reference_table: "evaluators",
+              },
+              { id: "permission", name: "権限", type: "select", options: ["admin", "reader"] },
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  function evaluatorsAccess(): Record<string, unknown> {
+    return {
+      enabled: true,
+      permissions: [
+        { id: "manager", name: "管理", read: true, write: true, delete: true },
+        { id: "staff", name: "所属", read: true, write: false, delete: false },
+      ],
+      creator_permission: "manager",
+      grant: { table: "ev_grant", target: "ev", member: "member", permission: "permission" },
+      members: { table: "members", account: "account" },
+    };
+  }
+
+  function orgsAccess(principalRow?: Record<string, unknown>): Record<string, unknown> {
+    return {
+      enabled: true,
+      permissions: [
+        { id: "admin", name: "管理", read: true, write: true, delete: true },
+        { id: "reader", name: "参照", read: true, write: false, delete: false },
+      ],
+      creator_permission: "admin",
+      grant: {
+        table: "org_grant",
+        target: "org",
+        member: "member",
+        permission: "permission",
+        ...(principalRow === undefined ? {} : { principal_row: principalRow }),
+      },
+      members: { table: "members", account: "account" },
+    };
+  }
+
+  let seq = 0;
+  function declarePrincipal(principalRow?: Record<string, unknown>): void {
+    seq += 1;
+    apply({
+      diff_id: `d-v23m6-decl-${seq}`,
+      intent: "評価機関の行を相手に組織を読ませる",
+      operations: [
+        {
+          op: "change_table",
+          table: "evaluators",
+          changes: { access_control: evaluatorsAccess() },
+        },
+        {
+          op: "change_table",
+          table: "orgs",
+          changes: { access_control: orgsAccess(principalRow) },
+        },
+      ],
+    } as Diff);
+  }
+
+  function dataTextsOf(doc: RequirementsDoc): string[] {
+    return doc.statements
+      .filter((statement) => statement.section === "data")
+      .map((statement) => statement.text);
+  }
+
+  test("P-1: 文の型は1本ちょうどで、名前に principal_row を含むのはこれだけ・table_access を名に持つ・スロットの並び", () => {
+    const ids = Object.keys(REQUIREMENT_TEMPLATES);
+    expect(ids.filter((id) => id.includes("principal_row"))).toEqual([PRINCIPAL_TEMPLATE]);
+    expect(PRINCIPAL_TEMPLATE.includes("table_access")).toBe(true);
+    const body = REQUIREMENT_TEMPLATES[PRINCIPAL_TEMPLATE];
+    // スロットは表の ID 2つと数1つだけ(逐語引用を持たない。付与表の列の ID も述べない)。
+    expect(body.match(/\{[a-z_]+\}/g)).toEqual(["{table_id}", "{principal_table}", "{via_count}"]);
+    expect(body).toContain("宣言している");
+    expect(body).not.toContain("守られる");
+  });
+
+  test("P-2: principal_row を書いた守る表にだけ1文出る(相手の表・via の件数。出典は grant/principal_row、節は data)", () => {
+    seedBase();
+    seedPrincipalShop();
+    declarePrincipal({ column: "evaluator", table: "evaluators", via: ["manager", "staff"] });
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    const orgsIndex = manifest.app.tables.findIndex((table) => table.id === "orgs");
+    const found = doc.statements.filter((statement) => statement.template === PRINCIPAL_TEMPLATE);
+    // 相手の行の表(評価機関)の側には出ない。
+    expect(found).toHaveLength(1);
+    const statement = found[0];
+    if (statement === undefined) {
+      throw new Error("行を相手にした付与の文が出ていません。");
+    }
+    expect(statement.section).toBe("data");
+    expect(statement.sources[0]).toEqual({
+      kind: "manifest",
+      pointer: `/app/tables/${orgsIndex}/access_control/grant/principal_row`,
+    });
+    expect(statement.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "orgs" },
+      principal_table: { kind: "id", group: "table_id", value: "evaluators" },
+      via_count: { kind: "number", value: 2 },
+    });
+    expect(statement.text).toBe(
+      "テーブル `orgs` は、付与の相手として、人やグループの代わりにテーブル `evaluators` の行を指せると宣言している。" +
+        "その行について指定した権限(`2` 件)のどれかを持つ人を相手とみなす宣言で、相手の行の側でたどるのは1段だけである。",
+    );
+  });
+
+  test("P-3: principal_row を書いていないアプリ・表では1文も出ない(seedBase だけ・アクセス権管理だけ)", () => {
+    seedBase();
+    const bare = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(bare.statements.filter((s) => s.template === PRINCIPAL_TEMPLATE)).toHaveLength(0);
+    seedPrincipalShop();
+    declarePrincipal();
+    const declared = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(declared.statements.filter((s) => s.template === PRINCIPAL_TEMPLATE)).toHaveLength(0);
+  });
+
+  test("P-4: principal_row を足しても、データの節のほかの文は1バイトも変わらない(足されるのは1文だけ)", () => {
+    seedBase();
+    seedPrincipalShop();
+    declarePrincipal();
+    const before = dataTextsOf(generateRequirementsDoc(dataRoot, APP_ID));
+    declarePrincipal({ column: "evaluator", table: "evaluators", via: ["staff"] });
+    const afterDoc = generateRequirementsDoc(dataRoot, APP_ID);
+    const principalTexts = afterDoc.statements
+      .filter((statement) => statement.template === PRINCIPAL_TEMPLATE)
+      .map((statement) => statement.text);
+    expect(principalTexts).toHaveLength(1);
+    expect(dataTextsOf(afterDoc).filter((text) => !principalTexts.includes(text))).toEqual(before);
+  });
+});
+
+/**
+ * **【`V23-M7-T07`。`ADR-0542` §1-6・限定6・式7(決定 `D-V23-195`)】子の表に行を作れる権限の宣言を1文で述べる。**
+ *
+ * - 足した文の型は **`data.permission_create_child` の1本ちょうど**(名前に `create_child` を含むのはこれだけ。
+ *   名に `table_access` を含めないので、その本数は 13 のまま。授権 `ADR-0543` 行19 を避ける)。
+ * - **`create_child` を書いた親の表(`enabled: true`)にだけ、子の表ごとに1文**。 同じ子の表を複数の権限に書いても1文で、
+ *   書いた権限の件数を述べる。 権限名は述べない(`data.table_access_principal_row` の件数だけの形に合わせる)。
+ * - スロットは既存の `id` と `number` だけで、逐語引用も識別子グループも語彙グループも足さない。
+ * - **書いていない表・子の表の側では1文も出ず、同じ表のほかの文は1バイトも変わらない。**
+ */
+describe("V23-M7-T07: 子の表に行を作れる権限の宣言が要件定義書に1文で現れる", () => {
+  const CREATE_CHILD_TEMPLATE = "data.permission_create_child" as RequirementTemplateId;
+
+  function seedCreateChildShop(): void {
+    apply({
+      diff_id: "d-v23m7-1",
+      intent: "組織・告知・班・それぞれの付与・名簿の表を用意する",
+      operations: [
+        {
+          op: "add_table",
+          table: {
+            id: "members",
+            name: "名簿",
+            fields: [{ id: "account", name: "アカウント", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "orgs",
+            name: "組織",
+            fields: [{ id: "title", name: "名前", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "org_grants",
+            name: "組織の付与",
+            fields: [
+              { id: "org", name: "組織", type: "reference", reference_table: "orgs" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              {
+                id: "permission",
+                name: "権限",
+                type: "select",
+                options: ["org_admin", "assessor", "staff"],
+              },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "org_notices",
+            name: "告知",
+            fields: [
+              { id: "title", name: "件名", type: "text" },
+              { id: "org", name: "組織", type: "reference", reference_table: "orgs" },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "notice_grants",
+            name: "告知の付与",
+            fields: [
+              { id: "notice", name: "告知", type: "reference", reference_table: "org_notices" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              { id: "permission", name: "権限", type: "select", options: ["author"] },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "org_teams",
+            name: "班",
+            fields: [
+              { id: "title", name: "名前", type: "text" },
+              { id: "org", name: "組織", type: "reference", reference_table: "orgs" },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "team_grants",
+            name: "班の付与",
+            fields: [
+              { id: "team", name: "班", type: "reference", reference_table: "org_teams" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              { id: "permission", name: "権限", type: "select", options: ["leader"] },
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  function childAccess(grantTable: string, target: string, permission: string) {
+    return {
+      enabled: true,
+      permissions: [{ id: permission, name: "書いた人", read: true, write: true, delete: true }],
+      creator_permission: permission,
+      grant: { table: grantTable, target, member: "member", permission: "permission" },
+      members: { table: "members", account: "account" },
+      inherit_from: ["org"],
+    };
+  }
+
+  /** `assessorChildren` と `staffChildren` を組織の権限 `assessor` と `staff` の `create_child` に置く(`undefined` なら書かない)。 */
+  function orgsAccess(assessorChildren?: string[], staffChildren?: string[]) {
+    const withChildren = (children?: string[]) =>
+      children === undefined ? {} : { create_child: children };
+    return {
+      enabled: true,
+      permissions: [
+        { id: "org_admin", name: "管理", read: true, write: true, delete: true },
+        {
+          id: "assessor",
+          name: "評価者",
+          read: true,
+          write: false,
+          delete: false,
+          ...withChildren(assessorChildren),
+        },
+        {
+          id: "staff",
+          name: "所属",
+          read: true,
+          write: false,
+          delete: false,
+          ...withChildren(staffChildren),
+        },
+      ],
+      creator_permission: "org_admin",
+      grant: { table: "org_grants", target: "org", member: "member", permission: "permission" },
+      members: { table: "members", account: "account" },
+    };
+  }
+
+  let seq = 0;
+  function declareChildren(assessorChildren?: string[], staffChildren?: string[]): void {
+    seq += 1;
+    apply({
+      diff_id: `d-v23m7-decl-${seq}`,
+      intent: "組織の権限に子の表に行を作れる権限を宣言する",
+      operations: [
+        {
+          op: "change_table",
+          table: "org_notices",
+          changes: { access_control: childAccess("notice_grants", "notice", "author") },
+        },
+        {
+          op: "change_table",
+          table: "org_teams",
+          changes: { access_control: childAccess("team_grants", "team", "leader") },
+        },
+        {
+          op: "change_table",
+          table: "orgs",
+          changes: { access_control: orgsAccess(assessorChildren, staffChildren) },
+        },
+      ],
+    } as Diff);
+  }
+
+  function dataTextsOf(doc: RequirementsDoc): string[] {
+    return doc.statements
+      .filter((statement) => statement.section === "data")
+      .map((statement) => statement.text);
+  }
+
+  test("C-1: 文の型は1本ちょうどで、名前に create_child を含むのはこれだけ・table_access を名に持たない・スロットの並び", () => {
+    const ids = Object.keys(REQUIREMENT_TEMPLATES);
+    expect(ids.filter((id) => id.includes("create_child"))).toEqual([CREATE_CHILD_TEMPLATE]);
+    expect(CREATE_CHILD_TEMPLATE.includes("table_access")).toBe(false);
+    const body = (REQUIREMENT_TEMPLATES as Record<string, string>)[CREATE_CHILD_TEMPLATE] ?? "";
+    // スロットは表の ID 2つと数1つだけ(逐語引用を持たない。権限名も述べない)。
+    expect(body.match(/\{[a-z_]+\}/g)).toEqual([
+      "{table_id}",
+      "{permission_count}",
+      "{child_table}",
+    ]);
+    expect(body).toContain("宣言している");
+    expect(body).toContain("付け替え");
+    expect(body).not.toContain("守られる");
+  });
+
+  test("C-2: create_child を書いた親の表にだけ、子の表ごとに1文(出典は最初の要素、節は data。子の表の側には出ない)", () => {
+    seedBase();
+    seedCreateChildShop();
+    declareChildren(["org_notices", "org_teams"], ["org_notices"]);
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    const orgsIndex = manifest.app.tables.findIndex((table) => table.id === "orgs");
+    const found = doc.statements.filter(
+      (statement) => statement.template === CREATE_CHILD_TEMPLATE,
+    );
+    expect(found).toHaveLength(2);
+    const [notices, teams] = found;
+    if (notices === undefined || teams === undefined) {
+      throw new Error("子の表に行を作れる権限の文が出ていません。");
+    }
+    expect(notices.section).toBe("data");
+    expect(notices.sources[0]).toEqual({
+      kind: "manifest",
+      pointer: `/app/tables/${orgsIndex}/access_control/permissions/1/create_child/0`,
+    });
+    expect(notices.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "orgs" },
+      permission_count: { kind: "number", value: 2 },
+      child_table: { kind: "id", group: "table_id", value: "org_notices" },
+    });
+    expect(notices.text).toBe(
+      "テーブル `orgs` は、行について指定した権限(`2` 件)のどれかを持つ人が、その行に書けなくても、" +
+        "その行を親にしてテーブル `org_notices` に行を作れると宣言している。" +
+        "作るときだけに効き、別の親への付け替えには使えない。",
+    );
+    expect(teams.sources[0]).toEqual({
+      kind: "manifest",
+      pointer: `/app/tables/${orgsIndex}/access_control/permissions/1/create_child/1`,
+    });
+    expect(teams.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "orgs" },
+      permission_count: { kind: "number", value: 1 },
+      child_table: { kind: "id", group: "table_id", value: "org_teams" },
+    });
+  });
+
+  test("C-3: create_child を書いていないアプリ・表では1文も出ない(seedBase だけ・アクセス権管理だけ)", () => {
+    seedBase();
+    const bare = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(bare.statements.filter((s) => s.template === CREATE_CHILD_TEMPLATE)).toHaveLength(0);
+    seedCreateChildShop();
+    declareChildren();
+    const declared = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(declared.statements.filter((s) => s.template === CREATE_CHILD_TEMPLATE)).toHaveLength(0);
+  });
+
+  test("C-4: create_child を足しても、データの節のほかの文は1バイトも変わらない(足されるのは子の表の数だけ)", () => {
+    seedBase();
+    seedCreateChildShop();
+    declareChildren();
+    const before = dataTextsOf(generateRequirementsDoc(dataRoot, APP_ID));
+    declareChildren(["org_notices"]);
+    const afterDoc = generateRequirementsDoc(dataRoot, APP_ID);
+    const childTexts = afterDoc.statements
+      .filter((statement) => statement.template === CREATE_CHILD_TEMPLATE)
+      .map((statement) => statement.text);
+    expect(childTexts).toHaveLength(1);
+    expect(dataTextsOf(afterDoc).filter((text) => !childTexts.includes(text))).toEqual(before);
+  });
+});
+
+/**
+ * **【`V23-M8-T08`。`ADR-0544` 限定7・式12(決定 `D-V23-216`)】表の変更履歴の宣言(`table.history`)を1文で述べる。**
+ *
+ * - 足した文の型は **`data.table_history` の1本ちょうど**(名前に `history` を含む `data.` の文の型はこれだけ)。
+ *   スロットは既存の `id` の1つだけで、逐語引用も識別子グループも語彙グループも足さない。
+ * - **`history: true` を書いた表にだけ1文**(出典は表の `history` のキー。節は data)。
+ * - 詳細画面の `history` は文を出さない画面の鍵である(表の宣言の文が述べる。`VIEW_KEY_EMITS_STATEMENT` の行に理由)。
+ * - **書いていない表・アプリでは1文も出ず、同じ表のほかの文は1バイトも変わらない。**
+ */
+describe("V23-M8-T08: 表の変更履歴の宣言が要件定義書に1文で現れる", () => {
+  const HISTORY_TEMPLATE = "data.table_history" as RequirementTemplateId;
+
+  function declareHistory(diffId: string, history: boolean, withView = false): void {
+    apply({
+      diff_id: diffId,
+      intent: history ? "本の変更履歴を残す" : "本の変更履歴をやめる",
+      operations: [
+        { op: "change_table", table: "books", changes: { history } },
+        ...(withView
+          ? [{ op: "update_view", view: "book-detail", changes: { history: true } }]
+          : []),
+      ],
+    } as Diff);
+  }
+
+  function dataTextsOf(doc: RequirementsDoc): string[] {
+    return doc.statements
+      .filter((statement) => statement.section === "data")
+      .map((statement) => statement.text);
+  }
+
+  test("H-1: 文の型は1本ちょうどで、スロットは表の ID だけ・宣言であって保証ではない", () => {
+    const ids = Object.keys(REQUIREMENT_TEMPLATES);
+    expect(ids.filter((id) => id.startsWith("data.") && id.includes("history"))).toEqual([
+      HISTORY_TEMPLATE,
+    ]);
+    const body = (REQUIREMENT_TEMPLATES as Record<string, string>)[HISTORY_TEMPLATE] ?? "";
+    expect(body.match(/\{[a-z_]+\}/g)).toEqual(["{table_id}"]);
+    expect(body).toContain("宣言している");
+    expect(body).not.toContain("守られる");
+  });
+
+  test("H-2: history を書いた表にだけ1文(出典は表の history のキー、節は data)", () => {
+    seedBase();
+    declareHistory("d-v23m8-h1", true);
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    const booksIndex = manifest.app.tables.findIndex((table) => table.id === "books");
+    const found = doc.statements.filter((statement) => statement.template === HISTORY_TEMPLATE);
+    expect(found).toHaveLength(1);
+    const [statement] = found;
+    if (statement === undefined) {
+      throw new Error("変更履歴の文が出ていません。");
+    }
+    expect(statement.section).toBe("data");
+    expect(statement.sources[0]).toEqual({
+      kind: "manifest",
+      pointer: `/app/tables/${booksIndex}/history`,
+    });
+    expect(statement.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "books" },
+    });
+    expect(statement.text).toBe(
+      "テーブル `books` は、行の作成・更新・削除を、行ごとの変更履歴に残すと宣言している。" +
+        "履歴を読めるのは、その行を読めるログインした人だけで、その人に読めない項目は変更前と変更後の両方を落とす。",
+    );
+  });
+
+  test("H-3: history を書いていないアプリ・外した表では1文も出ない。詳細画面の history は文を足さない", () => {
+    seedBase();
+    const bare = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(bare.statements.filter((s) => s.template === HISTORY_TEMPLATE)).toHaveLength(0);
+    declareHistory("d-v23m8-h2", true, true);
+    const withView = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(withView.statements.filter((s) => s.template === HISTORY_TEMPLATE)).toHaveLength(1);
+    apply({
+      diff_id: "d-v23m8-h3",
+      intent: "詳細画面の履歴を外す",
+      operations: [{ op: "update_view", view: "book-detail", changes: { history: false } }],
+    } as Diff);
+    declareHistory("d-v23m8-h4", false);
+    const off = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(off.statements.filter((s) => s.template === HISTORY_TEMPLATE)).toHaveLength(0);
+  });
+
+  test("H-4: history を足しても、データの節のほかの文は1バイトも変わらない(足されるのは1文だけ)", () => {
+    seedBase();
+    const before = dataTextsOf(generateRequirementsDoc(dataRoot, APP_ID));
+    declareHistory("d-v23m8-h5", true);
+    const afterDoc = generateRequirementsDoc(dataRoot, APP_ID);
+    const historyTexts = afterDoc.statements
+      .filter((statement) => statement.template === HISTORY_TEMPLATE)
+      .map((statement) => statement.text);
+    expect(historyTexts).toHaveLength(1);
+    expect(dataTextsOf(afterDoc).filter((text) => !historyTexts.includes(text))).toEqual(before);
+  });
+});
+
+/**
+ * **【`V23-M9-T05`。`D-V23-238`・`D-V23-252`・`D-V23-254`・`D-V23-258`。門A `ADR-0549` §Decision 1-2、授権 `ADR-0550` 行1〜行8】**
+ * 要件ドキュメントに2文の型を足す。
+ *
+ * - 自動登録を書いた名簿の宣言には、どの役割の人が「利用者として登録したとき・その役割を配られたとき」に名簿に載るか(役割ごとに1文)。
+ * - 行ごとの付与で管理者という考えのある表(`creator_permission` と名簿の `account` を宣言した表。最後の管理者の断りが効く表)には、
+ *   行の最後の管理者は外せないことを1文。 権限名と `creator_permission` の値は出さない(`ADR-0300` §限界1)。
+ * - 陰性対照2種: 付与の表も自動登録も無いアプリはバイト一致 / 付与の表だけのアプリは最後の管理者の1文だけ増える。
+ *   比べる相手は着手点 `a2c82d34` の生成器で同じ定義から作った文の列の SHA-256(履歴の節は日時を含むので外す)。
+ * - 出さないもの(`D-V23-258`): 島の `reject`・島の入力 `actor` と `previous`・`workspace.invitations`。
+ */
+describe("V23-M9-T05: 要件ドキュメントの自動登録と最後の管理者の2文(D-V23-238・D-V23-254・D-V23-258)", () => {
+  const AUTO_ENROLL = "data.table_access_auto_enroll" as RequirementTemplateId;
+  const LAST_MANAGER = "data.table_access_last_row_manager" as RequirementTemplateId;
+
+  function seedGrantTables(): void {
+    apply({
+      diff_id: "d-v23m9-t05-1",
+      intent: "組織・付与・名簿の表を用意する",
+      operations: [
+        {
+          op: "add_table",
+          table: {
+            id: "members",
+            name: "名簿",
+            fields: [
+              { id: "account", name: "アカウント", type: "text" },
+              { id: "display", name: "表示名", type: "text" },
+            ],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "orgs",
+            name: "組織",
+            fields: [{ id: "title", name: "名前", type: "text" }],
+          },
+        },
+        {
+          op: "add_table",
+          table: {
+            id: "org_grants",
+            name: "組織の付与",
+            fields: [
+              { id: "org", name: "組織", type: "reference", reference_table: "orgs" },
+              { id: "member", name: "利用者", type: "reference", reference_table: "members" },
+              { id: "permission", name: "権限", type: "select", options: ["org_admin", "staff"] },
+            ],
+          },
+        },
+      ],
+    } as Diff);
+  }
+
+  function orgsAccess(options: { members?: boolean; autoEnroll?: string[] } = {}) {
+    return {
+      enabled: true,
+      permissions: [
+        { id: "org_admin", name: "管理", read: true, write: true, delete: true },
+        { id: "staff", name: "担当", read: true, write: false, delete: false },
+      ],
+      creator_permission: "org_admin",
+      grant: { table: "org_grants", target: "org", member: "member", permission: "permission" },
+      ...(options.members === false
+        ? {}
+        : {
+            members: {
+              table: "members",
+              account: "account",
+              ...(options.autoEnroll === undefined
+                ? {}
+                : { auto_enroll: { roles: options.autoEnroll, name: "display" } }),
+            },
+          }),
+    };
+  }
+
+  function declareAccess(
+    diffId: string,
+    options: { members?: boolean; autoEnroll?: string[] } = {},
+  ): void {
+    apply({
+      diff_id: diffId,
+      intent: "組織に行ごとの付与を宣言する",
+      operations: [
+        { op: "change_table", table: "orgs", changes: { access_control: orgsAccess(options) } },
+      ],
+    } as Diff);
+  }
+
+  /**
+   * 履歴の節と作成日時の1文(日時を含み、打つたびに変わる)を外した文の列の SHA-256。
+   * `withSources` が偽なら出典を比べない(差分を足すと、どの差分が書いたかの出典は正しく動くため)。
+   */
+  function digestWithoutHistory(
+    doc: RequirementsDoc,
+    drop: readonly string[] = [],
+    withSources = true,
+  ): string {
+    const kept = doc.statements
+      .filter((statement) => statement.section !== "history")
+      .filter((statement) => statement.template !== "overview.created")
+      .filter((statement) => !drop.includes(statement.template))
+      .map((statement) => ({
+        section: statement.section,
+        template: statement.template,
+        slots: statement.slots,
+        ...(withSources ? { sources: statement.sources } : {}),
+        text: statement.text,
+      }));
+    return new Bun.CryptoHasher("sha256").update(JSON.stringify(kept)).digest("hex");
+  }
+
+  function ofTemplate(
+    doc: RequirementsDoc,
+    template: RequirementTemplateId,
+  ): RequirementStatement[] {
+    return doc.statements.filter((statement) => statement.template === template);
+  }
+
+  test("D-V23-238 (L-1) 文の型は2つちょうど。名は table_access で始まり admin を含まず、スロットは表の ID と役割の ID だけ", () => {
+    const templates = REQUIREMENT_TEMPLATES as Record<string, string>;
+    expect(templates[AUTO_ENROLL]?.match(/\{[a-z_]+\}/g)).toEqual([
+      "{table_id}",
+      "{role_id}",
+      "{members_table}",
+    ]);
+    expect(templates[LAST_MANAGER]?.match(/\{[a-z_]+\}/g)).toEqual(["{table_id}"]);
+    for (const id of [AUTO_ENROLL, LAST_MANAGER]) {
+      expect(id.startsWith("data.table_access_")).toBe(true);
+      expect(id.includes("admin")).toBe(false);
+      expect(templates[id]).toContain("宣言");
+    }
+    // ログインでは名簿に載らない(載るのは登録と役割の配布のとき)。
+    expect(templates[AUTO_ENROLL]).toContain("登録したとき");
+    expect(templates[AUTO_ENROLL]).toContain("配られたとき");
+    expect(templates[AUTO_ENROLL]).not.toContain("ログイン");
+  });
+
+  test("D-V23-238 (L-2) 自動登録を書いた名簿の宣言には、役割ごとに1文(どの役割の人が、登録したとき・役割を配られたときに載るか)", () => {
+    seedBase();
+    seedGrantTables();
+    declareAccess("d-v23m9-t05-2", { autoEnroll: ["editor", "viewer"] });
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    const orgsIndex = manifest.app.tables.findIndex((table) => table.id === "orgs");
+    const found = ofTemplate(doc, AUTO_ENROLL);
+    expect(found.map((statement) => statement.text)).toEqual([
+      "テーブル `orgs` の名簿への自動登録の宣言により、役割 `editor` の人は、利用者として登録したときと、その役割を配られたときに、テーブル `members` の名簿に載る。",
+      "テーブル `orgs` の名簿への自動登録の宣言により、役割 `viewer` の人は、利用者として登録したときと、その役割を配られたときに、テーブル `members` の名簿に載る。",
+    ]);
+    expect(found.map((statement) => statement.section)).toEqual(["data", "data"]);
+    expect(found.map((statement) => statement.sources[0])).toEqual([
+      {
+        kind: "manifest",
+        pointer: `/app/tables/${orgsIndex}/access_control/members/auto_enroll/roles/0`,
+      },
+      {
+        kind: "manifest",
+        pointer: `/app/tables/${orgsIndex}/access_control/members/auto_enroll/roles/1`,
+      },
+    ]);
+  });
+
+  test("D-V23-254 (L-3) 最後の管理者の断りが効く表には1文。権限名と creator_permission の値は出さない", () => {
+    seedBase();
+    seedGrantTables();
+    declareAccess("d-v23m9-t05-3");
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    const manifest = readCurrentManifest(dataRoot, APP_ID);
+    const orgsIndex = manifest.app.tables.findIndex((table) => table.id === "orgs");
+    const found = ofTemplate(doc, LAST_MANAGER);
+    expect(found).toHaveLength(1);
+    const [statement] = found;
+    expect(statement?.section).toBe("data");
+    expect(statement?.slots).toEqual({
+      table_id: { kind: "id", group: "table_id", value: "orgs" },
+    });
+    expect(statement?.sources[0]).toEqual({
+      kind: "manifest",
+      pointer: `/app/tables/${orgsIndex}/access_control/creator_permission`,
+    });
+    expect(statement?.text).toBe(
+      "テーブル `orgs` は、行ごとの付与で、行の最後の管理者の付与は外せないと宣言している。",
+    );
+    expect(statement?.text).not.toContain("org_admin");
+    expect(ofTemplate(doc, AUTO_ENROLL)).toHaveLength(0);
+  });
+
+  test("D-V23-238 (N-1) 付与の表も自動登録も無いアプリの要件ドキュメントは、着手点と1バイトも変わらない", () => {
+    seedBase();
+    seedAutomation();
+    seedGrantTables();
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(ofTemplate(doc, AUTO_ENROLL)).toHaveLength(0);
+    expect(ofTemplate(doc, LAST_MANAGER)).toHaveLength(0);
+    expect(digestWithoutHistory(doc)).toBe(BASE_DIGEST_NO_ACCESS);
+  });
+
+  test("D-V23-254 (N-2) 付与の表だけのアプリは、最後の管理者の1文だけが増える(ほかは着手点と1バイトも変わらない)", () => {
+    seedBase();
+    seedGrantTables();
+    declareAccess("d-v23m9-t05-5");
+    const doc = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(digestWithoutHistory(doc, [LAST_MANAGER])).toBe(BASE_DIGEST_GRANT_ONLY);
+    expect(ofTemplate(doc, LAST_MANAGER)).toHaveLength(1);
+    expect(ofTemplate(doc, AUTO_ENROLL)).toHaveLength(0);
+    // 増えた1文の位置: データの節で、その表の付与の宣言の文の後ろ。
+    const data = doc.statements.filter((statement) => statement.section === "data");
+    const at = data.findIndex((statement) => statement.template === LAST_MANAGER);
+    expect(data[at - 1]?.template).toBe("data.table_access_member_table");
+  });
+
+  test("D-V23-258 (N-3) 島の reject・島の入力 actor と previous・workspace.invitations は要件ドキュメントに出ない", () => {
+    seedBase();
+    seedGrantTables();
+    const islandOf = (id: string, code: string, input: unknown) => ({
+      op: "add_function",
+      function: {
+        id,
+        name: "島",
+        code,
+        input,
+        output: { fields: [{ id: "n", type: "number" }] },
+        capabilities: [],
+      },
+    });
+    apply({
+      diff_id: "d-v23m9-t05-6",
+      intent: "島を足す",
+      operations: [
+        islandOf("plain-island", "export default (rows) => rows;", [
+          { source: "table", table: "books" },
+        ]),
+      ],
+    } as Diff);
+    const before = generateRequirementsDoc(dataRoot, APP_ID);
+    apply({
+      diff_id: "d-v23m9-t05-7",
+      intent: "島の本文と入力を変え、受け取り画面のメニューを置く",
+      operations: [
+        {
+          op: "update_function",
+          function: islandOf(
+            "plain-island",
+            "export default (rows, { reject }) => { if (rows.length === 0) reject('空です'); return rows; };",
+            [{ source: "table", table: "books" }, { source: "actor" }, { source: "previous" }],
+          ).function,
+        },
+        { op: "set_workspace", workspace: { invitations: { label: "届いた招待" } } },
+      ],
+    } as Diff);
+    const after = generateRequirementsDoc(dataRoot, APP_ID);
+    expect(digestWithoutHistory(after, [], false)).toBe(digestWithoutHistory(before, [], false));
+    for (const statement of after.statements.filter((s) => s.section !== "history")) {
+      expect(statement.text).not.toContain("reject");
+      for (const source of statement.sources) {
+        const pointer = source.kind === "manifest" ? source.pointer : "";
+        expect(pointer.startsWith("/app/workspace")).toBe(false);
+        expect(pointer).not.toMatch(/\/input\/[12]$/);
+      }
+    }
+  });
+});
+
+/** 着手点 `a2c82d34` の生成器で作った文の列(履歴の節を外す)の SHA-256(`V23-M9-T05`。上の (N-1)・(N-2))。 */
+const BASE_DIGEST_NO_ACCESS = "5f279eeebb66a1ac532ccb11e4a4d8f822d6bf04172a3ea3be740fd05b932a4c";
+const BASE_DIGEST_GRANT_ONLY = "45f40aba3faa649eefec179db6a21679563a8ba8cae435107dc4bd22e798e639";

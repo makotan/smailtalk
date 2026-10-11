@@ -141,7 +141,11 @@ function signupSchema(): Any {
 
 describe("(S-1) `roles[]` の要素は `id` / `name` / `rules` / `signup` の4キーで閉じる", () => {
   test("要素のキーは4つで、`additionalProperties` は false のままである", () => {
+    // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys(roleItemSchema().properties as Any).sort()).toEqual(["id", "name", "rules", "signup"]);`
+    // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
     expect(Object.keys(roleItemSchema().properties as Any).sort()).toEqual([
+      "density",
       "id",
       "name",
       "rules",
@@ -251,11 +255,16 @@ describe("(S-3) `anonymous` に `signup` を書いた差分は拒否される", 
 // ===========================================================================
 
 describe("(S-4) `set_roles` の全体差し替えだけで書き、消し、戻せる", () => {
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。
+  // **この行が固定していたのは「`ADR-0334` が op を足していないこと」であり、足したのは別の決定である。** テスト名は当時の逐語のまま。
   test("差分操作は17種のままで、18種目を足していない", () => {
-    expect(DIFF_OPS).toHaveLength(17);
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行10)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(`ADR-0334` が足したのではない)。 テスト名は当時の逐語のまま。
+    expect(DIFF_OPS).toHaveLength(19);
     const ops = ((diffSchema as unknown as { $defs: Record<string, Any> }).$defs.operation as Any)
       .properties as Any;
-    expect(Object.keys(ops)).toHaveLength(9);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(Object.keys(ops)).toHaveLength(9);` —— 10キー目 `design_memory` を足したので 9 → 10(別の決定)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行10)】旧(逐語)**: `expect(Object.keys(ops)).toHaveLength(10);` —— 11キー目 `workspace` を足したので 10 → 11(別の決定。同じ検査の中の差分操作の器の本数)。
+    expect(Object.keys(ops)).toHaveLength(11);
   });
 
   test("`signup` を書かない `roles` を送ると `signup` は消える", () => {
@@ -350,15 +359,22 @@ describe("(S-6) 他の器は1つも動いていない", () => {
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(manifestDefs())).toHaveLength(30);
-    expect(Object.keys((manifestDefs().app as Any).properties as Any)).toHaveLength(8);
-    expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(6);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(manifestDefs())).toHaveLength(31);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `...app as Any).properties as Any)).toHaveLength(8);` —— 9本目 `design_memory` を足したので 8 → 9(別の決定)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行10)】旧(逐語)**: `expect(Object.keys((manifestDefs().app as Any).properties as Any)).toHaveLength(9);` —— 10本目 `workspace` を足したので 9 → 10(別の決定)。
+    expect(Object.keys((manifestDefs().app as Any).properties as Any)).toHaveLength(10);
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行25】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+    expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(7);
   });
 
   test("`roles` の `minItems` / `maxItems` と `rules.items.properties` は1つも動いていない", () => {
     expect(rolesSchema().minItems).toBe(1);
     expect(rolesSchema().maxItems).toBe(12);
     const rules = (roleItemSchema().properties as Any).rules as Any;
-    expect(Object.keys((rules.items as Any).properties as Any)).toHaveLength(7);
+    // **【2026-09-27 追記(`V21-M2B`。`ADR-0482` の `AN-G2`。授権 `ADR-0483` 行20)。旧の期待値を消していない】**
+    // **旧(逐語)**: `expect(Object.keys((rules.items as Any).properties as Any)).toHaveLength(7);`
+    // **8キー目 `hidden_fields` を足したので 7 → 8。** `roles` の `minItems` / `maxItems` は動かしていない。
+    expect(Object.keys((rules.items as Any).properties as Any)).toHaveLength(8);
   });
 });

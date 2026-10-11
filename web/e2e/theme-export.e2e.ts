@@ -13,7 +13,8 @@
  * ## 何を測るか
  *
  * 1. **製品の HTTP API で入れたテーマが、そのまま `theme.css` として画面に出る**
- *    —— 25宣言・恒等写像(スロット名がそのまま宣言名)・値が1バイトも変わらないこと。
+ *    —— 25宣言・宣言名はスロット名(役割名)を写像 `web/src/theme-role-map.ts` で写した CSS 名
+ *    (V20-M8 / ADR-0473)・値が1バイトも変わらないこと。
  * 2. **本物の `navigator.clipboard` へ書けること**、および書いた中身が画面の文字列と一致すること。
  * 3. **持ち出し物が自分の限界を書いていること**(逃げ道を含まない / `:root` に当てるだけでは
  *    同じ描画にならない)。
@@ -27,6 +28,10 @@
  */
 import { type APIRequestContext, expect, test } from "@playwright/test";
 import type { Diff } from "../../src/kernel/types.ts";
+// **写像の表だけを借りる**(V20-M8)。`web/e2e/` は `web/src/` の React 部品を import しない
+// 作法だが、この表は import を1本も持たないデータであり、ここに2本目の対応表を書くと
+// 規則が2本に割れる(ADR-0473 限定12)ので、表そのものを読む。
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 import { type FixtureApp, provisionApp } from "./fixture-app.ts";
 
 /**
@@ -34,31 +39,36 @@ import { type FixtureApp, provisionApp } from "./fixture-app.ts";
  * (既定配色は通らない。ADR-0046 の 2026-07-25 追記「限界7」)。
  */
 const THEME: Record<string, string> = {
-  "--color-text": "#101010",
-  "--color-text-secondary": "#595959",
-  "--color-text-label": "#595959",
-  "--color-text-placeholder": "#595959",
-  "--color-danger": "#a00000",
-  "--color-page-background": "#ffffff",
-  "--color-surface-highlight": "#f2f2f2",
-  "--color-border": "#767676",
-  "--focus-outline-color": "#005fcc",
-  "--focus-outline-width": "2px",
-  "--font-family-base": "Georgia, serif",
-  "--font-size-secondary": "0.85em",
-  "--font-size-note": "0.875rem",
-  "--line-height-base": "1.6",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.25rem",
-  "--space-6": "2rem",
-  "--border-width": "1px",
-  "--control-border-radius": "4px",
-  "--surface-shadow": "none",
-  "--detail-label-width": "8rem",
-  "--login-max-width": "22rem",
+  body_text: "#101010",
+  secondary_text: "#595959",
+  label_text: "#595959",
+  placeholder_text: "#595959",
+  danger: "#a00000",
+  page_background: "#ffffff",
+  highlight_surface: "#f2f2f2",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#ffffff",
+  on_primary: "#101010",
+  overlay_background: "#ffffff",
+  overlay_text: "#101010",
+  border_color: "#767676",
+  focus_ring: "#005fcc",
+  focus_ring_width: "2px",
+  body_font: "Georgia, serif",
+  secondary_font_size: "0.85em",
+  note_font_size: "0.875rem",
+  body_line_height: "1.6",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.25rem",
+  space_6: "2rem",
+  border_width: "1px",
+  control_radius: "4px",
+  surface_shadow: "none",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
 };
 
 function setThemeDiff(diffId: string): Diff {
@@ -116,10 +126,17 @@ test.describe("V3-M1-T05 テーマの持ち出し口(chromium 実測)", () => {
 
     const shown = (await page.getByTestId("theme-css").textContent()) ?? "";
 
-    // (1) 25宣言ちょうど・恒等写像・値がマニフェストのまま。
+    // (1) 25宣言ちょうど・宣言名は写像を通した CSS 名・値がマニフェストのまま。
     const declarations = declarationsOf(shown);
-    expect(Object.keys(declarations).sort()).toEqual(Object.keys(THEME).sort());
-    expect(declarations).toEqual(THEME);
+    const expected = Object.fromEntries(
+      Object.entries(THEME).map(([slot, value]) => [THEME_ROLE_TO_CSS_PROPERTY[slot], value]),
+    );
+    expect(Object.keys(declarations).sort()).toEqual(Object.keys(expected).sort());
+    expect(Object.keys(declarations)).toHaveLength(Object.keys(THEME).length);
+    expect(declarations).toEqual(expected);
+    // 並びは CSS 名の昇順(生成物が一意に決まる)。
+    const order = Object.keys(declarations);
+    expect(order).toEqual([...order].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
 
     // (2) 限界が生成物そのものに書かれている。
     //

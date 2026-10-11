@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { applyDiff } from "./apply-diff.ts";
 import { applyManifest, readCurrentManifest } from "./apply-manifest.ts";
 import { createApp } from "./create-app.ts";
@@ -80,7 +80,7 @@ function baseManifest(): Manifest {
 /**
  * **コントラスト検査を通る**テーマ(25スロット全部)。
  *
- * **既定配色ではない。** 既定の `--color-border`(`#ddd`)は非テキスト閾値 3:1 を
+ * **既定配色ではない。** 既定の `border_color`(`#ddd`)は非テキスト閾値 3:1 を
  * 通らない(ADR-0046 の 2026-07-25 追記「限界7」。実証は本ファイル末尾の
  * 「条件19」の describe)。ここでは枠線を `#767676` に、`#666` 系を `#595959` に
  * 濃くしてある。
@@ -88,31 +88,36 @@ function baseManifest(): Manifest {
 function passingTheme(): Theme {
   return {
     slots: {
-      "--color-danger": "#a00000",
-      "--color-text": "#000000",
-      "--color-text-label": "#595959",
-      "--color-text-placeholder": "#595959",
-      "--color-text-secondary": "#595959",
-      "--color-border": "#767676",
-      "--color-page-background": "#ffffff",
-      "--color-surface-highlight": "#f2f2f2",
-      "--font-family-base": "system-ui, sans-serif",
-      "--font-size-note": "0.875rem",
-      "--font-size-secondary": "0.85em",
-      "--line-height-base": "1.6",
-      "--space-1": "0.25rem",
-      "--space-2": "0.5rem",
-      "--space-3": "0.75rem",
-      "--space-4": "1rem",
-      "--space-5": "1.25rem",
-      "--space-6": "2rem",
-      "--border-width": "1px",
-      "--control-border-radius": "4px",
-      "--surface-shadow": "none",
-      "--focus-outline-color": "#005fcc",
-      "--focus-outline-width": "2px",
-      "--detail-label-width": "8rem",
-      "--login-max-width": "22rem",
+      danger: "#a00000",
+      body_text: "#000000",
+      label_text: "#595959",
+      placeholder_text: "#595959",
+      secondary_text: "#595959",
+      border_color: "#767676",
+      page_background: "#ffffff",
+      highlight_surface: "#f2f2f2",
+      // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+      primary_fill: "#ffffff",
+      on_primary: "#000000",
+      overlay_background: "#ffffff",
+      overlay_text: "#000000",
+      body_font: "system-ui, sans-serif",
+      note_font_size: "0.875rem",
+      secondary_font_size: "0.85em",
+      body_line_height: "1.6",
+      space_1: "0.25rem",
+      space_2: "0.5rem",
+      space_3: "0.75rem",
+      space_4: "1rem",
+      space_5: "1.25rem",
+      space_6: "2rem",
+      border_width: "1px",
+      control_radius: "4px",
+      surface_shadow: "none",
+      focus_ring: "#005fcc",
+      focus_ring_width: "2px",
+      // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+      // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
     },
   };
 }
@@ -120,22 +125,22 @@ function passingTheme(): Theme {
 /** 2つ目のテーマ(全体差し替えが「置き換え」であることと、undo/redo の往復を見るため)。 */
 function secondTheme(): Theme {
   const theme = passingTheme();
-  theme.slots["--space-1"] = "0.5rem";
-  theme.slots["--control-border-radius"] = "0";
-  theme.slots["--color-danger"] = "#b00020";
+  theme.slots.space_1 = "0.5rem";
+  theme.slots.control_radius = "0";
+  theme.slots.danger = "#b00020";
   theme.origin = { template_app_id: "org-theme", template_diff_id: "d-0007" };
   return theme;
 }
 
 /**
- * **閾値未満のテーマ** —— `--color-border` を既定の `#ddd` に戻したもの。
+ * **閾値未満のテーマ** —— `border_color` を既定の `#ddd` に戻したもの。
  *
  * `#ddd` は `#ffffff` に対して 1.36:1、`#f2f2f2` に対して 1.21:1 で、
  * 非テキスト閾値 3:1 を下回る(V3-M1-T02 の実測)。**2組が落ちるので errors は2件になる。**
  */
 function failingTheme(): Theme {
   const theme = passingTheme();
-  theme.slots["--color-border"] = "#ddd";
+  theme.slots.border_color = "#ddd";
   return theme;
 }
 
@@ -149,31 +154,36 @@ function failingTheme(): Theme {
 function defaultsAsTheme(): Theme {
   return {
     slots: {
-      "--color-text": "#000",
-      "--color-text-secondary": "#666",
-      "--color-text-label": "#666",
-      "--color-text-placeholder": "#666",
-      "--color-danger": "#a00",
-      "--color-page-background": "#fff",
-      "--color-surface-highlight": "#f2f2f2",
-      "--color-border": "#ddd",
-      "--font-family-base": "system-ui, sans-serif",
-      "--font-size-secondary": "0.85em",
-      "--font-size-note": "0.875rem",
-      "--line-height-base": "1.6",
-      "--space-1": "0.25rem",
-      "--space-2": "0.5rem",
-      "--space-3": "0.75rem",
-      "--space-4": "1rem",
-      "--space-5": "1.25rem",
-      "--space-6": "2rem",
-      "--border-width": "1px",
-      "--control-border-radius": "0",
-      "--surface-shadow": "none",
-      "--focus-outline-width": "2px",
-      "--focus-outline-color": "#005fcc",
-      "--login-max-width": "22rem",
-      "--detail-label-width": "8rem",
+      body_text: "#000",
+      secondary_text: "#666",
+      label_text: "#666",
+      placeholder_text: "#666",
+      danger: "#a00",
+      page_background: "#fff",
+      highlight_surface: "#f2f2f2",
+      // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+      primary_fill: "#fff",
+      on_primary: "#000",
+      overlay_background: "#fff",
+      overlay_text: "#000",
+      border_color: "#ddd",
+      body_font: "system-ui, sans-serif",
+      secondary_font_size: "0.85em",
+      note_font_size: "0.875rem",
+      body_line_height: "1.6",
+      space_1: "0.25rem",
+      space_2: "0.5rem",
+      space_3: "0.75rem",
+      space_4: "1rem",
+      space_5: "1.25rem",
+      space_6: "2rem",
+      border_width: "1px",
+      control_radius: "0",
+      surface_shadow: "none",
+      focus_ring_width: "2px",
+      focus_ring: "#005fcc",
+      // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
+      // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
     },
   };
 }
@@ -384,9 +394,11 @@ describe("完了条件8: 閾値未満のテーマの拒否は「全か無か」(
       return;
     }
     // 落ちたのは**コントラスト検査**である(スキーマや参照整合性ではない)。
-    expect(result.errors).toHaveLength(2);
+    // 【V20-M9 / ADR-0474 §1-8 の 3】2 → 3(`border_color` × `overlay_background` の小窓の組が増えた)。
+    // 旧(逐語): expect(result.errors).toHaveLength(2);
+    expect(result.errors).toHaveLength(3);
     for (const error of result.errors) {
-      expect(error.path).toBe("/app/theme/slots/--color-border");
+      expect(error.path).toBe("/app/theme/slots/border_color");
       expect(error.message).toContain("下回ります");
     }
 
@@ -593,14 +605,22 @@ describe("完了条件19: この製品自身の既定配色は、自らの検査
     if (result.valid) {
       return;
     }
-    expect(result.errors).toHaveLength(2);
+    // 【V20-M9 / ADR-0474 §1-8 の 3(式P14)】既定値で落ちる組は `border_color` の組だけで、2 → 3 組
+    // (小窓の組 `border_color` × `overlay_background` を足した。既定の小窓の地色は #fff なので 1.36)。
+    // 旧(逐語): `expect(result.errors).toHaveLength(2);` と path 2件、「落ちるのは … 2組だけである」。
+    expect(result.errors).toHaveLength(3);
     expect(result.errors.map((error) => error.path)).toEqual([
-      "/app/theme/slots/--color-border",
-      "/app/theme/slots/--color-border",
+      "/app/theme/slots/border_color",
+      "/app/theme/slots/border_color",
+      "/app/theme/slots/border_color",
     ]);
-    // 落ちるのは `--color-border`(`#ddd`)の2組だけである(比の実測値)。
-    expect(result.errors[0]?.message).toContain("1.36");
-    expect(result.errors[1]?.message).toContain("1.21");
+    // 落ちるのは `border_color`(`#ddd`)の3組だけである(比の実測値)。
+    // 【V20-M8 / ADR-0473】旧(逐語): errors[0] が "1.36"、errors[1] が "1.21"。組を役割名の名前順に作るので
+    // ホバー地色(highlight_surface)の組が先に来る。比は変わらない。
+    expect(result.errors[0]?.message).toContain("1.21");
+    expect(result.errors[1]?.message).toContain("1.36");
+    expect(result.errors[1]?.message).toContain("overlay_background");
+    expect(result.errors[2]?.message).toContain("1.36");
     // 拒否なので「全か無か」がここでも成立する。
     expect(captureBytes()).toEqual(before);
   });
@@ -608,10 +628,95 @@ describe("完了条件19: この製品自身の既定配色は、自らの検査
   test("枠線を `#767676` まで濃くすると通る(通せる最短の直し方の実測)", () => {
     // **要素別の例外で逃げていない**(ADR-0046 限定4)—— 直したのは値である。
     const theme = defaultsAsTheme();
-    theme.slots["--color-border"] = "#767676";
+    theme.slots.border_color = "#767676";
     const result = applyDiff(dataRoot, APP_ID, setThemeDiff("d-0001", theme));
     expect(result.valid, JSON.stringify(result)).toBe(true);
     // **区切り線は既定(`#ddd`)より濃くなる。** これがテーマを指定したときの帰結である。
-    expect(readManifestFile().app.theme?.slots["--color-border"]).toBe("#767676");
+    expect(readManifestFile().app.theme?.slots.border_color).toBe("#767676");
+  });
+});
+
+/**
+ * **【V20-M8 / ユーザ決定 `D-V20-26` / `ADR-0473`】保存済みの旧名テーマを読み替えない。**
+ *
+ * `app.theme.slots` のキーは V20-M8 で CSS カスタムプロパティ名(`--color-text` など)から役割名
+ * (`body_text` など)に変わった。**旧名で保存されたテーマは読み替えも移行もしない**
+ * (`D-V20-26`)。したがって旧名テーマを持つ `manifest.json` は `"stored"` の検証で拒否され、
+ * `readCurrentManifest` が例外を投げる —— **そのアプリは開けない。**
+ * これは意図した代償であり、穴として `unfixed-holes.md` に書く(H-V20-94)。
+ * **読み替えを足して直した日には、下の1本目が反転して赤くなる**(それが直したことの合図である)。
+ *
+ * **下の旧名25件は「旧名がマニフェストのキーとして残っていないか」を数える除外一覧に入れる**
+ * (この test は旧名を持つこと自体が目的である)。
+ */
+describe("D-V20-26: 旧名のテーマを保存したアプリは開けない(読み替えない)", () => {
+  /** V20-M8 より前の形(旧名)で保存されたテーマ。値は `passingTheme()` と同じ。 */
+  const LEGACY_SLOTS: Readonly<Record<string, string>> = {
+    "--color-danger": "#a00000",
+    "--color-text": "#000000",
+    "--color-text-label": "#595959",
+    "--color-text-placeholder": "#595959",
+    "--color-text-secondary": "#595959",
+    "--color-border": "#767676",
+    "--color-page-background": "#ffffff",
+    "--color-surface-highlight": "#f2f2f2",
+    "--font-family-base": "system-ui, sans-serif",
+    "--font-size-note": "0.875rem",
+    "--font-size-secondary": "0.85em",
+    "--line-height-base": "1.6",
+    "--space-1": "0.25rem",
+    "--space-2": "0.5rem",
+    "--space-3": "0.75rem",
+    "--space-4": "1rem",
+    "--space-5": "1.25rem",
+    "--space-6": "2rem",
+    "--border-width": "1px",
+    "--control-border-radius": "4px",
+    "--surface-shadow": "none",
+    "--focus-outline-color": "#005fcc",
+    "--focus-outline-width": "2px",
+    // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+    // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
+  };
+
+  let legacyRoot = "";
+  const LEGACY_APP_ID = "legacy-theme-app";
+
+  beforeEach(async () => {
+    legacyRoot = await mkdtemp(join(tmpdir(), "gp-legacy-theme-"));
+  });
+
+  afterEach(async () => {
+    await rm(legacyRoot, { recursive: true, force: true });
+  });
+
+  function writeStoredManifest(slots: Readonly<Record<string, string>>): void {
+    const manifest = baseManifest();
+    manifest.app.id = LEGACY_APP_ID;
+    (manifest.app as { theme?: Theme }).theme = { slots: { ...slots } };
+    const path = appManifestPath(legacyRoot, LEGACY_APP_ID);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(manifest, null, 2));
+  }
+
+  test("H-V20-94(旧名テーマのアプリは開けない。直したら反転する): 旧名テーマの manifest.json は readCurrentManifest が例外にする", () => {
+    writeStoredManifest(LEGACY_SLOTS);
+    let message = "";
+    try {
+      readCurrentManifest(legacyRoot, LEGACY_APP_ID);
+    } catch (error) {
+      message = String((error as Error).message);
+    }
+    expect(message).toContain("マニフェストとして不正です");
+    expect(message).toContain("/app/theme/slots");
+    expect(message).toContain("--color-text");
+    expect(message).toContain("未知のプロパティ");
+  });
+
+  test("陽性対照: 同じ値を役割名で書いた manifest.json は読める", () => {
+    writeStoredManifest(passingTheme().slots);
+    const manifest = readCurrentManifest(legacyRoot, LEGACY_APP_ID);
+    expect(manifest.app.theme?.slots.body_text).toBe("#000000");
+    expect(Object.keys(manifest.app.theme?.slots ?? {})).toEqual(Object.keys(passingTheme().slots));
   });
 });

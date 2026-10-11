@@ -4,9 +4,10 @@ import type { ErrorObject } from "ajv";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 import { toValidationErrors } from "./ajv-error-adapter.ts";
-import { invalid, type ValidationResult, valid } from "./errors.ts";
+import { invalid, type ValidationError, type ValidationResult, valid } from "./errors.ts";
 import { validateReferentialIntegrity } from "./referential-integrity.ts";
 import { checkThemeContrast } from "./theme-contrast.ts";
+import { resolveThemeSlots } from "./theme-reference.ts";
 import type { Manifest } from "./types.ts";
 
 /**
@@ -48,6 +49,11 @@ const ajv = new Ajv2020({
   strictRequired: false,
   // filter の `equals` は string / number / boolean を取りうるため、共用体型を許可する。
   allowUnionTypes: true,
+  // **【`V20-M5-T01` / `ADR-0471`】並べ方の木の節(`$defs/layout_node`)は型ごとの `oneOf` を
+  // `discriminator`(`type`)で判別する。** ajv が `type` の値で枝を1本だけ選んで検査するので、拒否の文面に
+  // 他の枝の都合が混ざらない(NF4)。**このキーワードを使う定義は `layout_node` の1本だけである**
+  // (他の定義の検査は1バイトも変わらない)。
+  discriminator: true,
 });
 addFormats(ajv);
 
@@ -55,7 +61,7 @@ ajv.addSchema(manifestSchema);
 ajv.addSchema(diffSchema);
 
 const compiledManifest = ajv.compile(manifestSchema);
-const compiledDiff = ajv.compile(diffSchema);
+const DIFF_SCHEMA_ID = String(diffSchema.$id); // 差分のスキーマは初めて差分を検証するときに getSchema が1回だけ組み立てる(差分を検証しない生成器などの起動を重くしない)
 
 /**
  * 検証の目的。**「新しい入力を受理してよいか」と「既に在るものを読めるか」は別の問いである。**
@@ -153,7 +159,7 @@ export function validateManifest(
  * op は additive 4種のみ。破壊的な op はここで語彙外として拒否される。
  */
 export function validateDiff(input: unknown): ValidationResult {
-  return run(compiledDiff, input);
+  return run(ajv.getSchema(DIFF_SCHEMA_ID) as typeof compiledManifest, input);
 }
 
 /**
@@ -212,6 +218,14 @@ export function validateManifestFull(
  * 担保するのは「**閾値未満の配色を適用できないこと**」だけであって、「読みやすいこと」
  * でも「良い配色であること」でもない(ADR-0046 §1c。**数値は WCAG から借りたが
  * 「WCAG 準拠」と名乗らない**)。
+ *
+ * ## 参照の解決 —— 解決 → 拒否があれば返す → 解いた実値でコントラスト検査(`V20-M9-T02` / `ADR-0474` §1-5)
+ *
+ * 生の色への参照(`$palette_<名前>`)を {@link resolveThemeSlots} で実値まで解いてから比を測る。
+ * **解決の拒否(解決できない参照 / 循環参照 / 参照が深すぎる)が1件でもあれば、コントラストの誤りを
+ * 混ぜずにそれだけを返す**(差分全体を拒否する。`ADR-0047` 限定9)。**`stored` には解決の拒否も掛けない**
+ * (上の非対称と同じ理由。手で書いた定義ファイルの未解決の参照は画面に届きうる。`ADR-0474` の
+ * 「この条文が塞がないもの」の 10)。保存するのは参照の綴りのままであり、解いた実値で書き換えない。
  */
 function checkTheme(manifest: Manifest, purpose: ValidationPurpose): ValidationResult {
   if (purpose !== "incoming") {
@@ -224,6 +238,26 @@ function checkTheme(manifest: Manifest, purpose: ValidationPurpose): ValidationR
   // **`slots` は構造検証を通っているので25キーそろっている**(`$defs/theme` の
   // `required` が全スロット。ADR-0047 2026-07-25 追記(2))。したがって
   // 「片側しか与えられていない対は測れない」という T02 の穴は、この経路では起きない。
-  const errors = checkThemeContrast(theme.slots, "/app/theme/slots");
+  // 【V20-M10 / ADR-0458 §Decision 2】暗い側の組 `slots_dark`(在れば)も同じ役割の層を
+  // 参照するので同じくそろっている。**2つの組を1本のループの中の1箇所で、別々に解決し
+  // 別々にコントラスト検査に掛ける**(閾値・組は同じ。モード別の例外を作らない。
+  // `ADR-0046` 限定4)。参照は組ごとに閉じる(`slots` の生の色を `slots_dark` から指せない)。
+  // 組ごとに「解決の拒否があればその組のコントラスト検査は掛けない」は今日の順のまま。
+  // どちらかの組が割れれば差分全体を拒否する(全か無か。`ADR-0047` 限定9)。
+  const groups: Array<readonly [string, Readonly<Record<string, string>>]> = [
+    ["/app/theme/slots", theme.slots],
+  ];
+  if (theme.slots_dark !== undefined) {
+    groups.push(["/app/theme/slots_dark", theme.slots_dark]);
+  }
+  const errors: ValidationError[] = [];
+  for (const [path, slots] of groups) {
+    const resolved = resolveThemeSlots(slots, path);
+    if (resolved.errors.length > 0) {
+      errors.push(...resolved.errors);
+      continue;
+    }
+    errors.push(...checkThemeContrast(resolved.slots, path));
+  }
   return errors.length > 0 ? invalid(errors) : valid();
 }

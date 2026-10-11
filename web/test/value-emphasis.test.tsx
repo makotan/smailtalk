@@ -33,6 +33,7 @@ import { dirname, join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { Field } from "../../src/kernel/types.ts";
 import { FieldValue } from "../src/fields/display.tsx";
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 import { HANDWRITTEN_SOURCES, readStyleSource } from "./style-source-set.ts";
 
 afterEach(cleanup);
@@ -141,7 +142,13 @@ test("限定5: 色の当たり先はすべて $defs/theme の25スロットの�
   ) as { $defs: { theme: { properties: Record<string, unknown> } } };
   const themeSlots = Object.keys(schema.$defs.theme.properties);
   // **`$defs/theme` の properties / required 25 を1つも動かしていない**(限定5)。
-  expect(themeSlots).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(themeSlots).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(themeSlots).toHaveLength(23);
+  expect(themeSlots).toHaveLength(27);
+  // `var(--…)` が読むのは CSS 名であり、スロット名(役割名)は写像
+  // `web/src/theme-role-map.ts` で CSS 名に写る(V20-M8 / ADR-0473)。**25スロットが写る先の集合**と照合する。
+  const themeCssNames = themeSlots.map((slot) => THEME_ROLE_TO_CSS_PROPERTY[slot]);
+  expect(themeCssNames.filter((name) => name === undefined)).toEqual([]);
 
   const rules = [...cssBody.matchAll(/(\.field-emphasis[^{}]*)\{([^}]*)\}/g)];
   expect(rules.length).toBe(5);
@@ -156,7 +163,7 @@ test("限定5: 色の当たり先はすべて $defs/theme の25スロットの�
         continue;
       }
       // **色を運ぶ宣言のスロットは、必ず25スロットのどれかである。**
-      expect(themeSlots.includes(slot), `${rule[1]} / ${property}: ${slot}`).toBe(true);
+      expect(themeCssNames.includes(slot), `${rule[1]} / ${property}: ${slot}`).toBe(true);
     }
   }
 });
@@ -170,7 +177,9 @@ test("限定5: 使ったスロットはすべて styles.css の :root に既に�
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"));
   // **スロット集合は 28 のままである**(`web/test/styles.test.ts` の (c) が正)。
-  expect(slotsFile).toHaveLength(28);
+  // 【V20-M9 / ADR-0474 §1-2】28 → 32(主ボタンと小窓の4件。この強調の規則は1つも新設していない)。
+  // 旧(逐語): expect(slotsFile).toHaveLength(28);
+  expect(slotsFile).toHaveLength(32);
   const rules = [...cssBody.matchAll(/\.field-emphasis[^{}]*\{([^}]*)\}/g)];
   const used = new Set<string>();
   for (const rule of rules) {

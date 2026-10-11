@@ -554,6 +554,55 @@ describe("(5) 新しい読取経路を作っていない", () => {
    * **【緩めていない】** **突き合わせは今日も全量の集合一致であり、2本目を足せば赤くなる。**
    */
   const API_EXPORTS = [
+    // **【`V23-M6-T06b` が足した3本。授権 = `ADR-0539` 行25】53 → 56。**
+    // **行の招待用コードを見る口・発行と再発行の口(相手の行の詳細のコードの欄)と、コードの招待の発行(行の詳細の「招待する」)。**
+    // 読取は1本(コードを見る)で、レコードの行を読まず、参照候補の集合にも並びにも関わらない。
+    // **旧の集合(53名。逐語。並びは名前順。`HEAD` の `api.ts` から python で抜き出した)**:
+    //   `answerRowInvitation`・`applyCandidateDiff`・`applyThemeDiff`・`authMe`・`changePassword`・`createComment`
+    //   `createConnection`・`createRecord`・`customerPasskeyRegister`・`customerPasswordRegister`・`deleteOwnAccount`・`deleteRecord`
+    //   `fetchApps`・`fetchManifest`・`fetchMyRowInvitations`・`fetchPreviewCompare`・`fetchPublicAppInfo`・`fetchRecord`
+    //   `fetchRecordPage`・`fetchRecords`・`fetchReport`・`fetchRequirementsDoc`・`fetchRowInvitations`・`fetchUnreachableRecords`
+    //   `fileDeliveryUrl`・`isApplyInProgress`・`isForbidden`・`isLastOwnerConflict`・`isWriteConflict`・`issueEscapeHatchAsset`
+    //   `issueInvitation`・`issueRowInvitation`・`listAppUsers`・`listComments`・`listConnectionRequests`・`listConnections`
+    //   `listEscapeHatchAssetRequests`・`listEscapeHatchAssets`・`logout`・`passkeyLogin`・`passkeyRegister`・`passwordLogin`
+    //   `passwordRegister`・`readCascadeDeleteDenial`・`revokeConnection`・`revokeEscapeHatchAsset`・`revokeInvitation`・`runViewAction`
+    //   `setAppUserRole`・`setUnauthorizedHandler`・`updateRecord`・`uploadFile`・`writeRecordsBatch`
+    // **【緩めていない】** 突き合わせは今日も全量の集合一致である。
+    "fetchRowInviteCode",
+    "issueRowInvitationByCode",
+    "reissueRowInviteCode",
+    // **【`V23-M5-T06` が足した4本。授権 = `ADR-0536` 行1(メインの裁定 `D-V23-140`)】49 → 53。**
+    // **行単位の招待の画面が、招待の口4本(自分宛ての一覧・返答・行の招待の一覧・発行)を呼ぶ。**
+    // 読取は2本(自分宛ての一覧・行の招待の一覧)で、どちらもレコードの行を読まず、参照候補の集合にも並びにも関わらない。
+    // **旧の集合(49名。逐語。並びは名前順)**:
+    //   `applyCandidateDiff`・`applyThemeDiff`・`authMe`・`changePassword`・`createComment`・`createConnection`
+    //   `createRecord`・`customerPasskeyRegister`・`customerPasswordRegister`・`deleteOwnAccount`・`deleteRecord`・`fetchApps`
+    //   `fetchManifest`・`fetchPreviewCompare`・`fetchPublicAppInfo`・`fetchRecord`・`fetchRecordPage`・`fetchRecords`
+    //   `fetchReport`・`fetchRequirementsDoc`・`fetchUnreachableRecords`・`fileDeliveryUrl`・`isApplyInProgress`・`isForbidden`
+    //   `isLastOwnerConflict`・`isWriteConflict`・`issueEscapeHatchAsset`・`issueInvitation`・`listAppUsers`・`listComments`
+    //   `listConnectionRequests`・`listConnections`・`listEscapeHatchAssetRequests`・`listEscapeHatchAssets`・`logout`・`passkeyLogin`
+    //   `passkeyRegister`・`passwordLogin`・`passwordRegister`・`readCascadeDeleteDenial`・`revokeConnection`・`revokeEscapeHatchAsset`
+    //   `revokeInvitation`・`runViewAction`・`setAppUserRole`・`setUnauthorizedHandler`・`updateRecord`・`uploadFile`
+    //   `writeRecordsBatch`
+    // **【緩めていない】** 突き合わせは今日も全量の集合一致である。
+    "answerRowInvitation",
+    "fetchMyRowInvitations",
+    "fetchRowInvitations",
+    "issueRowInvitation",
+    // **【`V20-M14-T01C` が足した2本。上の doc と下の注記を1バイトも消していない】**
+    // **宣言どおり、この検査は実際に赤くなった**(記録 `docs/plan/v20/records/v20-m14-t01c.md` §2)。
+    // - `fetchPreviewCompare` は**読取**である(前段が束の識別子にだけ答える `GET /api/apps/pv-<束>/compare`。
+    //   `ADR-0478` §Decision 1-4)。 **本ファイルの主題(「新しい読取経路を作っていない」)に正面から当たる1本を
+    //   足した。言い訳はしない。** ただし読むのは束の案の票(名前・トレードオフ・意図・差分・注意・古いか)だけで、
+    //   **レコードを1行も読まず、参照候補の集合にも並びにも1ミリも関わらない。** **HTTP のルートは1本も
+    //   足していない**(前段の `app.all("/api/apps/:app_id/*")` の中。`HTTP_ENTRY_POINTS` は 54 のまま)。
+    // - `applyCandidateDiff` は**書込**である(撃つ先は `applyThemeDiff` と同じ既存の `POST /api/apps/:app_id/diffs`
+    //   1本。`D-V20-48`)。 レコードを1行も読まない。
+    // **【この2行を足す裁定はメインが確かめる】**(本段の計画に「既存検査の期待値を書き換えたら止まる」条件は
+    //   無いが、`V19-M3` と同じ穴 —— 画面の段が `api.ts` に関数を足すたびに必ず赤くなる —— を今日も踏んだ)。
+    // **【緩めていない】** **突き合わせは今日も全量の集合一致である。**
+    "fetchPreviewCompare",
+    "applyCandidateDiff",
     // **【`V19-M3-T02` が足した1本】** **運営の画面から招待を1件取り消す口を呼ぶ(`SV-G4`)。**
     // **【新しい HTTP の口を1本も足していない】** —— **撃つ先は `issueInvitation` と
     //   **同じ** `POST /api/apps/:app_id/auth/invitations` 1本ちょうどで、送る中身が
@@ -613,6 +662,12 @@ describe("(5) 新しい読取経路を作っていない", () => {
     "fetchRecordPage",
     "fetchRecords",
     "fetchRequirementsDoc",
+    // **【`V23-M1-T10` が足した1本。授権 = `ADR-0514` 行59(メインの裁定 `D-V23-39`)】**
+    // **運営だけに出る読取専用の「管理者のいない行」の画面が、既存の
+    //   `GET /api/apps/:app_id/tables/:table_id/unreachable-records` を初めて呼ぶ口である。**
+    // **【新しい HTTP の口を1本も足していない】** —— サーバ側の読取経路は増えていない。
+    // **【緩めていない】** 突き合わせは今日も全量の集合一致であり、2本目を足せば赤くなる。
+    "fetchUnreachableRecords",
     "fileDeliveryUrl",
     "isApplyInProgress",
     "isForbidden",

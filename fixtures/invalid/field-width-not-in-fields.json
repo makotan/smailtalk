@@ -1,0 +1,26 @@
+{
+  "app": {
+    "id": "delivery-desk",
+    "name": "配送受付",
+    "tables": [
+      {
+        "id": "deliveries",
+        "name": "配送",
+        "fields": [
+          { "id": "postal_code", "name": "郵便番号", "type": "text", "required": true },
+          { "id": "address", "name": "住所", "type": "long_text" },
+          { "id": "note", "name": "備考", "type": "long_text" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "delivery-form",
+        "type": "form",
+        "table": "deliveries",
+        "fields": ["postal_code", "address"],
+        "field_width": { "note": "full" }
+      }
+    ]
+  }
+}

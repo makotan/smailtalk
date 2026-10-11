@@ -108,3 +108,59 @@ export function reportLimitError(kind: ReportLimitKind): ValidationError {
     hint: "絞り込み(filter)で対象を狭めるか、集計する範囲を分けてください(1つの集計表が読む行は表ごとに上限があります)。",
   };
 }
+
+/**
+ * **行の最後の管理者の付与を外す書込を断る(409)**(`V23-M1-T07`。`SC-G5` / `ADR-0497` §Decision 1)。
+ *
+ * 判定は `owner-scope.ts` の `lastRowAdminVanishes` 1本。 ここは文面だけを持つ(HTTP と AI の口が
+ * 同じ文面を返す)。 文面は業務の言葉にし、内部記号を出さない(計画 M1-B)。
+ */
+export function lastRowAdminError(): ValidationError {
+  return {
+    path: "",
+    message:
+      "この行の管理者があなただけになるため、あなたの権限は外せません。先に別の人に管理の権限を渡してください。",
+    hint: "別の人に管理の権限を渡してから、もう一度お試しください。運営者はこの行の権限を直接外せます。",
+  };
+}
+
+/**
+ * **付与の書込を、行の管理の権限を持たない人に断る(403)**(`V23-M12-T05`。決定 `D-V23-360` の (2)・`D-V23-407`。
+ * 門A `ADR-0571` §Decision 1-5・`ADR-0575` §Decision 1 の3)。
+ *
+ * 判定は `owner-scope.ts` の `judgeGrantWrite` 1本(答えの `not_creator` が操作と管理の権限の宣言の名前を持つ)。
+ * ここは文面だけを組む(HTTP と AI の口が同じ文面を返す)。 マニフェストは受け取らない。
+ *
+ * - 操作で動詞を分ける: 付ける(create)・変える(update)・外す(delete)。
+ * - 名前が1つなら「「{名}」」、2つ以上なら「「{名1}」か「{名2}」」、0個(管理の権限を宣言しないアプリ)なら運営者だけ。
+ *
+ * **【旧の文(逐語)。`app.ts` の `forbiddenGrantWriteError` と `src/mcp/tools/write.ts` のその写しが返していた。
+ * 2本とも本関数の呼び出しに替え、旧の関数は各ファイルに注記で逐語のまま残した】**
+ *     message: "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
+ *     hint: "この行を作った人か、アプリの運営者に頼んでください。",
+ */
+export function grantWriteRefusalError(
+  op: "create" | "update" | "delete",
+  names: readonly string[],
+): ValidationError {
+  const subject =
+    op === "update"
+      ? "この行の権限を変えられる"
+      : op === "delete"
+        ? "この行の権限を外せる"
+        : "この行に権限を付けられる";
+  const shown = names.filter((name) => name !== "");
+  if (shown.length === 0) {
+    return {
+      path: "",
+      message: `${subject}のは、アプリの運営者だけです。`,
+      hint: "アプリの運営者に頼んでください。",
+    };
+  }
+  const quoted = shown.map((name) => `「${name}」`).join("か");
+  return {
+    path: "",
+    message: `${subject}のは、この行で${quoted}の権限を持つ人と運営者だけです。`,
+    hint: `この行で${quoted}の権限を持つ人か、アプリの運営者に頼んでください。`,
+  };
+}

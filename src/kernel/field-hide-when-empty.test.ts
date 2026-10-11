@@ -69,11 +69,16 @@ test("限定1: $defs/field.properties は 12 で、12キー目は hide_when_empt
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行20 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   // **【`V8-M20-T01` / 台帳 `J-G27` / `J-G28` / `ADR-0301` で見る位置を2つ手前へ直した】**
   // **8キー目だった `audience` と9キー目だった `writable_by` が廃止されたので、それより後ろの
   // キーの添字が2つずつ繰り上がった。****期待値を緩めていない。**
-  expect(properties[9]).toBe("hide_when_empty");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行20】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[9]`。**
+  expect(properties[10]).toBe("hide_when_empty");
 });
 
 test("限定1: field_changes.properties は 11 で、11キー目は hide_when_empty である", () => {
@@ -87,11 +92,16 @@ test("限定1: field_changes.properties は 11 で、11キー目は hide_when_em
   // **【`V8-M20-T01` / 台帳 `J-G28` / 手続きは `ADR-0301` で 13 → 12 に更新した】** 8個目だった
   // `writable_by` が**廃止された**(判定 = 廃止)。**差し替えは差分操作 `set_roles` の全体差し替え
   // であり、`change_field` に相当する部分更新は面に1つも無い。****旧値の逐語は 13。**
-  expect(properties).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行20 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(properties).toHaveLength(13);
   // **【`V8-M20-T01` / 台帳 `J-G28` / `ADR-0301` で見る位置を1つ手前へ直した】** **8個目だった
   // `writable_by` が廃止されたので、それより後ろのキーの添字が1つずつ繰り上がった。**
   // **期待値を緩めていない。**
-  expect(properties[9]).toBe("hide_when_empty");
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行20】見る位置を1つ後ろへ直した。** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足され、それより後ろのキーの添字が1つずつ繰り下がった。
+  // **期待値を緩めていない。****旧値の逐語は `properties[9]`。**
+  expect(properties[10]).toBe("hide_when_empty");
   // **値域の定義を二重に持たない**(`unique` / `unit` / `emphasis` と同じ作法)。
   expect(
     (readSchema("diff.schema.json").$defs.field_changes.properties.hide_when_empty as Any).$ref,
@@ -108,8 +118,12 @@ test("限定1: $defs/theme 25・25 が1つも動いていない", () => {
   //   **どの決定がこの語彙を動かしたかは、ここでは分からなくなった**(`ADR-0250` §Decision 5 の (1))。
   // 【`V5-M29-T03`】**テスト名を書き換えた。** 旧: 「限定1: $defs 28 / $defs/theme 25・25 が1つも動いていない」。
   //   本体から `$defs` の本数を測る `expect` が消えたため(記録 §4-7)。
-  expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(25);
-  expect(manifest.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(23);
+  expect(Object.keys(manifest.$defs.theme.properties)).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(manifest.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(manifest.$defs.theme.required).toHaveLength(23);
+  expect(manifest.$defs.theme.required).toHaveLength(27);
 });
 
 test("限定1: $defs/view には1バイトも触っていない(画面ごとに出し分けを変えられない)", () => {
@@ -154,7 +168,9 @@ test("限定7: operation.properties 9 が動いていない(専用の op を作�
   // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G9a`。判定値 = 廃止】**
   // **旧(逐語)**: `expect(Object.keys(readSchema("diff.schema.json").$defs.operation.properties)).toHaveLength(10);`
   // **`user_kinds` キーを撤去したので 10 → 9。**この検査が測る「この決定がキーを足していないこと」は1ミリも弱めていない。
-  expect(Object.keys(readSchema("diff.schema.json").$defs.operation.properties)).toHaveLength(9); // 【`V5-M17b` / `ADR-0248` 限定4】8 → 9(`user_kinds` が9キー目)/【`V8-M16`】9 → 10(`roles` が10キー目)。**この行が固定していたのは「その決定がキーを足さなかったこと」であり、足したのは別の決定である。**
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: 同じ式の `.toHaveLength(9);` —— 10キー目 `design_memory` を足したので 9 → 10(別の決定)。
+  // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行17)】旧(逐語)**: `expect(Object.keys(readSchema("diff.schema.json").$defs.operation.properties)).toHaveLength(10);` —— 11キー目 `workspace` を足したので 10 → 11(別の決定)。
+  expect(Object.keys(readSchema("diff.schema.json").$defs.operation.properties)).toHaveLength(11); // 【`V5-M17b` / `ADR-0248` 限定4】8 → 9(`user_kinds` が9キー目)/【`V8-M16`】9 → 10(`roles` が10キー目)。**この行が固定していたのは「その決定がキーを足さなかったこと」であり、足したのは別の決定である。**
   // **専用の op を作らない** —— 書き込みは既存の `add_field` / `change_field` だけである。
   expect(DIFF_OPS.some((op) => op.includes("hide"))).toBe(false);
 });

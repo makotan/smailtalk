@@ -84,6 +84,9 @@
   --color-accent: var(--color-surface-highlight);
   --color-accent-foreground: var(--color-text);
   --color-destructive: var(--color-danger);
+  /* 主ボタン(V20-M9 / ADR-0474 §Decision 1-7。`bg-primary-fill` / `text-on-primary` の元) */
+  --color-primary-fill: var(--color-primary-fill);
+  --color-on-primary: var(--color-on-primary);
   --color-border: var(--color-border);
   --color-input: var(--color-border);
   --color-ring: var(--focus-outline-color);
@@ -108,8 +111,14 @@
    */
   --color-primary: var(--color-text);
   --color-primary-foreground: var(--color-page-background);
-  --color-popover: var(--color-page-background);
-  --color-popover-foreground: var(--color-text);
+  /*
+   * 【V20-M9 / ADR-0474 §Decision 1-2】小窓の2行を新しい枠から導出する。旧(逐語):
+   * `--color-popover: var(--color-page-background);` / `--color-popover-foreground: var(--color-text);`
+   * 上の段落の「スロットは今日も 25 / 25 である」は引き直しの前の逐語である(今日は 27 / 27)。
+   * `--color-primary` / `--color-primary-foreground`(塗りつぶしの `primary` variant)は動かさない。
+   */
+  --color-popover: var(--color-overlay-background);
+  --color-popover-foreground: var(--color-overlay-text);
 
   /* 書体・行間 */
   --font-sans: var(--font-family-base);

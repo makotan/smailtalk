@@ -754,6 +754,11 @@ test("V7-M7-T05 (iii-b) 退会したあと同じ username で登録し直して�
     // **`createUser` の `id: randomId(),`: 旧 `706` → 今日 `845`。**
     // **`createUser(input:` の行: 旧 `704` → 今日 `843`。**
     //
+    // **【`V23-M1`(2026-09-29。授権 `ADR-0515` 行60 / `D-V23-40`)による更新。旧の行番号を1つも消していない】**
+    // **`V23-M1-T04` が `src/auth/store.ts` に `runInTransaction`(登録と名簿の行を同じトランザクションに入れる
+    // 外側のトランザクション)を `createUser` の上へ足したため、`createUser` から下が +14行 動いた。**
+    // **`randomId` の4行(`337`〜`340`)は動いていない。** **旧: `843` / `845` → 今日: `857` / `859`。**
+    //
     // **すなわち id は 256bit の暗号乱数であり、連番でも `AUTOINCREMENT` でもない。**
     // **`deleteUser`(当時 `src/auth/store.ts:706` → `V8-M16` 後 `:926` → `V8-M21` 後 `:978`
     // → `V8-M30` 後 `:1091` → 今日 `:1230`)は行を消す
@@ -769,7 +774,9 @@ test("V7-M7-T05 (iii-b) 退会したあと同じ username で登録し直して�
         339: at(339),
         340: at(340),
         // **【`V8-M30`】旧の期待値(逐語)**: `674: at(674),` / `674: "      id: randomId(),",`
-        845: at(845),
+        // **【`V23-M1`。授権 `ADR-0515` 行60(`D-V23-40`)】旧の期待値(逐語)**: `845: at(845),` —— `V23-M1-T04` が
+        // `AuthStore.runInTransaction` を足して `createUser` から下が +14行 動いた(`randomId` の4行は動いていない)。
+        859: at(859),
       },
       "src/auth/store.ts の逐語が動いた(T05 のコメントを直すこと)",
     ).toEqual({
@@ -777,11 +784,13 @@ test("V7-M7-T05 (iii-b) 退会したあと同じ username で登録し直して�
       338: "  const bytes = new Uint8Array(32);",
       339: "  crypto.getRandomValues(bytes);",
       340: "  return toBase64Url(bytes);",
-      845: "      id: randomId(),",
+      // **【`V23-M1`】旧(逐語)**: `845: "      id: randomId(),",`
+      859: "      id: randomId(),",
     });
     // **【`V8-M30`】旧の期待値(逐語)**: `expect(at(672)).toContain("createUser(input:");`
     // **【`V8-M2`】旧の期待値(逐語)**: `expect(at(704)).toContain("createUser(input:");`
-    expect(at(843)).toContain("createUser(input:");
+    // **【`V23-M1` / `ADR-0515` 行60】旧の期待値(逐語)**: `expect(at(843)).toContain("createUser(input:");`
+    expect(at(857)).toContain("createUser(input:");
     // **連番の痕跡が1つも無い**(`_auth_users` の DDL を含めてファイル全体で)。
     expect(storeLines.join("\n")).not.toContain("AUTOINCREMENT");
   } finally {

@@ -65,6 +65,7 @@ import {
   type Manifest,
 } from "../kernel/index.ts";
 import { createServerApp } from "./app.ts";
+import { seedSession, TEST_ORIGIN } from "./test-helpers.ts";
 
 const APP_ID = "inbound-guard";
 const SIGNING_KEY = "test-inbound-guard-key";
@@ -602,4 +603,73 @@ test("(F-6) 面が止めても、点が通せば受信は通る(OR は書ける�
   seedInboundMember();
   expect((await postInbound({ event_id: "evt_6", body: "点で" })).status).toBe(201);
   expect(rowCount("inbox")).toBe(1);
+});
+
+// =====================================================================================
+// D-V23-259(V23-M9-T12b): 作成者付与 × 受信口。 受信で入った行には、作った人への付与を1件も書かない
+// (受信の主体は人ではない)。 同じ表へ画面の口で人が作れば、その人に1件入る(陽性対照)。
+// =====================================================================================
+
+/** 付与表 `table` のうち、`column` が `rowId` を指す行の数を本物の SQLite から数える。 */
+function grantRowsFor(table: string, column: string, rowId: string): number {
+  const db = new Database(appDbPath(dataRoot, APP_ID), { readonly: true });
+  try {
+    return (
+      db
+        .query<{ n: number }, [string]>(
+          `SELECT COUNT(*) AS n FROM "${table}" WHERE "${column}" = ?`,
+        )
+        .get(rowId)?.n ?? -1
+    );
+  } finally {
+    db.close();
+  }
+}
+
+/** 受信箱に「運営は作れる」を足した定義(画面の口で人が作る陽性対照のため。受信口の答えは変えない)。 */
+function manifestWithOwnerCreates(): Manifest {
+  const m = manifest() as unknown as {
+    app: { tables: { id: string; access_control?: Record<string, unknown> }[] };
+  };
+  const inbox = m.app.tables.find((table) => table.id === "inbox");
+  if (inbox?.access_control !== undefined) {
+    inbox.access_control = { ...inbox.access_control, creatable_by_roles: ["owner"] };
+  }
+  return m as unknown as Manifest;
+}
+
+test("(CG-1) D-V23-259: 受信口で入った行に作成者への付与は入らない。同じ表へ画面の口で作った人には1件入る", async () => {
+  expect(applyManifest(dataRoot, APP_ID, manifestWithOwnerCreates()).valid).toBe(true);
+  seedInboundMemberRow();
+  const received = await postInbound({ event_id: "evt_cg_1", body: "外から" });
+  expect(received.status).toBe(201);
+  const receivedId = String(((await received.json()) as { record: { _id: string } }).record._id);
+  expect(grantRowsFor("inbox_grant", "inbox", receivedId)).toBe(0);
+
+  // 陽性対照: 参加者の表に行を持つ人が画面の口で作ると、作成者への付与(keeper)が1件入る。
+  const person = seedSession(dataRoot, APP_ID, { role: "owner", username: "owner1" });
+  kernelCreate("inbox_member", { account: person.userId });
+  const created = await app.request(
+    new Request(`http://localhost/api/apps/${APP_ID}/tables/inbox/records`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: TEST_ORIGIN, cookie: person.cookie },
+      body: JSON.stringify({ event_id: "evt_cg_2", body: "画面から" }),
+    }),
+  );
+  expect(created.status, await created.clone().text()).toBe(201);
+  const createdId = String(((await created.json()) as { record: { _id: string } }).record._id);
+  expect(grantRowsFor("inbox_grant", "inbox", createdId)).toBe(1);
+});
+
+test("(CG-2) D-V23-259: 引き継ぎ元を持つ受信先でも、受信で入った行に作成者への付与は入らない", async () => {
+  const memberRowId = seedInboundMemberRow();
+  const parentId = kernelCreate("parent_box", { title: "中の箱" });
+  kernelCreate("kid_grant", { parent: parentId, member: memberRowId, permission: "keeper" });
+  const res = await postInbound(
+    { event_id: "evt_cg_3", body: "中から", parent: parentId },
+    childEndpointId,
+  );
+  expect(res.status).toBe(201);
+  const kidId = String(((await res.json()) as { record: { _id: string } }).record._id);
+  expect(grantRowsFor("kid_grant", "kid", kidId)).toBe(0);
 });

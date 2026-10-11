@@ -138,6 +138,8 @@ export {
 // ワークフローが発火しうる async 境界(MCP / サーバの起動)で島ランタイムを1度ロードして
 // おく。`runIslandSync` / `runIsland` はカーネル内部(`workflow-runner.ts`)からのみ呼ぶ。
 export { ensureIslandRuntimeReady } from "./island-runner.ts";
+// 【`V20-M4-T01` / メインの裁定 案A】一覧の束ねるキーの読取の並び。**サーバが使うのは引数の検査と並べ替えの2本だけ**(丸めは `report.ts` の1本)。
+export { listGroupKey, orderRowsByListGroup, parseListGroupBy } from "./list-group-order.ts";
 export {
   APP_STATUSES,
   type AppendChangelogInput,

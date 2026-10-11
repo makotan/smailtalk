@@ -36,6 +36,9 @@ import type { Field, ListView, Manifest, View } from "./types.ts";
 import { DIFF_OPS } from "./types.ts";
 import { validateManifest, validateManifestFull } from "./validate.ts";
 
+// biome-ignore lint/suspicious/noExplicitAny: スキーマ JSON を素で読むための局所エイリアス(既存の検査と同じ作法。`V20-M4-T02` が足した)。
+type Any = any;
+
 /** 足したキーの名前。**1本だけである**(`ADR-0104` 限定1)。 */
 const KEY = "sum_field";
 
@@ -152,7 +155,13 @@ describe("(T01-1) 語彙の総量(ADR-0104 限定1)", () => {
     // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
     // 書け、集計表(`report_view`)には書けない**)。
     // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-    expect(keys).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(31);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(32);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行76】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(keys).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+    expect(keys).toHaveLength(35);
     expect(keys).toContain(KEY);
     // **27キー目までの並びを1バイトも動かしていない**(末尾に足した)。
     // **【`V8-M20-T01` / 台帳 `J-G27` / `ADR-0301` で見る位置を1つ手前へ直した】** **19キー目だった
@@ -175,8 +184,12 @@ describe("(T01-1) 語彙の総量(ADR-0104 限定1)", () => {
   // **`RESOURCE_KINDS` / `FIELD_TYPES` / `DIFF_OPS` の総量を固定していた3件を中央へ移したので、
   // この test に残るのは `$defs/theme` と `$defs/field`(どちらも8主題の外)だけである。**
   test("$defs/theme 25・25 / $defs/field 12 が1つも動かない", () => {
-    expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(25);
-    expect(defs().theme?.required ?? []).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(23);
+    expect(Object.keys(defs().theme?.properties ?? {})).toHaveLength(27);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(defs().theme?.required ?? []).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(defs().theme?.required ?? []).toHaveLength(23);
+    expect(defs().theme?.required ?? []).toHaveLength(27);
     // **【V6-M1-T01 / K-G1 / ADR-0288 限定1 で 12 → 13 に更新した】** 13キー目 `reference_picker`
     // (他のテーブルから選ぶ項目の選び方)が門A を通って増えた(V6-M0 単位A。判定 = 限定採用)。
     // **reference 型にだけ書けるキーである。****本 ADR の増分ではない。**
@@ -188,7 +201,9 @@ describe("(T01-1) 語彙の総量(ADR-0104 限定1)", () => {
     // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
     // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
     // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-    expect(Object.keys(defs().field?.properties ?? {})).toHaveLength(12);
+    // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行25 で 12 → 13 に更新した】** `unique` の直後に
+    // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+    expect(Object.keys(defs().field?.properties ?? {})).toHaveLength(13);
     // 【`V5-M29-T04` / `ADR-0250` 限定11】ここにあった「$defs/theme 25・25 / $defs/field 12 / RESOURCE_KINDS 7 / FIELD_TYPES 8 / DIFF_OPS 16 が1つも動かない」の検査は
     //   `scripts/vocabulary-drift.test.ts` へ移した(名前の一覧は `scripts/vocabulary-snapshot.txt` の
     //   `RESOURCE_KINDS:` で始まる行)。**総量ではなく名前と順序で見張る。**
@@ -221,7 +236,13 @@ describe("(T01-1) 語彙の総量(ADR-0104 限定1)", () => {
     // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
     // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
     // **検査は消していない。**
-    expect(keys).toHaveLength(27);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(27);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(keys).toHaveLength(28);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行77】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(keys).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+    expect(keys).toHaveLength(31);
     expect(keys[21]).toBe(KEY);
   });
 });
@@ -309,8 +330,30 @@ describe("(T01-2) 演算は合計の1種だけ(ADR-0104 限定2)", () => {
     expect(
       Object.keys((schema.$defs.report as { properties: Record<string, unknown> }).properties),
     ).toContain("group_by");
-    const { report: _report, ...rest } = schema.$defs;
-    expect(JSON.stringify({ ...schema, $defs: rest })).not.toContain('"group_by"');
+    /*
+     * **【2026-09-24。`V20-M4-T02` / `ADR-0470`(`ADR-0461` 限定1 を引き直した)/ `ADR-0461` 限定2】**
+     * **一覧の束ねるキー `group_by` が `$defs/view.properties` に入り、入力フォーム・詳細画面・集計表の
+     * 3分岐に `"group_by": false` が入った。** **その4箇所を落とした残り全部には今日も1つも無いことを、
+     * 機械で確かめる形に置き直した。** **`"avg"` / `"having"` / `"group by"` の3語についての主張は
+     * 1ミリも弱めていない。**
+     * **旧行の逐語**:
+     * `    const { report: _report, ...rest } = schema.$defs;`
+     * `    expect(JSON.stringify({ ...schema, $defs: rest })).not.toContain('"group_by"');`
+     */
+    const { report: _report, view, ...rest } = schema.$defs as Record<string, Any>;
+    const { group_by: listGroupBy, ...viewProperties } = view.properties;
+    expect(listGroupBy).toBeDefined();
+    const allOf = (view.allOf as Any[]).map((branch) => {
+      if (branch.then?.properties?.group_by === undefined) {
+        return branch;
+      }
+      expect(branch.then.properties.group_by).toBe(false);
+      const copy = structuredClone(branch);
+      delete copy.then.properties.group_by;
+      return copy;
+    });
+    const stripped = { ...rest, view: { ...view, properties: viewProperties, allOf } };
+    expect(JSON.stringify({ ...schema, $defs: stripped })).not.toContain('"group_by"');
   });
 });
 
@@ -434,9 +477,21 @@ describe("(T01-8) group_by を1バイトも開いていない(ADR-0104 限定8)"
       ...Object.keys(viewSchema().properties),
       ...Object.keys(viewChangesSchema().properties),
     ];
-    for (const forbidden of ["group_by", "groupBy", "group", "bucket", "pivot", "breakdown"]) {
+    /*
+     * **【2026-09-24。`V20-M4-T02` / `ADR-0470` / `ADR-0461` 限定1・限定4】`group_by` を禁止語から外した。**
+     * **`ADR-0104` 限定8 は `ADR-0340` が集計表について引き直し、`ADR-0461`(限定1 は `ADR-0470` が
+     * 引き直した)が一覧の側に束ねるキーを1本ちょうど開いた**(`ADR-0104` の front matter の
+     * `amended_by` が入口)。**開いたのは綴り `group_by` の1本だけであり、`groupBy` / `group` /
+     * `bucket` / `pivot` / `breakdown` は今日も1つも無い。** **`group_by` は画面の器に1本・差分の
+     * `view_changes` に1本、ちょうどであることを数で固定する(2本目を足すと赤い)。**
+     * **旧行の逐語**:
+     * `    for (const forbidden of ["group_by", "groupBy", "group", "bucket", "pivot", "breakdown"]) {`
+     */
+    for (const forbidden of ["groupBy", "group", "bucket", "pivot", "breakdown"]) {
       expect(keys, forbidden).not.toContain(forbidden);
     }
+    expect(keys.filter((key) => key === "group_by")).toHaveLength(2);
+    expect(keys.filter((key) => key.startsWith("group"))).toEqual(["group_by", "group_by"]);
   });
 
   test("$defs の名前にも束ねる語が1つも無い", () => {
@@ -528,7 +583,9 @@ describe("(T01-11) 書込経路を1本も作っていない(ADR-0104 限定11)",
     // **旧(逐語)**: `expect(Object.keys(operation.properties)).toHaveLength(10);`
     // **`user_kinds` キーを撤去したので 10 → 9。**この検査が測る「書込経路を1本も作っていないこと」は1ミリも弱めていない。
     // **テスト名の「8キーのまま」は当時の逐語である**(テスト名は書き換えない)。
-    expect(Object.keys(operation.properties)).toHaveLength(9); // 【`V5-M17b` / `ADR-0248` 限定4】8 → 9(`user_kinds` が9キー目)/【`V8-M16`】9 → 10(`roles` が10キー目)。**この行が固定していたのは「その決定がキーを足さなかったこと」であり、足したのは別の決定である。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(Object.keys(operation.properties)).toHaveLength(9);` —— 10キー目 `design_memory` を足したので 9 → 10(別の決定)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行19)】旧(逐語)**: `expect(Object.keys(operation.properties)).toHaveLength(10);` —— 11キー目 `workspace` を足したので 10 → 11(別の決定)。
+    expect(Object.keys(operation.properties)).toHaveLength(11); // 【`V5-M17b` / `ADR-0248` 限定4】8 → 9(`user_kinds` が9キー目)/【`V8-M16`】9 → 10(`roles` が10キー目)。**この行が固定していたのは「その決定がキーを足さなかったこと」であり、足したのは別の決定である。**
   });
 });
 

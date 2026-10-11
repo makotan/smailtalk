@@ -69,31 +69,36 @@ const APP_B = "shop-b";
  * T03 の実測 / T04 の申し送り4)。ここでは枠線を `#767676` に濃くしてある。
  */
 const TEMPLATE_SLOTS: Record<string, string> = {
-  "--color-text": "#101010",
-  "--color-text-secondary": "#595959",
-  "--color-text-label": "#595959",
-  "--color-text-placeholder": "#595959",
-  "--color-danger": "#a00000",
-  "--color-page-background": "#ffffff",
-  "--color-surface-highlight": "#f2f2f2",
-  "--color-border": "#767676",
-  "--focus-outline-color": "#005fcc",
-  "--focus-outline-width": "2px",
-  "--font-family-base": "Georgia, serif",
-  "--font-size-secondary": "0.85em",
-  "--font-size-note": "0.875rem",
-  "--line-height-base": "1.6",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.25rem",
-  "--space-6": "2rem",
-  "--border-width": "1px",
-  "--control-border-radius": "4px",
-  "--surface-shadow": "none",
-  "--detail-label-width": "8rem",
-  "--login-max-width": "22rem",
+  body_text: "#101010",
+  secondary_text: "#595959",
+  label_text: "#595959",
+  placeholder_text: "#595959",
+  danger: "#a00000",
+  page_background: "#ffffff",
+  highlight_surface: "#f2f2f2",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#ffffff",
+  on_primary: "#101010",
+  overlay_background: "#ffffff",
+  overlay_text: "#101010",
+  border_color: "#767676",
+  focus_ring: "#005fcc",
+  focus_ring_width: "2px",
+  body_font: "Georgia, serif",
+  secondary_font_size: "0.85em",
+  note_font_size: "0.875rem",
+  body_line_height: "1.6",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.25rem",
+  space_6: "2rem",
+  border_width: "1px",
+  control_radius: "4px",
+  surface_shadow: "none",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
 };
 
 /** `$defs/theme` の properties キー(**ファイルとして読む**。ADR-0009 限定2)。 */
@@ -310,12 +315,12 @@ describe("T05-2 手数(自動伝播しない。当て直しは常に25スロッ�
     });
 
     // テンプレートを更新する(1往復)。
-    const updated = { ...TEMPLATE_SLOTS, "--control-border-radius": "8px" };
+    const updated = { ...TEMPLATE_SLOTS, control_radius: "8px" };
     await applyTheme(TEMPLATE_APP, "d-tpl-0002", { slots: updated });
 
     // **当てた側は変わっていない**(自動伝播は無い。01 §2a M-1)。
     const before = await manifestOf(APP_A);
-    expect(before.app.theme?.slots["--control-border-radius"]).toBe("4px");
+    expect(before.app.theme?.slots.control_radius).toBe("4px");
 
     // 再適用の手数を数える: 1アプリにつき get_manifest + apply_diff の2往復。
     calls = [];
@@ -327,7 +332,7 @@ describe("T05-2 手数(自動伝播しない。当て直しは常に25スロッ�
     expect(calls).toEqual(["get_manifest", "apply_diff"]);
 
     const after = await manifestOf(APP_A);
-    expect(after.app.theme?.slots["--control-border-radius"]).toBe("8px");
+    expect(after.app.theme?.slots.control_radius).toBe("8px");
     expect(after.app.theme?.origin?.template_diff_id).toBe("d-tpl-0002");
   });
 
@@ -343,7 +348,9 @@ describe("T05-2 手数(自動伝播しない。当て直しは常に25スロッ�
       const template = await manifestOf(TEMPLATE_APP);
       const slots = template.app.theme?.slots ?? {};
       // **常に25スロット全部である**(部分適用の op は無い。ADR-0047 限定3 / T03 の申し送り3)。
-      expect(Object.keys(slots)).toHaveLength(25);
+      // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(slots)).toHaveLength(25);
+      // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(slots)).toHaveLength(23);
+      expect(Object.keys(slots)).toHaveLength(27);
       expect(Object.keys(slots).sort()).toEqual(themeSlotNames().sort());
       await applyTheme(appId, `d-copy-000${index + 1}`, {
         slots,
@@ -363,14 +370,14 @@ describe("T05-2 手数(自動伝播しない。当て直しは常に25スロッ�
   test("24スロットだけ写す(部分テーマ)は拒否される —— 手を抜く道が無い", async () => {
     await createApp(APP_A, "お店A");
     const partial = { ...TEMPLATE_SLOTS };
-    delete partial["--space-6"];
+    delete partial.space_6;
 
     const result = await callTool("apply_diff", {
       app_id: APP_A,
       diff: setThemeDiff("d-a-0001", { slots: partial }),
     });
     expect(result.isError).toBe(true);
-    expect(JSON.stringify(result.data)).toContain("--space-6");
+    expect(JSON.stringify(result.data)).toContain("space_6");
     // 拒否なので1バイトも変わっていない。
     expect((await manifestOf(APP_A)).app.theme).toBeUndefined();
   });
@@ -495,7 +502,7 @@ describe("T05-8 (3) スナップショット・undo(ADR-0004 / 0011)", () => {
 
     // 2つ目のテーマを当ててから undo すると、1つ目のテーマに戻る。
     await applyTheme(APP_A, "d-a-0002", {
-      slots: { ...TEMPLATE_SLOTS, "--space-1": "0.5rem" },
+      slots: { ...TEMPLATE_SLOTS, space_1: "0.5rem" },
       origin: { template_app_id: TEMPLATE_APP },
     });
     await ok("undo", { app_id: APP_A });
@@ -535,7 +542,7 @@ describe("T05-9 テンプレートの中にテンプレートを参照させな�
 
     await createApp(APP_B, "部門の見た目(源から派生)");
     await applyTheme(APP_B, "d-b-0001", {
-      slots: { ...TEMPLATE_SLOTS, "--color-text": "#202020" },
+      slots: { ...TEMPLATE_SLOTS, body_text: "#202020" },
       origin: { template_app_id: TEMPLATE_APP, template_diff_id: "d-tpl-0001" },
     });
 

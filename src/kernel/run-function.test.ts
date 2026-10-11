@@ -936,7 +936,11 @@ describe("V3-M9-T01 複数入力: スキーマの形(限定1 / 2 / 3)", () => {
     // **`source` の enum は3値のまま、`additionalProperties: false` も1バイトも変わって
     // いない**(限定2)。
     expect(Object.keys(fi.properties).sort()).toEqual(["source", "table", "via", "view"]);
-    expect(fi.properties.source.enum).toEqual(["table", "view", "record"]);
+    // **【`V23-M4-T02` / `SC-G15` / `ADR-0524` §Decision 1-4 / 授権 `ADR-0525` 行23】** 選択肢に `actor` / `previous` を足した
+    // (enum 案。3値から5値)。 **旧の期待(逐語)**: `expect(...source.enum).toEqual(["table", "view", "record"]);`。
+    // 新しい値はスキーマを検査の外の python で読んで得た。 禁止7語が0であることは下の検査が今日どおり見る。
+    // 題の「source は3値」は制定時の意図であり、題は1文字も変えていない。
+    expect(fi.properties.source.enum).toEqual(["table", "view", "record", "actor", "previous"]);
     expect(fi.additionalProperties).toBe(false);
     expect(fi.required).toEqual(["source"]);
   });
@@ -960,7 +964,8 @@ describe("V3-M9-T01 複数入力: スキーマの形(限定1 / 2 / 3)", () => {
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(defs).length).toBe(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(defs).length).toBe(31);
     expect(Object.keys(defs)).toContain("role_condition");
     expect(Object.keys(defs.function.properties).length).toBe(6);
     // **【V4-M10-T44 / E-G72 / ADR-0083 限定1 による更新】** **3 → 4**(`via`)。
@@ -986,11 +991,27 @@ describe("V3-M9-T01 複数入力: スキーマの形(限定1 / 2 / 3)", () => {
     const wa = canonicalDefs().workflow_action.properties;
     expect(wa.write_back.const).toBe("$record");
     expect(wa.target.$ref).toBe("#/$defs/action_value");
-    expect(wa.values).toEqual({
-      description: "書き込む値。キーはフィールドID、値はリテラルか $record.<フィールドID> の参照。",
-      type: "object",
-      additionalProperties: { $ref: "#/$defs/action_value" },
+    /*
+     * **【`V23-M4-T02` / `SC-G13` / `ADR-0500` 式4 / 授権 `ADR-0525` 行26】** `values` の器を
+     * `if/then/else` の形にした(新しい参照を受ける位置を `values` だけに限る)。 **旧の期待(逐語)**:
+     * `expect(wa.values).toEqual({ description: "書き込む値。キーはフィールドID、値はリテラルか $record.<フィールドID> の参照。", type: "object", additionalProperties: { $ref: "#/$defs/action_value" } });`。
+     * 新しい値はスキーマを検査の外の python で読んで得た(`$comment` は形を問わず文字列であることだけを見る)。
+     * `target` / `write_back` / `output_table` は今日どおり(上下の行)。 `else` が今日の `action_value` を指す。
+     */
+    // (`then` を字面のキーに持つオブジェクトを書かないため、器の中身は1つずつ見る。)
+    expect(wa.values.description).toBe(
+      "書き込む値。キーはフィールドID、値はリテラルか参照1つ。参照は $record.<フィールドID> / $record._id に加えて、values でだけ $actor.id / $actor.login / $actor.role (操作した人) / $previous.<フィールドID> (更新前の値。on_update のときだけ) / $now (今の時刻) を書ける。",
+    );
+    expect(wa.values.type).toBe("object");
+    const container = wa.values.additionalProperties;
+    expect(Object.keys(container)).toEqual(["$comment", "type", "if", "then", "else"]);
+    expect(typeof container.$comment).toBe("string");
+    expect(container.type).toBe("string");
+    expect(container.if).toEqual({ type: "string", pattern: "^\\$(actor|previous|now)" });
+    expect(container.then).toEqual({
+      pattern: "^\\$(actor\\.(id|login|role)|previous\\.[a-z][a-z0-9_-]*|now)$",
     });
+    expect(container.else).toEqual({ $ref: "#/$defs/action_value" });
     expect(wa.output_table.$ref).toBe("#/$defs/resource_id");
   });
 

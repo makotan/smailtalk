@@ -151,7 +151,10 @@ describe("(T02-1) 宣言キーは `$defs/app` 直下の1本である(`ADR-0158` 
   // **【禁止の履行】足した1本と消した1本を差し引きして「元に戻った」と書かない。**
   test("`$defs/app` のキーは 9 → 8 で、消えたのは `user_kinds` の1本だけである", () => {
     const keys = Object.keys(appProperties());
-    expect(keys).toHaveLength(8);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(keys).toHaveLength(8);` —— 9本目 `design_memory` を足したので 8 → 9(別の決定)。
+    // **`user_kinds` が消えたことは下の `not.toContain` が今日も測る。** テスト名は当時の逐語のまま。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行12)】旧(逐語)**: `expect(keys).toHaveLength(9);` —— 10本目 `workspace` を足したので 9 → 10(別の決定)。 `user_kinds` が消えたことは下の `not.toContain` が今日も測る。
+    expect(keys).toHaveLength(10);
     // **着手前の7本を名前で持つ** —— **本数だけを数える形にしない**(消えたら赤くなる)。
     expect(keys).toEqual(
       expect.arrayContaining(["id", "name", "tables", "views", "workflows", "functions", "theme"]),
@@ -190,6 +193,10 @@ describe("(T02-1) 宣言キーは `$defs/app` 直下の1本である(`ADR-0158` 
       "functions",
       "theme",
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory` を末尾に足した(旧の期待値は `"roles"` で終わる8要素)。**
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行12)】10本目 `workspace` を末尾に足した(旧の期待値は `"design_memory"` で終わる9要素。逐語)。**
+      "workspace",
     ]);
   });
 });
@@ -377,7 +384,11 @@ describe("(T02-5) 種類ごとに規則を宣言するキーは1本も無い(`AD
     // **`ADR-0158` 限定2 の残余(宣言された種類が運営の権限を持たないこと)を
     // `signup` は1ミリも破らない** —— **登録に招待を要求しても、その役割が持つ権限は
     // 1つも増えない**(`ADR-0334` 限定8)。
+    // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys((roleItem.properties ?? {}) as Any).sort()).toEqual(["id", "name", "rules", "signup"]);`
+    // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
     expect(Object.keys((roleItem.properties ?? {}) as Any).sort()).toEqual([
+      "density",
       "id",
       "name",
       "rules",

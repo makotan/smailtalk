@@ -105,6 +105,7 @@
  * `src/mcp/vocabulary.ts` が明記している。**
  */
 import { useEffect, useMemo, useState } from "react";
+import type { RecordValue } from "../../../src/kernel/records.ts";
 import type {
   // **`DetailView` の型 import は `V10-M18-T02`(`FU-G2`)で落とした**(唯一の読み手だった
   // `linkedReferenceColumns` を撤去したため。`biome` の `noUnusedImports` が error である)。
@@ -158,10 +159,12 @@ import {
 } from "../auth/authz.tsx";
 import { ErrorList } from "../ErrorList.tsx";
 import { FieldValue, referenceLinkTarget } from "../fields/display.tsx";
+import { permissionShown, principalRowColumns } from "../fields/input.tsx";
 import {
   buildReferenceLabelIndex,
   type ReferenceLabelIndex,
   resolveReference,
+  withPrincipalLabels,
 } from "../fields/reference-label.ts";
 // **`DetailTargetNote` の import は `V10-M18-T02`(`FU-G2`)で落とした** ——
 // **呼び出しを撤去したので、残すと `biome` の `noUnusedImports` が error になる。**
@@ -190,6 +193,13 @@ import { cn } from "../ui/utils.ts";
 // (`V4-M22-T02` / `ADR-0112` 限定7・限定9。`V6-M4-T01` が共有先へ切り出した)。
 // **【`V14-M2-T04`】形 → 動詞の写像は製品にちょうど1本である**(`ADR-0402` 線2)——
 // **一覧の側に2本目を書かない。** **詳細画面(`DetailViewRenderer.tsx`)も同じ1本を呼ぶ。**
+import {
+  ACTION_LEAF_PREFIX,
+  actionLeafName,
+  type LayoutNode,
+  LayoutTree,
+  layoutLeaves,
+} from "./LayoutTree.tsx";
 import { rowAccessAllows, rowActionVerb } from "./row-action-verb.ts";
 import { buildSearchFilter } from "./search-filter.ts";
 import type { ListViewRendererProps } from "./types.ts";
@@ -723,8 +733,77 @@ type ListData = {
    * 「誰も何もできない」という嘘になる)。
    */
   access?: Record<string, RowAccess>;
+  /**
+   * **行ごとの群の値**(`V20-M4-T03`。`records` と同じ順・同じ長さ)。**束ねるキーを書いた画面で、
+   * サーバが返したときだけ持つ。** **日付は粒度で丸めた値であり、画面は1文字も丸めない**
+   * (丸めはカーネルの `truncateToGranularity` の1本。`ADR-0339` 限定7)。
+   */
+  groupKeys?: RecordValue[];
   referenceLabels: ReferenceLabelIndex;
 };
+
+/**
+ * **値が無い群の見出し**(`V20-M4-T03`。メインの裁定の申1)。**集計表の
+ * `EMPTY_GROUP_KEY_LABEL`(`ReportViewRenderer.tsx`)と同じ綴りである** —— 同じ意味の見出しを
+ * 2つの綴りにしない。**列のセルの「未設定」とは別である**(セルは1行の値、見出しは群の名前)。
+ */
+const EMPTY_GROUP_KEY_LABEL = "(値なし)";
+
+/** 見出し1つとその群の行(`V20-M4-T03`)。 */
+type RecordGroup = { key: RecordValue; records: RecordRow[] };
+
+/**
+ * **サーバが並べた行の順のまま、群の値が変わる所で区切る**(`V20-M4-T03`。裁定6・裁定3)。
+ *
+ * - **並べ直さない** —— 並びはサーバが決めた(群が第1キー、利用者の並べ替えが第2キー)。
+ * - **ページの先頭の行は必ず群の始まりになる**(前ページから続く群でも見出しを出す。裁定6)。
+ *   **このページの行だけから作る**ので、そうなる。
+ * - **表示中の行からだけ作る**ので、行の無い群の見出しは作りようがない(裁定3)。
+ * - **`groupKeys` が行と1対1でないときは区切らない**(`undefined`)—— 見出しと行が食い違うより、
+ *   区切らずに今日の形で出す。
+ */
+function groupRecords(
+  records: RecordRow[],
+  groupKeys: RecordValue[] | undefined,
+): RecordGroup[] | undefined {
+  if (groupKeys === undefined || groupKeys.length !== records.length) {
+    return undefined;
+  }
+  const groups: RecordGroup[] = [];
+  records.forEach((record, index) => {
+    const key = groupKeys[index] ?? null;
+    const last = groups.at(-1);
+    if (last !== undefined && last.key === key) {
+      last.records.push(record);
+    } else {
+      groups.push({ key, records: [record] });
+    }
+  });
+  return groups;
+}
+
+/**
+ * **群の見出しの文字**(`V20-M4-T03`。申4)。**列のセルがその値を出すのと同じ部品(`FieldValue`)で
+ * 描く** —— 参照は代表値、真偽は ✓ / ✕(読み上げは「はい」/「いいえ」)、日付はサーバが丸めた値。
+ * **値が無い群は「(値なし)」。** **ボタンもリンクも1つも描かない**(裁定4。参照のリンクは
+ * 呼び出し側が包む形であり、ここでは包まない)。
+ */
+function GroupHeadingText({
+  field,
+  value,
+  referenceLabels,
+  appId,
+}: {
+  field: Field | undefined;
+  value: RecordValue;
+  referenceLabels: ReferenceLabelIndex;
+  appId: string;
+}) {
+  if (value === null || field === undefined) {
+    return <>{value === null ? EMPTY_GROUP_KEY_LABEL : String(value)}</>;
+  }
+  return <FieldValue field={field} value={value} referenceLabels={referenceLabels} appId={appId} />;
+}
 
 export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProps) {
   // 対象テーブルの解決はシステムテーブルも見る(ADR-0006 §7 の #9)。ここを
@@ -946,6 +1025,15 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
       .filter((candidate): candidate is TableDefinition => candidate !== undefined);
   }, [manifest, resolved.columns]);
 
+  /**
+   * 【`V23-M6-T06b`】付与表の相手の行を指す欄(宣言を読むだけ。宣言の無いアプリでは空 = 今日どおり)。
+   * サーバが返す相手の行の代表項目(`principal_labels`)を、その欄の参照ラベルとして足す場所。
+   */
+  const principalColumns = useMemo(
+    () => principalRowColumns(manifest, view.table),
+    [manifest, view.table],
+  );
+
   const [state, setState] = useState<AsyncState<ListData>>({ status: "loading" });
 
   /**
@@ -1104,6 +1192,9 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
       // **書かなかった画面では `sum` が URL に1バイトも載らず、着手前と1バイトも変わらない。**
       // **参照ラベルの取得(下の `fetchRecords`)には渡さない** —— そちらは別テーブルである。
       ...(view.sum_field === undefined ? {} : { sumField: view.sum_field }),
+      // **【`V20-M4-T03`】束ねるキー。** **書かなかった画面では `groupBy` が1バイトも渡らず、
+      // URL は着手前と1バイトも変わらない。** 参照ラベルの取得(別テーブル)には渡さない。
+      ...(view.group_by === undefined ? {} : { groupBy: view.group_by }),
     };
 
     Promise.all([
@@ -1130,7 +1221,15 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
               // **追加の問い合わせを1本も作っていない** —— **この `access` は一覧APIの
               // 同じ応答に載って来たものである**(`ADR-0402` 限定12)。
               ...(page.access === undefined ? {} : { access: page.access }),
-              referenceLabels: buildReferenceLabelIndex(referenceSources),
+              // **【`V20-M4-T03`】束ねたときの群の値。** 返さなければキーごと持たない。
+              ...(page.groupKeys === undefined ? {} : { groupKeys: page.groupKeys }),
+              // 【`V23-M6-T06b`】付与表なら相手の行の代表項目を足す(返さなければ今日どおりの索引)。
+              referenceLabels: withPrincipalLabels(
+                buildReferenceLabelIndex(referenceSources),
+                page.records,
+                page.principalLabels,
+                principalColumns,
+              ),
             },
           });
         }
@@ -1170,6 +1269,11 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
     // **【V4-M23-T03】合計を出す列が変わったら取り直す。** **書いていない画面では
     // `undefined` のままなので、取得回数は1回も変わらない。**
     view.sum_field,
+    // **【V20-M4-T03】束ねるキーが変わったら取り直す。** **書いていない画面では `undefined` の
+    // ままなので、取得回数は1回も変わらない。**
+    view.group_by,
+    // 【`V23-M6-T06b`】宣言から引いた欄(`useMemo`。宣言が変わらなければ取得回数は変わらない)。
+    principalColumns,
   ]);
 
   /**
@@ -1330,7 +1434,17 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
 
   // **【`V14-M2-T04`】`access` は「行ごとの判定」であり、器(表 / カード)を素通りして
   // `RowActionOrigins` まで運ぶ** —— **運ぶ先で引くのは「その行1件ぶん」だけである。**
-  const { records, total, sum, access, referenceLabels } = state.value;
+  const { records, total, sum, access, groupKeys, referenceLabels } = state.value;
+  /**
+   * **【`V20-M4-T03`】見出しで区切った行の並び。** **束ねるキーを書いていない画面では `undefined`**
+   * (サーバは `group_keys` を返さない)であり、そのとき表もカードも着手前と1バイトも同じ DOM を描く。
+   */
+  const recordGroups = view.group_by === undefined ? undefined : groupRecords(records, groupKeys);
+  /** 束ねる項目の定義(見出しの文字を列のセルと同じ部品で描くため)。 */
+  const groupField =
+    view.group_by === undefined
+      ? undefined
+      : table?.fields.find((field) => field.id === view.group_by?.field);
 
   /*
    * --- 画面で選んでまとめて操作する(`V4-M20-T03`)--------------------------------
@@ -1748,6 +1862,27 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
           navigate({ kind: "view", appId, viewId: detailView.id, recordId: record._id });
         };
 
+  /** カード1枚(`V20-M4-T03` で関数に括り出した。**描く中身は1バイトも変えていない**)。 */
+  const renderCard = (record: RecordRow) => (
+    <ListCard
+      key={record._id}
+      selection={selection}
+      appId={appId}
+      manifest={manifest}
+      columns={resolved.columns}
+      textPreview={view.preset_text_preview}
+      record={record}
+      referenceLabels={referenceLabels}
+      onOpen={openRecord(record)}
+      own={isOwnRow(ownerFieldPresent, record, actorId)}
+      actions={writableActions}
+      {...(access === undefined ? {} : { access })}
+      viewId={view.id}
+      tableId={view.table}
+      {...(view.layout === undefined ? {} : { layout: view.layout })}
+    />
+  );
+
   return (
     <section
       className={LIST_VIEW_CLASS}
@@ -1831,24 +1966,34 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
                   referenceLabels={referenceLabels}
                 />
               ) : null}
-              {records.map((record) => (
-                <ListCard
-                  key={record._id}
-                  selection={selection}
-                  appId={appId}
-                  manifest={manifest}
-                  columns={resolved.columns}
-                  textPreview={view.preset_text_preview}
-                  record={record}
-                  referenceLabels={referenceLabels}
-                  onOpen={openRecord(record)}
-                  own={isOwnRow(ownerFieldPresent, record, actorId)}
-                  actions={writableActions}
-                  {...(access === undefined ? {} : { access })}
-                  viewId={view.id}
-                  tableId={view.table}
-                />
-              ))}
+              {recordGroups === undefined
+                ? records.map(renderCard)
+                : /*
+                   **【`V20-M4-T03`】群ごとに、見出し要素(`<h4>`)とその群のカードを1つの器に入れる。**
+                   **見出しの段は画面名の `<h3 data-testid="view-title">`(`ViewHost.tsx`)の1段下。**
+                   **見出しにボタンを1つも付けない**(裁定4)。カードは今日どおり1件ずつ。
+                   */
+                  recordGroups.map((group) => (
+                    <div
+                      // 群は行ではないので `_id` が無い。**その群の先頭の行の `_id` で鍵にする**(1行は1つの群にしか入らない)。
+                      key={group.records[0]?._id}
+                      className={cn("list-card-group", "flex flex-col gap-s2")}
+                      data-testid="list-card-group"
+                    >
+                      <h4
+                        className={cn("list-group-heading", "text-note font-medium")}
+                        data-testid="list-group-heading"
+                      >
+                        <GroupHeadingText
+                          field={groupField}
+                          value={group.key}
+                          referenceLabels={referenceLabels}
+                          appId={appId}
+                        />
+                      </h4>
+                      {group.records.map(renderCard)}
+                    </div>
+                  ))}
             </div>
           ) : (
             <TableShape
@@ -1867,6 +2012,7 @@ export function ListViewRenderer({ appId, manifest, view }: ListViewRendererProp
               selection={selection}
               actions={writableActions}
               {...(access === undefined ? {} : { access })}
+              {...(recordGroups === undefined ? {} : { groups: recordGroups, groupField })}
             />
           )}
           {/*
@@ -2205,6 +2351,8 @@ function TableShape({
   selection,
   actions,
   access,
+  groups,
+  groupField,
 }: {
   appId: string;
   manifest: Manifest;
@@ -2242,7 +2390,41 @@ function TableShape({
    * `actions.length === 0` だけであり、行ごとの絞りは `RowActionOrigins` の中で起きる。**
    */
   access?: Record<string, RowAccess>;
+  /**
+   * **【`V20-M4-T03`】見出しで区切った行。** **`undefined` のあいだ、表の DOM は着手前と1バイトも
+   * 変わらない**(`<tbody>` は1つ)。**在るときは群ごとに `<tbody>` を分け、先頭に見出しの行を置く。**
+   */
+  groups?: RecordGroup[];
+  /** 束ねる項目の定義(見出しの文字を列のセルと同じ部品で描くため)。 */
+  groupField?: Field | undefined;
 }) {
+  /** 1行(`V20-M4-T03` で関数に括り出した。**描く中身は1バイトも変えていない**)。 */
+  const renderRow = (record: RecordRow) => (
+    <ListRow
+      key={record._id}
+      appId={appId}
+      manifest={manifest}
+      columns={columns}
+      columnAlign={view.preset_column_align}
+      textPreview={view.preset_text_preview}
+      record={record}
+      referenceLabels={referenceLabels}
+      onOpen={openRecord(record)}
+      own={isOwnRow(ownerFieldPresent, record, actorId)}
+      selection={selection}
+      actions={actions}
+      {...(access === undefined ? {} : { access })}
+      viewId={view.id}
+      tableId={view.table}
+    />
+  );
+  /**
+   * **実際に描いている列の数**(`V20-M4-T03`)。選択の列(選択中だけ)+ 表示列 + 操作の列
+   * (描ける操作起点が在るときだけ)。**見出しの行の `colspan` はこの数である** —— 列見出しの行
+   * (`<thead>`)と同じ3つの条件から数える。
+   */
+  const columnCount =
+    (selection === undefined ? 0 : 1) + columns.length + (actions.length === 0 ? 0 : 1);
   return (
     <>
       {/*
@@ -2375,27 +2557,39 @@ function TableShape({
               {actions.length === 0 ? null : <TableHead scope="col">操作</TableHead>}
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {records.map((record) => (
-              <ListRow
-                key={record._id}
-                appId={appId}
-                manifest={manifest}
-                columns={columns}
-                columnAlign={view.preset_column_align}
-                textPreview={view.preset_text_preview}
-                record={record}
-                referenceLabels={referenceLabels}
-                onOpen={openRecord(record)}
-                own={isOwnRow(ownerFieldPresent, record, actorId)}
-                selection={selection}
-                actions={actions}
-                {...(access === undefined ? {} : { access })}
-                viewId={view.id}
-                tableId={view.table}
-              />
-            ))}
-          </TableBody>
+          {groups === undefined ? (
+            <TableBody>{records.map(renderRow)}</TableBody>
+          ) : (
+            /*
+              **【`V20-M4-T03` / 裁定8】群ごとに `<tbody>` を分け、先頭に見出しの行を1行置く。**
+              **見出しの行は `<th colspan=列数 scope="rowgroup">` 1つだけで、ボタンを1つも持たない**
+              (裁定4)。**レコードの行は今日どおり1件ずつ**(行を束ねて1行にしていない)。
+            */
+            groups.map((group) => (
+              <TableBody
+                // 群は行ではないので `_id` が無い。**その群の先頭の行の `_id` で鍵にする**(1行は1つの群にしか入らない)。
+                key={group.records[0]?._id}
+                data-testid="list-group"
+              >
+                <TableRow className="list-group-heading-row">
+                  <TableHead
+                    scope="rowgroup"
+                    colSpan={columnCount}
+                    className="list-group-heading"
+                    data-testid="list-group-heading"
+                  >
+                    <GroupHeadingText
+                      field={groupField}
+                      value={group.key}
+                      referenceLabels={referenceLabels}
+                      appId={appId}
+                    />
+                  </TableHead>
+                </TableRow>
+                {group.records.map(renderRow)}
+              </TableBody>
+            ))
+          )}
         </Table>
       </TableFrame>
     </>
@@ -2560,8 +2754,9 @@ function ListRow({
               recordId={record[field.id]}
             >
               <FieldValue
-                field={field}
-                value={record[field.id]}
+                // 【`V23-M12-T03`。`D-V23-356`】付与の表の権限の欄だけ宣言の名前(それ以外は値のまま)。
+                // (強調の鍵も名前に写した欄の写しと、名前に替えた値を渡す。)
+                {...permissionShown(manifest, tableId, field, record[field.id])}
                 referenceLabels={referenceLabels}
                 appId={appId}
                 textPreview={textPreview}
@@ -2637,6 +2832,7 @@ function ListCard({
   access,
   viewId,
   tableId,
+  layout,
 }: {
   /** 所属アプリのID(image 型セルの配信 URL 用。`FieldValue` へ渡すだけ)。 */
   appId: string;
@@ -2680,8 +2876,76 @@ function ListCard({
    * **【`V5-M25-T07` / `L-G3`】この一覧の対象テーブルID。** **値の書換の書込先である。**
    */
   tableId: string;
+  /**
+   * **【`V20-M5-T03`】カードの中の並べ方の木**(`ADR-0462` / `ADR-0471`)。**`undefined` のあいだ、
+   * カードの DOM は着手前と1バイトも変わらない**(固定は `web/test/layout-tree.test.tsx` の (d))。
+   * **表の形の一覧には渡らない**(表に木を書く組は適用時に拒否される。カードの分岐からだけ渡す)。
+   */
+  layout?: LayoutNode;
 }) {
   const interactive = onOpen !== undefined;
+  /*
+   * **木に置いた葉**(`V20-M5-T03`。メインの申7)。**名指しされた行ボタンは葉の位置に描き、
+   * カードの末尾の器には描かない。** 名指しされなかった行ボタンは今日どおりカードの末尾に
+   * まとめて描く。**表示条件・行ごとの判定は `RowActionOrigins` 1本のまま**(葉の位置でも
+   * 同じ部品に名指しされたボタンだけを渡すので、2本目の判定を作らない)。
+   */
+  const placedLeaves = new Set(layout === undefined ? [] : layoutLeaves(layout));
+  const originActions =
+    layout === undefined
+      ? actions
+      : actions.filter(
+          (action) =>
+            !placedLeaves.has(`${ACTION_LEAF_PREFIX}${String((action as { id?: unknown }).id)}`),
+        );
+  const renderActions = (subset: readonly RowAction[]) => (
+    <RowActionOrigins
+      appId={appId}
+      viewId={viewId}
+      tableId={tableId}
+      manifest={manifest}
+      actions={subset}
+      record={record}
+      {...(access?.[record._id] === undefined ? {} : { rowAccess: access[record._id] })}
+    />
+  );
+  const renderCardField = (field: Field) => (
+    // **列見出し(`Field.name`)はカードの中に出る** —— 表では `<th>` が1回だけ出るが、
+    // カードには見出し行が無いので、1枚ごとに項目名を添えないと値が何か分からない。
+    // **`data-field` / `data-field-type` は表のときと同じものを出す**(1つも落とさない)。
+    <div
+      className="list-card-field"
+      key={field.id}
+      data-field={field.id}
+      data-field-type={field.type}
+    >
+      <span className="list-card-label">{field.name}</span>
+      <ReferenceLinkScope
+        target={referenceLinkTarget(manifest, field, record[field.id], referenceLabels)}
+        appId={appId}
+        recordId={record[field.id]}
+      >
+        <FieldValue
+          // 【`V23-M12-T03`。`D-V23-356`】付与の表の権限の欄だけ宣言の名前(それ以外は値のまま)。
+          // (強調の鍵も名前に写した欄の写しと、名前に替えた値を渡す。)
+          {...permissionShown(manifest, tableId, field, record[field.id])}
+          referenceLabels={referenceLabels}
+          appId={appId}
+          textPreview={textPreview}
+        />
+      </ReferenceLinkScope>
+    </div>
+  );
+  const renderLayoutLeaf = (leaf: string) => {
+    const actionName = actionLeafName(leaf);
+    if (actionName !== undefined) {
+      const named = actions.filter((action) => (action as { id?: unknown }).id === actionName);
+      return named.length === 0 ? null : renderActions(named);
+    }
+    const field = columns.find((candidate) => candidate.id === leaf);
+    return field === undefined ? null : renderCardField(field);
+  };
+
   return (
     <div
       className={cn(
@@ -2739,49 +3003,21 @@ function ListCard({
           />
         </div>
       )}
-      {columns.map((field) => (
-        // **列見出し(`Field.name`)はカードの中に出る** —— 表では `<th>` が1回だけ出るが、
-        // カードには見出し行が無いので、1枚ごとに項目名を添えないと値が何か分からない。
-        // **`data-field` / `data-field-type` は表のときと同じものを出す**(1つも落とさない)。
-        <div
-          className="list-card-field"
-          key={field.id}
-          data-field={field.id}
-          data-field-type={field.type}
-        >
-          <span className="list-card-label">{field.name}</span>
-          <ReferenceLinkScope
-            target={referenceLinkTarget(manifest, field, record[field.id], referenceLabels)}
-            appId={appId}
-            recordId={record[field.id]}
-          >
-            <FieldValue
-              field={field}
-              value={record[field.id]}
-              referenceLabels={referenceLabels}
-              appId={appId}
-              textPreview={textPreview}
-            />
-          </ReferenceLinkScope>
-        </div>
-      ))}
+      {layout === undefined ? (
+        columns.map(renderCardField)
+      ) : (
+        <>
+          <LayoutTree node={layout} renderLeaf={renderLayoutLeaf} />
+          {columns.filter((field) => !placedLeaves.has(field.id)).map(renderCardField)}
+        </>
+      )}
       {/*
         **【V5-M21-T01】カードにも同じ操作起点を出す**(器の形で操作が割れない)。
         **描ける操作起点が1つも無いあいだは1つも出ない。****カードには列が無いので
         セルではなく器の最後に置く** —— **表とカードで DOM の形は違うが、押したときに
         運ぶ値(押した行の `_id`)は1バイトも同じである**(`RowActionOrigins` 1本)。
       */}
-      {actions.length === 0 ? null : (
-        <RowActionOrigins
-          appId={appId}
-          viewId={viewId}
-          tableId={tableId}
-          manifest={manifest}
-          actions={actions}
-          record={record}
-          {...(access?.[record._id] === undefined ? {} : { rowAccess: access[record._id] })}
-        />
-      )}
+      {originActions.length === 0 ? null : renderActions(originActions)}
     </div>
   );
 }

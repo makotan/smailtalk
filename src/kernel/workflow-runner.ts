@@ -85,10 +85,13 @@ import {
   type ActorRoles,
   combineRoleAndCreatorGrant,
   creatorGrantPlan,
+  isGrantTable,
   isOwnerVisible,
   judgeCreateParentAccess,
   judgeOwnerScopedOp,
   judgeRoleAccess,
+  lastRowAdminVanishes,
+  principalRowWriteRefused,
   recordAccessSourceTables,
   resolveCombinedRecordAccess,
   roleReadCrossesOwnerScope,
@@ -97,7 +100,7 @@ import { AiCapabilityStore } from "./ai-capability-store.ts";
 import { AI_MAX_CHAIN_DEPTH, aiUsageDate, checkAiLimit, currentAiChainDepth } from "./ai-limits.ts";
 import { type BatchOp, writeRecords } from "./batch.ts";
 import { CapabilityStore } from "./capability-store.ts";
-import { type Clock, systemClock } from "./clock.ts";
+import { type Clock, DEFAULT_TIME_ZONE, resolveTimeZone, systemClock } from "./clock.ts";
 import type { ValidationError } from "./errors.ts";
 import { hostAllowed } from "./host-scope.ts";
 import { buildCapabilityBridges } from "./island-capability-bridge.ts";
@@ -551,17 +554,33 @@ export function runWorkflows(
    * = 限定12。`src/kernel/` の公開 export を1つも増やさない = 限定11)。
    */
   failureHistoryRewrites?: (() => void)[],
+  /**
+   * **【`V23-M4-T03` / `D-V23-102`】連鎖の起点の操作者**(`$actor`)。 **省略できる。** 省略した
+   * 呼び出しの `$actor` は空(3つとも空文字)。 判定の主体には使わない(`ADR-0500` 限定19)。
+   */
+  origin?: { readonly id: string; readonly login: string; readonly role: string },
+  /**
+   * **【`V23-M4-T04`】更新前の行**(`on_update` だけ。`records.ts` の `updateRecord` が存在確認で
+   * 読んだ行をそのまま渡す)。 `values` の `$previous.<項目>` と `changed_fields` の比較に使う。
+   * **省略できる。** 省略した呼び出しでは `changed_fields` の絞りを掛けず(今日どおり発火する)、
+   * `$previous.<項目>` は解決できずにアクションが失敗する。
+   */
+  previous?: RecordRow,
 ): string[] {
   // 判断2。**最初に見る。**履歴の書き込みは深度も抑止も1つも消費しない。
   if (isHistoryTable(manifest, tableId)) {
     return [];
   }
 
+  // **【`V23-M4-T04` / `ADR-0500` 限定18】`changed_fields` の項目がどれも変わらない更新では
+  // 発火しない**(抑止・深度・履歴のどれにも入らない = 実行履歴の行も書かない)。
+  // `changed_fields` を書かないワークフローは今日どおり更新のたびに発火する。
   const workflows = (manifest.app.workflows ?? []).filter(
     (workflow) =>
       (workflow.trigger.type === "on_create" || workflow.trigger.type === "on_update") &&
       workflow.trigger.type === triggerType &&
-      workflow.trigger.table === tableId,
+      workflow.trigger.table === tableId &&
+      changedFieldsAllowFiring(workflow, previous, record),
   );
   if (workflows.length === 0) {
     // **合致するワークフローが1本も無いなら、そもそも発火していない。**
@@ -617,7 +636,7 @@ export function runWorkflows(
   const failures: string[] = [];
   try {
     for (const workflow of workflows) {
-      const outcome = runActions(db, manifest, workflow, record);
+      const outcome = runActions(db, manifest, workflow, record, undefined, origin, previous);
       const rewrite = writeHistory(
         db,
         manifest,
@@ -735,12 +754,12 @@ export function runScheduledWorkflow(
       // 打ち切り。**アクションを1件も実行しない**が、黙って止まらない(憲法6)。
       failures.push(targets.abort);
     } else if (targets === undefined) {
-      const outcome = runActions(db, manifest, workflow, undefined);
+      const outcome = runActions(db, manifest, workflow, undefined, undefined, SCHEDULE_ORIGIN);
       failures.push(...outcome.failures);
       skips.push(...outcome.skips);
     } else {
       for (const record of targets.records) {
-        const outcome = runActions(db, manifest, workflow, record);
+        const outcome = runActions(db, manifest, workflow, record, undefined, SCHEDULE_ORIGIN);
         // **どの行のものかを名指しする。**1000 行のうちどれで落ちたかが読めないと、
         // 「失敗した」だけが残って原因に辿り着けない。
         failures.push(...outcome.failures.map((text) => `レコード "${record._id}": ${text}`));
@@ -960,6 +979,8 @@ export function runManualWorkflow(
    * 書くのは入口 = `src/server/app.ts` であって、ここではない)。
    */
   pressedBy?: string,
+  /** **【`V23-M4-T03`】押した人の `$actor`**(`D-V23-93`。`act_as` があっても押した人)。 省略すれば空。 */
+  origin?: OriginActor,
 ): string[] {
   // **`manual` と宣言したものだけを起こす**(`ADR-0174` 限定2)。**apply 時の検査
   // (`referential-integrity.ts`)と二重化してある** —— MCP を迂回した経路や、
@@ -1004,7 +1025,7 @@ export function runManualWorkflow(
     const actAsDenial = judgeManualActAsTarget(db, manifest, workflow, record, pressedBy);
     const outcome =
       actAsDenial === undefined
-        ? runActions(db, manifest, workflow, record, pressedBy)
+        ? runActions(db, manifest, workflow, record, pressedBy, origin)
         : { failures: [actAsDenial], skips: [] };
     writeHistory(db, manifest, workflow, "manual", outcome.failures, outcome.skips);
     return outcome.failures.map((text) => `ワークフロー "${workflow.id}" ${text}`);
@@ -1071,6 +1092,12 @@ type ActionsOutcome = {
  * `failures` が空なら失敗なし、`skips` が空なら条件スキップなし。**前が失敗しても
  * 後続を実行する**(ADR-0013 §5a)。
  *
+ * **【2026-09-29。`V23-M2-T04` の訂正。上の文を消していない】** 例外が1つある —— 島が
+ * `reject(message)` で断ったら、同じワークフローのそれより後のアクションは動かさない
+ * (`D-V23-51`。手動起動も `on_create` / `on_update` も。`ADR-0498` が `ADR-0013` §5a を引き直した)。
+ * 断ったことは、そのアクションの失敗として `failures` に残る。 **`reject` 以外の失敗では今日どおり
+ * 後続も動く。** 時刻起動の島の断りは汎用の失敗なので止めない。 【`V23-M2-T11` の追記】時刻起動は、連鎖の奥の断りでも止めない(`D-V23-72`)。
+ *
  * ## EC-G5 条件分岐(`when`。ADR-0036)
  *
  * `action.when`(最小述語 `{field, equals}`)があるアクションは、**トリガー元レコードの
@@ -1095,10 +1122,19 @@ function runActions(
    * **その3種には「押した人」が存在しない。**
    */
   manualActor?: string,
+  /** **【`V23-M4-T03`】連鎖の起点の操作者**(`$actor`。判定には使わない)。 */
+  origin: OriginActor = EMPTY_ORIGIN,
+  /** **【`V23-M4-T04`】更新前の行**(`on_update` の発火だけが渡す。`values` の `$previous.<項目>`)。 */
+  previous?: RecordRow,
 ): ActionsOutcome {
   const failures: string[] = [];
   const skips: string[] = [];
+  // **【`V23-M2-T04` / `D-V23-51`】島が断ったら、後のアクションを動かさない。**
+  let stoppedByReject = false;
   workflow.actions.forEach((action, index) => {
+    if (stoppedByReject) {
+      return;
+    }
     // 宛先の表示は種別で分ける。**`call_external` は connection の URL、`ai_transform` は
     // AI capability**(いずれも内部テーブルではない)ので、それぞれの参照名を出す。
     const destination =
@@ -1137,8 +1173,18 @@ function runActions(
       // 一致 → 通常どおり実行する(下へ落ちる)。
     }
 
+    const rejectsBefore = rejectCount;
     try {
-      const failure = runAction(db, manifest, workflow, action, record, manualActor);
+      const failure = runAction(
+        db,
+        manifest,
+        workflow,
+        action,
+        record,
+        manualActor,
+        origin,
+        previous,
+      );
       if (failure !== undefined) {
         failures.push(`${label}: ${failure}`);
       }
@@ -1146,6 +1192,10 @@ function runActions(
       // カーネルが投げる想定外の例外もここで受け止める。**呼び出し元まで伝播させない**
       // ことが完了条件3 の「分離」である。
       failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    // このアクションの中(連鎖の奥を含む)で島が断っていれば、ここで止める。 【`V23-M2-T11` の追記】時刻起動は止めない(`D-V23-72`)。
+    if (rejectCount !== rejectsBefore && workflow.trigger.type !== "schedule") {
+      stoppedByReject = true;
     }
   });
   return { failures, skips };
@@ -1196,6 +1246,10 @@ function runAction(
    * **`on_create` / `on_update` / `schedule` は今日どおり `undefined` である**(限定4)。
    */
   manualActor?: string,
+  /** **【`V23-M4-T03`】連鎖の起点の操作者**(`values` の `$actor.*` と、書込が起こす発火へ渡す)。 */
+  origin: OriginActor = EMPTY_ORIGIN,
+  /** **【`V23-M4-T04`】更新前の行**(`values` の `$previous.<項目>` だけが読む)。 */
+  previous?: RecordRow,
 ): string | undefined {
   // **call_external はここが実行層の遮断点である**(ADR-0020 §3 / §8c-5)。
   // 既存の create_record / update_record のロジックより**前**に分岐する。この関数は
@@ -1217,10 +1271,15 @@ function runAction(
   // output_table に全置換する。島の暴走(timeout / OOM)や出力不正では fail-closed
   // (output_table を1バイトも触らず失敗理由を返す)。
   if (action.action === "run_function") {
-    return runRunFunction(db, manifest, workflow, action, record, manualActor);
+    return runRunFunction(db, manifest, workflow, action, record, manualActor, origin, previous);
   }
 
-  const values = resolveValues(action.values, record);
+  // **【`V23-M4-T04`】`$now` の形は書き込み先の表(トリガー元ではない)の項目の型で決める**
+  // (`D-V23-104`)。`create_record` / `update_record` の `table` が書き込み先である。
+  const values = resolveValues(action.values, record, origin, {
+    previous,
+    dateFieldIds: dateFieldIdsOf(manifest, action.table),
+  });
   if (!values.ok) {
     return values.message;
   }
@@ -1245,6 +1304,8 @@ function runAction(
         tableId: action.table,
         verb: "write",
         actor: actorOnce,
+        // **【`V23-M10-T02c-c` / `D-V23-299`】断られたときだけ、発火させた操作者でもう一度問う。**
+        operator: rescueOperatorOf(workflow, origin),
         // **【`V17-M2-T03b`】前提の関門に渡す、これから作る行の値**(`AC-G7a`)。
         // **この呼び出しは、すぐ上の素通しの述語の内側にある** —— **時刻起動には
         // 1バイトも掛からない**(`ADR-0411` 限定1)。 **述語の綴りをここに書かない** ——
@@ -1261,7 +1322,18 @@ function runAction(
       // 1バイトも掛からない**(限定2。`D-V8-99` / `U-3`)。
       stampAutomationOwner(manifest, action.table, values.value, actorOnce());
     }
-    const result = createRecord(db, manifest, action.table, values.value);
+    // **【`V23-M6-T04`】相手の行を指す欄**(主体を問わない。時刻起動・手動起動にも掛かる)。
+    const principalCreateDenied = principalRowAutomationDenial(
+      db,
+      manifest,
+      action.table,
+      "create",
+      values.value as unknown as Record<string, unknown>,
+    );
+    if (principalCreateDenied !== undefined) {
+      return principalCreateDenied;
+    }
+    const result = createRecord(db, manifest, action.table, values.value, origin);
     // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
     return result.ok ? undefined : formatErrorsWithoutValues(result.errors);
   }
@@ -1319,6 +1391,8 @@ function runAction(
         row: targetRow,
         verb: "write",
         actor: actorOnce,
+        // **【`V23-M10-T02c-c` / `D-V23-299`】断られたときだけ、発火させた操作者でもう一度問う。**
+        operator: rescueOperatorOf(workflow, origin),
       });
       if (denied !== undefined) {
         return denied;
@@ -1362,7 +1436,38 @@ function runAction(
   // **版(expectedVersion)は渡さない = LWW を維持する**(V1-M9-T02 / ADR-0017 / R1)。
   // これは同一アプリ内の自動化であって「後発ユーザの黙殺」ではない。楽観ロック(CAS)の
   // 必須化は配線層(HTTP If-Match / MCP if_match)だけで行い、内部の自動更新には課さない。
-  const result = updateRecord(db, manifest, action.table, target.value, values.value);
+  // **【`V23-M6-T04`】相手の行を指す欄**(主体を問わない。判定の外側の包み。時刻起動・手動起動にも掛かる)。
+  const principalUpdateDenied = principalRowAutomationDenial(
+    db,
+    manifest,
+    action.table,
+    "update",
+    values.value as unknown as Record<string, unknown>,
+    target.value,
+  );
+  if (principalUpdateDenied !== undefined) {
+    return principalUpdateDenied;
+  }
+  // **【`V23-M1-T07`。行10・行13・行6】行の最後の管理者**(主体を問わない。判定の外側の包み)。
+  {
+    const targetId = target.value;
+    const changes = values.value as unknown as Record<string, unknown>;
+    const lastAdmin = lastRowAdminAutomationDenial(db, manifest, action.table, (current) =>
+      current.map((row) => (row?._id === targetId ? { ...row, ...changes } : row)),
+    );
+    if (lastAdmin !== undefined) {
+      return lastAdmin;
+    }
+  }
+  const result = updateRecord(
+    db,
+    manifest,
+    action.table,
+    target.value,
+    values.value,
+    undefined,
+    origin,
+  );
   // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
   return result.ok ? undefined : formatErrorsWithoutValues(result.errors);
 }
@@ -1655,6 +1760,13 @@ const RUN_FUNCTION_LIMITS: IslandLimits = {
 const ISLAND_MAX_WRITE_OPS = 1000;
 
 /**
+ * **島が `reject` を使うという宣言の綴り**(`V23-M2-T04` / `D-V23-60`)。 語の境界つきで、
+ * 島の本文のどこ(文字列・コメントを含む)に現れても数える。 当たらない島の呼び出しは今日と
+ * 1バイトも変わらない。 別名で取り出す形は当たらない(説明書に書く)。
+ */
+const ISLAND_REJECT_SPELLING = /\breject\b/;
+
+/**
  * `run_function` の実行層(ADR-0024 §Decision。V1-M6-T05 第2段)。**同期。**
  *
  * 1. `manifest.app.functions` から `action.function` の `FunctionDef` を引く。
@@ -1681,6 +1793,10 @@ function runRunFunction(
    * **`on_create` / `on_update` / `schedule` は今日どおり `undefined` である**(限定4)。
    */
   manualActor?: string,
+  /** **【`V23-M4-T03`】連鎖の起点の操作者**(島の書込が起こす発火へ渡す)。 */
+  origin: OriginActor = EMPTY_ORIGIN,
+  /** **【`V23-M4-T06`】更新前の行**(`on_update` の発火だけが渡す。島の入力 `source: "previous"`)。 */
+  previous?: RecordRow,
 ): string | undefined {
   // 1. 関数定義を引く。無ければ失敗(apply 時の参照整合性で普通は防がれるが、実行層でも守る)。
   const fn = (manifest.app.functions ?? []).find((f) => f.id === action.function);
@@ -1689,7 +1805,7 @@ function runRunFunction(
   }
 
   // 2. 入力を既存語彙で解決する(§7a: クエリ言語をカーネルに持ち込まない)。
-  const resolvedInput = resolveFunctionInput(db, manifest, fn, record);
+  const resolvedInput = resolveFunctionInput(db, manifest, fn, record, origin, previous);
   if (!resolvedInput.ok) {
     return resolvedInput.message;
   }
@@ -1712,7 +1828,21 @@ function runRunFunction(
     input: resolvedInput.value,
     limits: RUN_FUNCTION_LIMITS,
     hostFunctions,
+    // **【`V23-M2-T04` / `D-V23-60`】本文に語の境界つきの綴りがある島にだけ第2引数を渡す。**
+    withReject: ISLAND_REJECT_SPELLING.test(fn.code),
   });
+  if (result.status === "failure" && result.reason === "rejected") {
+    // **【`V23-M2-T04`】島の断り**(`D-V23-43`・`D-V23-44`・`D-V23-45`)。
+    // 時刻起動は汎用の失敗(文言を返さない・履歴にも残さない。`ADR-0498` §Decision 1)。
+    if (workflow.trigger.type === "schedule") {
+      return `関数 "${fn.id}" の実行に失敗しました(${result.reason})。詳細は履歴に残していません。`;
+    }
+    // 後のアクションを止める印(`D-V23-51`)と、連鎖の受け皿への控え(最初の1件だけ。`D-V23-52`)。
+    rejectCount += 1;
+    holdFirstAppReason(result.error);
+    // 履歴の `error` 列と手動起動の `failures` には、固定の前置きと文言を残す(`D-V23-45`)。
+    return `${APP_REASON_HISTORY_PREFIX}${result.error}`;
+  }
   if (result.status === "failure") {
     // **【`V17-M3-T07b` / `AC-G27a`】島が投げた本文を履歴に載せない。**
     // **島の JS は `throw new Error(JSON.stringify(rows))` と書けるので、
@@ -1721,6 +1851,9 @@ function runRunFunction(
     //    切り詰めも伏せ字も1つも挟まっていない。実測)。
     // **残すのは**種別**だけである**(`timeout` / `memory` / `error` /
     //   `input_too_large` / `output_too_large`。**5値。`island-runner.ts` の型そのまま**)。
+    // **【2026-09-29。`V23-M2-T04` の訂正。上の文を消していない】** 今日は6値である
+    //   (6値目 `rejected`。島の断り)。 6値目は上の分岐で先に受けるので、ここへ来るのは5値だけ。
+    //   **`reject` 以外の例外の本文は今日どおり捨てる。**
     return `関数 "${fn.id}" の実行に失敗しました(${result.reason})。詳細は履歴に残していません。`;
   }
 
@@ -1741,6 +1874,9 @@ function runRunFunction(
       // **【`V8-M21` / `J-G23`】判定は島の外側で掛ける。** **時刻起動から起きた島は
       // 素通りのまま残る**(限定の逐語)。
       accessJudgmentApplies(workflow),
+      origin,
+      // **【`V23-M10-T02c-c` / `D-V23-299`】救済に使う操作者**(島の op ごとの判定へ渡す)。
+      rescueOperatorOf(workflow, origin),
     );
   }
 
@@ -1759,7 +1895,16 @@ function runRunFunction(
     // **【`V17-M3-T02b`】書き手を1段下ろす**(`AC-G13` / `ADR-0415`)——
     // **すぐ上(3.)で既に解けている1つを渡すだけである。** **新しい主体の決め方を
     // 1つも作っていない**(`resolveWorkflowActor` を2度呼ばない)。
-    return writeBackToTriggerRecord(db, manifest, workflow, fn, record, validated.value, actor);
+    return writeBackToTriggerRecord(
+      db,
+      manifest,
+      workflow,
+      fn,
+      record,
+      validated.value,
+      actor,
+      origin,
+    );
   }
 
   // 6b. output_table へ全置換(再計算)。既存行を全削除 → 検証済み行を挿入(ADR-0024 §Decision)。
@@ -1779,6 +1924,8 @@ function runRunFunction(
       manifest,
       outputTable,
       actor: () => (actor === "" ? null : actor),
+      // **【`V23-M10-T02c-c` / `D-V23-299`】救済に使う操作者**(全置換の各判定へ渡す)。
+      operator: rescueOperatorOf(workflow, origin),
       // **【`V17-M2-T03b`】検証済みの行を1段下ろす**(`AC-G7a`)—— **全置換は
       // これらの行を `createRecord` で**作る**ので、前提の関門の射程内である。**
       rows: validated.value as unknown as readonly Record<string, unknown>[],
@@ -1787,13 +1934,28 @@ function runRunFunction(
       return denied;
     }
   }
-  const cleared = clearOutputTable(db, manifest, outputTable);
+  // **【`V23-M6-T04`】相手の行を指す欄**(全置換は行を作り直すので、作成として問う。主体を問わない)。
+  for (const row of validated.value as unknown as readonly Record<string, unknown>[]) {
+    const principalDenied = principalRowAutomationDenial(db, manifest, outputTable, "create", row);
+    if (principalDenied !== undefined) {
+      return `関数 "${fn.id}" の output_table 全置換: ${principalDenied}`;
+    }
+  }
+  // **【`V23-M1-T07`。行12・行13】行の最後の管理者**(全置換の後の姿で数える。主体を問わない)。
+  {
+    const replacedRows = validated.value as unknown as readonly Record<string, unknown>[];
+    const lastAdmin = lastRowAdminAutomationDenial(db, manifest, outputTable, () => replacedRows);
+    if (lastAdmin !== undefined) {
+      return `関数 "${fn.id}" の output_table 全置換: ${lastAdmin}`;
+    }
+  }
+  const cleared = clearOutputTable(db, manifest, outputTable, origin);
   if (cleared !== undefined) {
     return cleared;
   }
   const writeFailures: string[] = [];
   validated.value.forEach((row, index) => {
-    const created = createRecord(db, manifest, outputTable, row);
+    const created = createRecord(db, manifest, outputTable, row, origin);
     if (!created.ok) {
       // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
       writeFailures.push(`出力${index + 1}行目: ${formatErrorsWithoutValues(created.errors)}`);
@@ -1848,6 +2010,8 @@ function writeBackToTriggerRecord(
    * **空文字は「書き手を特定できない」であり、既存の作法どおり `null` に倒す。**
    */
   actor: string,
+  /** **【`V23-M4-T03`】連鎖の起点の操作者**(書き戻しが起こす発火へ渡す)。 */
+  origin: OriginActor = EMPTY_ORIGIN,
 ): string | undefined {
   // 1. トリガー元レコードを要する(書き戻し先がそのレコード。schedule では fail-closed)。
   if (record === undefined || workflow.trigger.type === "schedule") {
@@ -1900,6 +2064,8 @@ function writeBackToTriggerRecord(
     row: triggerRow,
     verb: "write",
     actor: () => actorId,
+    // **【`V23-M10-T02c-c` / `D-V23-299`】断られたときだけ、発火させた操作者でもう一度問う。**
+    operator: rescueOperatorOf(workflow, origin),
   });
   if (denied !== undefined) {
     return `関数 "${fn.id}" の write_back を実行できません: ${denied}`;
@@ -1934,7 +2100,34 @@ function writeBackToTriggerRecord(
 
   // 4. トリガー元レコードへ書き戻す。**既存の updateRecord を通す**(records.ts の唯一の関門)。
   //    版(expectedVersion)は渡さない = 内部の自動更新に CAS を課さない(runAction の update_record と同型)。
-  const result = updateRecord(db, manifest, targetTable, record._id, row);
+  // **【`V23-M6-T04`】相手の行を指す欄**(発火元の行が付与表の行のとき。主体を問わない)。
+  {
+    const principalDenied = principalRowAutomationDenial(
+      db,
+      manifest,
+      targetTable,
+      "update",
+      row as unknown as Record<string, unknown>,
+      record._id,
+    );
+    if (principalDenied !== undefined) {
+      return `関数 "${fn.id}" の write_back を実行できません: ${principalDenied}`;
+    }
+  }
+  // **【`V23-M1-T07`。行17】行の最後の管理者**(発火元の行が付与表の行のとき。主体を問わない)。
+  {
+    const recordId = record._id;
+    const changes = row as unknown as Record<string, unknown>;
+    const lastAdmin = lastRowAdminAutomationDenial(db, manifest, targetTable, (current) =>
+      current.map((candidate) =>
+        candidate?._id === recordId ? { ...candidate, ...changes } : candidate,
+      ),
+    );
+    if (lastAdmin !== undefined) {
+      return `関数 "${fn.id}" の write_back を実行できません: ${lastAdmin}`;
+    }
+  }
+  const result = updateRecord(db, manifest, targetTable, record._id, row, undefined, origin);
   // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
   // **`record._id` は残す** —— **行の識別子であって中身ではなく、
   //   落とすと「どの行で失敗したか」が履歴から読めなくなる。**
@@ -2012,6 +2205,13 @@ function applyIslandWriteOps(
    * **呼び出しは製品に1本しか無い。**
    */
   judgeAccess: boolean,
+  /** **【`V23-M4-T03`】連鎖の起点の操作者**(島の op が起こす発火へ渡す)。 */
+  origin: OriginActor = EMPTY_ORIGIN,
+  /**
+   * **【`V23-M10-T02c-c` / `D-V23-299`】救済に使う操作者**({@link rescueOperatorOf} の答え)。
+   * 省略すれば救済は掛からない(今日どおり)。
+   */
+  rescueOperator?: string,
 ): string | undefined {
   // 1. 宣言との一致(`ADR-0024` 限定4 の担保をこの経路へ持ち込む形)。
   //    `write_ops` モードの関数は `output: { ops: true }` を宣言していなければならない。
@@ -2113,10 +2313,76 @@ function applyIslandWriteOps(
           verb: "write",
           actor: () => actorId,
           values: createValues,
+          // **【`V23-M10-T02c-c` / `D-V23-299`】断られたときだけ、発火させた操作者でもう一度問う。**
+          operator: rescueOperator,
         });
         if (denied !== undefined) {
           return `関数 "${fn.id}" の更新操作 ${index + 1} 件目: ${denied}`;
         }
+      }
+    }
+  }
+
+  // 3c-2. **【`V23-M6-T04`】相手の行を指す欄**(判定の外側の包み。主体を問わない。op 1件ごと)。
+  for (const [index, rawOp] of output.entries()) {
+    if (typeof rawOp !== "object" || rawOp === null || Array.isArray(rawOp)) {
+      continue;
+    }
+    const op = rawOp as Record<string, unknown>;
+    const opValues = op.values;
+    if (
+      (op.op !== "create" && op.op !== "update") ||
+      typeof op.table !== "string" ||
+      typeof opValues !== "object" ||
+      opValues === null ||
+      Array.isArray(opValues)
+    ) {
+      continue;
+    }
+    const principalDenied = principalRowAutomationDenial(
+      db,
+      manifest,
+      op.table,
+      op.op,
+      opValues as Record<string, unknown>,
+      typeof op.target === "string" ? op.target : undefined,
+    );
+    if (principalDenied !== undefined) {
+      return `関数 "${fn.id}" の更新操作 ${index + 1} 件目: ${principalDenied}`;
+    }
+  }
+
+  // 3d. **【`V23-M1-T07`。行11・行13】行の最後の管理者**(判定の外側の包み。主体を問わない)。
+  //     **表ごとに、この島の update op を全部重ねた後の姿で1度だけ数える。**
+  {
+    const updatesByTable = new Map<string, Record<string, unknown>[]>();
+    for (const rawOp of output) {
+      if (typeof rawOp !== "object" || rawOp === null || Array.isArray(rawOp)) {
+        continue;
+      }
+      const op = rawOp as Record<string, unknown>;
+      if (op.op === "update" && typeof op.table === "string" && typeof op.target === "string") {
+        updatesByTable.set(op.table, [...(updatesByTable.get(op.table) ?? []), op]);
+      }
+    }
+    for (const [tableId, ops] of updatesByTable) {
+      const lastAdmin = lastRowAdminAutomationDenial(db, manifest, tableId, (current) =>
+        current.map((row) => {
+          let next = row;
+          for (const op of ops) {
+            if (row?._id === op.target) {
+              const changes =
+                typeof op.values === "object" && op.values !== null && !Array.isArray(op.values)
+                  ? (op.values as Record<string, unknown>)
+                  : {};
+              next = { ...next, ...changes };
+            }
+          }
+          return next;
+        }),
+      );
+      if (lastAdmin !== undefined) {
+        return `関数 "${fn.id}" の更新操作: ${lastAdmin}`;
       }
     }
   }
@@ -2162,6 +2428,7 @@ function applyIslandWriteOps(
             });
           },
         },
+    origin,
   );
   // **【`V17-M3-T07b` / `AC-G27a`】値を含まない版を通す**(この文字列は履歴へ行く)。
   return written.ok
@@ -2312,6 +2579,20 @@ function automationActorId(
 const OWNER_STAMP_COLUMN = "st_owner";
 
 /**
+ * **【`V23-M10-T02c-c` / `D-V23-299`】救済に使う、発火させた操作者**(人)。
+ *
+ * `act_as` を書いた発火(辿れないときの fail-closed を残す)・時刻起動から起きた発火(起点の入口が
+ * 時刻起動)・操作者が空の発火(受信口・AI の書き戻しの主体が空のとき)では `undefined` を返し、
+ * 救済を掛けない。 連鎖の先でも、起点の操作者がそのまま運ばれる。
+ */
+function rescueOperatorOf(workflow: Workflow, origin: OriginActor): string | undefined {
+  if (workflow.act_as !== undefined || origin.entry === "schedule" || origin.id === "") {
+    return undefined;
+  }
+  return origin.id;
+}
+
+/**
  * **その表が「持ち主の列を持つ表」か**(`src/server/owner-scope.ts` の `personalOwnerField`
  * とまったく同じ3条件: id が規約の綴り / 型が `text` / `required` でない)。
  *
@@ -2353,6 +2634,87 @@ function stampAutomationOwner(
     return;
   }
   values[OWNER_STAMP_COLUMN] = actorId;
+}
+
+/**
+ * **自動処理・時刻起動・手動起動が付与表の行を書き換える・全置換するとき、行の最後の管理者が
+ * 消えるなら断る**(`V23-M1-T07`。`SC-G5` / `D-V23-14`・`D-V23-31` / `ADR-0510` §Decision 2)。
+ *
+ * **書込の主体(`act_as`・起点の利用者・名乗り無し・運営)を問わない。** **面と点の判定を掛けるかを
+ * 決める関門の外側に置く**(時刻起動にも掛かる)。 判定は `owner-scope.ts` の {@link lastRowAdminVanishes}
+ * 1本で、ここは行を読んで答えを履歴の文へ翻訳するだけである(文に値を入れない)。 付与表でなければ
+ * 1行も読まずに通す。
+ */
+function lastRowAdminAutomationDenial(
+  db: Database,
+  manifest: Manifest,
+  tableId: ResourceId,
+  afterRowsOf: (current: readonly Record<string, unknown>[]) => readonly Record<string, unknown>[],
+): string | undefined {
+  if (!isGrantTable(manifest, tableId)) {
+    return undefined;
+  }
+  const cache = new Map<string, readonly Record<string, unknown>[]>();
+  const readRows = (id: string): readonly Record<string, unknown>[] => {
+    let rows = cache.get(id);
+    if (rows === undefined) {
+      rows = accessSourceRows(db, manifest, id);
+      cache.set(id, rows);
+    }
+    return rows;
+  };
+  const known = new Map<string, boolean>();
+  const vanishes = lastRowAdminVanishes({
+    manifest,
+    readRows,
+    userExists: (userId) => {
+      let exists = known.get(userId);
+      if (exists === undefined) {
+        exists = effectiveRolesOnDb(db, userId) !== null;
+        known.set(userId, exists);
+      }
+      return exists;
+    },
+    replaced: { grantTableId: tableId, afterRows: afterRowsOf(readRows(tableId)) },
+  });
+  return vanishes
+    ? `テーブル "${tableId}" のこの書込は、行の最後の管理者の権限を外すため断りました(1バイトも書いていません)。`
+    : undefined;
+}
+
+/**
+ * **【`V23-M6-T04`】自動処理・時刻起動・手動起動・島・全置換・書き戻しが、付与表の相手の行を指す欄に
+ * 値を入れる・変えるなら断る**(`ADR-0538` §Decision 1-4・`D-V23-162`)。 **書込の主体を問わない。** 面と点の
+ * 判定を掛けるかを決める関門の外側に置く(時刻起動にも掛かる)。 判定は `owner-scope.ts` の述語1本で、
+ * ここは前の行を読んで答えを履歴の文へ翻訳するだけである(文に値を入れない)。 `principal_row` を宣言して
+ * いないアプリでは1行も読まずに通す。
+ */
+function principalRowAutomationDenial(
+  db: Database,
+  manifest: Manifest,
+  tableId: ResourceId,
+  op: "create" | "update",
+  values: Record<string, unknown>,
+  targetId?: string,
+): string | undefined {
+  const refused = principalRowWriteRefused({
+    manifest,
+    tableId,
+    op,
+    values,
+    before: () => {
+      if (targetId === undefined) {
+        return undefined;
+      }
+      const existing = getRecord(db, manifest, tableId, targetId);
+      return existing.ok && existing.value !== null
+        ? (existing.value as unknown as Record<string, unknown>)
+        : undefined;
+    },
+  });
+  return refused
+    ? `テーブル "${tableId}" のこの書込は、相手の行を指す欄に書き込むため断りました(1バイトも書いていません)。この欄は招待の承諾でだけ書けます。`
+    : undefined;
 }
 
 /** 判定に要る行を読む。**読めなければ空配列 = fail-closed**(黙って通さない)。 */
@@ -2520,7 +2882,32 @@ export function judgeAutomationWrite(params: {
    * **渡さなければ着手前と1バイトも変わらない。**
    */
   values?: Record<string, unknown> | undefined;
+  /**
+   * **【`V23-M10-T02c-c` / `D-V23-299`・`D-V23-301`・`D-V23-302`】救済に使う、発火させた操作者。**
+   * 呼び手が {@link rescueOperatorOf} で求めて渡す(`act_as` を書いた発火・時刻起動・操作者が空なら
+   * 渡らない)。 **渡さなければ今日と1バイトも同じ判定である。**
+   */
+  operator?: string | undefined;
 }): string | undefined {
+  // **【`V23-M10-T02c-c`(2026-10-02)/ `D-V23-299`(案2 救済型)】** 判定は今日のまま1回掛け、
+  // 通ればそこで終わる(今日通っている書込は1ビットも変わらない)。 断られ、かつ今日の書き手が空で、
+  // 書く相手の表が持ち主の列(`st_owner`。{@link hasOwnerStampColumn} の3条件)を持たないときだけ
+  // (`D-V23-301`)、発火させた操作者を
+  // 書き手にしてもう一度同じ判定を掛ける。 その判定でも断られたら、操作者で判定した理由を返す
+  // (`D-V23-302`)。 履歴の操作者と更新者の列は操作者のまま(この関数は触らない)。
+  // 書き手の決め方(`resolveWorkflowActor`)と素通しの述語は1バイトも変えていない。
+  if (params.operator !== undefined) {
+    const operator = params.operator;
+    const today = judgeAutomationWrite({ ...params, operator: undefined });
+    if (
+      today === undefined ||
+      params.actor() !== null ||
+      hasOwnerStampColumn(params.manifest, params.tableId)
+    ) {
+      return today;
+    }
+    return judgeAutomationWrite({ ...params, actor: () => operator, operator: undefined });
+  }
   const { db, manifest, tableId, row, verb, values } = params;
   const sources = recordAccessSourceTables(manifest, tableId);
   const actorId = params.actor();
@@ -2684,6 +3071,8 @@ function judgeOutputTableReplace(params: {
   manifest: Manifest;
   outputTable: ResourceId;
   actor: () => string | null;
+  /** **【`V23-M10-T02c-c` / `D-V23-299`】救済に使う操作者**(下の各判定へそのまま渡す)。 */
+  operator?: string | undefined;
   /**
    * **これから書き直す行**(`V17-M2-T03b` / `AC-G7a` / `ADR-0411`)。
    *
@@ -2714,7 +3103,15 @@ function judgeOutputTableReplace(params: {
   if (recordAccessSourceTables(manifest, outputTable) === undefined && actor() === null) {
     return undefined;
   }
-  const write = judgeAutomationWrite({ db, manifest, tableId: outputTable, verb: "write", actor });
+  const { operator } = params;
+  const write = judgeAutomationWrite({
+    db,
+    manifest,
+    tableId: outputTable,
+    verb: "write",
+    actor,
+    operator,
+  });
   if (write !== undefined) {
     return `出力先テーブル "${outputTable}" を作り直せません: ${write}`;
   }
@@ -2731,6 +3128,7 @@ function judgeOutputTableReplace(params: {
       verb: "write",
       actor,
       values: row,
+      operator,
     });
     if (deniedCreate !== undefined) {
       return (
@@ -2748,6 +3146,7 @@ function judgeOutputTableReplace(params: {
       row,
       verb: "delete",
       actor,
+      operator,
     });
     if (denied !== undefined) {
       return (
@@ -2863,15 +3262,19 @@ function resolveFunctionInput(
   manifest: Manifest,
   fn: FunctionDef,
   record: RecordRow | undefined,
+  /** **【`V23-M4-T06`】起点の操作者**(`source: "actor"` だけが読む)。 */
+  origin: OriginActor,
+  /** **【`V23-M4-T06`】更新前の行**(`source: "previous"` だけが読む)。 */
+  previous: RecordRow | undefined,
 ): Resolved<unknown> {
   const declared = fn.input;
   if (!Array.isArray(declared)) {
-    return resolveOneFunctionInput(db, manifest, fn, declared, record);
+    return resolveOneFunctionInput(db, manifest, fn, declared, record, origin, previous);
   }
   // **宣言順に、既存3分岐をそのまま繰り返すだけである。** 突き合わせも並べ替えも重複排除も無い。
   const values: unknown[] = [];
   for (const one of declared) {
-    const resolved = resolveOneFunctionInput(db, manifest, fn, one, record);
+    const resolved = resolveOneFunctionInput(db, manifest, fn, one, record, origin, previous);
     if (!resolved.ok) {
       return resolved;
     }
@@ -2894,7 +3297,29 @@ function resolveOneFunctionInput(
   fn: FunctionDef,
   input: FunctionInput,
   record: RecordRow | undefined,
+  /** **【`V23-M4-T06`】起点の操作者**(`source: "actor"` だけが読む)。 */
+  origin: OriginActor,
+  /** **【`V23-M4-T06`】更新前の行**(`source: "previous"` だけが読む)。 */
+  previous: RecordRow | undefined,
 ): Resolved<unknown> {
+  // **【`V23-M4-T02`】の失敗で閉じる枝(「まだ組み立てられません」)は、`V23-M4-T06` が下の2枝に替えた。**
+  // **【`V23-M4-T06` / `D-V23-93`・`D-V23-97` / `ADR-0524` §Decision 1-4】** `actor` は起点の `$actor` と
+  // 同じ3つの値の組(写しを渡す。 島の側で書き換えても起点は動かない)。 島に新しいホスト関数は
+  // 注入しない(`ADR-0500` §Decision 1-3)。
+  if (input.source === "actor") {
+    return { ok: true, value: { id: origin.id, login: origin.login, role: origin.role } };
+  }
+  // `previous` は更新前の行全体。 `source: "record"` と同じ読み方の行(`records.ts` の `selectRow`)を
+  // そのまま渡す(伏せる項目の扱いも `record` と同じ)。 `on_update` の外は適用時に断っている。
+  if (input.source === "previous") {
+    if (previous === undefined) {
+      return {
+        ok: false,
+        message: `関数 "${fn.id}" は入力に更新前の行(previous)を要しますが、この発火には更新前の行がありません(更新前の行を渡せるのは on_update の発火だけです)。`,
+      };
+    }
+    return { ok: true, value: previous };
+  }
   if (input.source === "record") {
     if (record === undefined) {
       return {
@@ -2940,6 +3365,14 @@ function resolveOneFunctionInput(
     return { ok: true, value: rows.value };
   }
 
+  // **【`V23-M4-T06`】最後の枝を「残りは view」とみなさず、判別して閉じる**(5値になったため)。
+  if (input.source !== "view") {
+    const unknownSource: never = input;
+    return {
+      ok: false,
+      message: `関数 "${fn.id}" の入力の種類 ${JSON.stringify(unknownSource)} は解決できません。`,
+    };
+  }
   // source === "view": list_view を引き、その filter / sort を適用した行を渡す。
   // `viewId` を先に取り出すのは、`.find` のコールバック内では `input` の絞り込みが
   // 失われる(クロージャ越しの narrowing は保証されない)ためである。
@@ -3082,13 +3515,15 @@ function clearOutputTable(
   db: Database,
   manifest: Manifest,
   outputTable: ResourceId,
+  /** **【`V23-M8-T03`】起点の操作者**(全置換の削除も変更履歴に残すため。宣言の無い表では読まない)。 */
+  origin?: OriginActor,
 ): string | undefined {
   const existing = listRecords(db, manifest, outputTable, {});
   if (!existing.ok) {
     return `出力先テーブル "${outputTable}" を読めませんでした: ${formatErrors(existing.errors)}`;
   }
   for (const row of existing.value) {
-    const deleted = deleteRecord(db, manifest, outputTable, row._id);
+    const deleted = deleteRecord(db, manifest, outputTable, row._id, undefined, origin);
     if (!deleted.ok) {
       return `出力先テーブル "${outputTable}" の既存行を削除できませんでした: ${formatErrors(deleted.errors)}`;
     }
@@ -3098,14 +3533,46 @@ function clearOutputTable(
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; message: string };
 
-/** `values` の全項目を解決する。1つでも解決できなければアクションごと失敗させる。 */
+/**
+ * `values` の全項目を解決する。1つでも解決できなければアクションごと失敗させる。
+ *
+ * **【`V23-M4-T03`】`origin`(連鎖の起点の操作者)を渡すのは `values` の位置だけである**
+ * (`ADR-0500` 限定3・4: 新しい参照は `values` の外へ広げない)。 `target` / `payload` /
+ * `input` / `fallback` の解決は今日どおり `origin` を渡さない。
+ */
 function resolveValues(
   values: Record<string, string>,
   record: RecordRow | undefined,
+  origin?: OriginActor,
+  /**
+   * **【`V23-M4-T04`】`values` の位置だけが渡す**更新前の行(`$previous.<項目>`。`on_update` の発火
+   * だけが持つ)と、書き込み先の表の `date` 型の項目(`$now` を年月日で書く項目。`D-V23-104`)。
+   * `payload` / `input` の解決は渡さない(`ADR-0500` 限定3: 新しい参照を `values` の外へ広げない)。
+   */
+  valuesPosition?: {
+    readonly previous: RecordRow | undefined;
+    readonly dateFieldIds: readonly string[];
+  },
 ): Resolved<RecordInput> {
   const resolved: RecordInput = {};
+  // **`$now` の瞬間は1アクションで1つ**(同じアクションの2つの項目が別の秒を指さない)。
+  // 読むのは時刻源 `workflowClock` だけである(`ADR-0500` 限定17)。 書かれていなければ読まない。
+  let instant: Date | undefined;
   for (const [key, raw] of Object.entries(values)) {
-    const value = resolveValue(raw, record);
+    const value = resolveValue(
+      raw,
+      record,
+      origin,
+      valuesPosition === undefined
+        ? undefined
+        : {
+            previous: valuesPosition.previous,
+            now: () => {
+              instant ??= workflowClock.now();
+              return formatNow(instant, valuesPosition.dateFieldIds.includes(key));
+            },
+          },
+    );
     if (!value.ok) {
       // **解決に失敗したら、空文字や null に落とさずアクションごと失敗させる。**
       // 落とすと「新しい本が登録されました(対象: )」が通知として届く —— 憲法6 に正面から反する。
@@ -3117,6 +3584,148 @@ function resolveValues(
 }
 
 const RECORD_PREFIX = "$record.";
+
+/**
+ * **【`V23-M4-T03` / `D-V23-93`・`D-V23-102`】連鎖の起点の操作者**(`$actor`)。 **export しない**
+ * (カーネルの公開の識別子を増やさない。`ADR-0524` 限定1)。 公開の関数の引数には同じ形を
+ * インラインで書く。
+ *
+ * - `id` … 利用者 ID。 `login` … `_auth_users.username`。 `role` … `_auth_users.role`(アカウントの役割1つ)。
+ * - 入口が作って渡し、実行器は入れ子の発火とアクションの書込にそのまま渡し続ける。
+ * - **判定の主体には使わない**(`resolveWorkflowActor` / `automationActorId` / `st_owner` の押し方は
+ *   今日どおり。`ADR-0500` 限定19)。 **送信内容から1バイトも読まない**(同 限定16。値を作るのは入口)。
+ */
+type OriginActor = {
+  readonly id: string;
+  readonly login: string;
+  readonly role: string;
+  /** **【`V23-M8-T03`】入口**(省略できる。変更履歴の入口の値にだけ使い、`$actor` としては解かない)。 */
+  readonly entry?: "http" | "manual" | "inbound" | "on_create/on_update" | "schedule" | "mcp";
+};
+
+/** 起点を渡されなかった呼び出しの `$actor`(3つとも空文字。`D-V23-102`)。 */
+const EMPTY_ORIGIN: OriginActor = { id: "", login: "", role: "" };
+
+/**
+ * 時刻起動の `$actor`(`D-V23-93`)。 **実行器の側で入口の種別から作る** ——
+ * `workflow-scheduler.ts` は1バイトも変えない(`ADR-0066` 限定7 / `ADR-0524` 限定2)。
+ */
+const SCHEDULE_ORIGIN: OriginActor = { id: "", login: "", role: "schedule", entry: "schedule" };
+
+/** `values` の位置で解く操作者の参照の接頭辞(3つの完全一致だけを解く)。 */
+const ACTOR_PREFIX = "$actor.";
+
+/** **【`V23-M4-T04`】`values` の位置で解く更新前の値の参照の接頭辞**(`$previous.<項目ID>`)。 */
+const PREVIOUS_PREFIX = "$previous.";
+
+/** **【`V23-M4-T04`】`values` の位置で解く今の時刻の参照**(完全一致)。 */
+const NOW_REFERENCE = "$now";
+
+/**
+ * **【`V23-M4-T04` / `D-V23-104`・`D-V23-101`】`$now` を書き込み先の型の形に整える。 export しない。**
+ *
+ * - 時間帯は `ST_TIMEZONE` を既存の `resolveTimeZone` で読む。 無効・無しなら既定(`Asia/Tokyo`)。
+ *   (カーネルで環境変数を読む先例は `ai-limits.ts` の `resolveAiTimeZone`。 不正でも止めない。)
+ * - `date` の項目 … その時間帯の年月日 `YYYY-MM-DD`。
+ * - それ以外 … その時間帯の壁時計に時差を付けた秒まで(`2026-09-30T10:23:45+09:00`)。
+ * - **瞬間は呼び出し側が時刻源 `getWorkflowClock` の値を渡す**(2本目の時刻源を作らない。`ADR-0500` 限定17)。
+ * - 書式を作り手が選べる形・日付の足し引きは足さない(`ADR-0500` 越えてはならない線3)。
+ */
+function formatNow(instant: Date, dateOnly: boolean): string {
+  const resolution = resolveTimeZone(process.env.ST_TIMEZONE);
+  const timeZone = resolution.ok ? resolution.timeZone : DEFAULT_TIME_ZONE;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes): string => {
+    const found = parts.find((candidate) => candidate.type === type);
+    if (found === undefined) {
+      // 到達しない想定。黙って 0 を埋めない(`zonedNow` と同じ)。
+      throw new Error(`タイムゾーン "${timeZone}" の時刻から ${type} を読み取れませんでした`);
+    }
+    return found.value;
+  };
+  const date = `${part("year")}-${part("month")}-${part("day")}`;
+  if (dateOnly) {
+    return date;
+  }
+  const time = `${part("hour")}:${part("minute")}:${part("second")}`;
+  // 時差 = 壁時計を UTC とみなした瞬間 − 実際の瞬間(秒未満を落として比べる)。
+  const wallAsUtc = Date.UTC(
+    Number(part("year")),
+    Number(part("month")) - 1,
+    Number(part("day")),
+    Number(part("hour")),
+    Number(part("minute")),
+    Number(part("second")),
+  );
+  const offsetMinutes = Math.round(
+    (wallAsUtc - Math.floor(instant.getTime() / 1000) * 1000) / 60000,
+  );
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `${date}T${time}${sign}${hours}:${minutes}`;
+}
+
+/** **【`V23-M4-T04`】書き込み先の表の `date` 型の項目ID**(`$now` の形を決める。`D-V23-104`)。 */
+function dateFieldIdsOf(manifest: Manifest, tableId: ResourceId): readonly string[] {
+  const table = manifest.app.tables.find((candidate) => candidate.id === tableId);
+  return (table?.fields ?? []).filter((field) => field.type === "date").map((field) => field.id);
+}
+
+/**
+ * **【`V23-M4-T04` / `D-V23-96` / `ADR-0500` 限定18】`changed_fields` の絞り。**
+ *
+ * - `changed_fields` を書かないワークフロー(`on_create` を含む)は常に真(今日どおり発火する)。
+ * - 更新前の行か更新後の行を持たない呼び出し(カーネルを直に呼ぶもの)も真(今日どおり)。
+ * - それ以外は、列挙した項目のどれかが「変わった」ときだけ真。
+ */
+function changedFieldsAllowFiring(
+  workflow: Workflow,
+  previous: RecordRow | undefined,
+  record: RecordRow | undefined,
+): boolean {
+  if (workflow.trigger.type !== "on_update" || workflow.trigger.changed_fields === undefined) {
+    return true;
+  }
+  if (previous === undefined || record === undefined) {
+    return true;
+  }
+  return workflow.trigger.changed_fields.some(
+    (fieldId) => !sameFieldValue(previous[fieldId], record[fieldId]),
+  );
+}
+
+/**
+ * **【`V23-M4-T04` / `D-V23-96`】「変わっていない」の比べ方。**
+ *
+ * 比べる前に `null`・`undefined`・空文字を同じ「空」とみなす。 boolean は「空」と `false` を同じと
+ * みなす。 number は数としての等価、それ以外は文字列の等価(`date` の書き方の違い
+ * `2026-09-30` と `2026-09-30T00:00:00Z` は「変わった」)。
+ */
+function sameFieldValue(before: RecordValue | undefined, after: RecordValue | undefined): boolean {
+  if (typeof before === "boolean" || typeof after === "boolean") {
+    return (before === true) === (after === true);
+  }
+  const beforeEmpty = before === null || before === undefined || before === "";
+  const afterEmpty = after === null || after === undefined || after === "";
+  if (beforeEmpty || afterEmpty) {
+    return beforeEmpty && afterEmpty;
+  }
+  if (typeof before === "number" && typeof after === "number") {
+    return before === after;
+  }
+  return String(before) === String(after);
+}
 
 /**
  * 1つの値を解決する(限定12)。
@@ -3144,9 +3753,49 @@ const RECORD_PREFIX = "$record.";
  * 矛盾ではなく段が違うのだが、**それが書かれていなかった。**
  * **規則をコメントに焼き込むときは、どの段の話かを書くこと。書かないと次の者が誤って直す。**
  */
-function resolveValue(value: string, record: RecordRow | undefined): Resolved<RecordValue> {
+function resolveValue(
+  value: string,
+  record: RecordRow | undefined,
+  /**
+   * **【`V23-M4-T03`】`values` の位置だけが渡す起点の操作者。** 渡されたときだけ
+   * `$actor.id` / `$actor.login` / `$actor.role` の3つ(完全一致)を解く。 渡されない位置では
+   * 今日どおり「参照の形になっていません」で失敗する。 `$previous` / `$now` の解決は `T04`。
+   */
+  origin?: OriginActor,
+  /**
+   * **【`V23-M4-T04`】`values` の位置だけが渡す更新前の行と今の時刻。** 渡されたときだけ
+   * `$previous.<項目ID>` と `$now`(完全一致)を解く。 渡されない位置(`target` / `payload` /
+   * `input` / `fallback`)は今日どおり「参照の形になっていません」で失敗する。
+   */
+  valuesOnly?: { readonly previous: RecordRow | undefined; readonly now: () => string },
+): Resolved<RecordValue> {
   if (!value.startsWith("$")) {
     return { ok: true, value };
+  }
+  if (origin !== undefined && value.startsWith(ACTOR_PREFIX)) {
+    const key = value.slice(ACTOR_PREFIX.length);
+    if (key === "id" || key === "login" || key === "role") {
+      return { ok: true, value: origin[key] };
+    }
+  }
+  if (valuesOnly !== undefined && value === NOW_REFERENCE) {
+    return { ok: true, value: valuesOnly.now() };
+  }
+  if (valuesOnly !== undefined && value.startsWith(PREVIOUS_PREFIX)) {
+    const previousFieldId = value.slice(PREVIOUS_PREFIX.length);
+    if (valuesOnly.previous === undefined) {
+      return {
+        ok: false,
+        message: `"${value}" を解決できません。この発火には更新前の行がありません(更新前の値を読めるのは on_update の発火だけです)。`,
+      };
+    }
+    if (previousFieldId.startsWith("_") || !Object.hasOwn(valuesOnly.previous, previousFieldId)) {
+      return {
+        ok: false,
+        message: `"${value}" を解決できません。フィールド "${previousFieldId}" は更新前の行にありません。`,
+      };
+    }
+    return { ok: true, value: valuesOnly.previous[previousFieldId] ?? null };
   }
   if (!value.startsWith(RECORD_PREFIX)) {
     return {
@@ -3335,6 +3984,73 @@ function redactAutomationActorId(text: string): string {
   );
 }
 
+// --- アプリの理由(`V23-M2-T03`。`ADR-0498`・決定 `D-V23-45`・`D-V23-52`・`D-V23-54`)-------------
+//
+// **アプリの作者が宣言した文言で書込を断った失敗**(`unique_message` の差し替え。`V23-M2-T04` で
+// 島の `reject` も載る)を、今日の検査の失敗と見分けるための印と、連鎖の中で最初に起きた1件を
+// 最も外の書込まで運ぶ受け皿である。
+//
+// - **印は直列化されない**(`D-V23-54`): 失敗の物に、記号(`Symbol`)を鍵にした欄を1つ付ける。
+//   `JSON.stringify` は記号の鍵を書かないので、**応答の本文にも MCP の文字列にも欄は1つも増えない。**
+//   **`WeakSet` で持たないのは、まとめ書き(`batch.ts` の `prefixOpErrors`)が失敗を
+//   `{ ...error, path }` で作り直すからである** —— 広げ(spread)は記号の鍵の欄を写すが、
+//   `WeakSet` の登録は新しい物に写らない。 **`errors.ts`・`batch.ts`・入口層の `writeWithAudit` は
+//   1バイトも変えていない。**
+// - **受け皿は1つ**(`D-V23-52`): 最も外の書込(`records.ts` の器の一番外)が始まるときに空にし、
+//   自動処理の実行の内側(`depth > 0`)で印を付けた最初の1件の文言だけを控える。 最も外の器が
+//   読んで、`path: ""` と作者の文言そのままの失敗にして返す(受信口の冪等の吸収を騙さない)。
+
+/** アプリの理由の印の鍵(直列化されない)。 */
+const APP_REASON = Symbol("app_reason");
+
+/**
+ * 連鎖の中で最初に起きたアプリの理由の文言の受け皿(`D-V23-52`)。
+ * **なぜモジュールスコープで足りるか**は `depth` と同じ(実行が同期である)。
+ */
+let firstAppReason: string | undefined;
+
+/**
+ * **島が `reject` で断った回数**(`V23-M2-T04` / `D-V23-51`)。 `runActions` が1アクションの前後で
+ * 比べ、増えていれば同じワークフローの後のアクションを動かさない。 増えるだけで、値そのものに
+ * 意味は無い(実行が同期なので前後の差で足りる)。
+ */
+let rejectCount = 0;
+
+/** 受け皿が空で、自動処理の実行の内側なら、その文言を控える(最初の1件だけ。`D-V23-52`)。 */
+function holdFirstAppReason(message: string): void {
+  if (depth > 0 && firstAppReason === undefined) {
+    firstAppReason = message;
+  }
+}
+
+/**
+ * 失敗に「アプリの理由」の印を付けて、同じ物を返す。 自動処理の実行の内側で呼ばれたら、
+ * 受け皿が空のときだけその文言を控える(最初の1件だけ。`D-V23-52`・`D-V23-53`)。
+ */
+export function markAppReason<T extends ValidationError>(error: T): T {
+  (error as T & { [APP_REASON]?: true })[APP_REASON] = true;
+  holdFirstAppReason(error.message);
+  return error;
+}
+
+/** その失敗に「アプリの理由」の印が付いているか(まとめ書きの前置きの後も保たれる)。 */
+export function isAppReason(error: ValidationError): boolean {
+  return (error as ValidationError & { [APP_REASON]?: true })[APP_REASON] === true;
+}
+
+/** 受け皿の文言を取り出して空にする(最も外の書込の始まりと終わりで `records.ts` が呼ぶ)。 */
+export function takeFirstAppReason(): string | undefined {
+  const message = firstAppReason;
+  firstAppReason = undefined;
+  return message;
+}
+
+/**
+ * 履歴の `error` 列に、アプリの理由の文言を載せるときの固定の前置き(`D-V23-45`)。
+ * **文言は作者の固定文であって行の値ではない**(`unique_message` は宣言の文字列そのもの)。
+ */
+const APP_REASON_HISTORY_PREFIX = "アプリが定めた理由で断りました: ";
+
 /** `ValidationError` の配列を人間可読な1つの文字列に畳む。 */
 function formatErrors(errors: ValidationError[]): string {
   return errors
@@ -3388,9 +4104,21 @@ function formatErrors(errors: ValidationError[]): string {
  * **理由を残すには `message` を形ごとに切り分ける必要があり、1つでも見落とすと
  * 同じ穴が名前を変えて残る。**
  * **`ValidationError` は今日、機械で読める失敗の種別(コード)を1つも持っていない。**
+ *
+ * **【2026-09-29。`V23-M2-T03` の訂正。上の文を消していない】** 上の「`records.ts` でその形を
+ * 作っているのは次の5つだけ」と「値を載せる失敗は例外なく項目の `path` を持つ」は、今日は偽である。
+ * **(1) 6つ目の作り手が在る** —— 最も外の書込の器が、連鎖の中で起きたアプリの理由
+ * (`unique_message` の差し替え。`V23-M2-T04` から島の断りも)を、空の `path` と作者の文言そのままで
+ * 返す(`D-V23-52`)。 **(2) 項目の `path` を持つ失敗のうち、アプリの理由の印を付けたものは本文を
+ * 残す** —— 固定の前置きと作者の文言を履歴に載せる(`D-V23-45`)。 **文言は作者が宣言した固定文で
+ * あり、書込の値を差し込む仕組みは無い**が、作者が他人の行の値を文言に書けばそれが履歴に出る
+ * (作者の責任。`ADR-0498` 限定14)。 印の無い失敗の扱いは1バイトも変えていない。
  */
 function formatErrorsWithoutValues(errors: ValidationError[]): string {
   const places = errors.map((error) => {
+    if (isAppReason(error)) {
+      return `${APP_REASON_HISTORY_PREFIX}${error.message}`;
+    }
     if (error.path === "") {
       return error.message;
     }

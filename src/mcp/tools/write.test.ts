@@ -18,7 +18,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { afterEach, beforeEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,6 +50,7 @@ import {
   applyInProgressError as serverApplyInProgressError,
 } from "../../server/app.ts";
 import { seedSession, TEST_ORIGIN } from "../../server/test-helpers.ts";
+import * as designNoticesModule from "../../shared/design-notices.ts";
 import { createMcpServer } from "../server.ts";
 import { APPLY_DIFF_OP_EXAMPLES, WORKFLOW_HISTORY_TABLE_TEMPLATE } from "../vocabulary.ts";
 import { denyAppSettingWrite, applyInProgressError as mcpApplyInProgressError } from "./write.ts";
@@ -276,6 +277,9 @@ test("更新系を含む23ツールが tools/list に出る", async () => {
         // が見張る `WRITE_TOOLS` にも同じ1本を書き足した。
         // **テスト名(「23ツール」)は1バイトも書き換えていない** —— 今日は26ツールである。
         "set_comment_visibility",
+        // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行105】** 行の変更履歴を読む。**参照系**であり
+        // `registerReadTools` が登録する(更新系は1つも増えていない)。 今日は27ツールである。
+        "list_record_history",
       ].sort(),
     );
     for (const tool of listed.tools) {
@@ -558,6 +562,14 @@ test("F-23: 説明文の JSON 例は18あり、18の op を1つずつ網羅し�
     // **例は2件だけ書いている** —— `minItems` が 1 なので1件でも通るが、**予約4語も
     // 宣言分の識別子も主体として書けることが本決定の目的そのものである**(裁定 `R-2`)。
     "set_roles",
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】18種目 remember_design も末尾に置いた。** 選んだ形の記録と型は
+    // テーブル・ビュー・ワークフロー・関数・テーマ・役割を1つも参照しないので、手順のどこに置いても成立する。
+    // **例は型(patterns)1件だけ** —— 選んだ記録(choice)は見比べの画面が適用のときに足す。
+    // 旧の期待値は直上の `"set_roles"` で終わる17要素。テスト名の「18」は今日偶然ふたたび実体と一致した。
+    "remember_design",
+    // **【`V22-M2-T03b` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行66】19種目 set_workspace も末尾に置いた。** by_role が指す viewer は直前の set_roles の例が宣言した役割なので、
+    // set_roles より後ろでなければ適用時に拒否される。旧の期待値は直上の `"remember_design"` で終わる18要素。テスト名の「18」は変えていない(授権の範囲外)。
+    "set_workspace",
   ]);
 });
 
@@ -926,6 +938,182 @@ test("apply_diff の知らせの欄は常に在る(「黙って何もしない�
   // 「矛盾が無い」応答を、書いた人が区別できるようにするためである。**
   const data = okData(await callTool("apply_diff", { app_id: APP_ID, diff: ratingDiff }));
   expect(data.role_condition_notices).toEqual([]);
+});
+
+// --- 画面の作りの注意 `design_notices`(保存時に AI に伝える。保存は止めない)---------------
+//
+// **`apply_diff` の成功時、返り値の最上位の `design_notices` に、適用後のマニフェストの
+// アプリ全体の画面を点検した注意(`collectDesignNotices` の `notices`)が常に載る。**
+// 注意が無ければ `[]`。**注意があっても適用は今日どおり成功し、変更履歴(`_changelog`)は
+// ちょうど1件だけ増える**(注意は適用を止めない。止めるのは検証の拒否だけ)。
+// **拒否の時は今日の `{ errors }` のままで、注意の欄は無い。**
+
+/** 主ボタン(`action_emphasis: "primary"`)を2つ持つ詳細画面を足す差分。 */
+const twoPrimaryDetailDiff = {
+  diff_id: "d-two-primary",
+  intent: "備品の詳細画面に数量を切り替えるボタンを2つ置きたい",
+  operations: [
+    {
+      op: "add_view",
+      view: {
+        id: "items-detail",
+        type: "detail_view",
+        table: TABLE_ID,
+        actions: [
+          { set: { field: "qty", value: 1 }, name: "1にする", action_emphasis: "primary" },
+          { set: { field: "qty", value: 2 }, name: "2にする", action_emphasis: "primary" },
+        ],
+      },
+    },
+  ],
+};
+
+type DesignNoticeShape = { rule: string; view: string; path: string; count: number };
+
+async function changelogLength(): Promise<number> {
+  const changelog = okData(await callTool("get_changelog", { app_id: APP_ID }))
+    .changelog as ChangelogEntry[];
+  return changelog.length;
+}
+
+test("apply_diff は主ボタン2つの詳細画面を作る差分を適用し、画面の作りの注意を返す(保存は止めない)", async () => {
+  const beforeLength = await changelogLength();
+  const result = await callTool("apply_diff", { app_id: APP_ID, diff: twoPrimaryDetailDiff });
+  // **適用は通っている。****`isError` にしない。**
+  expect(result.isError).toBeFalsy();
+  const data = okData(result);
+  const notices = data.design_notices as DesignNoticeShape[];
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toMatchObject({
+    rule: "multiple_primary_actions",
+    view: "items-detail",
+    path: "/app/views/1/actions",
+    count: 2,
+  });
+  // 本当に保存されている。
+  const saved = readCurrentManifest(dataRoot, APP_ID);
+  expect(saved.app.views.map((view) => view.id)).toContain("items-detail");
+  // **変更履歴はちょうど1件だけ増える**(注意は別の履歴を作らない・部分適用しない)。
+  expect(await changelogLength()).toBe(beforeLength + 1);
+});
+
+test("apply_diff の注意の欄は、注意が無ければ空配列で常に在る", async () => {
+  const data = okData(await callTool("apply_diff", { app_id: APP_ID, diff: ratingDiff }));
+  expect(data.design_notices).toEqual([]);
+});
+
+test("apply_diff が拒否した差分の返事は今日どおり errors だけで、注意の欄は無く、何も保存されない", async () => {
+  const beforeLength = await changelogLength();
+  const before = readCurrentManifest(dataRoot, APP_ID);
+  const result = await callTool("apply_diff", {
+    app_id: APP_ID,
+    diff: {
+      ...twoPrimaryDetailDiff,
+      diff_id: "d-two-primary-bad",
+      operations: [
+        ...twoPrimaryDetailDiff.operations,
+        { op: "add_field", table: "ghosts", field: { id: "x", name: "X", type: "text" } },
+      ],
+    },
+  });
+  expect(errorsOf(result).length).toBeGreaterThan(0);
+  expect(Object.keys(result.structuredContent ?? {})).toEqual(["errors"]);
+  expect(readCurrentManifest(dataRoot, APP_ID)).toEqual(before);
+  expect(await changelogLength()).toBe(beforeLength);
+});
+
+test("apply_diff は画面の点検が例外を投げても、保存済みの差分を失敗にせず、注意の欄を空配列で返す", async () => {
+  // 点検は適用を確定させた後に走る。ここで例外が出て `isError` を返すと、保存済みなのに
+  // 「エラーが返った場合、アプリは1バイトも変わっていない」の約束を破る。
+  // 差し替えは `spyOn` を使い、この検査の中で必ず戻す(`mock.module` は他のファイルへ漏れる)。
+  const beforeLength = await changelogLength();
+  const spy = spyOn(designNoticesModule, "collectDesignNotices").mockImplementation(() => {
+    throw new Error("点検の中で壊れた");
+  });
+  try {
+    const result = await callTool("apply_diff", { app_id: APP_ID, diff: twoPrimaryDetailDiff });
+    expect(spy).toHaveBeenCalled();
+    expect(result.isError).toBeFalsy();
+    const data = okData(result);
+    expect(data.design_notices).toEqual([]);
+    // 本当に保存されている。
+    const saved = readCurrentManifest(dataRoot, APP_ID);
+    expect(saved.app.views.map((view) => view.id)).toContain("items-detail");
+  } finally {
+    spy.mockRestore();
+  }
+  // 変更履歴はちょうど1件だけ増える。
+  expect(await changelogLength()).toBe(beforeLength + 1);
+});
+
+/**
+ * 読めない配色(本文の文字 `body_text` と地の色 `page_background` がほぼ同じ灰色)。
+ * 27枠すべてを書く(枠は全部必須)。本文と地の2枠以外は、既定値に枠線だけを濃くした
+ * 「コントラスト検査を通る形」(`src/mcp/theme-roundtrip.test.ts` の `passingSlots`)を写した。
+ */
+const LOW_CONTRAST_SLOTS: Record<string, string> = {
+  danger: "#a00",
+  body_text: "#777777",
+  label_text: "#666",
+  placeholder_text: "#666",
+  secondary_text: "#666",
+  border_color: "#767676",
+  page_background: "#7a7a7a",
+  highlight_surface: "#f2f2f2",
+  primary_fill: "#fff",
+  on_primary: "#000",
+  overlay_background: "#fff",
+  overlay_text: "#000",
+  body_font: "system-ui, sans-serif",
+  note_font_size: "0.875rem",
+  secondary_font_size: "0.85em",
+  body_line_height: "1.6",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.25rem",
+  space_6: "2rem",
+  border_width: "1px",
+  control_radius: "0",
+  surface_shadow: "none",
+  focus_ring: "#005fcc",
+  focus_ring_width: "2px",
+};
+
+test("apply_diff は読めない配色(文字と背景のコントラスト不足)を今日どおり拒否する", async () => {
+  const beforeLength = await changelogLength();
+  const errors = errorsOf(
+    await callTool("apply_diff", {
+      app_id: APP_ID,
+      diff: {
+        diff_id: "d-low-contrast",
+        intent: "文字を背景とほぼ同じ色にしたい",
+        operations: [{ op: "set_theme", theme: { slots: LOW_CONTRAST_SLOTS } }],
+      },
+    }),
+  );
+  expect(errors.length).toBeGreaterThan(0);
+  // **拒否の理由はコントラストだけである**(形の誤りで落ちているのではない)。
+  for (const error of errors) {
+    expect(error.message).toContain("コントラスト比");
+  }
+  expect(await changelogLength()).toBe(beforeLength);
+});
+
+test("apply_diff の説明文は、注意がアプリ全体の画面についてのもので保存を止めないことを伝える", async () => {
+  const { client, close } = await connectInMemory();
+  try {
+    const listed = await client.listTools();
+    const tool = listed.tools.find((one) => one.name === "apply_diff");
+    const description = tool?.description ?? "";
+    expect(description).toContain("design_notices");
+    expect(description).toContain("アプリ全体の画面");
+    expect(description).toContain("保存は止めない");
+    expect(description).toContain("ユーザに聞いて");
+  } finally {
+    await close();
+  }
 });
 
 test("apply_diff は intent が空文字の差分を受け付けない", async () => {

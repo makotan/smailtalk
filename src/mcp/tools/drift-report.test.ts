@@ -74,31 +74,36 @@ const ACTOR = "mcp-actor";
 
 /** テーマ対象スロット25件(`src/kernel/validate.test.ts` の合格テーマと同じ値)。 */
 const THEME_SLOTS: Readonly<Record<string, string>> = {
-  "--color-text": "#000000",
-  "--color-text-secondary": "#595959",
-  "--color-text-label": "#595959",
-  "--color-text-placeholder": "#595959",
-  "--color-danger": "#a00000",
-  "--color-page-background": "#ffffff",
-  "--color-surface-highlight": "#f2f2f2",
-  "--color-border": "#767676",
-  "--focus-outline-color": "#005fcc",
-  "--font-family-base": "system-ui, sans-serif",
-  "--font-size-secondary": "0.85em",
-  "--font-size-note": "0.875rem",
-  "--line-height-base": "1.6",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.25rem",
-  "--space-6": "2rem",
-  "--border-width": "1px",
-  "--control-border-radius": "4px",
-  "--surface-shadow": "none",
-  "--focus-outline-width": "2px",
-  "--detail-label-width": "8rem",
-  "--login-max-width": "22rem",
+  body_text: "#000000",
+  secondary_text: "#595959",
+  label_text: "#595959",
+  placeholder_text: "#595959",
+  danger: "#a00000",
+  page_background: "#ffffff",
+  highlight_surface: "#f2f2f2",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#ffffff",
+  on_primary: "#000000",
+  overlay_background: "#ffffff",
+  overlay_text: "#000000",
+  border_color: "#767676",
+  focus_ring: "#005fcc",
+  body_font: "system-ui, sans-serif",
+  secondary_font_size: "0.85em",
+  note_font_size: "0.875rem",
+  body_line_height: "1.6",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.25rem",
+  space_6: "2rem",
+  border_width: "1px",
+  control_radius: "4px",
+  surface_shadow: "none",
+  focus_ring_width: "2px",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
 };
 
 /**
@@ -558,8 +563,30 @@ test("V3-M5-T04 (条件4): 閾値は 3 のコード定数であり、応答は�
 test("V3-M5-T04 (条件4): 閾値がマニフェストにも予約名テーブルにも置かれていない(Δ3 / Δ2 の不発火)", () => {
   const schema = readRepoFile("schemas", "manifest.schema.json");
   // マニフェストに閾値を置く口が1つも無い(置けば Δ3 が発火し、門外の根拠が消える)。
+  /*
+   * **【2026-09-24。`V20-M5-T04` / `ADR-0471`。期待値を書き換えた】** **並べ方の木の `switcher` の型が
+   * `threshold`(横並びから縦積みへ切り替える幅。`sm` / `md` / `lg` の3値の名前)を持つようになった**
+   * (綴りは PRD F3 の表の逐語。メインの裁定1)。**これは昇格の閾値(整数3)とは別物である。**
+   * **着手前はスキーマ全体の文字列に `threshold` が1つも無いことを見ていた。** **今日は、並べ方の木の定義
+   * (`$defs/layout_node`)を除いた残りに1つも無いことを見て、木の中の `threshold` は3値の名前だけで
+   * 数値を1つも受けないことを別に見る**(昇格の閾値を置く口にならないことの裏)。
+   * **【メインの判定が要る】この書き換えは本葉の判断である**(記録 `v20-m5-t01.md` の申し送り)。
+   */
+  const parsed = JSON.parse(schema) as { $defs: Record<string, unknown> };
+  const layoutNode = parsed.$defs.layout_node as {
+    oneOf: { properties: Record<string, { enum?: unknown[]; type?: unknown }> }[];
+  };
+  delete parsed.$defs.layout_node;
+  const rest = JSON.stringify(parsed);
   for (const word of ["threshold", "drift", "promotion"]) {
-    expect(schema.toLowerCase(), word).not.toContain(word);
+    expect(rest.toLowerCase(), word).not.toContain(word);
+  }
+  const thresholds = layoutNode.oneOf.flatMap((branch) =>
+    branch.properties.threshold === undefined ? [] : [branch.properties.threshold],
+  );
+  expect(thresholds).toEqual([{ enum: ["sm", "md", "lg"] }]);
+  for (const word of ["drift", "promotion"]) {
+    expect(JSON.stringify(layoutNode).toLowerCase(), word).not.toContain(word);
   }
   // 予約名テーブル(システムテーブル)は3つのままである(置けば Δ2 が発火する)。
   expect(SYSTEM_TABLE_IDS).toHaveLength(3);
@@ -650,8 +677,14 @@ test("V3-M5-T04 (条件8): テーマはテーマ全体で1件と数える(スロ
   expect(themeObservations).toHaveLength(1);
   // **25件立てない**(ADR-0047 限定3 により set_theme は25スロット全部を書き直すので、
   // スロット単位で数えると「余白だけ1段」の1回が25件になる)。
-  expect(Object.keys(themeObservations[0]?.slots ?? {})).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(themeObservations[0]?.slots ?? {})).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(themeObservations[0]?.slots ?? {})).toHaveLength(23);
+  expect(Object.keys(themeObservations[0]?.slots ?? {})).toHaveLength(27);
   // スロット名を単位にした観測は1件も無い。
+  // 【V20-M8 / ADR-0473】旧(逐語): `o.unit.startsWith("--")`。キーが役割名になり `--` では
+  // 23件を1つも見なくなる(黙って意味を失う)ので、スロット名そのものと突き合わせる。
+  const slotNames = new Set(Object.keys(THEME_SLOTS));
+  expect(report.observations.some((o) => slotNames.has(o.unit))).toBe(false);
   expect(report.observations.some((o) => o.unit.startsWith("--"))).toBe(false);
 
   const group = report.groups.find((g) => g.unit === DRIFT_THEME_UNIT);

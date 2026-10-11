@@ -335,14 +335,23 @@ test("(2-d) 宣言していない種類名は 422", async () => {
 // どのアプリでも名乗れる。**
 // **【担い手が無いもの】** **「宣言したら `customer` が外れる」を再現する手段は今日1つも無い**
 // (`ADR-0301` 限定6 の ④)。**役割の宣言から `customer` を外しても、値域からは外れない。**
-test("(2-e) `customer` は今日 200 で登録できる(旧: 422。値域から外れなくなった)", async () => {
+// **【2026-10-02。`V23-M10-T01c`。決定 `D-V23-291`。門A `ADR-0553`。授権 `ADR-0554` 行6・行7】旧の題(逐語)**:
+//     (2-e) `customer` は今日 200 で登録できる(旧: 422。値域から外れなくなった)
+// **旧の期待(逐語)**:
+//     expect(res.status).toBe(200);
+//     expect(((await res.json()) as { user: { role: string } }).user.role).toBe("customer");
+// **今日**: **独自の役割を宣言したこのアプリでは、`signupKindValues` は `customer` を足さない**
+// —— **宣言していない `customer` は名乗れる値に無く 422 である(V8-M29 の前の形に戻った)。**
+test("(2-e) `customer` は今日 422(宣言に無いため。旧: 200。D-V23-291 で値域から外れた)", async () => {
   const res = await post(SIGNUP, {
     username: "legacy",
     password: "pw-123456",
     user_kind: "customer",
   });
-  expect(res.status).toBe(200);
-  expect(((await res.json()) as { user: { role: string } }).user.role).toBe("customer");
+  expect(res.status).toBe(422);
+  const body = (await res.json()) as { errors: { path: string; allowed_values?: string[] }[] };
+  expect(body.errors[0]?.path).toBe("/user_kind");
+  expect(body.errors[0]?.allowed_values).not.toContain("customer");
 });
 
 // **【`V8-M30` 第2波(2026-08-11)。ユーザ決定 `D-V8-82`。期待値を反転させた。**

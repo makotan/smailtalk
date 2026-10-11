@@ -190,6 +190,7 @@ describe("V7-M1-T04 (iii): access_control の綴りの置き場所を固定す�
     // 素朴な `^export const [A-Z_]+_FIELD = ` の**行数**を数える(起票の完了条件 (ii) の式)。
     const source = await Bun.file(join(PRODUCT_ROOT, "src", "server", "owner-scope.ts")).text();
     const lines = [...source.matchAll(/^export const [A-Z_]+_FIELD = .*$/gm)];
-    expect(lines).toHaveLength(4);
+    // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行2(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(lines).toHaveLength(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で数え直して得た(5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+    expect(lines).toHaveLength(5);
   });
 });

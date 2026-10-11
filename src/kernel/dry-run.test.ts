@@ -43,7 +43,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { applyDiff } from "./apply-diff.ts";
 import { applyManifest } from "./apply-manifest.ts";
 import { createApp } from "./create-app.ts";
@@ -457,5 +457,119 @@ describe("レポートは自分の限界を隠さない(憲法6)", () => {
     // 文言そのものではなく、述べている内容の骨を固定する。
     expect(DRY_RUN_NOTE).toContain("保証");
     expect(DRY_RUN_NOTE.length).toBeGreaterThan(30);
+  });
+});
+
+// --- 4. 複製を残す指定(`V20-M13-T01`。`ADR-0476` §Decision 1 の 7 / 2-6)-------------------
+//
+// **省略したとき(= 今日の全呼び出し)は1バイトも振る舞いが変わらない** —— それは上の12本が
+// 期待値を1つも書き換えずに緑であることで示す。ここに足すのは**指定したときだけ**の性質である:
+// 残す / 3点が揃う / `dataRoot` の外 / 拒否と例外では残さない / 置き場の親を誤って渡せない。
+
+describe("複製を残す指定(V20-M13-T01)", () => {
+  let keepParent = "";
+
+  beforeEach(async () => {
+    keepParent = await mkdtemp(join(tmpdir(), "gp-dry-run-keep-"));
+  });
+
+  afterEach(async () => {
+    await rm(keepParent, { recursive: true, force: true });
+  });
+
+  test("省略したときは返り値に kept が無い(今日の形のまま)", () => {
+    const dry = dryRunDiff(dataRoot, APP_ID, additiveDiff());
+    expect(dry.valid).toBe(true);
+    expect("kept" in dry).toBe(false);
+  });
+
+  test("指定して成功したときだけ、指定した親の下に複製が残り、絶対パスが返る", () => {
+    const dry = dryRunDiff(dataRoot, APP_ID, additiveDiff(), { keepUnder: keepParent });
+    expect(dry.valid).toBe(true);
+    if (!dry.valid) return;
+    const kept = dry.kept;
+    expect(kept).toBeDefined();
+    if (kept === undefined) return;
+    expect(isAbsolute(kept.workspace)).toBe(true);
+    expect(isAbsolute(kept.data_root)).toBe(true);
+    expect(dirname(kept.workspace)).toBe(keepParent);
+    expect(kept.data_root).toBe(join(kept.workspace, "data"));
+    expect(existsSync(kept.workspace)).toBe(true);
+    // 残った置き場は親の下に1つだけ。
+    expect(readdirSync(keepParent)).toEqual([basename(kept.workspace)]);
+  });
+
+  test("残った複製に3点(マニフェスト / アプリの DB / 核の DB)が揃い、当てた後の姿である", () => {
+    const dry = dryRunDiff(dataRoot, APP_ID, additiveDiff(), { keepUnder: keepParent });
+    expect(dry.valid).toBe(true);
+    if (!dry.valid || dry.kept === undefined) {
+      throw new Error("kept が返らなかった");
+    }
+    const root = dry.kept.data_root;
+    expect(existsSync(appManifestPath(root, APP_ID))).toBe(true);
+    expect(existsSync(appDbPath(root, APP_ID))).toBe(true);
+    expect(existsSync(join(root, "kernel.sqlite"))).toBe(true);
+    const keptManifest = JSON.parse(readFileSync(appManifestPath(root, APP_ID), "utf-8"));
+    expect(keptManifest).toEqual(dry.report.manifest);
+    // `createShadowRoot` の3点を増やしていない —— blobs/ と逃げ道の CSS は複写しない。
+    expect(existsSync(join(root, "apps", APP_ID, "blobs"))).toBe(false);
+    expect(existsSync(join(root, "apps", APP_ID, "escape-hatch"))).toBe(false);
+  });
+
+  test("残す指定でも、データルート配下のファイルは1つも増減せず、本体の4+1点も不変", () => {
+    const beforeFiles = listAllFiles(dataRoot);
+    const before = observe();
+    const dry = dryRunDiff(dataRoot, APP_ID, additiveDiff(), { keepUnder: keepParent });
+    expect(dry.valid).toBe(true);
+    expect(listAllFiles(dataRoot)).toEqual(beforeFiles);
+    const after = observe();
+    expect(after.manifestText).toBe(before.manifestText);
+    expect(after.schema).toEqual(before.schema);
+    expect(after.records).toEqual(before.records);
+    expect(after.changelog).toEqual(before.changelog);
+    expect(after.snapshots).toEqual([]);
+    // 残した複製は dataRoot の**外**に在る。
+    if (!dry.valid || dry.kept === undefined) return;
+    expect(relative(dataRoot, dry.kept.workspace).startsWith("..")).toBe(true);
+  });
+
+  test("拒否されたときは、残す指定があっても複製を残さない", () => {
+    const dry = dryRunDiff(
+      dataRoot,
+      APP_ID,
+      {
+        diff_id: "d-reject-keep",
+        intent: "存在しないテーブルに列を足そうとする",
+        operations: [
+          { op: "add_field", table: "ghosts", field: { id: "x", name: "X", type: "text" } },
+        ],
+      },
+      { keepUnder: keepParent },
+    );
+    expect(dry.valid).toBe(false);
+    expect("kept" in dry).toBe(false);
+    expect(readdirSync(keepParent)).toEqual([]);
+  });
+
+  test("例外(アプリが無い)のときも、残す指定があっても複製を残さない", () => {
+    expect(() =>
+      dryRunDiff(dataRoot, "no-such-app", additiveDiff(), { keepUnder: keepParent }),
+    ).toThrow();
+    expect(readdirSync(keepParent)).toEqual([]);
+  });
+
+  test("残す親に dataRoot の中を渡すと断る(dataRoot に1バイトも書かない)", () => {
+    const beforeFiles = listAllFiles(dataRoot);
+    expect(() =>
+      dryRunDiff(dataRoot, APP_ID, additiveDiff(), { keepUnder: join(dataRoot, "apps") }),
+    ).toThrow();
+    expect(() => dryRunDiff(dataRoot, APP_ID, additiveDiff(), { keepUnder: dataRoot })).toThrow();
+    expect(listAllFiles(dataRoot)).toEqual(beforeFiles);
+  });
+
+  test("残す親に相対パスを渡すと断る", () => {
+    expect(() =>
+      dryRunDiff(dataRoot, APP_ID, additiveDiff(), { keepUnder: "relative/previews" }),
+    ).toThrow();
   });
 });

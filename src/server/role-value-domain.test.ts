@@ -606,10 +606,13 @@ test("(8-e) 登録のときに名乗れる値は0本にならない(`signupKindV
   // **見込みで済ませず、ここで固定する。**
   expect(signupKindValues([])).toEqual(["customer"]);
   expect(signupKindValues(["owner", "editor", "viewer"])).toEqual(["customer"]);
-  expect(signupKindValues(["owner", "editor", "viewer", "reception"])).toEqual([
-    "reception",
-    "customer",
-  ]);
+  // **【2026-10-02。`V23-M10-T01c`。決定 `D-V23-291`。門A `ADR-0553`。授権 `ADR-0554` 行4】旧(逐語)**:
+  //     expect(signupKindValues(["owner", "editor", "viewer", "reception"])).toEqual([
+  //       "reception",
+  //       "customer",
+  //     ]);
+  // **独自の役割を1つでも宣言したアプリでは `customer` を足さない。** **0本にはならない。**
+  expect(signupKindValues(["owner", "editor", "viewer", "reception"])).toEqual(["reception"]);
   // **HTTP でも、役割を1つも宣言していないアプリの自己登録は今日どおり通る。**
   expect((await adminRegister(LEGACY_APP_ID, "seed-owner-8e")).status).toBe(200);
   const signed = await selfSignup(LEGACY_APP_ID, "grace");

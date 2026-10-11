@@ -526,7 +526,7 @@ afterEach(async () => {
 });
 
 describe("V7-M3-T05 (D): HTTP —— 相手が消えたあとの付与", () => {
-  test("(D-1) グループ経由で見えていた人が、グループ行を消したあとに見えなくなる", async () => {
+  test("(D-1) グループ経由で見えていた人が、グループ行を消したあとに見えなくなる(D-V23-405: グループ行を相手に持つ付与の行も消える)", async () => {
     // **消す前に見えていたことを先に示す。**
     expect(await listIds(`/api/apps/${APP_ID}/tables/books/records`, viaGroup.cookie)).toEqual([
       bookId,
@@ -553,12 +553,21 @@ describe("V7-M3-T05 (D): HTTP —— 相手が消えたあとの付与", () => {
     expect(
       (await get(`/api/apps/${APP_ID}/tables/books/records/${bookId}`, viaGroup.cookie)).status,
     ).toBe(404);
-    // **付与行は1件も消えていない**(掃除の自動処理を作っていない)。
+    // **【`V23-M12-T02`。`D-V23-405` / `ADR-0575` §Decision 3-1 の3 で打ち直した。旧の注記と期待を逐語で残す】**
+    // 旧の注記: `// **付与行は1件も消えていない**(掃除の自動処理を作っていない)。`
+    // 旧の期待: `expect(withDb((db) => db.query(\`SELECT COUNT(*) AS n FROM "book_grant"\`).get()) as unknown).toEqual({ n: 3 });`
+    // 今日の正: グループ行を消すと、その行を `grant.group` に持つ付与の行が同じ削除の中で消える(3 → 2)。
+    // 見えなくなること(上の 404)は今日も同じ。
     expect(
       withDb((db) => db.query(`SELECT COUNT(*) AS n FROM "book_grant"`).get()) as unknown,
     ).toEqual({
-      n: 3,
+      n: 2,
     });
+    expect(
+      withDb((db) =>
+        db.query(`SELECT COUNT(*) AS n FROM "book_grant" WHERE "team" = ?`).get(teamId),
+      ),
+    ).toEqual({ n: 0 });
   });
 
   test("(D-2) 直接の付与を持つ人は、グループ行が消えても今日どおり見える", async () => {
@@ -807,9 +816,17 @@ describe("V7-M3-T05 (E): 守った線", () => {
     //   `expect(...).toBe(1)` と、この一覧に整えを迂回する行が1本も無いことで今日も
     //   固定されている。** **(2) 行を読む側(辿り)にも、判定へ整えずに渡す道が1本も
     //   無いことを、下で `walkAccessInheritance` の本体について別に固定する。**
+    // **【2026-10-01。`V23-M6-T03` / 授権 `ADR-0539` 行7。旧の期待値を逐語で残す】**
+    //   `["const grantRows = step.grantRows;", "grantRows,", "grantRows: grantsWithExistingGroups({"]`
+    // **行を相手にした付与の読み替え(`principalRowGrantRows`)を段に1本差した** —— **渡された1段ぶんを
+    //   受ける行が `const grantRows = principalRowGrantRows({` と `grantRows: step.grantRows,` の2行になった。**
+    // **【緩めていない】** —— **読み替えた行も、判定へ渡る前に `grantsWithExistingGroups({` を通る1本だけで
+    //   ある**(上の2つの `toBe(1)` は動かしていない)。 **新しい行の集合は `resolveRecordAccess` の本体を
+    //   検査の外の台本(python)で抜いて得た**(赤の出力から写していない)。
     expect(grantLines).toEqual(
       [
-        "const grantRows = step.grantRows;",
+        "const grantRows = principalRowGrantRows({",
+        "grantRows: step.grantRows,",
         "grantRows,",
         "grantRows: grantsWithExistingGroups({",
       ].sort(),
@@ -855,7 +872,8 @@ describe("V7-M3-T05 (E): 守った線", () => {
   // **`V8-M27` は予約規約フィールドを1本も足さず、1本も減らしていない。**
   // =====================================================================================
   test("(E-4) 予約規約フィールドは4本(`V8-M20` で1本減った)/ `nonAdminTableAccess` は実装から消えた", () => {
-    expect((OWNER_SCOPE_SOURCE.match(/^export const [A-Z_]+_FIELD = /gm) ?? []).length).toBe(4);
+    // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行1(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect((OWNER_SCOPE_SOURCE.match(/^export const [A-Z_]+_FIELD = /gm) ?? []).length).toBe(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で数え直して得た(5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+    expect((OWNER_SCOPE_SOURCE.match(/^export const [A-Z_]+_FIELD = /gm) ?? []).length).toBe(5);
     // **コメント行を除いた実行行で見る**(撤去の記録が逐語で残っているため)。
     expect(
       OWNER_SCOPE_SOURCE.split("\n")
@@ -906,7 +924,7 @@ describe("V7-M8 (G): 消えたグループ行を指す付与行(`01` §8 の15 �
     ]);
   });
 
-  test("(G-2) グループ行を消すと読めなくなる(404)—— **付与行は1件も消えない**", async () => {
+  test("(G-2) グループ行を消すと読めなくなる(404)—— **付与行は1件も消えない**(D-V23-405: 今日はそのグループ行を指す付与行だけが消える)", async () => {
     const before = grantRowsOf(bookId).length;
     expect(before).toBe(3);
 
@@ -916,17 +934,21 @@ describe("V7-M8 (G): 消えたグループ行を指す付与行(`01` §8 の15 �
     expect(single.status).toBe(404);
     expect(await listIds(`/api/apps/${APP_ID}/tables/books/records`, viaGroup.cookie)).toEqual([]);
 
-    // **付与行は残っている** —— **件数も、消えたグループ id を指したままの1行も、実測する。**
+    // **【`V23-M12-T02`。`D-V23-405` / `ADR-0575` §Decision 3-1 の4 で打ち直した。旧の注記と期待を逐語で残す】**
+    // 旧の注記: `// **付与行は残っている** —— **件数も、消えたグループ id を指したままの1行も、実測する。**`
+    // 旧の期待: `expect(after.length).toBe(before);` と `expect(after.filter((row) => row.team === teamId).length).toBe(1);`
+    // 今日の正: そのグループ行を `grant.group` に持つ付与の行だけが同じ削除の中で消える(3 → 2)。 ほかの付与行は残る。
+    // 読めなくなること(上の 404)は今日も同じ。 題の「付与行は1件も消えない」は今日の正ではない(題の旧の字面は残した)。
     const after = grantRowsOf(bookId);
-    expect(after.length).toBe(before);
-    expect(after.filter((row) => row.team === teamId).length).toBe(1);
+    expect(after.length).toBe(before - 1);
+    expect(after.filter((row) => row.team === teamId).length).toBe(0);
     // **グループ表の側は本当に消えている。**
     expect(
       withDb((db) => db.query(`SELECT COUNT(*) AS n FROM "book_team" WHERE "_id" = ?`).get(teamId)),
     ).toEqual({ n: 0 });
   });
 
-  test("(G-3) 同じ名前でグループ行を作り直しても権限は復活しない(`_id` は UUID で再利用されない)", async () => {
+  test("(G-3) 同じ名前でグループ行を作り直しても権限は復活しない(`_id` は UUID で再利用されない)(D-V23-405: 古いグループ行を指す付与行は消えている)", async () => {
     /*
      * **【`_id` が再利用されない根拠。自分で `grep -n` して探した。パス:行番号 + 逐語】**
      *
@@ -959,8 +981,12 @@ describe("V7-M8 (G): 消えたグループ行を指す付与行(`01` §8 の15 �
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
 
-    // **名前が同じでも、付与行が指しているのは古い `_id` のままである。**
-    expect(grantRowsOf(bookId).filter((row) => row.team === teamId).length).toBe(1);
+    // **【`V23-M12-T02`。`D-V23-405` / `ADR-0575` §Decision 3-1 の5 で打ち直した。旧の注記と期待を逐語で残す】**
+    // 旧の注記: `// **名前が同じでも、付与行が指しているのは古い \`_id\` のままである。**`
+    // 旧の期待: `expect(grantRowsOf(bookId).filter((row) => row.team === teamId).length).toBe(1);`
+    // 今日の正: 古いグループ行を指す付与行はグループ行の削除と一緒に消えている(0)。 新しいグループ行を指す付与行も無い。
+    // 権限が戻らないこと(下の 404)は今日も同じ。
+    expect(grantRowsOf(bookId).filter((row) => row.team === teamId).length).toBe(0);
     expect(grantRowsOf(bookId).filter((row) => row.team === newTeamId).length).toBe(0);
 
     // **復活しない。**
@@ -1019,7 +1045,11 @@ describe("V7-M8 (G): 消えたグループ行を指す付与行(`01` §8 の15 �
     ]);
   });
 
-  test("(G-5) 誰にも見えなくなった行は、運営専用の口に**並ばない**(付与が0件ではないため)", async () => {
+  // **【`V23-M1-T07` / `ADR-0510` 授権の表 行17。旧の題名を逐語で残す】**
+  //   「(G-5) 誰にも見えなくなった行は、運営専用の口に**並ばない**(付与が0件ではないため)」
+  // **今日は並ぶ** —— 消えたグループを指す付与だけを持つ行は、管理者(実在する利用者)が0人なので、
+  // 回復の一覧の母集団(付与0件、または管理者0人)に入る(`D-V23-16`・`ADR-0497` 限定12)。
+  test("(G-5) 誰にも見えなくなった行は、運営専用の口に**並ぶ**(付与は在るが、管理者が0人のため)(D-V23-405: 今日はグループ行を指す付与が消え、付与0件として並ぶ)", async () => {
     // **測定台を作る** —— **付与が「消えたグループを指す1件」だけの行。**
     const created = await post(`/api/apps/${APP_ID}/tables/books/records`, admin.cookie, {
       title: "グループだけの本",
@@ -1084,8 +1114,15 @@ describe("V7-M8 (G): 消えたグループ行を指す付与行(`01` §8 の15 �
     const listed = ((await door.json()) as { records: { _id: string }[] }).records.map(
       (row) => row._id,
     );
-    expect(listed).not.toContain(soloId);
-    expect(grantRowsOf(soloId).length).toBe(1);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行17。旧の1行を逐語で残す】**
+    //     expect(listed).not.toContain(soloId);
+    // (上の【なぜ並ばないか】は今日の正ではない。付与は1件在るが、管理者は0人である)
+    expect(listed).toContain(soloId);
+    // **【`V23-M12-T02`。`D-V23-405` / `ADR-0575` §Decision 3-1 の6 で打ち直した。旧の期待を逐語で残す】**
+    //     expect(grantRowsOf(soloId).length).toBe(1);
+    // 今日の正: グループ行を消すと、それを `grant.group` に持つ付与の行も消えるので、この行の付与は0件になり、
+    // 「付与が0件の行」として運営専用の口に並ぶ(題の「付与は在るが」は今日の正ではない。題の旧の字面は残した)。
+    expect(grantRowsOf(soloId).length).toBe(0);
 
     // **対照: 付与が本当に0件の行は、同じ口に並ぶ**(口そのものは今日も働いている)。
     const control = await post(`/api/apps/${APP_ID}/tables/books/records`, admin.cookie, {
@@ -1096,9 +1133,11 @@ describe("V7-M8 (G): 消えたグループ行を指す付与行(`01` §8 の15 �
     const controlGrant = grantRowsOf(controlId);
     expect(controlGrant.length).toBe(1);
     expect((await removeRow("book_grant", controlGrant[0]?._id as string)).status).toBe(204);
+    // **【`V23-M1-T07` / `ADR-0510` 授権の表 行17。旧の期待を逐語で残す】** `.toEqual([controlId]);`
+    // (上で並ぶようになった `soloId` も同じ口に並ぶ。対照の主張「付与0件の行は並ぶ」は変わらない)
     expect(
-      await listIds(`/api/apps/${APP_ID}/tables/books/unreachable-records`, admin.cookie),
-    ).toEqual([controlId]);
+      (await listIds(`/api/apps/${APP_ID}/tables/books/unreachable-records`, admin.cookie)).sort(),
+    ).toEqual([controlId, soloId].sort());
     // **【残る限界。正直に書く】** —— **したがって「グループ行が消えたせいで誰にも
     // 見えなくなった行」を運営が見つける道は、今日は1本も無い。**
     // **`Z-G19` の口は付与0件の行しか拾わない。**

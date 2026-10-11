@@ -24,6 +24,9 @@ import { startAiDispatcher } from "./ai-dispatcher-scheduler.ts";
 import { createServerApp, resolveServerProfile, SERVER_PROFILE_ENV } from "./app.ts";
 import { startBackupScheduler } from "./backup.ts";
 import { startOutboxDispatcher } from "./outbox-scheduler.ts";
+import type { PreviewFrontCache } from "./preview-front.ts";
+import { resolvePreviewRoot } from "./preview-store.ts";
+import { startPreviewSweeper } from "./preview-sweeper.ts";
 import { checkRunnerVersionGate, formatGateFailure } from "./runner-version-gate.ts";
 import { startupNoticeLines } from "./startup-notice.ts";
 
@@ -225,7 +228,16 @@ if (serverProfile === "runner") {
   }
 }
 
-const app = createServerApp({ dataRoot, authConfig });
+// **下見の置き場と、前段が持つ写しの2本目の置き場**(`V20-M13-T05`)。前段(`app.ts`)と下の時計が
+// 同じ2つを見る。**`runner` では前段が載らない**(`createServerApp` が `preview` を読まない)。
+const previewRoot = resolvePreviewRoot(dataRoot, process.env);
+const previewCache: PreviewFrontCache = new Map();
+
+const app = createServerApp({
+  dataRoot,
+  authConfig,
+  preview: { root: previewRoot, cache: previewCache },
+});
 
 // --- 島ランタイムの事前ロード(V1-M6-T05 第2段)-------------------------------
 //
@@ -313,6 +325,31 @@ try {
       `**AI 呼び出し(ai_transform の配送)は行われません**(サーバ自体は動き続けます)。`,
   );
   console.error(error);
+}
+
+// 下見の後始末の時計(`V20-M13-T05` / 計画 §9-7・§10-5 / `ADR-0476` 2-9)。**起動した時点で1回**
+// 置き場の期限切れを全部消し(プロセスが落ちた残骸を拾う)、以後 60 秒ごとに期限切れの置き場と、
+// 前段がメモリに持つ写しの2本目のうち期限切れ・置き場の無いものを捨てる。**置き場の根が無ければ
+// 何もしない**(根を作らない)。**配る版(`runner`)では始めない** —— 前段が無く、下見は作られない
+// (`ADR-0419` 限定3)。上の4つと同じく、動かないことを HTTP API と MCP が動かない理由にはしない。
+if (serverProfile === "full") {
+  try {
+    startPreviewSweeper({ root: previewRoot, cache: previewCache });
+  } catch (error) {
+    console.error(
+      `[smailtalk server] 下見の後始末の時計を開始できませんでした。` +
+        `**期限の切れた下見は、次に下見を作るときか開かれたときまで残ります**(サーバ自体は動き続けます)。`,
+    );
+    console.error(error);
+  }
+}
+
+// **下見の置き場の根を1行印字する**(`V20-M13` 点検の処置 軽4)。 MCP(stdio / HTTP)も起動時に同じ綴りで
+// 印字する。 **作った側と開く側で根が食い違うと、作った直後の下見が 410「期限切れ」に見える** ので、
+// 両方の印字を並べて確かめられるようにする。 **下の `smailtalk server:` の行は1文字も変えていない**
+// (この行はその綴りを含まない)。 配る版(`runner`)には下見が無いので印字しない。
+if (serverProfile === "full") {
+  console.log(`[smailtalk server] 下見の置き場(ST_PREVIEW_ROOT)= ${previewRoot}`);
 }
 
 console.log(

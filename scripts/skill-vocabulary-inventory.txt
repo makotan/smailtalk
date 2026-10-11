@@ -148,6 +148,9 @@ pair	plugins/smailtalk/skills/automation-shape/reference/cannot-do.md	group by /
 # 骨格の節は正の部分集合(その骨格が実際に使うキーだけ)であって、全量ではない。
 # 引用ブロック(行頭 >)を1つも置いていないので verbatim 行も無い(H-G20 限定1 / O-G8 限定5)。
 covers	plugins/smailtalk/skills/app-build/SKILL.md	manifest:view_type.enum
+# 組織と評価機関の骨格(V23-M9-T11。決定 D-V23-249)。 app-build の参照ファイルで、差分の JSON だけを持ち、全量の列挙は持たない。
+# 集合は骨格が必ず書く小さいもの(access_control の必須のキー)にした。 差分が通ることは skill-grant-table-view.test.ts の D-V23-249 の検査が当てて見る。
+covers	plugins/smailtalk/skills/app-build/reference/scs-skeleton.md	manifest:table.access_control.required
 
 # --- V8-M47(2026-08-16)。既存の説明書3本への追記 ---
 # 足した節はどれも「1つの見出しの中に正の集合の全量を閉じ込めた」形になっていない
@@ -190,6 +193,12 @@ covers	plugins/smailtalk/skills/view-shape/reference/view-keys.md	manifest:view_
 covers	plugins/smailtalk/skills/view-shape/reference/view-keys.md	manifest:filter_leaf.properties
 count	plugins/smailtalk/skills/view-shape/reference/view-keys.md	**1つの操作に書けるキーは{n}つで、{n+1}つ目は書けない。**	manifest:view_action.properties
 count	plugins/smailtalk/skills/view-shape/reference/view-keys.md	**葉に書けるキーは全部で{n}つ**	manifest:filter_leaf.properties
+
+# --- 2026-09-24。ボタンのキーの9キー目(action_emphasis。V20-M2-T05 / ADR-0459 門A 本審査済み)---
+# 旧の件数の文は消さず、同じファイルに訂正と9キー目の表を足した。上の count 行と covers 行は1バイトも書き換えていない
+# (正の件数から展開されるので、訂正の文が今日の件数を運ぶ)。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	**1つのボタンに書けるキーは8つで、9つ目は書けない。**	上の「8つで、9つ目は書けない」は今日は偽である。	9キー目 action_emphasis が入った後に旧文は偽になった。旧文を残すなら、同じファイルに今日の本数も要る。
+pair	plugins/smailtalk/skills/view-shape/reference/view-keys.md	**1つの操作に書けるキーは8つで、9つ目は書けない。**	上の「8つで、9つ目は書けない」は今日は偽である。	同上。旧文だけを配ると、強調のキーを書けないと読まれる。
 
 # 4本目の説明書(app-build)ができたので、diff-shape の description の旧文だけを読むと
 # 「アプリの作り方はどこにも無い」と読める。旧文は消さず、送り先を同じ front matter に足した。
@@ -250,3 +259,50 @@ pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	画面を名乗�
 # 「削除には何の関門も増えていない」という今日は読み違えを招く文が届く。
 pair	plugins/smailtalk/skills/app-build/SKILL.md	削除(`DELETE`)にはこの壁が今日も1文字も掛かっていない	ただし削除には、今日から**別の関門**が1つ立った	旧の1文は親を指す側の壁については今日も真だが、それだけを配ると「削除には関門が1つも無い」と読まれる。ぶら下がっている行が在る行の削除は1回目に断られ、件数の印を添えた2回目でだけまとめて消える。訂正が写しから落ちても赤くなるように組にする。
 pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	ただし項目に書いた規則とボタンの壁は、今日も DELETE に1ミリも掛かりません	削除に掛かる関門は今日これだけではない	引用は今日も逐語で正だが、その節だけを配ると「削除に掛かるのは消す権限だけ」と読まれる。ぶら下がっている行が在る行の削除には、件数の印を添えた2回目を求める関門が別に立っている。訂正は引用の外に置いた。
+
+# --- 2026-09-24。項目のまとまりのキーが field_sections に改名され、入力フォームにも書けるようになった(V20-M3-T05)---
+# CANNOT_DO の旧文は消さず、直後に訂正を足した。引用ブロックも同じ訂正までを含むよう伸ばした。
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	**8軸のほかに、詳細画面(detail_view)だけは「項目のまとまり(field_groups)」を書けます**	項目のまとまりのキーは今日 field_sections という名前で	旧文は改名と入力フォームへの拡張の後に偽になった。引用を旧文で切ると、説明書だけを読む相手には存在しないキー名と「詳細画面だけ」が届く。
+
+# --- 2026-09-27。説明書の中の本数の偽を、旧文を消さずに下の訂正で直した(波及と説明書)---
+# 旧文(かつて description に書いていた目次の逐語・表のセル・参照ファイルへの案内)は1文字も書き換えず、
+# 直後に「今日の本数」を書いた訂正を足した。訂正の本数は正の件数から展開されるので、正が動けば赤くなる。
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**`update_view` の `changes` に書けるキーは今日{n}である**	diff:view_changes.properties
+count	plugins/smailtalk/skills/view-shape/SKILL.md	**画面定義に書けるキーの全量は今日{n}キーである**	manifest:view.properties
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**リソース種は今日{n}である**	kernel:RESOURCE_KINDS
+count	plugins/smailtalk/skills/diff-shape/SKILL.md	**差分操作は今日{n}種である**	kernel:DIFF_OPS
+count	plugins/smailtalk/skills/diff-shape/reference/op-required-keys.md	**役割の要素が持てるキーは今日{n}つである**	manifest:role.properties
+
+# --- 2026-09-27。見た目の案の出し方(参照ファイル design-candidates.md。説明書は4本のまま)---
+# 語彙の全量を閉じ込めた節を持たない(推奨と語彙の事実が混ざる)ので closed 行を宣言しない。引用ブロックも置かないので verbatim 行も無い。
+# 片側だけを切り出して配ると逆向きの読み違えになる組を pair で固定する。
+pair	plugins/smailtalk/skills/view-shape/reference/design-candidates.md	**型から外れる案には `compare.off_pattern: true` を付ける。**	`remember_design` の `design_memory.patterns`	印の付け方だけを配ると、型を書く・外す口が届かず、印の根拠になる型をどこに置くのかが読めない。
+pair	plugins/smailtalk/skills/view-shape/reference/design-candidates.md	**型から外れる案には `compare.off_pattern: true` を付ける。**	**型の無いアプリで `off_pattern: true` を付けると断られる**	印の付け方だけを配ると、型の無いアプリにも印を付けて断られる。断られる条件を同じファイルに置く。
+pair	plugins/smailtalk/skills/view-shape/reference/design-candidates.md	**拒否された案(検証に通らず、保存できない案)は落とす。**	**注意(応答の `design_notices`)が付いただけの案は落とさない。	落とす側だけを配ると、注意が付いただけの案まで落とされる。足切りの基準は拒否だけであり、注意つきの案は注意を添えて見せる。
+# スクショから色の案を出す手順(同じ参照ファイルの 7 節)。
+pair	plugins/smailtalk/skills/view-shape/reference/design-candidates.md	**画像は会話の中であなた(AI)が読む。**	**読み取った色は推定であり、正しいとは限らない。**	手順だけを配ると、読み取った色が推定であることが届かず、スクショの色を正確に写したと伝えてしまう。
+pair	plugins/smailtalk/skills/view-shape/reference/design-candidates.md	**各案で、役割の枠をすべて書く**	**今のテーマに `slots_dark` があれば、それも全部書く**	テーマは丸ごと差し替えなので、明るい側だけを写す手順を配ると、差し替えのたびに暗い側の配色が消える。
+# --- 2026-09-27。点検の後の直し。引用の「ボタンの体裁なども選べません」は詳細画面のボタンについては今日は言い過ぎ ---
+pair	plugins/smailtalk/skills/view-shape/reference/cannot-do.md	ボタンの体裁なども選べません	`action_emphasis` で見た目の強さを	引用は CANNOT_DO の逐語だが、詳細画面のボタンの見た目の強さ(主・副・危険)は今日は選べる。引用を旧文で切ると、説明書だけを読む相手には「ボタンの見た目は1つも選べない」という今日は偽の文が届く。訂正は引用の外に置いた。
+
+# --- 2026-09-28。19種目 set_workspace(メニューの位置)。V22-M2-T03 / ADR-0486(門A)/ 授権 = ADR-0487 行49 ---
+# diff-shape の本数(差分操作・操作に書けるキー)は上の count 行が正の件数から展開するので、1行も書き換えていない(訂正の文を足して緑に戻した)。
+# 書き方の節は view-shape の 5b に置いた。全量を閉じ込めた節ではない(散文と例が混ざる)ので closed 行を宣言しない。
+# 片側だけを切り出して配ると拒否される書き方が届く組を pair で固定する。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	**丸ごと差し替える。**	**`{}` を渡すと宣言ごと消える**	差し替えの説明だけを配ると、宣言を消して既定の左に戻す書き方が届かない。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	**`by_role` は役割ごとの上書き**	**`by_role` が指している役割を `set_roles` で消す・ID を変えるときは、同じ差分の中で `set_workspace` も直す。**	上書きの書き方だけを配ると、役割を消す・改名する差分が拒否される条件が届かない。
+pair	plugins/smailtalk/skills/diff-shape/SKILL.md	今日は18種である	**この19種で全部である。**	18種目の訂正だけを切り出して配ると、今日は1つ足りない全量が届く。
+
+# --- 2026-09-28。set_workspace を直下のキーごとの置き換えに改め、2つ目のキー my_page(マイページ)を足した。V22-M3-T03 / ADR-0488(門A)/ 授権 = ADR-0489 行22 ---
+# 旧い「丸ごと差し替える」「{} を渡すと宣言ごと消える」の2行は消さず、直後に訂正を置いた。旧い行だけを切り出して配ると、
+# メニューの位置だけを変える差分でマイページの宣言を書き落とすか、{} を送って断られる。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	**`{}` を渡すと宣言ごと消える**	**【訂正】直前の2行は今日は偽である。**	旧い2行だけを配ると、書かなかったキーが残ること・null で消すこと・空の {} が断られることが届かない。
+pair	plugins/smailtalk/skills/view-shape/SKILL.md	## 5c. マイページ(`workspace.my_page`)	「持ち主の列 = 自分」で絞るだけで、読める範囲は広がらない。	マイページの書き方だけを配ると、運営者にも他人の行が出ないことと、読めない表が載らないことが届かない。
+pair	plugins/smailtalk/skills/diff-shape/SKILL.md	丸ごと差し替える。`{}` で宣言を消す)が加わった	**【訂正】直前の「丸ごと差し替える。`{}` で宣言を消す」は今日は偽である**	19種目の旧い説明だけを配ると、今日は断られる {} の書き方が届く。
+
+# --- 2026-09-29。名簿の4つ目のキー auto_enroll(名簿への自動登録)と、行の最後の管理者。V23-M1-T09 / 授権 = ADR-0510 行12 ---
+# 旧い「members は3キー」「名簿に自動では1行も入らない」は消さず、直後に訂正を置いた。旧い行だけを切り出して配ると、
+# 自動登録を書ける・書いた名簿では登録した人が自動で入ることが届かない。 件数は上の count 行が正の件数から展開して見る。
+pair	plugins/smailtalk/skills/diff-shape/SKILL.md	**`members` は3キー**	直前の「3キー」は今日は古い。	4つ目のキー auto_enroll が入った後に旧文は偽になった。旧文を残すなら、同じファイルに今日の本数も要る。
+pair	plugins/smailtalk/skills/diff-shape/SKILL.md	**`members` は4キー**	**自動で入れる名簿に、`account` と `name` の外で必須の列(既定値の無いもの)を足すと、その役割での登録と役割の付与が `422` で断られる**	自動登録の書き方だけを配ると、必須の列を足した名簿で登録が止まることが届かない。
+pair	plugins/smailtalk/skills/app-build/SKILL.md	**プラットフォームは名簿に自動では1行も入らない**	名簿に `auto_enroll` を宣言した表では偽である	旧文だけを配ると、自動登録を書いた名簿でも利用者IDを調べて手で1行足す手順が届く。

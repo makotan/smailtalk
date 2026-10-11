@@ -32,6 +32,10 @@
   `change_table` / `change_field` / `remove_view` / `add_workflow` / `update_workflow` / `remove_workflow` /
   `add_function` / `update_function` / `remove_function` / `set_theme` / `set_roles`
 
+**(2026-09-27 訂正。上の行を消していません)** 上の「定義を変える操作」の並びは今日は1つ足りません。18個目は `remember_design` です。
+
+**(2026-09-28 訂正。上の2つの行を消していません)** 上の「定義を変える操作」の並びは今日は2つ足りません。18個目は `remember_design`、19個目は `set_workspace`(メニューを左に置くか上に置くかを決める)です。
+
 手元の定義ファイルがこの語彙に収まっているかは、その場で確かめられます。
 
 ```bash
@@ -46,6 +50,8 @@ NG: fixtures/invalid/unknown-field-type.json の検証に失敗しました(マ�
 /app/tables/0/fields/1/type: type の値 "email" は語彙にありません。 許可される値: text / long_text / number / boolean / date / select / reference / image / file ヒント: 許可される値のいずれかに置き換えてください。v0の語彙は拡張できません。
 ```
 
+画面の作りの点検(ボタンが多すぎる・長いフォームに区切りが無い、などの注意)は `bun run lint:design path/to/manifest.json` で出せます。**`bun run lint`(コード整形の検査)とは別物で、`lint` を打ってもこの点検は走りません。**
+
 ---
 
 ## 何ができないか
@@ -53,7 +59,7 @@ NG: fixtures/invalid/unknown-field-type.json の検証に失敗しました(マ�
 **これで何でも作れるわけではありません。** 隠さずに書きます。
 
 - **自由な見た目は作れません。** AI が CSS を書き込める場所はありません。ピクセル座標も、絶対配置も、重ね順も指せません。
-  画面ごとの配色も、ダークモードの指定もありません。持ち主が自分で CSS を用意して発行したときだけ、宣言した画面に効きます。
+  画面ごとの配色も、時刻で切り替わる配色もありません(OS の明暗設定に追随する暗い側の配色は、テーマに書けます)。持ち主が自分で CSS を用意して発行したときだけ、宣言した画面に効きます。
 - **自動処理の条件は「等しいか」だけです。** 「より大きい」「より小さい」といった大小比較も、かつ / または / そうでなければ /
   入れ子 / 計算式も書けません(例外は「date の項目が N 日以上前の行だけを対象にする」という時刻専用の形ひとつです)。
 - **自動処理は途中で諦められません。** アクションが1つでも失敗すると、それを起こしたレコードの書き込みごと巻き戻ります。
@@ -123,6 +129,7 @@ bun run dev:web             # もう片方のターミナル
 | `bun run build:web` | 画面を `web/dist` にビルドする |
 | `bun run preview:web` | ビルドした画面をそのまま確認する |
 | `bun run validate <file>` | 定義ファイル / 差分ファイルが語彙に収まっているか検証する |
+| `bun run lint:design <file>` | 定義ファイルの画面の作りを点検し、注意(ボタンが多すぎる・長いフォームに区切りが無い、など)を出す。注意があっても終了コードは `0`(`bun run lint` とは別物) |
 | `bun run requirements-doc --data-root data --app <app_id>` | 動いているアプリの定義から要件の文書を組み立てる |
 | `bun run mcp` | AI から使う口を、標準入出力で起動する |
 | `bun run mcp:http` | 同じ口を HTTP で起動する |
@@ -180,6 +187,7 @@ bun run dev:web             # もう片方のターミナル
 - **変えるもの**: `create_app` / `delete_app` / `apply_diff` / `undo` / `redo` / `insert_sample_data` /
   `write_records` / `update_record` / `delete_record` / `request_connection` / `request_ai_capability` /
   `request_custom_css` / `request_inbound_endpoint`
+- **(2026-10-02 訂正。上の2つの行を消していません)** 上の並びは今日3つ足りません。 読むものに `list_comments`(積まれたコメントを読む)と `list_record_history`(行の変更履歴を読む)、変えるものに `set_comment_visibility`(コメントを書く欄と読む場所を画面に出すかを決める)があり、道具は今日27個です。
 
 名前が `request_` で始まるものは**申請**です。呼んでも外部との接続が成立するわけではなく、
 人間が発行して初めて効きます。

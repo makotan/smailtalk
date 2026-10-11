@@ -160,14 +160,21 @@ describe("(T01-c) キーを1本も足していない(ADR-0358 限定4)", () => {
     // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
     // 書け、集計表(`report_view`)には書けない**)。
     // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-    expect(Object.keys(viewSchema().properties as Any)).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as Any)).toHaveLength(31);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as Any)).toHaveLength(32);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行29】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(viewSchema().properties as Any)).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+    expect(Object.keys(viewSchema().properties as Any)).toHaveLength(35);
     // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359` §4b】**
     // **旧行の逐語**: `expect(Object.keys(viewSchema().properties as Any)).not.toContain("flow");`
     // **`flow` は今日 `$defs/view.properties` に実在する** —— **`V10-M4-T01` が31キー目として
     // 足した。****向きを反転させて残す**(検査を消さない)—— **測りたいのは
     // 「`ADR-0358`(本ファイルが測っている決定)が `flow` を足したのではない」ことである。**
     expect(Object.keys(viewSchema().properties as Any)).toContain("flow");
-    expect(Object.keys(defs())).toHaveLength(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(defs())).toHaveLength(31);
     const viewChanges = (diffSchema as unknown as { $defs: Record<string, Any> }).$defs
       .view_changes as Any;
     // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。門A 本審査 = `V10-M0` 群B。ADR = `0359` / `0360`】**
@@ -175,11 +182,24 @@ describe("(T01-c) キーを1本も足していない(ADR-0358 限定4)", () => {
     // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
     // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
     // **検査は消していない。**
-    expect(Object.keys(viewChanges.properties as Any)).toHaveLength(27);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewChanges.properties as Any)).toHaveLength(27);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(viewChanges.properties as Any)).toHaveLength(28);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行142(撃(隠れ))】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(viewChanges.properties as Any)).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+    expect(Object.keys(viewChanges.properties as Any)).toHaveLength(31);
   });
 
-  test("ボタンごとの行き先を作っていない($defs/view_action.properties は 8 のまま。限定5)", () => {
-    expect(Object.keys((defs().view_action as Any).properties as Any)).toHaveLength(8);
+  // **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧テスト名(逐語)**:
+  // 「ボタンごとの行き先を作っていない($defs/view_action.properties は 8 のまま。限定5)」。
+  // **旧行の逐語**: `expect(Object.keys((defs().view_action as Any).properties as Any)).toHaveLength(8);`
+  // **9本目は強調(`action_emphasis`)であって行き先ではない** —— **主張の核(ボタンごとの
+  // 行き先のキーが無い)を1ミリも弱めないために、9本目の綴りを名指しで確かめる。**
+  test("ボタンごとの行き先を作っていない($defs/view_action.properties は 9。9本目は強調であって行き先ではない。限定5)", () => {
+    const keys = Object.keys((defs().view_action as Any).properties as Any);
+    expect(keys).toHaveLength(9);
+    expect(keys[8]).toBe("action_emphasis");
   });
 
   test("成功 / 失敗で分けるキーも確認の段のキーも1本も足していない(限定3)", () => {

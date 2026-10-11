@@ -120,7 +120,13 @@ test("(a) 限定1: $defs/view.properties は 21 で、21キー目は field_group
   // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
   // 書け、集計表(`report_view`)には書けない**)。
   // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-  expect(properties).toHaveLength(31);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(31);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(32);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行64】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(properties).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+  expect(properties).toHaveLength(35);
   // **【V4-M16-T13 / ADR-0093 限定1 で書き換えた。理由を書く】** 着手前は `at(-1)` が
   // `field_groups` だったが、**`ADR-0093` が22キー目 `preset_list_shape` を末尾に足した**ので
   // 位置で引くと最後尾は本キーになる。**`field_groups` が21キー目であることは今日も真である。**
@@ -152,20 +158,30 @@ test("(a) 限定1: $defs/view.properties は 21 で、21キー目は field_group
   // **末尾に `flow`(一続きの流れの中の段)が31キー目として入ったので、
   // 位置の添字を1つ後ろへずらした。****旧行の逐語**: `expect(properties.at(-10)).toBe("preset_list_shape");`
   // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
-  expect(properties.at(-11)).toBe("preset_list_shape");
-  expect(properties.at(-10)).toBe("modal");
-  expect(properties.at(-9)).toBe("search_fields");
-  expect(properties.at(-8)).toBe("page_size");
-  expect(properties.at(-7)).toBe("preset_density");
-  expect(properties.at(-6)).toBe("after_save");
-  expect(properties.at(-5)).toBe("sum_field");
-  expect(properties.at(-4)).toBe("reference_pickers");
-  expect(properties.at(-3)).toBe("report");
-  expect(properties.at(-2)).toBe("after_delete");
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】末尾に入力欄の幅 `field_width` が入ったので、
+  // 位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-11)).toBe("preset_list_shape");`
+  // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by` が末尾に入ったので、位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-12)).toBe("preset_list_shape");`
+  expect(properties.at(-15)).toBe("preset_list_shape");
+  expect(properties.at(-14)).toBe("modal");
+  expect(properties.at(-13)).toBe("search_fields");
+  expect(properties.at(-12)).toBe("page_size");
+  expect(properties.at(-11)).toBe("preset_density");
+  expect(properties.at(-10)).toBe("after_save");
+  expect(properties.at(-9)).toBe("sum_field");
+  expect(properties.at(-8)).toBe("reference_pickers");
+  expect(properties.at(-7)).toBe("report");
+  expect(properties.at(-6)).toBe("after_delete");
   // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359` / `0360`】末尾は今日 `flow` である。**
   // **`after_delete` はもう末尾ではない** —— **上の行の添字を1つ後ろへずらし、
   // 末尾の位置をここで新しく固定した。****位置の主張を1つも緩めていない。**
-  expect(properties.at(-1)).toBe("flow");
+  expect(properties.at(-5)).toBe("flow");
+  expect(properties.at(-4)).toBe("field_width");
+  expect(properties.at(-3)).toBe("group_by");
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】末尾に並べ方の木 `layout` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値を1つも緩めていない**(旧の添字は1つ手前)。
+  expect(properties.at(-2)).toBe("layout");
+  // **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行111〜行124(撃(隠れ))/ 決定 `D-V23-205`】末尾に変更履歴の `history` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値(名前)を1つも緩めていない**(旧の添字は1つ手前。旧の末尾は `expect(properties.at(-1)).toBe("layout");`)。 新しい並びはスキーマを python で読んで確かめた。
+  expect(properties.at(-1)).toBe("history");
   expect(manifestSchema().$defs.view.additionalProperties).toBe(false);
 });
 
@@ -198,16 +214,23 @@ test("(a) 限定1: field 12 / table 6 / theme 25・25 が1つも動いていな�
   // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
   // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
   // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  expect(Object.keys(schema.$defs.field.properties)).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行21 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(Object.keys(schema.$defs.field.properties)).toHaveLength(13);
   // **【`V6-M3-T01` / `K-G6` / `ADR-0290` 限定1 で 4 → 5 に更新した】** 5キー目
   // `reference_search_fields`(このテーブルが参照されたときの「探せる項目」の既定)が門A を
   // 通って増えた(`V6-M0` 単位B。判定 = 限定採用)。**本 ADR の増分ではない。**
   // **【`V7-M1-T01` / `Z-G2` で 5 → 6 に更新した】** 6キー目 `access_control`(この表で
   // アクセス権管理を使うことと、付与・グループ・メンバーの置き場所の宣言)が門A を通って
   // 増えた(`V7-M0`。判定 = 限定採用)。**本 ADR の増分ではない。**
-  expect(Object.keys(schema.$defs.table.properties)).toHaveLength(6);
-  expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(25);
-  expect(schema.$defs.theme.required).toHaveLength(25);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行65】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(schema.$defs.table.properties)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(Object.keys(schema.$defs.table.properties)).toHaveLength(7);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(23);
+  expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(schema.$defs.theme.required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(schema.$defs.theme.required).toHaveLength(23);
+  expect(schema.$defs.theme.required).toHaveLength(27);
   // 【`V5-M29-T03` / `ADR-0250` 限定11】ここにあった「語彙3種が1つも動いていない」のうち
   //   `RESOURCE_KINDS` の本数の検査は `scripts/vocabulary-drift.test.ts` へ移した
   //   (一覧の `RESOURCE_KINDS:` で始まる行)。**総量ではなく名前と順序で見張る。**
@@ -234,14 +257,31 @@ test("(a) 限定1: 色 pattern が1バイトも動いていない", () => {
 // (b) 限定2: detail_view でだけ書ける
 // ---------------------------------------------------------------------------
 
-test("(b) 限定2: list_view 分岐と form 分岐で field_groups は false である", () => {
-  expect(falseKeys("list_view")).toContain("field_groups");
-  expect(falseKeys("form")).toContain("field_groups");
-  // **detail_view 分岐には `false` を置かない**(そこでだけ書ける)。
-  expect(falseKeys("detail_view")).not.toContain("field_groups");
+// **【2026-09-24。`V20-M3-T01` / `ADR-0469` 限定1・限定2 で書き換えた】** **旧テスト名の逐語**:
+// 「(b) 限定2: list_view 分岐と form 分岐で field_groups は false である」。**旧行の逐語**は
+// list_view と form の `false` に旧綴りが在ること・detail_view に無いことを見る3行だった。
+// **綴りが `field_sections` に改まり、書ける分岐が入力フォームと詳細画面の2つになった**
+// (ユーザ決定 `D-V20-22`)。**一覧の `false` は綴りだけが替わって残り、入力フォームの `false` は消えた。**
+// **集計表(`report_view`)の分岐はこの関数の型の外なので `src/kernel/field-sections.test.ts` が見る。**
+test("(b) 限定2(ADR-0469 が引き直した): list_view 分岐で field_sections は false、form と detail_view では書ける", () => {
+  expect(falseKeys("list_view")).toContain("field_sections");
+  expect(falseKeys("form")).not.toContain("field_sections");
+  expect(falseKeys("detail_view")).not.toContain("field_sections");
+  // 旧綴りはどの分岐にも残っていない。
+  for (const type of ["list_view", "form", "detail_view"] as const) {
+    expect(falseKeys(type), type).not.toContain("field_groups");
+  }
 });
 
-test("(b) 限定2: 3つの分岐の false の本数が 10 / 17 / 13 である(既存の false を1つも動かしていない)", () => {
+// **【2026-09-24。`V20-M3-T01` / `ADR-0469` で 10 / 17 / 13 → 10 / 16 / 13 に更新した】**
+// **旧テスト名の逐語**: 「(b) 限定2: 3つの分岐の false の本数が 10 / 17 / 13 である(既存の false を1つも動かしていない)」。
+// **list_view は本数10のまま綴りだけが替わり(旧綴り → `field_sections`)、form は旧綴りの `false` が
+// 消えて1本減った。** detail_view は1バイトも動いていない。**他の `false` を1つも動かしていない。**
+// **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で 10 / 16 / 13 → 11 / 16 / 14 に更新した】**
+// **旧テスト名の逐語**: 「(b) 限定2: 3つの分岐の false の本数が 10 / 16 / 13 である(既存の false を1つも動かしていない)」。
+// **増えたのは入力欄の幅 `field_width` の `false` 2本(list_view / detail_view)だけである。** form 分岐は
+// 1バイトも変えていない(`field_width` は form でだけ書けるので、そこには `false` を置かない)。
+test("(b) 限定2: 3つの分岐の false の本数が 11 / 16 / 14 である(既存の false を1つも動かしていない)", () => {
   // **着手前は 5 / 10 / 6 だった。** 増えたのは `field_groups` の2本だけで、
   // **既存の `false` を1バイトも動かしていない**(名指しで全量を固定する)。
   //
@@ -317,8 +357,13 @@ test("(b) 限定2: 3つの分岐の false の本数が 10 / 17 / 13 である(�
     // list_view では `false`(`detail_view` でだけ書ける)。**
     "after_delete",
     "after_save",
-    "field_groups",
+    // **【`V20-M3-T01` / `ADR-0469` 限定2】旧行の逐語は旧綴りの1行。綴りだけを改めた(一覧では今日も書けない)。**
+    "field_sections",
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で足した】** 入力欄の幅 `field_width` は list_view では `false`(`form` でだけ書ける)。
+    "field_width",
     "fields",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行66】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `fields` の次は `// **【V4-M18-T03 / ADR-0095 限定6 で足した】** list_view では `modal` も `false`。` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+    "history",
     // **【V4-M18-T03 / ADR-0095 限定6 で足した】** list_view では `modal` も `false`。
     // **`ADR-0093` の増分(`preset_list_shape` は list_view でだけ書けるので false ではない)は
     // 1バイトも動いていない。**
@@ -338,8 +383,13 @@ test("(b) 限定2: 3つの分岐の false の本数が 10 / 17 / 13 である(�
     // form でも `false`(`detail_view` でだけ書ける)。**
     "after_delete",
     "columns",
-    "field_groups",
+    // **【`V20-M3-T01` / `ADR-0469` 限定1】ここに在った旧綴りの1行を外した** —— 入力フォームでは
+    // `field_sections` を書ける(描画は `V20-M3-T03`)。
     "filter",
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by`(一覧の束ねるキー)はこの種別では `false`(`list_view` でだけ書ける)。** **旧の列挙はこの1行が無い形である。**
+    "group_by",
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行125(撃(隠れ))/ 決定 `D-V23-205`】35キー目 `history`(詳細画面の変更履歴)はこの種別では `false`(`detail_view` でだけ書ける)。 旧の列挙はこの1行が無い形である(直上の `"group_by"` の次は `"page_size"` だった)。 新しい値はスキーマを python で読んで得た。
+    "history",
     // **【V4-M22-T05 / ADR-0113 限定7 で足した】** `page_size`(1ページに出す件数)も
     // form では `false`。**`ADR-0093` / `ADR-0095` / `ADR-0112` の増分は1バイトも動いていない。**
     "page_size",
@@ -369,7 +419,11 @@ test("(b) 限定2: 3つの分岐の false の本数が 10 / 17 / 13 である(�
     // **`detail_view` では今日 `after_save` を書ける** —— **発火するのは `actions` の
     // `set` 形の書込が成立したときだけで、`run` 形の後は移らない**(限定2)。
     "columns",
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で足した】** 入力欄の幅 `field_width` は detail_view では `false`(`form` でだけ書ける)。
+    "field_width",
     "filter",
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by`(一覧の束ねるキー)はこの種別では `false`(`list_view` でだけ書ける)。** **旧の列挙はこの1行が無い形である。**
+    "group_by",
     // **【V4-M18-T03 / ADR-0095 限定6 で足した】** detail_view でも `modal` は `false`。
     "modal",
     // **【V4-M22-T05 / ADR-0113 限定7 で足した】** `page_size`(1ページに出す件数)も
@@ -395,27 +449,34 @@ test("(b) 限定2: 3つの分岐の false の本数が 10 / 17 / 13 である(�
   ]);
 });
 
-test("(b) 限定2: list_view / form に field_groups を書いたマニフェストは拒否される", () => {
-  for (const view of [
-    {
-      id: "entry-list",
-      type: "list_view",
-      table: "entries",
-      columns: ["title"],
-      field_groups: { 基本: ["title"] },
-    },
-    {
-      id: "entry-form",
-      type: "form",
-      table: "entries",
-      fields: ["title"],
-      field_groups: { 基本: ["title"] },
-    },
-  ] as unknown as Manifest["app"]["views"]) {
-    const manifest = baseManifest();
-    manifest.app.views = [view];
-    expect(validateManifestFull(manifest).valid, view.id).toBe(false);
-  }
+// **【2026-09-24。`V20-M3-T01` / `ADR-0469` 限定1・限定2 で書き換えた】** **旧テスト名の逐語**:
+// 「(b) 限定2: list_view / form に field_groups を書いたマニフェストは拒否される」。
+// **旧の本文は list_view と form の2画面に旧綴りを書いて `false` を期待していた。** 旧綴りを
+// 語彙から消すと「未知のキー」として拒否されるので、**綴りを直さなくても緑のまま通る**
+// (拒否の理由だけが変わる。`V20-M3-T00` §8-1 の注)。そのため新しい綴りで撃ち直し、
+// **入力フォームは通る側**に移した。
+test("(b) 限定2(ADR-0469 が引き直した): list_view に field_sections を書いたマニフェストは拒否され、form は通る", () => {
+  const listView = {
+    id: "entry-list",
+    type: "list_view",
+    table: "entries",
+    columns: ["title"],
+    field_sections: { 基本: ["title"] },
+  } as unknown as Manifest["app"]["views"][number];
+  const listManifest = baseManifest();
+  listManifest.app.views = [listView];
+  expect(validateManifestFull(listManifest).valid, "entry-list").toBe(false);
+
+  const formView = {
+    id: "entry-form",
+    type: "form",
+    table: "entries",
+    fields: ["title"],
+    field_sections: { 基本: ["title"] },
+  } as unknown as Manifest["app"]["views"][number];
+  const formManifest = baseManifest();
+  formManifest.app.views = [formView];
+  expect(validateManifestFull(formManifest).valid, "entry-form").toBe(true);
 });
 
 // ---------------------------------------------------------------------------
@@ -423,7 +484,7 @@ test("(b) 限定2: list_view / form に field_groups を書いたマニフェス
 // ---------------------------------------------------------------------------
 
 test("(c) 限定3: 値は「配列」か「{ id?, fields }」の2形で、どちらも1段だけである", () => {
-  const key = manifestSchema().$defs.view.properties.field_groups as Any;
+  const key = manifestSchema().$defs.view.properties.field_sections as Any;
   expect(key.type).toBe("object");
   expect(key.minProperties).toBe(1);
   // **まとまりの名前は表示名であり `resource_id` ではない。**
@@ -462,12 +523,12 @@ test("(c) 限定3: 値は「配列」か「{ id?, fields }」の2形で、どち
 
 test("(c) 限定3: 入れ子(まとまりの中にまとまり)を書いた差分は拒否される", () => {
   const manifest = baseManifest();
-  (manifest.app.views[2] as Any).field_groups = { 基本: { 内側: ["title"] } };
+  (manifest.app.views[2] as Any).field_sections = { 基本: { 内側: ["title"] } };
   expect(validateManifestFull(manifest).valid).toBe(false);
 });
 
 test("(c) 限定3: 並び順を指定するキーが1つも無い(順序はマニフェストの記述順)", () => {
-  const key = manifestSchema().$defs.view.properties.field_groups as Any;
+  const key = manifestSchema().$defs.view.properties.field_sections as Any;
   // **散文(`$comment` / `description`)を除いた形の全量**が上の4キーだけである ——
   // `order` / `position` / `index` / `sort` のような並び順のキーは1つも無い。
   const { $comment: _c, description: _d, ...shape } = key;
@@ -506,10 +567,23 @@ test("(f) 限定6: $defs/view.properties に器の形(タブ/畳む/開く)を�
     "accordion",
     "collapsible",
     "collapsed",
-    "layout",
   ]) {
     expect(properties, forbidden).not.toContain(forbidden);
   }
+  /*
+   * **【2026-09-24。`V20-M5-T04` / `ADR-0462` / `ADR-0471`。期待値を書き換えた】** **着手前の禁止語の列挙には
+   * `layout` が在った**(旧の列挙の最後の1語)。**`ADR-0462` が画面側の根のキーの綴りを `layout` と決め
+   * (同 ADR §Decision 2 の逐語「画面側の根のキーは `layout`」)、`V20-M5-T01` が34キー目として足した。**
+   * **この検査が見張っていたのは「器の形(タブ / 畳む / 開く)を指すキー」であり、`layout` はその意味では
+   * 足していない** —— **並べ方の木の型は6種(縦・横・脇組み・切り替え・格子・両端)だけで、タブ・畳む・開くを
+   * 表す型も値も1つも無い。** **綴りの見張りを外した代わりに、中身の見張りを足す**(下の2行)。
+   * **【メインの判定が要る】この書き換えは本葉の判断である**(記録 `v20-m5-t01.md` の申し送り)。
+   */
+  expect(properties).toContain("layout");
+  const layoutTypes = (
+    manifestSchema().$defs.layout_node.oneOf as { properties: { type: { const: string } } }[]
+  ).map((branch) => branch.properties.type.const);
+  expect(layoutTypes.filter((type) => /tab|accordion|collaps|open|fold/.test(type))).toEqual([]);
   // 字面でも見る(器の形を指す語をキー名に持ち込まない)。**`table` は `tab` を含むが
   // 「対象テーブル」であって器の形ではない**ので、単語境界つきで見る。
   expect(properties.filter((key) => /style|display|accordion|collaps|\btabs?\b/.test(key))).toEqual(
@@ -552,14 +626,14 @@ function baseManifest(): Manifest {
   };
 }
 
-/** `detail_view` に `field_groups`(と任意で `fields`)を書いたマニフェスト。 */
+/** `detail_view` に `field_sections`(と任意で `fields`)を書いたマニフェスト(`V20-M3-T01` で綴りを改めた)。 */
 function manifestWithGroups(groups: Record<string, string[]>, fields?: string[]): Manifest {
   const manifest = baseManifest();
   const view = manifest.app.views[2] as DetailView;
   if (fields !== undefined) {
     view.fields = fields;
   }
-  (view as Any).field_groups = groups;
+  (view as Any).field_sections = groups;
   return manifest;
 }
 
@@ -571,8 +645,8 @@ test("(e) 限定5: 同じフィールドIDが2つのまとまりに現れたら�
   if (result.valid) {
     return;
   }
-  const error = result.errors.find((candidate) => candidate.path.includes("field_groups"));
-  expect(error?.path).toBe("/app/views/2/field_groups/金額/0");
+  const error = result.errors.find((candidate) => candidate.path.includes("field_sections"));
+  expect(error?.path).toBe("/app/views/2/field_sections/金額/0");
   expect(error?.message).toContain("memo");
   expect(error?.message).toContain("基本");
   expect(error?.hint).toBeDefined();
@@ -586,8 +660,8 @@ test("(e) 限定5: fields を指定した detail_view で、fields に無いID�
   if (result.valid) {
     return;
   }
-  const error = result.errors.find((candidate) => candidate.path.includes("field_groups"));
-  expect(error?.path).toBe("/app/views/2/field_groups/基本/1");
+  const error = result.errors.find((candidate) => candidate.path.includes("field_sections"));
+  expect(error?.path).toBe("/app/views/2/field_sections/基本/1");
   expect(error?.message).toContain("amount");
   // **候補は `fields` に書いた表示項目そのもの**(テーブルの全フィールドではない)。
   expect(error?.allowed_values).toEqual(["title", "memo"]);
@@ -604,8 +678,8 @@ test("(e) 限定5: fields を書いていない detail_view では、対象テ�
   if (result.valid) {
     return;
   }
-  const error = result.errors.find((candidate) => candidate.path.includes("field_groups"));
-  expect(error?.path).toBe("/app/views/2/field_groups/基本/0");
+  const error = result.errors.find((candidate) => candidate.path.includes("field_sections"));
+  expect(error?.path).toBe("/app/views/2/field_sections/基本/0");
   expect(error?.allowed_values).toEqual(["title", "memo", "amount"]);
 });
 
@@ -624,7 +698,7 @@ test("(e) 限定5: 拒否された差分は部分適用されない(全か無か
     {
       op: "update_view",
       view: "entry-detail",
-      changes: { field_groups: { 基本: ["title"], 重複: ["title"] } },
+      changes: { field_sections: { 基本: ["title"], 重複: ["title"] } },
     },
   ] as unknown as Operation[]);
   // 畳み込み自体は通る(参照整合は適用後マニフェストで見る)。
@@ -642,7 +716,9 @@ test("(e) 限定5: 拒否された差分は部分適用されない(全か無か
 // (i) 完了条件 (7) / 限定9: view_changes 15 と「値が実際に運ばれる」こと
 // ---------------------------------------------------------------------------
 
-test("(i) view_changes.properties は 15 で、15キー目は field_groups である", () => {
+// **【2026-09-24。`V20-M3-T01`】旧テスト名の逐語**: 「(i) view_changes.properties は 15 で、15キー目は field_groups である」。
+// 綴りだけを改めた(15キー目の位置は動いていない)。
+test("(i) view_changes.properties は 15 で、15キー目は field_sections である", () => {
   const properties = Object.keys(diffSchema().$defs.view_changes.properties);
   // **【V4-M16-T13 / ADR-0093 限定2 で 15 → 16 に更新した】** `update_view` にも16キー目 `preset_list_shape` が加わった(値はカーネルが実際に運ぶ)。
   // **【V4-M18-T03 / ADR-0095 限定6 で 16 → 17 に更新した】** `update_view` にも17キー目
@@ -676,7 +752,13 @@ test("(i) view_changes.properties は 15 で、15キー目は field_groups で�
   // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
   // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
   // **検査は消していない。**
-  expect(properties).toHaveLength(27);
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(27);`
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+  // **旧行の逐語**: `expect(properties).toHaveLength(28);`
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行67】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(properties).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+  expect(properties).toHaveLength(31);
   // **【V4-M16-T13 / ADR-0093 限定2 で書き換えた】** 16キー目 `preset_list_shape` が
   // 末尾に入った。**`field_groups` が15キー目であることは今日も真である。**
   // **【V4-M18-T03 / ADR-0095 限定6 で書き換えた】** 17キー目 `modal` が末尾に入った。
@@ -708,26 +790,36 @@ test("(i) view_changes.properties は 15 で、15キー目は field_groups で�
   // **末尾に `flow`(一続きの流れの中の段)が31キー目として入ったので、
   // 位置の添字を1つ後ろへずらした。****旧行の逐語**: `expect(properties.at(-11)).toBe("preset_list_shape");`
   // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
-  expect(properties.at(-12)).toBe("preset_list_shape");
-  expect(properties.at(-11)).toBe("modal");
-  expect(properties.at(-10)).toBe("search_fields");
-  expect(properties.at(-9)).toBe("page_size");
-  expect(properties.at(-8)).toBe("preset_density");
-  expect(properties.at(-7)).toBe("after_save");
-  expect(properties.at(-6)).toBe("sum_field");
-  expect(properties.at(-5)).toBe("actions");
-  expect(properties.at(-4)).toBe("reference_pickers");
-  expect(properties.at(-3)).toBe("report");
-  expect(properties.at(-2)).toBe("after_delete");
+  // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】末尾に入力欄の幅 `field_width` が入ったので、
+  // 位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-12)).toBe("preset_list_shape");`
+  // **添字を後ろへずらしただけで、期待値を1つも緩めていない。**
+  // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】33キー目 `group_by` が末尾に入ったので、位置の添字を1つ後ろへずらし、末尾の1行を足した。****旧行の逐語**: `expect(properties.at(-13)).toBe("preset_list_shape");`
+  expect(properties.at(-16)).toBe("preset_list_shape");
+  expect(properties.at(-15)).toBe("modal");
+  expect(properties.at(-14)).toBe("search_fields");
+  expect(properties.at(-13)).toBe("page_size");
+  expect(properties.at(-12)).toBe("preset_density");
+  expect(properties.at(-11)).toBe("after_save");
+  expect(properties.at(-10)).toBe("sum_field");
+  expect(properties.at(-9)).toBe("actions");
+  expect(properties.at(-8)).toBe("reference_pickers");
+  expect(properties.at(-7)).toBe("report");
+  expect(properties.at(-6)).toBe("after_delete");
   // **【2026-08-20。`V10-M4-T01`。台帳 `NV-G9`。ADR = `0359` / `0360`】末尾は今日 `flow` である。**
   // **`after_delete` はもう末尾ではない** —— **上の行の添字を1つ後ろへずらし、
   // 末尾の位置をここで新しく固定した。****位置の主張を1つも緩めていない。**
-  expect(properties.at(-1)).toBe("flow");
+  expect(properties.at(-5)).toBe("flow");
+  expect(properties.at(-4)).toBe("field_width");
+  expect(properties.at(-3)).toBe("group_by");
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】末尾に並べ方の木 `layout` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値を1つも緩めていない**(旧の添字は1つ手前)。
+  expect(properties.at(-2)).toBe("layout");
+  // **【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行126〜行140(撃(隠れ))/ 決定 `D-V23-205`】末尾に変更履歴の `history` が入ったので、上の位置の添字をすべて1つ後ろへずらし、末尾の1行を足した。** **添字を後ろへずらしただけで、期待値(名前)を1つも緩めていない**(旧の添字は1つ手前。旧の末尾は `expect(properties.at(-1)).toBe("layout");`)。 新しい並びはスキーマを python で読んで確かめた。
+  expect(properties.at(-1)).toBe("history");
   expect(diffSchema().$defs.view_changes.additionalProperties).toBe(false);
   // **定義はマニフェスト側を `$ref` する**(値域の定義を二重に持たない。`name` / `custom_css`
   // / `menu_listed` と同じ作法)。
-  expect(diffSchema().$defs.view_changes.properties.field_groups.$ref).toBe(
-    "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/field_groups",
+  expect(diffSchema().$defs.view_changes.properties.field_sections.$ref).toBe(
+    "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/view/properties/field_sections",
   );
 });
 
@@ -735,15 +827,16 @@ test("(i) 既存の $comment を1バイトも書き換えていない(menu_liste
   const raw = readFileSync(join(ROOT, "schemas", "diff.schema.json"), "utf8");
   expect(raw).toContain("**14キー目である。**");
   // 15キー目であることは**新しいキーの側の `$comment`** に書く(`ADR-0084` の作法と同型)。
-  expect(diffSchema().$defs.view_changes.properties.field_groups.$comment).toContain("15キー目");
+  expect(diffSchema().$defs.view_changes.properties.field_sections.$comment).toContain("15キー目");
 });
 
-test("(i) update_view で書いた field_groups が適用後マニフェストに実際に残る(書けるが効かないを作っていない)", () => {
+// **【2026-09-24。`V20-M3-T01`】旧テスト名の逐語**: 「(i) update_view で書いた field_groups が適用後マニフェストに実際に残る(書けるが効かないを作っていない)」。綴りだけを改めた。
+test("(i) update_view で書いた field_sections が適用後マニフェストに実際に残る(書けるが効かないを作っていない)", () => {
   const folded = foldOperations(baseManifest(), [
     {
       op: "update_view",
       view: "entry-detail",
-      changes: { field_groups: { 基本: ["title"], 金額: ["amount"] } },
+      changes: { field_sections: { 基本: ["title"], 金額: ["amount"] } },
     },
   ] as unknown as Operation[]);
   expect(folded.valid).toBe(true);
@@ -751,22 +844,32 @@ test("(i) update_view で書いた field_groups が適用後マニフェスト�
     return;
   }
   const view = folded.manifest.app.views[2] as DetailView;
-  expect(view.field_groups).toEqual({ 基本: ["title"], 金額: ["amount"] });
+  expect(view.field_sections).toEqual({ 基本: ["title"], 金額: ["amount"] });
   // 適用後マニフェストとしても妥当である(= ディスクに書かれる形である)。
   expect(validateManifestFull(folded.manifest).valid).toBe(true);
 });
 
-test("(i) update_view の field_groups は list_view / form では拒否される(種別で絞る)", () => {
-  for (const viewId of ["entry-list", "entry-form"]) {
-    const folded = foldOperations(baseManifest(), [
-      {
-        op: "update_view",
-        view: viewId,
-        changes: { field_groups: { 基本: ["title"] } },
-      },
-    ] as unknown as Operation[]);
-    expect(folded.valid, viewId).toBe(false);
-  }
+// **【2026-09-24。`V20-M3-T01` / `ADR-0469` 限定5 で書き換えた】** **旧テスト名の逐語**:
+// 「(i) update_view の field_groups は list_view / form では拒否される(種別で絞る)」。
+// **旧行の逐語**: `for (const viewId of ["entry-list", "entry-form"]) {`(両方で `false` を期待)。
+// **入力フォームは受付表に入った**ので通る側に移した。**種別で絞ることは一覧で今日も撃つ。**
+test("(i) update_view の field_sections は list_view では拒否され、form では通る(種別で絞る)", () => {
+  const rejected = foldOperations(baseManifest(), [
+    {
+      op: "update_view",
+      view: "entry-list",
+      changes: { field_sections: { 基本: ["title"] } },
+    },
+  ] as unknown as Operation[]);
+  expect(rejected.valid, "entry-list").toBe(false);
+  const accepted = foldOperations(baseManifest(), [
+    {
+      op: "update_view",
+      view: "entry-form",
+      changes: { field_sections: { 基本: ["title"] } },
+    },
+  ] as unknown as Operation[]);
+  expect(accepted.valid, "entry-form").toBe(true);
 });
 
 test("(i) update_view はキー単位の差し替えである(書かなかったキーに触らない)", () => {
@@ -774,7 +877,7 @@ test("(i) update_view はキー単位の差し替えである(書かなかった
     {
       op: "update_view",
       view: "entry-detail",
-      changes: { field_groups: { 基本: ["title"] } },
+      changes: { field_sections: { 基本: ["title"] } },
     },
   ] as unknown as Operation[]);
   expect(first.valid).toBe(true);
@@ -790,6 +893,6 @@ test("(i) update_view はキー単位の差し替えである(書かなかった
   }
   const view = second.manifest.app.views[2] as DetailView;
   // **前進で外す手段は無い**(限定9。`preset_` / `custom_css` / `menu_listed` と同じ性質)。
-  expect(view.field_groups).toEqual({ 基本: ["title"] });
+  expect(view.field_sections).toEqual({ 基本: ["title"] });
   expect(view.name).toBe("詳細");
 });

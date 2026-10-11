@@ -64,8 +64,12 @@ test("(T06-2) $defs/theme のスロットを1本も増やしていない(25 / 25
   const theme = (manifestSchema as { $defs: { theme: Record<string, unknown> } }).$defs.theme;
   const properties = theme.properties as Record<string, unknown>;
   const required = theme.required as string[];
-  expect(Object.keys(properties)).toHaveLength(25);
-  expect(required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(properties)).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(properties)).toHaveLength(23);
+  expect(Object.keys(properties)).toHaveLength(27);
+  // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(required).toHaveLength(25);
+  // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(required).toHaveLength(23);
+  expect(required).toHaveLength(27);
 });
 
 test("(T06-3) 塗りつぶしの variant が実在し、地色と文字色の両方を導出から取る", () => {

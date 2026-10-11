@@ -226,7 +226,14 @@ test("限定2: 予約規約フィールドは4本で止まっている(5本目�
   const fields = [...source.matchAll(/^export const ([A-Z_]+_FIELD) = "(st_[a-z_]+)";$/gm)].map(
     (m) => m[2] as string,
   );
-  expect(fields).toEqual(["st_owner", "st_public", "st_undeletable", "st_no_direct_create"]);
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行6(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(fields).toEqual(["st_owner", "st_public", "st_undeletable", "st_no_direct_create"]);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(末尾に `st_updated_by`)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+  expect(fields).toEqual([
+    "st_owner",
+    "st_public",
+    "st_undeletable",
+    "st_no_direct_create",
+    "st_updated_by",
+  ]);
 });
 
 // --- 限定3: 止めるのは POST と /batch の create op だけ ------------------------------------
@@ -342,7 +349,8 @@ test("限定7: 匿名の公開読取に st_no_direct_create が1件も現れな�
 // **旧の期待値: `expect(ANON_RESERVED_FIELDS).toHaveLength(5);`。**
 test("限定7: ANON_RESERVED_FIELDS に4本すべてが入っている", () => {
   expect(ANON_RESERVED_FIELDS).toContain(NO_DIRECT_CREATE_FIELD);
-  expect(ANON_RESERVED_FIELDS).toHaveLength(4);
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行13(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(ANON_RESERVED_FIELDS).toHaveLength(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で抜き出して得た(5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+  expect(ANON_RESERVED_FIELDS).toHaveLength(5);
 });
 
 // --- 限定9: 宣言はテーブル単位。行の値は判定に使わない ------------------------------------

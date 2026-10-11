@@ -74,13 +74,15 @@ test("限定1: $defs/field.properties は 11 で、本 ADR の増分は0キー�
   // `reference_search_fields`(参照候補の「探せる項目」の、項目ごとの上書き)が門A を通って
   // 増えた(`V6-M0` 単位B。判定 = 限定採用)。**`reference` 型にだけ書けるキーである。**
   // **本 ADR の増分ではない。**
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行19 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
   expect(
     Object.keys(readSchema("manifest.schema.json").$defs.field?.properties ?? {}),
     // **【`V8-M20-T01` / 台帳 `J-G27` / `J-G28` / 手続きは `ADR-0301` で 14 → 12 に更新した】**
     // 8キー目だった `audience`(この項目を見せる相手)と9キー目だった `writable_by`(この項目を
     // 書ける相手)が**2本とも廃止された**(判定 = 廃止)。**代わりに担うのは `app.roles[].rules` の
     // 「役割 × 対象(項目)× 読取 / 書込」である。****旧値の逐語は 14。**
-  ).toHaveLength(12);
+  ).toHaveLength(13);
 });
 
 test("限定2: unique の値域は有限の列挙で、列名を書ける形になっていない", () => {

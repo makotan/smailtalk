@@ -187,3 +187,111 @@ test("(b) 宣言した画面がこのマニフェストに無ければ、既定�
     expect(window.location.pathname).toBe(`/apps/${APP_ID}/views/order-list`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// (c) 対象の行が消えた付与の行を、運営者が詳細画面の削除で消せる(V23-M12-T02b。D-V23-365)
+//     サーバの答え(204)は last-row-admin.test.ts の T02b の節が本物のサーバで撃つ。 ここは
+//     「運営者に削除のボタンが出て、押すと DELETE が1本飛び、204 で一覧へ移る」形だけを見る。
+// ---------------------------------------------------------------------------
+
+test("(c) D-V23-365: 対象の行が消えた付与の行の詳細で、運営者に削除のボタンが出て、押すと DELETE が飛び 204 で一覧へ移る", async () => {
+  const grantId = "grant-0001";
+  const grantsPath = `/api/apps/${APP_ID}/tables/team_grants/records`;
+  const grantRow = {
+    _id: grantId,
+    _created_at: "2026-01-01T00:00:00Z",
+    _updated_at: "2026-01-02T00:00:00Z",
+    team: "team-gone",
+    member: "member-0001",
+    permission: "t_admin",
+  };
+  const sent: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = init?.method ?? "GET";
+    const json = (body: unknown, status = 200): Response =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    if (method === "DELETE") {
+      sent.push(`${method} ${url}`);
+      return new Response(null, { status: 204 });
+    }
+    if (method === "GET" && url === `${grantsPath}/${grantId}`) {
+      return json({ record: grantRow });
+    }
+    if (method === "GET" && url.startsWith(grantsPath)) {
+      return json({ records: [grantRow] });
+    }
+    // 対象の行(team-gone)は無い。 参照の候補と見出しを引く一覧には行を1つも返さない(本物のサーバの形)。
+    if (method === "GET" && /^\/api\/apps\/shop\/tables\/(teams|members)\/records/.test(url)) {
+      return json({ records: [] });
+    }
+    return json({ errors: [{ path: "", message: `no stub for ${method} ${url}` }] }, 404);
+  }) as typeof fetch;
+  window.history.replaceState({}, "", `/apps/${APP_ID}/views/grant-detail/records/${grantId}`);
+  const manifest = {
+    app: {
+      id: APP_ID,
+      name: "店",
+      tables: [
+        {
+          id: "teams",
+          name: "班",
+          fields: [{ id: "title", name: "名前", type: "text" }],
+          access_control: {
+            enabled: true,
+            permissions: [{ id: "t_admin", name: "管理", read: true, write: true, delete: true }],
+            creator_permission: "t_admin",
+            grant: {
+              table: "team_grants",
+              target: "team",
+              member: "member",
+              permission: "permission",
+            },
+            members: { table: "members", account: "account" },
+          },
+        },
+        {
+          id: "members",
+          name: "名簿",
+          fields: [{ id: "account", name: "利用者ID", type: "text" }],
+        },
+        {
+          id: "team_grants",
+          name: "班の権限",
+          fields: [
+            { id: "team", name: "班", type: "reference", reference_table: "teams" },
+            { id: "member", name: "相手", type: "reference", reference_table: "members" },
+            { id: "permission", name: "権限", type: "select", options: ["t_admin"] },
+          ],
+        },
+      ],
+      views: [
+        {
+          id: "grant-detail",
+          type: "detail_view",
+          table: "team_grants",
+          fields: ["team", "member", "permission"],
+        },
+        { id: "grant-list", type: "list_view", table: "team_grants", columns: ["permission"] },
+      ],
+    },
+  } as unknown as Manifest;
+  const view = manifest.app.views[0];
+  if (view === undefined || view.type !== "detail_view") {
+    throw new Error("fixture broken");
+  }
+  render(
+    <RoleProvider role={WRITER_ROLE}>
+      <DetailViewRenderer appId={APP_ID} manifest={manifest} view={view} recordId={grantId} />
+    </RoleProvider>,
+  );
+  await waitFor(() => expect(screen.getByTestId("detail-delete")).toBeDefined());
+  await deleteRecord();
+  await waitFor(() => {
+    expect(window.location.pathname).toBe(`/apps/${APP_ID}/views/grant-list`);
+  });
+  expect(sent).toEqual([`DELETE ${grantsPath}/${grantId}`]);
+});

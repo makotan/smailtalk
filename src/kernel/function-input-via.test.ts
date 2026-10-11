@@ -132,7 +132,8 @@ test("限定1: function.properties は 6 / table.properties は 6 のまま", ()
   // **【`V7-M1-T01` / `Z-G2` で 5 → 6 に更新した】** 6キー目 `access_control`(この表で
   // アクセス権管理を使うことと、付与・グループ・メンバーの置き場所の宣言)が門A を通って
   // 増えた(`V7-M0`。判定 = 限定採用)。**本 ADR の増分ではない。**
-  expect(Object.keys(defs.table?.properties ?? {})).toHaveLength(6);
+  // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行91】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(defs.table?.properties ?? {})).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+  expect(Object.keys(defs.table?.properties ?? {})).toHaveLength(7);
 });
 
 test("限定1: additionalProperties: false を1バイトも変えていない", () => {
@@ -141,7 +142,11 @@ test("限定1: additionalProperties: false を1バイトも変えていない", 
 
 test("限定2: source の enum は3値のまま", () => {
   const source = (def("function_input").properties as Record<string, { enum?: string[] }>).source;
-  expect(source?.enum).toEqual(["table", "view", "record"]);
+  // **【`V23-M4-T02` / `SC-G15` / `ADR-0524` §Decision 1-4 / 授権 `ADR-0525` 行24】** 選択肢に `actor` / `previous` を足した
+  // (enum 案。3値から5値)。 **旧の期待(逐語)**: `expect(...source.enum).toEqual(["table", "view", "record"]);`。
+  // 新しい値はスキーマを検査の外の python で読んで得た。 禁止7語が0であることは下の検査が今日どおり見る。
+  // 題の「3値のまま」は制定時の意図であり、題は1文字も変えていない。
+  expect(source?.enum).toEqual(["table", "view", "record", "actor", "previous"]);
 });
 
 test("限定2: 禁止7語が $defs/function_input と $defs/function のキーに1語も無い", () => {

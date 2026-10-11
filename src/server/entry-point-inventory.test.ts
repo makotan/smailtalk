@@ -57,6 +57,11 @@ const ROUTE_FILES = [
   join(SRC, "server", "auth-routes.ts"),
   join(SRC, "server", "change-routes.ts"),
   join(SRC, "server", "inbound-route.ts"),
+  // **【2026-09-26。`V20-M13-T02b` / `ADR-0476` §Decision 1 の 5 / `ADR-0465` 限定1】5本目。**
+  // **下見の前段(`/api/apps/pv-<16進32桁>/*` だけを受け、写しへ振り分ける)を置いたファイル。**
+  // **前段は `app.all(...)` で書いた**(`GET` / `HEAD` 以外も受けて断るため)ので、下の走査の
+  // 正規表現に `all` を足した(**どちらでも数えられない前段を残さない**。計画 §9-1)。
+  join(SRC, "server", "preview-front.ts"),
 ];
 
 /** 走査対象の MCP ツール定義ファイル。 */
@@ -66,7 +71,10 @@ function scanRoutes(): string[] {
   const found: string[] = [];
   for (const file of ROUTE_FILES) {
     const source = readFileSync(file, "utf-8");
-    for (const match of source.matchAll(/app\.(get|post|patch|delete|put)\("([^"]+)"/g)) {
+    // **【`V20-M13-T02b`】旧の逐語**: `source.matchAll(/app\.(get|post|patch|delete|put)\("([^"]+)"/g)`。
+    // **`all` を足した**(下見の前段は `app.all`)。**足した時点で既存の4ファイルに `app.all("` は
+    // 0件だった**(`LC_ALL=C grep -n 'app\.all(' src/server/*.ts` の製品側の当たりは0件)。
+    for (const match of source.matchAll(/app\.(get|post|patch|delete|put|all)\("([^"]+)"/g)) {
       found.push(`${(match[1] as string).toUpperCase()} ${match[2]}`);
     }
   }
@@ -133,6 +141,13 @@ function scanTools(): string[] {
  * 1文字も書いていない。**
  */
 const HTTP_ENTRY_POINTS: readonly string[] = [
+  // **54本目**(2026-09-26。`V20-M13-T02b` / `ADR-0476` / `ADR-0465` 限定1「足す口は1本ちょうど」)。
+  // **下見の前段**。受けるのは `^pv-[0-9a-f]{32}$` の綴りで、かつ本体に同じ綴りのアプリが
+  // 実在しないときだけ(それ以外は `next()` で今日の口へ渡す)。**`GET` / `HEAD` の許可リスト
+  // 8本だけを写しへ渡し、他は 403 で断る。** **`profile === "full"` のときだけ登録する。**
+  // **【数え方】前段の後ろで写しに答える既存の `GET` の口は、写しの2本目の `createServerApp` の
+  // 口であって本体の口ではないので、この表には1行も足していない**(T00 §4-3 の 限定1 の申し送り)。
+  "ALL /api/apps/:app_id/*",
   "DELETE /api/apps/:app_id/ai-capabilities/:capability_id",
   "DELETE /api/apps/:app_id/auth/me",
   "DELETE /api/apps/:app_id/connections/:connection_id",
@@ -154,6 +169,9 @@ const HTTP_ENTRY_POINTS: readonly string[] = [
   "GET /api/apps/:app_id/escape-hatch-assets",
   "GET /api/apps/:app_id/escape-hatch-assets/requests",
   "GET /api/apps/:app_id/files/:file_id",
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行15】行の招待の口(`ADR-0532` §Decision 1-6)。**
+  // **自分宛ての招待の一覧**(`V23-M5-T03` では口だけで空の一覧。中身は `T05`)。
+  "GET /api/apps/:app_id/invitations",
   "GET /api/apps/:app_id/manifest",
   // **47本目**(`V8-M21` の後半 / 台帳 `J-G24b` / ユーザ決定 `D-V8-34`)。
   // **未ログインへ渡る最小限**(アプリ名と、未ログインでも見せると決めた画面の名前だけ)。
@@ -171,6 +189,11 @@ const HTTP_ENTRY_POINTS: readonly string[] = [
   // **単件 `GET` より1段深いパスに置いた** —— **今日 `records/:record_id` より深い経路は
   // 他に1本も無いので、ルート照合がぶつからない。**
   "GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources",
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行15】行の招待の口(`ADR-0532` §Decision 1-6)。**
+  // **行の招待の一覧**(`grantable` と `pending` だけ。見られない人には存在しない行と同じ 404)。
+  "GET /api/apps/:app_id/tables/:table_id/records/:record_id/invitations",
+  // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行9】行の招待用コードの口(`ADR-0538` §Decision 1-5)。**
+  "GET /api/apps/:app_id/tables/:table_id/records/:record_id/invite-code",
   // **46本目**(`V7-M5-T02` / `Z-G19`)。**読取専用の運営用の口である** ——
   // **同じパスに `POST` / `PATCH` / `DELETE` は1本も無い**(上の並びを見れば分かる形で
   // あることが、この表を「名称の全量」で突き合わせている理由でもある)。
@@ -234,7 +257,15 @@ const HTTP_ENTRY_POINTS: readonly string[] = [
   // 同じ形の申し送りである)。**この「無いこと」は
   // `src/server/inbound-endpoint-issuance.test.ts` の (6) が 404 で機械的に固定している。**
   "POST /api/apps/:app_id/inbound-endpoints",
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行15】行の招待の口(`ADR-0532` §Decision 1-6)。**
+  // **招待への返答**(本文の `action` は `accept` / `decline` / `revoke`。承諾と辞退は `T04`)。
+  "POST /api/apps/:app_id/invitations/:invitation_id",
   "POST /api/apps/:app_id/tables/:table_id/records",
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行15】行の招待の口(`ADR-0532` §Decision 1-6)。**
+  // **行の招待の発行**(同じ行・同じ相手は1行。応答は相手の有無によらず同じ 202)。
+  "POST /api/apps/:app_id/tables/:table_id/records/:record_id/invitations",
+  // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行9】行の招待用コードの口(`ADR-0538` §Decision 1-5)。**
+  "POST /api/apps/:app_id/tables/:table_id/records/:record_id/invite-code",
   "POST /api/apps/:app_id/undo",
   // **45本目**(`V5-M25-T05` / `ADR-0176` 限定1)。
   "POST /api/apps/:app_id/views/:view_id/actions/run",
@@ -271,6 +302,10 @@ const MCP_ENTRY_POINTS: readonly string[] = [
   // **`ADR-0346` §1 の限定1「24を超えない」は `ADR-0368` が引き直した** ——
   // **今日の上限は 25 であり、ちょうど 25 になった。**
   "list_comments",
+  // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行7・行209。門A `ADR-0504`・`ADR-0544`】**
+  // **27本目。`history: true` を宣言した表の1行の変更履歴を読む参照系の道具である**(`registerReadTools` が登録する)。
+  // **読むだけで、書込の口を1つも作っていない。** 今日の上限は 27 であり、ちょうど 27 になった。
+  "list_record_history",
   "list_records",
   "preview_redo",
   "preview_undo",
@@ -351,7 +386,24 @@ test("ADR-0176 限定1: HTTP の口は49本ちょうどで、名称の全量が�
   //   **足したのは `GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources`
   //   (どの付与行が効いて読み書きができるのかを返す読取専用の口)1本ちょうどである。**
   // **【禁止】これを「口は増えていない」と書かない** —— **増えた。1本ちょうどである。**
-  expect(HTTP_ENTRY_POINTS).toHaveLength(53);
+  // **【2026-09-26。`V20-M13-T02b` / `ADR-0476` / `ADR-0465` 限定1】期待値を 53 → 54 へ
+  //   書き換えた。****旧行の逐語**: `expect(HTTP_ENTRY_POINTS).toHaveLength(53);`
+  //   **足したのは下見の前段 `ALL /api/apps/:app_id/*`(`src/server/preview-front.ts`)1本
+  //   ちょうどである。**
+  // **【禁止】これを「口は増えていない」と書かない** —— **増えた。1本ちょうどである。**
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行16】期待値を 54 → 58 へ書き換えた。**
+  //   **旧行の逐語**: `expect(HTTP_ENTRY_POINTS).toHaveLength(54);`
+  //   **足したのは行の招待の口4本(`app.ts`。発行・行の一覧・自分宛ての一覧・返答)である**
+  //   (`ADR-0532` §Decision 1-6 の「口は4本」)。 **新しい値は検査の外の台本(同じ正規表現を python で
+  //   5ファイルに当てた)で数えた。**
+  // **【禁止】これを「口は増えていない」と書かない** —— **増えた。4本ちょうどである。**
+  // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行9・行10】期待値を 58 → 60 へ書き換えた。**
+  //   **旧行の逐語**: `expect(HTTP_ENTRY_POINTS).toHaveLength(58);`
+  //   **足したのは行の招待用コードの口2本(`app.ts`。見る GET と発行・再発行の POST)である**
+  //   (`ADR-0538` §Decision 1-5 の「口は2本」)。 **新しい値は検査の外の台本(同じ正規表現を python で
+  //   5ファイルに当てた)で数えた。**
+  // **【禁止】これを「口は増えていない」と書かない** —— **増えた。2本ちょうどである。**
+  expect(HTTP_ENTRY_POINTS).toHaveLength(60);
 });
 
 // **【2026-08-15。`V8-M13-T02`。台帳 `Q-G28` = 限定採用(門A)。テスト名は1バイトも
@@ -374,7 +426,10 @@ test("ADR-0176 限定2: MCP の口は23本ちょうどで、名称の全量が�
   // **【2026-08-25。`V10-M30-T02`。台帳 `CM-G37` / `ADR-0378`】期待値を 25 → 26 へ書き換えた。**
   // **旧行の逐語**: `expect(MCP_ENTRY_POINTS).toHaveLength(25);`
   // **26本目は `set_comment_visibility`(コメントの出し入れを切り替える更新系)1本である。**
-  expect(MCP_ENTRY_POINTS).toHaveLength(26);
+  // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行209】期待値を 26 → 27 へ書き換えた。**
+  // **旧行の逐語**: `expect(MCP_ENTRY_POINTS).toHaveLength(26);`
+  // **27本目は `list_record_history`(行の変更履歴を読む参照系)1本である。**
+  expect(MCP_ENTRY_POINTS).toHaveLength(27);
 });
 
 test("ADR-0176 限定2: 起動系の MCP ツールは1本も無い", () => {
@@ -529,6 +584,9 @@ const JUDGMENT_KIND_SPELLINGS: Readonly<Record<JudgmentKind, readonly string[]>>
     "inboundAccessDenied(",
     "judgeRoleAccess(",
     "judgeWriteBack(",
+    // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行26】行の招待の承諾の判定(`ADR-0532` §Decision 1-3)を1綴り足した。
+    // 旧の10綴りは1つも消していない。** 付与表への作成と同じ関門を、招待者を主体に順に通す1本である(`owner-scope.ts`)。
+    "judgeRowInvitationAccept(",
   ],
   ownerScope: ["judgeOwnerScopedOp(", "judgeOwnerUpdateWithDisplay(", "judgeWriteBackOwner("],
   parentGate: ["judgeCreateParentAccess(", "judgeRootCreatableRoles(", "creatorGrantPlan("],
@@ -585,6 +643,22 @@ const REGISTERED_ROUTES: readonly string[] = [
   // **「どの付与行が効いて読み書きができるのか」を返す読取専用の口である。**
   // **登録の順序は単件 `GET` の直後である**(この一覧は登録順で突き合わせる)。
   "GET /api/apps/:app_id/tables/:table_id/records/:record_id/access-sources",
+  // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行11】行の招待用コードの口2本(`ADR-0538` §Decision 1-5)。
+  // 旧の一覧から1行も消していない】** **登録の順序は付与の出どころの口の直後・行の招待の口4本の手前である**
+  // (この一覧は登録順で突き合わせる。並びは検査の外の台本(同じ正規表現を python で `app.ts` に当てた)で得た)。
+  // **行を返す・書く口ではない**(内部表のコードの行を読み書きし、アプリの表の行は1件も書かない)ので、
+  // 判定の全量表(`ROUTES`)には足さない(`ADR-0539` 行14)。
+  "GET /api/apps/:app_id/tables/:table_id/records/:record_id/invite-code",
+  "POST /api/apps/:app_id/tables/:table_id/records/:record_id/invite-code",
+  // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行17】行の招待の口4本(`ADR-0532` §Decision 1-6)。
+  // 旧の一覧から1行も消していない】** **登録の順序は付与の出どころの口の直後である**(この一覧は登録順で突き合わせる)。
+  // **行を返す・書く口ではない**(内部表の招待の行を読み書きし、アプリの表の行は1件も書かない)ので、
+  // 判定の全量表(`ROUTES`)には `T03` では足していない。 **承諾(付与の行を書く)の1行は `T04` で `ROUTES` に足す**
+  // (`ADR-0533` 行19〜行26。`D-V23-121`)。
+  "POST /api/apps/:app_id/tables/:table_id/records/:record_id/invitations",
+  "GET /api/apps/:app_id/tables/:table_id/records/:record_id/invitations",
+  "GET /api/apps/:app_id/invitations",
+  "POST /api/apps/:app_id/invitations/:invitation_id",
   // **【`V7-M5-T02`(`Z-G19`)が足した1本。旧の一覧から1行も消していない】**
   // **「誰にも見えない行」を見つける運営専用の口である**(**読取専用**。
   // **同じパスに `POST` / `PATCH` / `DELETE` を1本も生やしていない**ことは
@@ -1034,6 +1108,22 @@ const ROUTES: readonly {
       judge: ALL_JUDGMENT_SPELLINGS,
     },
   },
+  // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行26 が足した1行。旧の19行は1バイトも書き換えていない】**
+  // **行の招待の承諾は、付与表に行を書く口である**(`ADR-0532` §Decision 1-3・1-4。決定 `D-V23-121`)。
+  // 同じ口の `revoke` / `decline` は内部表の招待の行を消すだけで、アプリの表の行は書かない。
+  // **`app.ts` の中に在るので `source` を持たない**(判定の綴りはハンドラの本文にそのまま在る)。
+  // **【2026-10-01。`V23-M6-T10`。上の文も行の値も1バイトも変えていない】コードの招待の承諾(行を相手にした付与)もこの行を通る。**
+  // 付与表の相手の行を指す欄を書けるのはこの承諾だけで(`ADR-0538` §1-4)、行は足さない(`ADR-0538` 式6・`ADR-0539` 行14 の「なし」)。
+  // コードの口2本(`…/invite-code`)は内部表だけを書き、アプリの表の行を書かないので、この表の行にならない。
+  {
+    no: 20,
+    name: "行の招待の承諾",
+    /** **きっかけ**(同じファイルの内側でも判定の有無が割れる軸)。 */
+    trigger: "http",
+    key: "POST /api/apps/:app_id/invitations/:invitation_id",
+    expected: "wired",
+    wiredBy: "V23-M5-T04(ADR-0532 §Decision 1-3・1-4)",
+  },
 ];
 
 /**
@@ -1095,7 +1185,15 @@ describe("V7-M3-T02 (A): app.ts の経路の全列挙", () => {
     //   `app.get` ではないので、この一覧にも `HTTP_ENTRY_POINTS` にも1行も現れない。**
     //   **一方 `src/server/runner-profile.test.ts` は Hono の `app.routes` を数えるので、
     //   あちらでは `app.use` の1本も数に入る**(**65 → 67**。あちらのコメントに書いた)。
-    expect(keys.length).toBe(16);
+    // **【2026-09-30。`V23-M5-T03` / 授権 `ADR-0533` 行18】期待値を 16 → 20 へ書き換えた。**
+    // **旧行の逐語**: `expect(keys.length).toBe(16);`
+    // **足したのは行の招待の口4本である**(`app.ts` に登録した `POST` 2本・`GET` 2本。`app.use` も3本使うが、
+    //   この一覧には現れない)。 **新しい値は検査の外の台本(同じ正規表現を python で `app.ts` に当てた)で数えた。**
+    // **【2026-10-01。`V23-M6-T05` / 授権 `ADR-0539` 行11・行12】期待値を 20 → 22 へ書き換えた。**
+    // **旧行の逐語**: `expect(keys.length).toBe(20);`
+    // **足したのは行の招待用コードの口2本である**(`app.ts` に登録した `GET` 1本・`POST` 1本。`app.use` も1本使うが、
+    //   この一覧には現れない)。 **新しい値は検査の外の台本(同じ正規表現を python で `app.ts` に当てた)で数えた。**
+    expect(keys.length).toBe(22);
   });
 
   // **【`V8-M21`(台帳 `J-G21` / `J-G22a` / `J-G23` / `J-G22b` / `D-V8-18` / `D-V8-20` /
@@ -1137,7 +1235,9 @@ describe("V7-M3-T02 (A): app.ts の経路の全列挙", () => {
     // **理由は「実物が変わった」側である** —— **`app.ts` の中に在って判定を受ける経路が
     //   1本増えた**(付与の出どころ `GET`)。 **`source` を持たない行なので `inAppTs` に入る。**
     // **【緩めていない】** **足した行も (B-1) で `judged: true` を要求されている。**
-    expect(inAppTs.length).toBe(9);
+    // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行19。旧の期待値(逐語)】**: `expect(inAppTs.length).toBe(9);`
+    // **理由は「実物が変わった」側である** —— 行の招待の承諾(付与表に行を書く口)が `app.ts` に在り、`source` を持たない。
+    expect(inAppTs.length).toBe(10);
     // **表は1本のままである**(`ADR-0176` 限定6 の「表を2つに分けない」)。
     // **【`V17-M7-T03`(台帳 `AC-G28`)による更新。旧文を1バイトも消していない】**
     // **旧の期待値(逐語)**: `expect(ROUTES.length).toBe(16);`
@@ -1145,7 +1245,9 @@ describe("V7-M3-T02 (A): app.ts の経路の全列挙", () => {
     //   AI の書き戻し / 自動処理の履歴)が、表に1行も無かった。**
     // **【緩めていない】** **`inAppTs.length` は 9 のままである**(足した3行はどれも
     //   `app.ts` の外に在るので `source` を持つ)。 **(A-1) も1バイトも動かしていない。**
-    expect(ROUTES.length).toBe(19);
+    // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行20。旧の期待値(逐語)】**: `expect(ROUTES.length).toBe(19);`
+    // 行の招待の承諾の1行を足した(`D-V23-121`)。
+    expect(ROUTES.length).toBe(20);
   });
 
   test("(A-3) app.ts の外の6経路は、名指ししたファイルにその入口が実在する", async () => {
@@ -1229,6 +1331,9 @@ describe("V7-M3-T02 (B): 入口が判定を受けているかを1本ずつ数え
       //   **どちらも親の関門を1つも持たない**(下の `(D-3)` がそれを字面で固定する)。
       { no: 17, name: "発火元の行への書き戻し(write_back)", judged: true },
       { no: 18, name: "AI の書き戻し(ai_transform)", judged: true },
+      // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行21 が足した1行。旧の17行は1バイトも消していない】**
+      // **旧の期待値は17行で、下の `no: 20` が入っていなかった**(`ROUTES` にその行が無かった)。
+      { no: 20, name: "行の招待の承諾", judged: true },
     ]);
   });
 
@@ -1440,7 +1545,10 @@ test("J-G26: 判定の全量表の HTTP の行は、上の入口の全量表に�
   // **【緩めていない】** **下の突き合わせ(`HTTP_ENTRY_POINTS` に必ず載っている)は
   //   1件のずれも許さずに今日も全行に掛かっており、足した1行も `HTTP_ENTRY_POINTS`
   //   に既に載っている。**
-  expect(httpRows.length).toBe(11);
+  // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行22。旧の期待値(逐語)】**: `expect(httpRows.length).toBe(11);`
+  // **理由は「実物が変わった」側である** —— 行の招待の承諾の1行(`trigger: "http"`)を足した。 足した1行も
+  // `HTTP_ENTRY_POINTS` に `V23-M5-T03` で既に載っている(下の突き合わせは全行に掛かる)。
+  expect(httpRows.length).toBe(12);
   for (const route of httpRows) {
     expect({ no: route.no, listed: HTTP_ENTRY_POINTS.includes(route.key) }).toEqual({
       no: route.no,
@@ -1591,7 +1699,9 @@ test("V17-M0-T01g: resource 3本がこの表の外に在ることが、このフ
 describe("V17-M7-T03 (D): 判定の種類ごとの欠落(AC-G28)", () => {
   test("(D-1) 判定の全量表は19行である(書込点3本を数え直した)", () => {
     // **【表を2本に割っていない】**(`ADR-0176` 限定6) —— **足したのは同じ `ROUTES` の行である。**
-    expect(ROUTES.length).toBe(19);
+    // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行23。旧の期待値(逐語)】**: `expect(ROUTES.length).toBe(19);`
+    // 題の「19行」は字面として今日は古い(題は1文字も書き換えない作法)。 足したのは行の招待の承諾の1行である。
+    expect(ROUTES.length).toBe(20);
   });
 
   test("(D-2) judgedIn() は、本文に在る判定の種類を返す(真偽値1つでは書けない欠落を書ける)", async () => {
@@ -1660,15 +1770,26 @@ describe("V17-M7-T03 (D): 判定の種類ごとの欠落(AC-G28)", () => {
     const registrations = registrationsOf(source);
     const measured = ROUTES.filter((route) => route.source === undefined).map((route) => {
       const body = bodyOf(source, registrations, route.key);
+      // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0535` 行1 / 裁定 `D-V23-138`】承諾の行(`no: 20`)に限り、
+      // 旧の式に承諾の判定の綴り `judgeRowInvitationAccept(` を足した式で見る。** 他の9行は旧の式のまま。
+      // **旧の式(逐語。全行に掛けていた)**:
+      //   `old: body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME) || body.includes(JUDGE_SOURCES),`
+      // 付与表の行を作る関門(面・`judgeGrantWrite`・作成の関門)は旧の3綴りのどれでもなく、承諾の判定は
+      // `owner-scope.ts` の1本(その中で `judgeGrantWrite` と `judgeGrantParentAccess` が走る)である。
+      const oldFormula =
+        body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME) || body.includes(JUDGE_SOURCES);
       return {
         no: route.no,
-        old: body.includes(JUDGE_PIPE) || body.includes(JUDGE_HOME) || body.includes(JUDGE_SOURCES),
+        old:
+          route.no === 20 ? oldFormula || body.includes("judgeRowInvitationAccept(") : oldFormula,
       };
     });
     for (const row of measured) {
       expect(row).toEqual({ no: row.no, old: true });
     }
-    expect(measured.length).toBe(9);
+    // **【2026-09-30。`V23-M5-T04` / 授権 `ADR-0533` 行24。旧の期待値(逐語)】**: `expect(measured.length).toBe(9);`
+    // 上の行ごとの見張り(旧の式)は1文字も動かしていない —— 足した行の招待の承諾も旧の式で `old: true` である。
+    expect(measured.length).toBe(10);
   });
 
   test("(D-5) 権限を1つも通らない書込点は今日2本である(0本ではない。塞いでいない)", async () => {
@@ -1711,3 +1832,11 @@ describe("V17-M7-T03 (D): 判定の種類ごとの欠落(AC-G28)", () => {
     expect(new Set(ALL_JUDGMENT_SPELLINGS).size).toBe(ALL_JUDGMENT_SPELLINGS.length);
   });
 });
+
+// **【2026-10-01。`V23-M7-T07`。上の文も `ROUTES` の行の値も1バイトも変えていない】子の表に行を作れる権限(`create_child`)は
+// 判定の全量表(`ROUTES`)に行を足さない**(`ADR-0542` 式9・`ADR-0543` 行16b の「なし」)。 広げたのは作成の親の関門の中だけで、
+// 口も入口も増えていない。 作成の入口ごとの効き方は次のとおり(説明書と `CANNOT_DO` に文章で書いた)。
+// - 画面と HTTP の単件・一括・MCP の `insert_sample_data` と `write_records`・自動処理の `create_record`・島の `write_ops` と
+//   `output_table`: 親の関門の中で `create_child` を見る(作成だけ。付け替えでは見ない)。
+// - 受信口: 書き手が名簿に居ないので実質通らない。 時刻起動: 今日どおり素通し(関門を通らない)。
+// - 自動処理・島・AI の書き戻しの更新: 今日どおり親の関門を通らない(付け替えが止まらない。穴の一覧 `H-V23-58`)。

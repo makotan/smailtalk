@@ -444,6 +444,10 @@ describe("関連レコードの動的表示 schema(EC-G17 / ADR-0044)", () => {
     // 1ミリも緩んでいない。**
     expect(detailBranch.then.properties).toEqual({
       report: false,
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4 で1本増えた】** 入力欄の幅 `field_width`(`form` でだけ書ける)も detail_view では `false` である。**主張(「自レコードのみ」の columns/sort/filter:false を1バイトも変えない)は1ミリも緩んでいない。**
+      field_width: false,
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470` で1本増えた】** 一覧の束ねるキー `group_by`(`list_view` でだけ書ける)も detail_view では `false` である。**主張(「自レコードのみ」の columns/sort/filter:false を1バイトも変えない)は1ミリも緩んでいない。**
+      group_by: false,
       columns: false,
       sort: false,
       filter: false,
@@ -681,7 +685,15 @@ describe("ビューからの操作起点 actions schema(EC-G14 / ADR-0045)", () 
     // —— **`ADR-0171` 限定10 の順序拘束の機械的な担保だった。**
     // **`V5-M25-T03` が `ADR-0175` の規則を実装したので拘束が解け、`items` ごと外した。**
     expect(listBranch.then.properties.actions).not.toBe(false);
-    expect(listBranch.then.properties.actions.items).toBeUndefined();
+    // **【`V20-M2-T01` / `ADR-0459` 限定4。2026-09-24】** **旧行の逐語**:
+    // `expect(listBranch.then.properties.actions.items).toBeUndefined();`
+    // **`items` が戻ったのは、一覧の行のボタンに強調(`action_emphasis`)を書かせないため
+    // だけである。****`set` は今日も閉じていない**(順序拘束は解けたまま)。
+    expect(listBranch.then.properties.actions.items).toEqual({
+      type: "object",
+      properties: { action_emphasis: false },
+    });
+    expect(listBranch.then.properties.actions.items.properties.set).toBeUndefined();
     // **`form` は1バイトも解いていない**(限定3)。
     expect(formBranch.then.properties.actions).toBe(false);
   });
@@ -932,7 +944,8 @@ describe("validateManifest / 異常系", () => {
       // (詳細画面の項目のまとまり)。**門A の本審査(`V4-M14` 本審査② の単位9)を通って
       // 限定採用された増分である。列挙を消して件数に丸めない**(`custom_css` /
       // `menu_listed` と同じ作法)。**`detail_view` でだけ書ける**(限定2)。
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **V4-M16-T13 / `P-G24` の (C) 側 / ADR-0093 限定1 が足した22キー目 `preset_list_shape`**
       // (一覧の器の形。8つ目の `preset_` キー)。**門A の本審査(`V4-M14` 本審査② の単位11)を
       // 通って限定採用された増分である。列挙を消して件数に丸めない**(`custom_css` /
@@ -993,6 +1006,14 @@ describe("validateManifest / 異常系", () => {
       // **列挙を消して件数に丸めない**(この列挙が「気づかないうちに properties が
       // 増える」ことを防ぐ仕掛けそのものである)。
       "flow",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅 `field_width` を1行足した。** **旧の列挙はこの1行が無い形である。**
+      "field_width",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー `group_by` を1行足した。** **旧の列挙はこの1行が無い形である。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行52】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `layout` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
   });
 
@@ -1269,6 +1290,19 @@ describe("validateDiff / 異常系", () => {
         // **この不変条件が破られるのは5代目である**(ADR-0010 限定3 → ADR-0013 →
         // ADR-0024 → ADR-0047 → ADR-0248 → 本決定)。
         "roles",
+        // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory` を足した。**
+        // **`ADR-0013` §4c の3問に答えたうえで足した(答えは `schemas/diff.schema.json` の `$comment`)。**
+        // **旧の期待値は直上の `"roles"` で終わる10要素(`op` から `roles` まで)である。**
+        // **直上の「ここが11 になったら門A を通らない増分が入った合図」は制定時の文であり消していない** ——
+        // **本件は門A を通った増分である。** ここが12 になったら、門A を通らない増分が入った合図である。
+        // **この不変条件が破られるのは6代目である。** テスト名は当時の逐語のまま(書き換えない)。
+        "design_memory",
+        // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】11キー目 `workspace` を足した。**
+        // **`ADR-0013` §4c の3問に答えたうえで足した(答えは `schemas/diff.schema.json` の `operation.properties.workspace` の `$comment`)。**
+        // **旧の期待値は直上の `"design_memory"` で終わる10要素(`op` から `design_memory` まで)である(逐語)。**
+        // **本件は門A を通った増分である。** ここが12 になったら、門A を通らない増分が入った合図である。
+        // **この不変条件が破られるのは7代目である。** テスト名は当時の逐語のまま(書き換えない)。
+        "workspace",
       ]);
     });
 
@@ -1323,6 +1357,10 @@ describe("validateDiff / 異常系", () => {
         ]),
       );
       expect(forbidden).toEqual({
+        // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】全既存18分岐の禁止集合の末尾に `"workspace"` を1件ずつ足した**
+        // (`ADR-0013` §4c 問2。名指しの全18件は `schemas/diff.schema.json` の `operation.properties.workspace` の `$comment`。
+        // それ以外の `false` 宣言は1バイトも変えていない)。 **旧の期待値は、下の各行から末尾の `"workspace"` を1件除いたものである(逐語)。**
+        // **19本目 `set_workspace` の分岐を末尾に足した。** 11キー目 `workspace` を使う唯一の op であり、残る9キーをすべて禁止する。
         // **既存12分岐。末尾の `function` / `theme` 以外は1バイトも変わっていない**
         // (ADR-0024 が7キー目 function を足し、**ADR-0047 が8キー目 theme を足した**ので、
         // 全既存分岐に function: false と theme: false が1つずつ増える。
@@ -1342,18 +1380,135 @@ describe("validateDiff / 異常系", () => {
         //   `add_workflow: ["table","field","view","changes","function","theme","user_kinds","roles"],`
         //   `update_workflow: ["table","field","view","changes","function","theme","user_kinds","roles"],`
         //   `remove_workflow: ["table","field","view","changes","function","theme","user_kinds","roles"],`
-        add_table: ["field", "view", "changes", "workflow", "function", "theme", "roles"],
-        add_field: ["view", "changes", "workflow", "function", "theme", "roles"],
-        add_view: ["table", "field", "changes", "workflow", "function", "theme", "roles"],
-        update_view: ["table", "field", "workflow", "function", "theme", "roles"],
-        remove_field: ["view", "changes", "workflow", "function", "theme", "roles"],
-        remove_table: ["field", "view", "changes", "workflow", "function", "theme", "roles"],
-        change_table: ["field", "view", "workflow", "function", "theme", "roles"],
-        change_field: ["view", "workflow", "function", "theme", "roles"],
-        remove_view: ["table", "field", "changes", "workflow", "function", "theme", "roles"],
-        add_workflow: ["table", "field", "view", "changes", "function", "theme", "roles"],
-        update_workflow: ["table", "field", "view", "changes", "function", "theme", "roles"],
-        remove_workflow: ["table", "field", "view", "changes", "function", "theme", "roles"],
+        // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】全既存17分岐の禁止集合の末尾に `"design_memory"` を1件ずつ足した**
+        // (`ADR-0013` §4c 問2。それ以外の `false` 宣言は1バイトも変えていない)。 **旧の期待値は、
+        // 下の各行から末尾の `"design_memory"` を1件除いたものである(逐語)。**
+        add_table: [
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        add_field: [
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        add_view: [
+          "table",
+          "field",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        update_view: [
+          "table",
+          "field",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        remove_field: [
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        remove_table: [
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        change_table: [
+          "field",
+          "view",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        change_field: [
+          "view",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        remove_view: [
+          "table",
+          "field",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        add_workflow: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        update_workflow: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        remove_workflow: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
         // **ADR-0024 が足した3分岐。**7キー目 `function` を使う唯一の op 群であり、
         // 残る5キー(workflow を含む)をすべて禁止する。**3分岐の禁止集合が完全に同一で
         // あること**が、「`function` キーの意味は2義に閉じる」(定義そのもの / 対象のID)の
@@ -1363,14 +1518,54 @@ describe("validateDiff / 異常系", () => {
         //   `add_function: ["table","field","view","changes","workflow","theme","user_kinds","roles"],`
         //   `update_function: ["table","field","view","changes","workflow","theme","user_kinds","roles"],`
         //   `remove_function: ["table","field","view","changes","workflow","theme","user_kinds","roles"],`
-        add_function: ["table", "field", "view", "changes", "workflow", "theme", "roles"],
-        update_function: ["table", "field", "view", "changes", "workflow", "theme", "roles"],
-        remove_function: ["table", "field", "view", "changes", "workflow", "theme", "roles"],
+        add_function: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        update_function: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
+        remove_function: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "theme",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
         // **ADR-0047 が足した1分岐(16種目)。**8キー目 `theme` を使う唯一の op であり、
         // 残る6キーをすべて禁止する。**`theme` キーの意味は1義である**(対象IDを取らない)。
         // **【2026-08-11。`V8-M29` 第2波】旧(逐語)**:
         //   `set_theme: ["table","field","view","changes","workflow","function","user_kinds","roles"],`
-        set_theme: ["table", "field", "view", "changes", "workflow", "function", "roles"],
+        set_theme: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "roles",
+          "design_memory",
+          "workspace",
+        ],
         // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】**
         // **`set_user_kinds` の分岐そのものを期待値から外した(語彙から消えたので分岐が実在しない)。**
         // **旧(逐語)**:
@@ -1382,7 +1577,42 @@ describe("validateDiff / 異常系", () => {
         // **【2026-08-11。`V8-M29` 第2波】旧(逐語)**:
         //   `set_roles: ["table","field","view","changes","workflow","function","theme","user_kinds"],`
         // **本廃止で `set_roles` は 17種目・最後の op になり、禁止するのは残る7キーである。**
-        set_roles: ["table", "field", "view", "changes", "workflow", "function", "theme"],
+        set_roles: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "design_memory",
+          "workspace",
+        ],
+        // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】足した1分岐(18種目)。** 10キー目 `design_memory` を使う唯一の op であり、
+        // 残る8キーをすべて禁止する。 **`design_memory` キーは2面を持つ**(選んだ記録の追記 / 型の丸ごとの置き換え。
+        // 中のキー `choice` / `patterns` で分かれ、対象IDを取らない)。
+        remember_design: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "workspace",
+        ],
+        set_workspace: [
+          "table",
+          "field",
+          "view",
+          "changes",
+          "workflow",
+          "function",
+          "theme",
+          "roles",
+          "design_memory",
+        ],
       });
     });
 
@@ -1527,7 +1757,8 @@ describe("未知プロパティのエラーに許可プロパティ一覧が入�
       // **V4-M16-T12 / `P-G17` の (C) 側 / ADR-0092 限定2 が足した15キー目 `field_groups`。**
       // **`update_view` で後から書けて、カーネルが値を実際に運ぶ**(`applyViewChanges` の
       // `detail_view` 分岐。**`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは運ばれない**)。
-      "field_groups",
+      // **【2026-09-24。`V20-M3-T01` / `ADR-0469`】旧行の逐語は旧綴りの1行。綴りだけを改めた(位置は動いていない)。**
+      "field_sections",
       // **V4-M16-T13 / `P-G24` の (C) 側 / ADR-0093 限定2 が足した16キー目 `preset_list_shape`。**
       // **`update_view` で後から書けて、カーネルが値を実際に運ぶ**(`applyViewChanges` の
       // `list_view` 分岐。**`CHANGE_KEYS_BY_VIEW_TYPE` に足すだけでは運ばれない**)。
@@ -1585,6 +1816,14 @@ describe("未知プロパティのエラーに許可プロパティ一覧が入�
       // 27キー目 `flow`】** **一続きの流れの中の段を、後から差し替えられるようにした。**
       // **列挙を消して件数に丸めない。**
       "flow",
+      // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】入力欄の幅 `field_width` を1行足した。** **旧の列挙はこの1行が無い形である。**
+      "field_width",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー `group_by` を1行足した。** **旧の列挙はこの1行が無い形である。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行53】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `layout` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
     expect(schema.$defs.view_changes.properties.name.$ref).toBe(
       "https://smailtalk.dev/schemas/manifest.schema.json#/$defs/table/properties/name",
@@ -1632,6 +1871,12 @@ describe("未知プロパティのエラーに許可プロパティ一覧が入�
       "functions",
       "theme",
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10番目の許可プロパティ `design_memory`(9本目のキー)を末尾に足した。**
+      // **旧の期待値は直上の `"roles"` で終わる8要素である(逐語)。** ここに出ないと、AI は選んだ記録と型を書けることに気づけない。
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】11番目の許可プロパティ `workspace`(10本目のキー)を末尾に足した。**
+      // **旧の期待値は直上の `"design_memory"` で終わる要素である(逐語)。** ここに出ないと、AI はメニューの位置を書けることに気づけない。
+      "workspace",
     ]);
     expect(err?.message).toContain("dark_mode");
   });
@@ -1716,6 +1961,10 @@ describe("未知プロパティのエラーに許可プロパティ一覧が入�
       // **列挙を消して件数に丸めない**(この列挙が「気づかないうちに properties が
       // 増える」ことを防ぐ仕掛けそのものである)。
       "flow",
+      // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】一覧の束ねるキー `group_by` は `list_view` でだけ書けるので、この文脈(list_view)の受理集合に現れる。** **旧の列挙はこの1行が無い形である。**
+      "group_by",
+      // **【2026-09-24。`V20-M5-T04` / `ADR-0471`】画面の中の並べ方の木 `layout` が末尾に加わった**(list_view / form / detail_view で書ける)。**旧の列挙はこの1行が無い形である。**
+      "layout",
     ]);
   });
 });
@@ -1767,34 +2016,39 @@ describe("diff_id の長さ制限(ADR-0028 / V1-M9-T08)", () => {
 
 /** テーマ対象スロット(25件)。**集合の正はスキーマとフィクスチャであり、これは入力である。** */
 const THEME_SLOTS_PASSING: Readonly<Record<string, string>> = {
-  // 色9件。**既定配色ではない** —— 既定の `--color-border`(`#ddd`)は
+  // 色9件。**既定配色ではない** —— 既定の `border_color`(`#ddd`)は
   // 非テキスト閾値 3:1 を通らない(ADR-0046 2026-07-25 追記「限界7」)。
-  "--color-text": "#000000",
-  "--color-text-secondary": "#595959",
-  "--color-text-label": "#595959",
-  "--color-text-placeholder": "#595959",
-  "--color-danger": "#a00000",
-  "--color-page-background": "#ffffff",
-  "--color-surface-highlight": "#f2f2f2",
-  "--color-border": "#767676",
-  "--focus-outline-color": "#005fcc",
+  body_text: "#000000",
+  secondary_text: "#595959",
+  label_text: "#595959",
+  placeholder_text: "#595959",
+  danger: "#a00000",
+  page_background: "#ffffff",
+  highlight_surface: "#f2f2f2",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#ffffff",
+  on_primary: "#000000",
+  overlay_background: "#ffffff",
+  overlay_text: "#000000",
+  border_color: "#767676",
+  focus_ring: "#005fcc",
   // 色でない16件。
-  "--font-family-base": "system-ui, sans-serif",
-  "--font-size-secondary": "0.85em",
-  "--font-size-note": "0.875rem",
-  "--line-height-base": "1.6",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.25rem",
-  "--space-6": "2rem",
-  "--border-width": "1px",
-  "--control-border-radius": "4px",
-  "--surface-shadow": "none",
-  "--focus-outline-width": "2px",
-  "--detail-label-width": "8rem",
-  "--login-max-width": "22rem",
+  body_font: "system-ui, sans-serif",
+  secondary_font_size: "0.85em",
+  note_font_size: "0.875rem",
+  body_line_height: "1.6",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.25rem",
+  space_6: "2rem",
+  border_width: "1px",
+  control_radius: "4px",
+  surface_shadow: "none",
+  focus_ring_width: "2px",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "8rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "22rem",
 };
 
 /** テーマ付きマニフェストを作る(`slots` は差し替えられる)。 */
@@ -1833,6 +2087,12 @@ describe("V3-M1-T03: テーマの置き場(ADR-0047 限定1 / 限定2)", () => {
       // **この行が固定していたのは「`ADR-0047` が8キー目を足さなかったこと」であって、
       // 足したのは別の決定である。****テスト名の「7キー」は当時の逐語であり、今日の本体は9である。**
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】9本目 `design_memory` を末尾に足した。** 旧の期待値は直上の `"roles"` で終わる8要素である。
+      // **この行が固定していたのは「`ADR-0047` が8キー目を足さなかったこと」であって、足したのは別の決定である。**
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】10本目 `workspace` を末尾に足した。** 旧の期待値は直上の `"design_memory"` で終わる9要素である(逐語)。
+      // **この行が固定していたのは「`ADR-0047` が8キー目を足さなかったこと」であって、足したのは別の決定である。**
+      "workspace",
     ]);
     // 限定2: `required` を1バイトも変えない(`theme` 無しの既存マニフェストは valid のまま)。
     expect(app.required).toEqual(["id", "name", "tables", "views"]);
@@ -1883,10 +2143,21 @@ describe("V3-M1-T03: $defs/theme(ADR-0047 限定5 / 限定6 / 2026-07-25 追記(
   test("スロット名を列挙し、additionalProperties: false で閉じている(限定5)", () => {
     const theme = themeDef();
     expect(theme.additionalProperties).toBe(false);
-    expect(Object.keys(theme.properties)).toHaveLength(25);
-    for (const name of Object.keys(theme.properties)) {
-      expect(name.startsWith("--")).toBe(true);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(theme.properties)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(theme.properties)).toHaveLength(23);
+    expect(Object.keys(theme.properties)).toHaveLength(27);
+    // **【V20-M8 / ADR-0473】キーは役割名である。** 旧期待値(逐語)は
+    // `expect(name.startsWith("--")).toBe(true);`。今日は「`--` で始まるのは名前を残した2件
+    // (`D-V20-12`)だけで、残る23件は `^[a-z][a-z0-9_]*$`」を固定する。
+    const names = Object.keys(theme.properties);
+    // 【V20-M9 / ADR-0474 限定6(式P6)】2件を語彙から外したので `--` で始まるキーは0件。旧(逐語):
+    // `expect(names.filter((name) => name.startsWith("--"))).toEqual(["--detail-label-width", "--login-max-width"]);`
+    expect(names.filter((name) => name.startsWith("--"))).toEqual([]);
+    for (const name of names.filter((n) => !n.startsWith("--"))) {
+      expect(name, name).toMatch(/^[a-z][a-z0-9_]*$/);
     }
+    // 名前の形を `propertyNames` で縛っていない(閉じるのは additionalProperties: false だけ)。
+    expect(theme.propertyNames).toBeUndefined();
   });
 
   test("required のキー集合 == properties のキー集合(全スロット必須。部分テーマを作らない)", () => {
@@ -1906,7 +2177,7 @@ describe("V3-M1-T03: $defs/theme(ADR-0047 限定5 / 限定6 / 2026-07-25 追記(
       valid: true,
     });
     const missing = { ...THEME_SLOTS_PASSING } as Record<string, string>;
-    delete missing["--color-text"];
+    delete missing.body_text;
     expect(validateManifest(manifestWithTheme({ slots: missing })).valid).toBe(false);
   });
 
@@ -1919,7 +2190,7 @@ describe("V3-M1-T03: $defs/theme(ADR-0047 限定5 / 限定6 / 2026-07-25 追記(
   test.each(["calc(1rem + 1px)", "var(--space-1)", "{{record.space}}", "$record.space"])(
     "式・計算・参照を含む値 %s は invalid(限定6 / ADR-0013 限定12 を破らない)",
     (value) => {
-      const slots = { ...THEME_SLOTS_PASSING, "--space-1": value };
+      const slots = { ...THEME_SLOTS_PASSING, space_1: value };
       expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
     },
   );
@@ -1927,25 +2198,319 @@ describe("V3-M1-T03: $defs/theme(ADR-0047 限定5 / 限定6 / 2026-07-25 追記(
   test.each(["red", "rgb(0,0,0)", "rgba(0,0,0,0.5)", "currentColor", "#ff", "#1234567"])(
     "色スロットに16進以外の色表記 %s を書けない(限定6)",
     (value) => {
-      const slots = { ...THEME_SLOTS_PASSING, "--color-text": value };
+      const slots = { ...THEME_SLOTS_PASSING, body_text: value };
       expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
     },
   );
 
-  test("色スロットが受ける形は #rgb / #rrggbb だけである(コントラスト検査が読める形と同一)", () => {
+  // **【V20-M7-T01 でテスト名を直した】** 旧名(逐語)「色スロットが受ける形は #rgb / #rrggbb だけである
+  // (コントラスト検査が読める形と同一)」は、oklch(L C H) を足した後は偽である。中身(16進3件が通る)は1バイトも変えていない。
+  test("色スロットは16進の #rgb / #rrggbb を今日どおり受ける(コントラスト検査が読める形と同一)", () => {
     for (const value of ["#000", "#000000", "#A0b1C2"]) {
-      const slots = { ...THEME_SLOTS_PASSING, "--color-danger": value };
+      const slots = { ...THEME_SLOTS_PASSING, danger: value };
       // #A0b1C2 は白地に対して 4.5:1 を通らない可能性があるので、構造検証だけを見る。
       expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(true);
     }
   });
 
   test("スロットの値は文字列であり、数値や真偽値を書けない(限定6)", () => {
-    const slots = { ...THEME_SLOTS_PASSING, "--line-height-base": 1.6 } as Record<
+    const slots = { ...THEME_SLOTS_PASSING, body_line_height: 1.6 } as Record<
       string,
       string | number
     >;
     expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
+  });
+});
+
+// ===========================================================================
+// V20-M9-T01(狭める側): `--detail-label-width` / `--login-max-width` を語彙から外す
+// (ADR-0474 §Decision 1-3 / D-V20-12 / ADR-0457 限定1・限定4)。
+// **2件は別々に撃つ**(片方だけ外し忘れても赤くなる形)。
+// ===========================================================================
+
+describe("V20-M9-T01: 2枠を語彙から外す(ADR-0474 §1-3 / D-V20-12)", () => {
+  const RETIRED: string[] = ["--detail-label-width", "--login-max-width"];
+  /** 2枠を持たない写し(`THEME_SLOTS_PASSING` が2枠を持たなくなった後は、ただの写しである)。 */
+  const withoutRetired = (): Record<string, string> => {
+    const slots = { ...THEME_SLOTS_PASSING } as Record<string, string>;
+    for (const slot of RETIRED) {
+      delete slots[slot];
+    }
+    return slots;
+  };
+  const themeDef = () => canonicalManifestSchema().$defs.theme as Any;
+
+  test("2枠を持たないテーマは valid である", () => {
+    expect(validateManifest(manifestWithTheme({ slots: withoutRetired() }))).toEqual({
+      valid: true,
+    });
+  });
+
+  test.each(RETIRED)("%s を書いたテーマは invalid(未知のプロパティとして名指しされる)", (slot) => {
+    const slots = { ...withoutRetired(), [slot]: "8rem" };
+    const errors = expectInvalid(validateManifest(manifestWithTheme({ slots })));
+    expect(errors.some((e) => e.message.includes(slot))).toBe(true);
+  });
+
+  test.each(RETIRED)(
+    "%s は $defs/theme の properties にも required にも無い(ADR-0457 限定1)",
+    (slot) => {
+      const theme = themeDef();
+      expect(Object.keys(theme.properties)).not.toContain(slot);
+      expect(theme.required as string[]).not.toContain(slot);
+    },
+  );
+
+  test.each(RETIRED)("外した綴り %s は $defs/theme の $comment に残る(ADR-0457 限定4)", (slot) => {
+    expect(String(themeDef().$comment)).toContain(slot);
+  });
+});
+
+// ===========================================================================
+// V20-M9-T01(広げる側): 生の色 `palette_` と参照 `$palette_`、足す4枠
+// (ADR-0474 §Decision 1-1 / 1-2)。**解決(未解決・循環・深すぎの拒否)は T02 の持ち分**なので、
+// ここはスキーマの形(構造の検証)と `stored` の読みだけを撃つ。
+// ===========================================================================
+
+describe("V20-M9-T01: 生の色と参照・足す4枠(ADR-0474 §1-1 / §1-2)", () => {
+  const NEW_SLOTS: string[] = ["primary_fill", "on_primary", "overlay_background", "overlay_text"];
+  const themeDef = () => canonicalManifestSchema().$defs.theme as Any;
+  const valid = (slots: Record<string, unknown>) =>
+    validateManifest(manifestWithTheme({ slots })).valid;
+
+  test("palette_brand を含むテーマは valid である(構造・incoming・stored のすべて)", () => {
+    const slots = { ...THEME_SLOTS_PASSING, palette_brand: "#1d4ed8" };
+    expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+    expect(validateManifestFull(manifestWithTheme({ slots }))).toEqual({ valid: true });
+    expect(validateManifestFull(manifestWithTheme({ slots }), "stored")).toEqual({ valid: true });
+  });
+
+  test("生の色の値は oklch も受け、生の色どうしの参照も書ける(構造の検証)", () => {
+    const slots = {
+      ...THEME_SLOTS_PASSING,
+      palette_blue_600: "oklch(0.5 0.2 260)",
+      palette_brand: "$palette_blue_600",
+      primary_fill: "$palette_brand",
+    };
+    expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+    // 保存されたマニフェストは参照を解かずに読める(解決の拒否は incoming だけ。ADR-0047 限定8)。
+    expect(validateManifestFull(manifestWithTheme({ slots }), "stored")).toEqual({ valid: true });
+  });
+
+  test.each(NEW_SLOTS)("足した枠 %s は必須である(欠けると invalid。ADR-0455 限定1)", (slot) => {
+    const slots = { ...THEME_SLOTS_PASSING } as Record<string, string>;
+    delete slots[slot];
+    const errors = expectInvalid(validateManifest(manifestWithTheme({ slots })));
+    expect(errors.some((e) => e.message.includes(slot))).toBe(true);
+  });
+
+  test.each(NEW_SLOTS)("足した枠 %s は参照を受ける(色の枠)", (slot) => {
+    const slots = { ...THEME_SLOTS_PASSING, palette_x: "#123456", [slot]: "$palette_x" };
+    expect(valid(slots)).toBe(true);
+  });
+
+  test("properties と required の並びは27件の表のとおり(式P5)", () => {
+    const order = [
+      "danger",
+      "body_text",
+      "label_text",
+      "placeholder_text",
+      "secondary_text",
+      "border_color",
+      "page_background",
+      "highlight_surface",
+      "primary_fill",
+      "on_primary",
+      "overlay_background",
+      "overlay_text",
+      "body_font",
+      "note_font_size",
+      "secondary_font_size",
+      "body_line_height",
+      "space_1",
+      "space_2",
+      "space_3",
+      "space_4",
+      "space_5",
+      "space_6",
+      "border_width",
+      "control_radius",
+      "surface_shadow",
+      "focus_ring",
+      "focus_ring_width",
+    ];
+    expect(Object.keys(themeDef().properties)).toEqual(order);
+    expect(themeDef().required).toEqual(order);
+    // 生の色は必須の集合に1件も入らない(ADR-0455 限定5)。
+    expect((themeDef().required as string[]).filter((k) => k.startsWith("palette_"))).toEqual([]);
+  });
+
+  test("生の色の置き場は patternProperties の1本だけ(式P3)", () => {
+    const theme = themeDef();
+    expect(Object.keys(theme.patternProperties ?? {})).toEqual(["^palette_[a-z0-9_]{1,40}$"]);
+    expect(theme.additionalProperties).toBe(false);
+    expect(theme.propertyNames).toBeUndefined();
+  });
+
+  test("役割の層に役割名でない名前(brand_color)を書くと invalid(未知のプロパティ)", () => {
+    const errors = expectInvalid(
+      validateManifest(
+        manifestWithTheme({ slots: { ...THEME_SLOTS_PASSING, brand_color: "#123456" } }),
+      ),
+    );
+    expect(errors.some((e) => e.message.includes("brand_color"))).toBe(true);
+  });
+
+  test.each(["palette_", "palette_A", "Palette_a", `palette_${"a".repeat(41)}`])(
+    "生の色の名前の崩れ %s は invalid",
+    (name) => {
+      expect(valid({ ...THEME_SLOTS_PASSING, [name]: "#123456" })).toBe(false);
+    },
+  );
+
+  test("生の色の名前は40字まで通る", () => {
+    expect(valid({ ...THEME_SLOTS_PASSING, [`palette_${"a".repeat(40)}`]: "#123456" })).toBe(true);
+  });
+
+  test.each([
+    "$palette_",
+    "$palette_A",
+    "$palette_a.b",
+    `$palette_${"a".repeat(41)}`,
+    "$Palette_a",
+    "$palette_a $palette_b",
+    "{palette.brand}",
+  ])("参照の綴りの崩れ %s は色の枠で invalid", (value) => {
+    expect(valid({ ...THEME_SLOTS_PASSING, body_text: value })).toBe(false);
+  });
+
+  // **余白・書体・角丸・影には参照を書けない**(4つ別々。ADR-0474 §1-1 の「参照を書ける場所」)。
+  test.each(["space_1", "body_font", "control_radius", "surface_shadow"])(
+    "%s に参照 $palette_brand を書くと invalid",
+    (slot) => {
+      expect(
+        valid({ ...THEME_SLOTS_PASSING, palette_brand: "#123456", [slot]: "$palette_brand" }),
+      ).toBe(false);
+    },
+  );
+
+  // **式・計算・参照以外の綴りは今日どおり通らない**(4つ別々 × 色の枠と生の色の値)。
+  test.each(["calc(1px)", "var(--x)", "{{a}}", "$record.a"])(
+    "色の枠 body_text に %s を書くと invalid(ADR-0013 限定12)",
+    (value) => {
+      expect(valid({ ...THEME_SLOTS_PASSING, body_text: value })).toBe(false);
+    },
+  );
+
+  test.each(["calc(1px)", "var(--x)", "{{a}}", "$record.a"])(
+    "生の色の値に %s を書くと invalid(ADR-0013 限定12)",
+    (value) => {
+      expect(valid({ ...THEME_SLOTS_PASSING, palette_brand: value })).toBe(false);
+    },
+  );
+});
+
+// ===========================================================================
+// V20-M9 点検の中2 / 中4 の処置(ADR-0474 限定1 / 限定4、計画 T02 (b))。
+// 中2: 点検で参照の枝を2種の綴り(`^(\$|@)palette_…$`)にしても、赤はスキーマの指紋だけだった。
+//      参照の綴りが1種ちょうどであることを、意味(pattern の集合と、別の綴りが通らないこと)で固定する。
+// 中4: マニフェストの外(別アプリ・テンプレート・URL)を名指しした値が通らないことを名指しで撃つ。
+//      参照先は同じテーマの `palette_…` だけなので、マニフェストだけ読めば見た目が決まる。
+// ===========================================================================
+
+describe("V20-M9 点検の処置: 参照の綴りは1種ちょうど・マニフェストの外は指せない", () => {
+  const themeDef = () => canonicalManifestSchema().$defs.theme as Any;
+  const valid = (slots: Record<string, unknown>) =>
+    validateManifest(manifestWithTheme({ slots })).valid;
+  const REF_PATTERN = "^\\$palette_[a-z0-9_]{1,40}$";
+  const patternsIn = (node: unknown): string[] => {
+    if (Array.isArray(node)) return node.flatMap(patternsIn);
+    if (node === null || typeof node !== "object") return [];
+    return Object.entries(node as Record<string, unknown>).flatMap(([key, value]) =>
+      key === "pattern" && typeof value === "string" ? [value] : patternsIn(value),
+    );
+  };
+  // 参照を受ける場所(役割の色の枠と、生の色の値)。スキーマから引く(書き下さない)。
+  const refSlots = (): string[] => {
+    const theme = themeDef();
+    const accepts = (def: unknown) => patternsIn(def).some((p) => new RegExp(p).test("$palette_x"));
+    return Object.entries(theme.properties as Record<string, unknown>)
+      .filter(([, def]) => accepts(def))
+      .map(([name]) => name);
+  };
+
+  test("参照の綴りを受ける pattern は、$defs/theme を再帰でたどって1種ちょうど(式P4 と同じ中身)", () => {
+    const refPatterns = [
+      ...new Set(patternsIn(themeDef()).filter((p) => new RegExp(p).test("$palette_x"))),
+    ];
+    expect(refPatterns).toEqual([REF_PATTERN]);
+    // 別の記号で始まる2種目(`{palette_…}` など)も数える: palette の綴りを含む pattern は1種ちょうど。
+    expect([...new Set(patternsIn(themeDef()).filter((p) => p.includes("palette")))]).toEqual([
+      REF_PATTERN,
+    ]);
+    // 参照を受ける役割の枠は色の13枠(生の色の値を足すと14。式P4 の ref-slots 14)。
+    expect(refSlots()).toHaveLength(13);
+  });
+
+  // 別の綴り(ほかの道具で見かける参照の書き方)は、どの色の枠でも生の色の値でも通らない。
+  const OTHER_SPELLINGS = [
+    "@palette_x",
+    "{palette_x}",
+    "{{palette_x}}",
+    "$palette.x",
+    "$$palette_x",
+    "palette_x",
+    "&palette_x",
+    "%palette_x",
+    "var(--palette-x)",
+    "$(palette_x)",
+    // 波括弧つきの綴り(テンプレート文字列と紛れないよう連結で書く)。
+    `$${"{"}palette_x}`,
+  ];
+  test.each(OTHER_SPELLINGS)(
+    "別の綴り %s は、参照を受けるどの枠でも生の色の値でも invalid",
+    (value) => {
+      const base = { ...THEME_SLOTS_PASSING, palette_x: "#123456" };
+      for (const slot of refSlots()) {
+        expect({ slot, ok: valid({ ...base, [slot]: value }) }).toEqual({ slot, ok: false });
+      }
+      expect(valid({ ...base, palette_y: value })).toBe(false);
+      // 対照: 同じ場所に正しい綴りなら通る。
+      expect(valid({ ...base, body_text: "$palette_x", palette_y: "$palette_x" })).toBe(true);
+    },
+  );
+
+  // マニフェストの外(別アプリ・テンプレート・URL)を名指しした値は、構造の検証で通らない(計画 T02 (b))。
+  const OUTSIDE = [
+    "$other_app.palette_x",
+    "$apps.other.palette_brand",
+    "$app:other/palette_x",
+    "$palette_x@other",
+    "$template_palette_x",
+    "$template.palette_brand",
+    "$https://example.com/x",
+    "https://example.com/palette.json",
+    "url(https://example.com/x)",
+    "$../other/palette_x",
+  ];
+  test.each(OUTSIDE)(
+    "マニフェストの外を名指しした %s は、色の枠でも生の色の値でも invalid",
+    (value) => {
+      const base = { ...THEME_SLOTS_PASSING, palette_x: "#123456" };
+      expect(valid({ ...base, primary_fill: value })).toBe(false);
+      expect(valid({ ...base, palette_brand: value })).toBe(false);
+      expect(
+        validateManifestFull(manifestWithTheme({ slots: { ...base, primary_fill: value } })).valid,
+      ).toBe(false);
+    },
+  );
+
+  test("同じテーマの中に無い名前は、綴りが正しくても incoming で拒否される(外から補わない)", () => {
+    const slots = { ...THEME_SLOTS_PASSING, primary_fill: "$palette_from_template" };
+    // 構造は通る(綴りは正しい)が、行き先が同じテーマの中に無いので解決の拒否(R3)になる。
+    expect(valid(slots)).toBe(true);
+    const full = validateManifestFull(manifestWithTheme({ slots }));
+    expect(full.valid).toBe(false);
   });
 });
 
@@ -1988,12 +2553,12 @@ describe("V3-M1-T03: 由来(origin。ADR-0047 §1b / 限定7)", () => {
 describe("V3-M1-T03: コントラスト検査の結線(ADR-0047 限定8 / 完了条件7)", () => {
   /** 前景だけを白にしたテーマ(白地に白文字)。**全スロット必須なので背景も必ず在る。** */
   const unreadable = () => ({
-    slots: { ...THEME_SLOTS_PASSING, "--color-text": "#ffffff" },
+    slots: { ...THEME_SLOTS_PASSING, body_text: "#ffffff" },
   });
 
   test("閾値未満のテーマは incoming で拒否される", () => {
     const errors = expectInvalid(validateManifestFull(manifestWithTheme(unreadable())));
-    expect(errors.some((e) => e.path === "/app/theme/slots/--color-text")).toBe(true);
+    expect(errors.some((e) => e.path === "/app/theme/slots/body_text")).toBe(true);
     expect(errors.some((e) => e.message.includes("4.5:1"))).toBe(true);
   });
 
@@ -2010,8 +2575,8 @@ describe("V3-M1-T03: コントラスト検査の結線(ADR-0047 限定8 / 完了
     // スロットが欠けている = 構造エラー。ここでコントラストのエラーを混ぜない
     // (LLM にはまず構造から直させる。既存の「構造 → 参照整合性」と同じ作法)。
     const missing = { ...THEME_SLOTS_PASSING } as Record<string, string>;
-    missing["--color-text"] = "#ffffff";
-    delete missing["--space-1"];
+    missing.body_text = "#ffffff";
+    delete missing.space_1;
     const errors = expectInvalid(validateManifestFull(manifestWithTheme({ slots: missing })));
     expect(errors.every((e) => !e.message.includes("コントラスト比"))).toBe(true);
   });
@@ -2036,7 +2601,9 @@ describe("V3-M1-T03: 差分操作 set_theme(ADR-0047 限定3)", () => {
     // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】**
     // **旧(逐語)**: `expect(DIFF_OPS.length).toBe(18);`
     // **`set_user_kinds` を撤去したので 18 → 17。**`set_theme` が語彙内であることは1バイトも変わっていない。
-    expect(DIFF_OPS.length).toBe(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS.length).toBe(17);` —— 18種目 `remember_design` を足したので 17 → 18。検査は消していない。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】旧(逐語)**: `expect(DIFF_OPS.length).toBe(18);` —— 19種目 `set_workspace` を足したので 18 → 19。検査は消していない。
+    expect(DIFF_OPS.length).toBe(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
   });
 
   test("全スロットを持つテーマの set_theme は valid", () => {
@@ -2045,7 +2612,7 @@ describe("V3-M1-T03: 差分操作 set_theme(ADR-0047 限定3)", () => {
 
   test("スロットが欠けた set_theme は差分の時点で拒否される(部分テーマを作らない)", () => {
     const missing = { ...THEME_SLOTS_PASSING } as Record<string, string>;
-    delete missing["--space-6"];
+    delete missing.space_6;
     expect(validateDiff(themeDiff({ slots: missing })).valid).toBe(false);
   });
 
@@ -2058,6 +2625,24 @@ describe("V3-M1-T03: 差分操作 set_theme(ADR-0047 限定3)", () => {
     for (const forbidden of ["table", "field", "view", "changes", "workflow", "function"]) {
       expect(branch.then.properties[forbidden]).toBe(false);
     }
+  });
+
+  test("【V20-M8 / D-V20-26】旧名(CSS 名)で書いた set_theme は未知のプロパティで拒否され、allowed_values に役割名が並ぶ", () => {
+    // **旧名を読み替えない**(`D-V20-26` / `ADR-0473`)。旧名25件のうち名前を変えた23件は
+    // 未知のプロパティになり、許可値として今日の名前(役割名)25件が返る —— AI はこの1往復で直せる。
+    // (下の旧名は「旧名がマニフェストのキーとして残っていないか」を数える除外一覧に入る。)
+    const legacy = { ...THEME_SLOTS_PASSING } as Record<string, string>;
+    delete legacy.body_text;
+    legacy["--color-text"] = "#000000";
+    const errors = expectInvalid(validateDiff(themeDiff({ slots: legacy })));
+    const unknown = errors.find((e) => e.message.includes("未知のプロパティ"));
+    expect(unknown?.path).toBe("/operations/0/theme/slots");
+    expect(unknown?.message).toContain('"--color-text"');
+    expect(unknown?.allowed_values).toEqual(
+      Object.keys((canonicalSchema("manifest.schema.json").$defs.theme as Any).properties),
+    );
+    expect(unknown?.allowed_values).toContain("body_text");
+    expect(unknown?.allowed_values).not.toContain("--color-text");
   });
 
   test("set_theme に table / view を混ぜると拒否される", () => {
@@ -2285,12 +2870,18 @@ describe("V3-M2-T01: 画面ごとのプリセット(ADR-0050 / D-G4)", () => {
       // **テスト名の「10キー」は当時の逐語である**(テスト名は書き換えない)。
       // **【`V8-M16-T03` / `J-G1b`】10キー目 `roles` を足した。**
       "roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】10キー目 `design_memory` を足した(旧の期待値は `"roles"` で終わる9要素)。**
+      "design_memory",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】11キー目 `workspace` を足した(旧の期待値は `"design_memory"` で終わる10要素。逐語)。** プリセット専用の op が無いことは1バイトも緩めていない。
+      "workspace",
     ]);
     // 書き込みは既存の add_view / update_view だけ(DIFF_OPS は16のまま)。
     // **【`V8-M16`】期待値を 17 → 18 に書き換えた —— 18種目 `set_roles` を足したため。検査は消していない。**
     // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G11`。判定値 = 廃止】**
     // **旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— `set_user_kinds` を撤去したので 18 → 17。
-    expect(DIFF_OPS).toHaveLength(17); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+    expect(DIFF_OPS).toHaveLength(19); // 【`V5-M17b` / `ADR-0248`】16 → 17(`set_user_kinds` が17種目)。**この行が固定していたのは「その決定が語彙を増やさなかったこと」であり、増やしたのは別の決定である。**
     expect(DIFF_OPS.filter((op) => op.includes("preset"))).toEqual([]);
   });
 
@@ -2445,8 +3036,12 @@ describe("V3-M2-T01: 画面ごとのプリセット(ADR-0050 / D-G4)", () => {
 
   test("限定表 #5: $defs/theme のスロット数は25のままで、1つも増減していない", () => {
     const theme = canonicalManifestSchema().$defs.theme as Any;
-    expect(Object.keys(theme.properties)).toHaveLength(25);
-    expect(theme.required).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(theme.properties)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(theme.properties)).toHaveLength(23);
+    expect(Object.keys(theme.properties)).toHaveLength(27);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(theme.required).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(theme.required).toHaveLength(23);
+    expect(theme.required).toHaveLength(27);
   });
 });
 
@@ -2523,7 +3118,13 @@ describe("V3-M5-T02: $defs/view の逃げ道の参照キー(ADR-0055)", () => {
     // `flow` を**末尾に**31キー目として足した。**`list_view` / `form` / `detail_view` の3種別で
     // 書け、集計表(`report_view`)には書けない**)。
     // **本ファイルが測っている決定の増分ではない。****検査は消していない。**
-    expect(properties).toHaveLength(31);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 31 → 32 へ書き換えた。** **32本目は入力欄の幅 `field_width`(`$defs/view.properties` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(properties).toHaveLength(31);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(32) → toHaveLength(33) へ書き換えた。** **33本目は一覧の束ねるキー `group_by`(`$defs/view.properties` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(properties).toHaveLength(32);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 33 → 34 に更新した】** 旧の期待値は 33。$defs/view.properties.layout(34キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行54】35キー目 history(詳細画面に行の変更履歴を出すか)が末尾に足されて 34 → 35(決定 `D-V23-205`)。 旧行の逐語: `expect(properties).toHaveLength(34);` 新しい値は manifest.schema.json の $defs/view.properties を python で読んで数えた。
+    expect(properties).toHaveLength(35);
     expect(properties).toContain("custom_css");
     // **2つ目を足していない**(逃げ道に相当するキーは1つだけ)。
     expect(properties.filter((key) => /css|style|escape|hatch/.test(key))).toEqual(["custom_css"]);
@@ -2541,11 +3142,16 @@ describe("V3-M5-T02: $defs/view の逃げ道の参照キー(ADR-0055)", () => {
     // **旧(逐語)**: `expect(Object.keys(schema.$defs.app.properties)).toHaveLength(9);`
     // **`app.user_kinds` の器を撤去したので 9 → 8。**
     // **`ADR-0055` 限定1 が測りたい「逃げ道(CSS)のキーが増えていないこと」は下の `/css/` の絞り込みが今日も測る。検査は消していない。**
-    expect(Object.keys(schema.$defs.app.properties)).toHaveLength(8);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(Object.keys(schema.$defs.app.properties)).toHaveLength(8);` —— 9本目 `design_memory` を足したので 8 → 9。
+    // **逃げ道(CSS)のキーが増えていないことは下の `/css/` の絞り込みが今日も測る。検査は消していない。**
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】旧(逐語)**: `expect(Object.keys(schema.$defs.app.properties)).toHaveLength(9);` —— 10本目 `workspace` を足したので 9 → 10。
+    expect(Object.keys(schema.$defs.app.properties)).toHaveLength(10);
     expect(Object.keys(schema.$defs.app.properties).filter((k: string) => /css/.test(k))).toEqual(
       [],
     );
-    expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】25 → 23(2枠 --detail-label-width / --login-max-width を語彙から外した)。旧(逐語): expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(25);
+    // 【V20-M9 / ADR-0474】23 → 27(4枠 primary_fill / on_primary / overlay_background / overlay_text を足した)。旧(逐語): expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(23);
+    expect(Object.keys(schema.$defs.theme.properties)).toHaveLength(27);
     expect(Object.keys(schema.$defs.theme.properties).filter((k: string) => /css/.test(k))).toEqual(
       [],
     );
@@ -2701,7 +3307,13 @@ describe("V3-M5-T02: $defs/view の逃げ道の参照キー(ADR-0055)", () => {
     // **27本目を足したのは別の決定である**(`flow` を `view_changes` の末尾に足した。
     // `ADR-0359` §Decision 2)。**本ファイルが測っている決定の増分ではない。**
     // **検査は消していない。**
-    expect(Object.keys(changes.properties)).toHaveLength(27);
+    // **【2026-09-24。`V20-M3-T02` / `ADR-0460` 限定4】期待値を 27 → 28 へ書き換えた。** **28本目は入力欄の幅 `field_width`(差分の `view_changes` の末尾。入力フォームでだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(changes.properties)).toHaveLength(27);`
+    // **【2026-09-24。`V20-M4-T02` / `ADR-0470`】期待値を toHaveLength(28) → toHaveLength(29) へ書き換えた。** **29本目は一覧の束ねるキー `group_by`(差分の `view_changes` の末尾。一覧でだけ書ける)で、本ファイルが測っている決定の増分ではない。****検査は消していない。**
+    // **旧行の逐語**: `expect(Object.keys(changes.properties)).toHaveLength(28);`
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 29 → 30 に更新した】** 旧の期待値は 29。view_changes.layout(30キー目) が1本増えた。
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行55】31キー目 history が末尾に足されて 30 → 31(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys(changes.properties)).toHaveLength(30);` 新しい値は diff.schema.json の $defs/view_changes.properties を python で読んで数えた。
+    expect(Object.keys(changes.properties)).toHaveLength(31);
     expect(Object.keys(changes.properties)).toContain("custom_css");
     // **定義を二重に持たない**(改訂1 の禁止形。先例は view_changes.properties.name)。
     expect(changes.properties.custom_css.$ref).toBe(
@@ -2715,9 +3327,11 @@ describe("V3-M5-T02: $defs/view の逃げ道の参照キー(ADR-0055)", () => {
     // **【2026-08-11。`V8-M29` 第2波。台帳 `T-G9a` / `T-G11`。判定値 = 廃止】**
     // **旧(逐語)**: `expect(Object.keys(canonicalSchema("diff.schema.json").$defs.operation.properties)).toHaveLength(10);`
     // **`user_kinds` キーを撤去したので 10 → 9。「`V3-M5` がキーを足していない」ことは今日も真である。検査は消していない。**
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: 同じ式の `.toHaveLength(9);` —— 10キー目 `design_memory` を足したので 9 → 10。「`V3-M5` がキーを足していない」ことは今日も真である。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行3)】旧(逐語)**: 同じ式の `.toHaveLength(10);` —— 11キー目 `workspace` を足したので 10 → 11。「`V3-M5` がキーを足していない」ことは今日も真である。
     expect(
       Object.keys(canonicalSchema("diff.schema.json").$defs.operation.properties),
-    ).toHaveLength(9);
+    ).toHaveLength(11);
     const diff = {
       diff_id: "d-escape-2",
       intent: "既存画面に逃げ道を当てたい",
@@ -2747,5 +3361,495 @@ describe("V3-M5-T02: $defs/view の逃げ道の参照キー(ADR-0055)", () => {
         JSON.stringify(bad),
       ).toBe(false);
     }
+  });
+});
+
+// ===========================================================================
+// V20-M7 明るさ基準の色表記(oklch)を色スロット9件に1種だけ足す(ADR-0463 §Decision 5)
+//
+// **足すのは `oklch(L C H)` の1種だけである。** 16進は今日どおり受け続ける。
+// 枠の数(25)・名前・階層・閾値2つは動かさない。影(`surface_shadow`)の値域は触らない。
+// ===========================================================================
+
+/** 色スロット9件(色の値域を持つスロット)。**入力であって集合の正ではない。** */
+const V20_M7_COLOR_SLOTS = [
+  "danger",
+  "body_text",
+  "label_text",
+  "placeholder_text",
+  "secondary_text",
+  "border_color",
+  "page_background",
+  "highlight_surface",
+  "focus_ring",
+] as const;
+
+describe("V20-M7-T00 足したら通るようになる形(明るさ基準の表記)", () => {
+  test.each([...V20_M7_COLOR_SLOTS])(
+    "色スロット %s に oklch(L C H) を書ける(構造の検証)",
+    (slot) => {
+      const slots = { ...THEME_SLOTS_PASSING, [slot]: "oklch(0.5 0.1 250)" };
+      expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+    },
+  );
+
+  test.each([
+    "oklch(0 0 0)",
+    "oklch(1 0 0)",
+    "oklch(0.627955 0.257683 29.2339)",
+    "oklch(62.8% 0.1 29)",
+    "oklch(100% 0 0)",
+    "oklch(0% 0 360)",
+    "oklch(0.5 0 0.5)",
+  ])("oklch の許す綴り %s は構造の検証を通る", (value) => {
+    const slots = { ...THEME_SLOTS_PASSING, danger: value };
+    expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+  });
+
+  test("oklch で書いた黒文字・白地のテーマは incoming(コントラスト検査込み)でも通る", () => {
+    const slots = {
+      ...THEME_SLOTS_PASSING,
+      body_text: "oklch(0 0 0)",
+      page_background: "oklch(1 0 0)",
+    };
+    expect(validateManifestFull(manifestWithTheme({ slots }))).toEqual({ valid: true });
+  });
+
+  test("oklch を含む set_theme の差分は valid", () => {
+    const diff = {
+      diff_id: "d-theme-oklch-1",
+      intent: "明るさを揃えたまま色味だけ変えたい",
+      operations: [
+        {
+          op: "set_theme",
+          theme: { slots: { ...THEME_SLOTS_PASSING, body_text: "oklch(0 0 0)" } },
+        },
+      ],
+    };
+    expect(validateDiff(diff)).toEqual({ valid: true });
+  });
+});
+
+describe("V20-M7-T00 足しても拒否のままであるべき形(fail-closed)", () => {
+  test.each([
+    // validate.test.ts の既存6件(V3-M1-T03)と同じ値。1件も緩めない。
+    "red",
+    "rgb(0,0,0)",
+    "rgba(0,0,0,0.5)",
+    "currentColor",
+    "#ff",
+    "#1234567",
+    // 他の関数形の色表記。
+    "hsl(0, 0%, 0%)",
+    "color(srgb 0 0 0)",
+    "lch(50% 30 100)",
+    "oklab(0.5 0.1 0.1)",
+    // oklch の綴りの外側(裁定1)。
+    "OKLCH(0.5 0.1 250)",
+    "Oklch(0.5 0.1 250)",
+    "oklch(0.5 0.1 250 / 0.5)",
+    "oklch(0.5 0.1 250 / 50%)",
+    "oklch(none 0.1 250)",
+    "oklch(0.5 none 250)",
+    // 【V20-M7B-T02 で向きを変えた(ADR-0472 限定2。消していない)】旧はこの位置に "oklch(0.5 0.1 none)" が在った
+    // (H の none を書けない)。今日は H の位置にだけ none を書ける —— 直後の describe の外の検査
+    // 「V20-M7B-T02 向きを変えた: oklch(0.5 0.1 none) は書ける」が同じ値を valid の側で固定する。
+    "oklch(0.5, 0.1, 250)",
+    "oklch(0.5 0.1 250deg)",
+    "oklch(0.5 0.1 1turn)",
+    "oklch(.5 0.1 250)",
+    "oklch(0.5 .1 250)",
+    "oklch(0.5 0.1)",
+    "oklch(0.5 0.1 250 0)",
+    "oklch( 0.5 0.1 250)",
+    "oklch(0.5 0.1 250 )",
+    "oklch(0.5  0.1 250)",
+    " oklch(0.5 0.1 250)",
+    "oklch(0.5 0.1 250) ",
+    "oklch (0.5 0.1 250)",
+    "oklch(0.5\t0.1 250)",
+    // 範囲の外(L は 0〜1 か 0%〜100%、H は 0〜360)。
+    "oklch(1.5 0 0)",
+    "oklch(1.01 0 0)",
+    "oklch(101% 0 0)",
+    "oklch(100.5% 0 0)",
+    "oklch(-0.1 0 0)",
+    "oklch(0.5 -0.1 250)",
+    "oklch(0.5 0.1 361)",
+    "oklch(0.5 0.1 360.5)",
+    "oklch(0.5 0.1 -1)",
+    "oklch(0.5 10% 250)",
+    // 式・参照(ADR-0047 限定6 / ADR-0013 限定12)。
+    "oklch(calc(0.5) 0.1 250)",
+    "oklch(var(--l) 0.1 250)",
+    "oklch({{record.l}} 0.1 250)",
+    "oklch($record.l 0.1 250)",
+    // 桁の上限(小数6桁まで)。
+    "oklch(0.5000001 0.1 250)",
+    // 【V20-M7 点検の軽4】先頭の0と C の整数部の桁(記録 v20-m7-t01.md §1 の 3 の決め事)。
+    "oklch(0.5 0.1 05)",
+    "oklch(0.5 0.1 0360)",
+    "oklch(05% 0 0)",
+    "oklch(0.5 1000 250)",
+    "oklch(0.5 0100 250)",
+  ])("色スロットに %s を書けない", (value) => {
+    const slots = { ...THEME_SLOTS_PASSING, body_text: value };
+    expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
+  });
+
+  test("影(surface_shadow)の中の色は今日どおり16進だけである(影の値域は触らない)", () => {
+    for (const shadow of ["0 1px 3px oklch(0 0 0)", "0 1px 3px oklch(0.5 0.1 250)"]) {
+      const slots = { ...THEME_SLOTS_PASSING, surface_shadow: shadow };
+      expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
+    }
+    const slots = { ...THEME_SLOTS_PASSING, surface_shadow: "0 1px 3px #0000001a" };
+    expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+  });
+
+  test("色でないスロットには oklch を書けない", () => {
+    for (const slot of ["space_1", "body_font", "body_line_height"]) {
+      const slots = { ...THEME_SLOTS_PASSING, [slot]: "oklch(0.5 0.1 250)" };
+      expect(validateManifest(manifestWithTheme({ slots })).valid, slot).toBe(false);
+    }
+  });
+});
+
+describe("V20-M7B-T02 向きを変えた: V20-M7 の拒否の一覧から外した1件", () => {
+  test("oklch(0.5 0.1 none) は色スロットに書ける(旧は『色スロットに oklch(0.5 0.1 none) を書けない』)", () => {
+    const slots = { ...THEME_SLOTS_PASSING, body_text: "oklch(0.5 0.1 none)" };
+    expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+  });
+});
+
+/** 16進の値域の pattern(**1バイトも変えない**)。 */
+const V20_M7_HEX_PATTERN = "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$";
+
+/** 影の値域の pattern(土台 a4905e63 の逐語。**本段は触らない**)。 */
+const V20_M7_SHADOW_PATTERN =
+  "^(none|(0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))( (0|[0-9]{1,4}(\\.[0-9]{1,3})?(px|rem|em))){1,3}( #([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))?)$";
+
+describe("V20-M7-T01 値域の形(スキーマ。9箇所が同じ形・影は触らない)", () => {
+  const themeProperties = () => (canonicalManifestSchema().$defs.theme as Any).properties as Any;
+
+  // 【V20-M9 / ADR-0474 §1-1】色の値域は外側の anyOf 2枝 [実値(内側の anyOf に16進 / oklch), 参照] になった。
+  // テスト名は引き直しの前の逐語である。16進と oklch の2枝は内側の anyOf にそのまま入っている(1バイトも変えていない)。
+  // 旧(逐語): `expect(property.anyOf[0]).toEqual({ pattern: V20_M7_HEX_PATTERN });` /
+  // `expect(Object.keys(property.anyOf[1])).toEqual(["pattern"]);` / `String(property.anyOf[1].pattern)…`
+  test.each([...V20_M7_COLOR_SLOTS])(
+    "%s の値域は anyOf の2枝(16進の pattern と oklch の pattern)で、素の pattern を持たない",
+    (slot) => {
+      const property = themeProperties()[slot];
+      expect(property.type).toBe("string");
+      expect(property.pattern).toBeUndefined();
+      expect(Array.isArray(property.anyOf)).toBe(true);
+      expect(property.anyOf).toHaveLength(2);
+      const real = property.anyOf[0].anyOf;
+      expect(real).toHaveLength(2);
+      expect(real[0]).toEqual({ pattern: V20_M7_HEX_PATTERN });
+      expect(Object.keys(real[1])).toEqual(["pattern"]);
+      expect(String(real[1].pattern).startsWith("^oklch\\(")).toBe(true);
+      expect(String(real[1].pattern).endsWith("\\)$")).toBe(true);
+      expect(property.anyOf[1]).toEqual({ pattern: "^\\$palette_[a-z0-9_]{1,40}$" });
+    },
+  );
+
+  test("9箇所の anyOf は1バイトも違わない(取り落とし・書き違いが0件)", () => {
+    const properties = themeProperties();
+    const forms = new Set(V20_M7_COLOR_SLOTS.map((slot) => JSON.stringify(properties[slot].anyOf)));
+    expect(forms.size).toBe(1);
+  });
+
+  // 【V20-M9 / ADR-0474 §1-2】色の枠は 9 → 13(4枠を足した)。テスト名は引き直しの前の逐語である。
+  // 旧(逐語): `expect(withAnyOf).toEqual([...V20_M7_COLOR_SLOTS].sort());`
+  test("anyOf を持つスロットは色スロット9件だけである(色でないスロットと影には無い)", () => {
+    const properties = themeProperties();
+    const withAnyOf = Object.keys(properties)
+      .filter((slot) => properties[slot].anyOf !== undefined)
+      .sort();
+    expect(withAnyOf).toEqual(
+      [
+        ...V20_M7_COLOR_SLOTS,
+        "primary_fill",
+        "on_primary",
+        "overlay_background",
+        "overlay_text",
+      ].sort(),
+    );
+  });
+
+  test("影(surface_shadow)の pattern は土台の逐語のままである", () => {
+    const shadow = themeProperties().surface_shadow;
+    expect(shadow.pattern).toBe(V20_M7_SHADOW_PATTERN);
+    expect(shadow.anyOf).toBeUndefined();
+  });
+
+  test("9箇所の description が16進と oklch の2表記を名指しする", () => {
+    const properties = themeProperties();
+    for (const slot of V20_M7_COLOR_SLOTS) {
+      const description = String(properties[slot].description);
+      expect(description, slot).toContain("#rgb");
+      expect(description, slot).toContain("oklch(");
+    }
+  });
+});
+
+// ===========================================================================
+// V20-M7B よく使われる配色を断らない(ADR-0472。計画 09b-v20-m7b-plan.md §3 / §5)
+//
+// 色域の外の oklch を受ける。色相(H)の位置にだけ `none` を書ける。16進は1バイトも変えない。
+// ===========================================================================
+
+/** 検査の入力(値の一覧だけ。出典のコミットと MIT の旨は fixture の `$comment`)。 */
+const V20_M7B_PALETTES = JSON.parse(
+  readFileSync(join(import.meta.dir, "__fixtures__", "oklch-palettes.json"), "utf-8"),
+) as {
+  tailwind: { name: string; value: string }[];
+  shadcn: { block: string; name: string; value: string }[];
+};
+
+describe("V20-M7B-T01 完了条件1: Tailwind v4 と shadcn/ui の oklch を danger に入れると、断られるのは shadcn の透明度付き3件だけ", () => {
+  const rejected = (values: readonly string[]) =>
+    values.filter((value) => {
+      const slots = { ...THEME_SLOTS_PASSING, danger: value };
+      return !validateManifest(manifestWithTheme({ slots })).valid;
+    });
+
+  test("Tailwind v4 の286件は構造の検証を1件も断られない", () => {
+    const values = V20_M7B_PALETTES.tailwind.map((row) => row.value);
+    expect(values).toHaveLength(286);
+    expect(rejected(values)).toEqual([]);
+  });
+
+  test("shadcn/ui の65件で断られるのは透明度付きの3件だけ", () => {
+    const values = V20_M7B_PALETTES.shadcn.map((row) => row.value);
+    expect(values).toHaveLength(65);
+    expect(rejected(values)).toEqual([
+      "oklch(1 0 0 / 10%)",
+      "oklch(1 0 0 / 15%)",
+      "oklch(1 0 0 / 10%)",
+    ]);
+  });
+});
+
+describe("V20-M7B-T01 完了条件4: 色相(H)の位置にだけ none を書ける(スキーマ)", () => {
+  test.each([...V20_M7_COLOR_SLOTS])("色スロット %s に oklch(98.5% 0 none) を書ける", (slot) => {
+    const slots = { ...THEME_SLOTS_PASSING, [slot]: "oklch(98.5% 0 none)" };
+    expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+  });
+
+  test.each(["oklch(0.5 0.1 none)", "oklch(0 0 none)", "oklch(100% 0 none)"])(
+    "%s は構造の検証を通る",
+    (value) => {
+      const slots = { ...THEME_SLOTS_PASSING, danger: value };
+      expect(validateManifest(manifestWithTheme({ slots }))).toEqual({ valid: true });
+    },
+  );
+
+  test.each([
+    "oklch(none 0.1 250)",
+    "oklch(0.5 none 250)",
+    "oklch(none none none)",
+    "oklch(0.5 0.1 NONE)",
+    "oklch(0.5 0.1 None)",
+    "oklch(0.5 0.1 none / 0.5)",
+    "oklch(0.5 0.1 nonedeg)",
+    "oklch(0.5 0.1 none0)",
+    "oklch(0.5 0.1 0none)",
+    "oklch(0.5 0.1 250deg)",
+    "OKLCH(0.5 0.1 none)",
+  ])("%s は今日どおり書けない(L と C の none・大文字・透明度・単位)", (value) => {
+    const slots = { ...THEME_SLOTS_PASSING, body_text: value };
+    expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
+  });
+
+  test("影(surface_shadow)の値域は1バイトも変わらない(none の後に oklch は書けない)", () => {
+    const slots = { ...THEME_SLOTS_PASSING, surface_shadow: "0 1px 3px oklch(0.5 0.1 none)" };
+    expect(validateManifest(manifestWithTheme({ slots })).valid).toBe(false);
+  });
+});
+
+describe("V20-M7B-T01 色域の外の oklch は incoming(コントラスト検査込み)でも通る", () => {
+  test("色域の外の濃い色(emerald-900 / purple-700)を文字色に書いたテーマは valid", () => {
+    for (const value of ["oklch(37.8% 0.077 168.94)", "oklch(49.6% 0.265 301.924)"]) {
+      const slots = { ...THEME_SLOTS_PASSING, body_text: value };
+      expect(validateManifestFull(manifestWithTheme({ slots })), value).toEqual({ valid: true });
+    }
+  });
+
+  test("黒地に fuchsia-600 の文字は、広色域の画面の比で拒否され、message が2つの画面の比を示す", () => {
+    const slots = {
+      ...THEME_SLOTS_PASSING,
+      body_text: "oklch(59.1% 0.293 322.896)",
+      page_background: "#000000",
+      highlight_surface: "#000000",
+      secondary_text: "#bbbbbb",
+      label_text: "#bbbbbb",
+      placeholder_text: "#bbbbbb",
+      danger: "#ff8080",
+      border_color: "#bbbbbb",
+      focus_ring: "#80b0ff",
+      // 【V20-M9 / ADR-0474 §1-2 / §1-8】小窓も黒地にする(白地のままだと #bbbbbb の文字が小窓の組で落ちる)。
+      overlay_background: "#000000",
+      overlay_text: "#bbbbbb",
+    };
+    const result = validateManifestFull(manifestWithTheme({ slots })) as ValidationResult & {
+      errors?: ValidationError[];
+    };
+    expect(result.valid).toBe(false);
+    const messages = (result.errors ?? []).map((e) => e.message);
+    // 【V20-M9 / ADR-0474 §1-8】2 → 3(小窓の組 body_text × overlay_background が同じ比で1件増えた)。
+    // 旧(逐語): expect(messages).toHaveLength(2);
+    expect(messages).toHaveLength(3);
+    for (const message of messages) {
+      expect(message).toContain("通常の画面では 4.51:1、広色域の画面では 4.34:1 で、");
+    }
+  });
+});
+
+describe("V20-M7B-T01 スキーマの description から『sRGB で表せない色は書けない。』を外す", () => {
+  test("9箇所の description に sRGB の色域の文が無い(16進と oklch の2表記は名指しのまま)", () => {
+    const properties = (canonicalManifestSchema().$defs.theme as Any).properties as Any;
+    for (const slot of V20_M7_COLOR_SLOTS) {
+      const description = String(properties[slot].description);
+      expect(description, slot).not.toContain("sRGB で表せない色は書けない");
+      expect(description, slot).toContain("#rgb");
+      expect(description, slot).toContain("oklch(");
+    }
+  });
+
+  test("9箇所の oklch の枝の pattern は H の選言にだけ none を持つ(L と C には無い)", () => {
+    const properties = (canonicalManifestSchema().$defs.theme as Any).properties as Any;
+    for (const slot of V20_M7_COLOR_SLOTS) {
+      // 【V20-M9 / ADR-0474】oklch の枝は内側の anyOf の2枝目。旧(逐語): `String(properties[slot].anyOf[1].pattern)`
+      const pattern = String(properties[slot].anyOf[0].anyOf[1].pattern);
+      const [lightness, chroma, hue] = pattern.split(" ");
+      expect(pattern.split(" "), slot).toHaveLength(3);
+      expect(lightness, slot).not.toContain("none");
+      expect(chroma, slot).not.toContain("none");
+      expect(hue, slot).toContain("|none)");
+    }
+  });
+});
+
+// ===========================================================================
+// V20-M10-T01: 暗い側の組 `slots_dark`(ADR-0458 §Decision 2 / 4-1。D-V20-31)
+//
+// 置き場は `$defs/app` の theme の properties(3キー目。`ADR-0458` 式1 の上限3 ちょうど)。
+// 値域は役割の層 `$defs/theme` をそのまま `$ref` する(限定2)。`required` に入れない
+// (`ADR-0047` 限定2 と同型の作法)。`$defs` の本数は動かさない(31 のまま)。
+// ===========================================================================
+
+/** 暗い側でもコントラスト検査を通る27枠(既定の暗い値ではない。`border_color` を明るくしてある)。 */
+const THEME_SLOTS_DARK_PASSING: Readonly<Record<string, string>> = {
+  ...THEME_SLOTS_PASSING,
+  body_text: "#e6e6e6",
+  secondary_text: "#a3a3a3",
+  label_text: "#a3a3a3",
+  placeholder_text: "#a3a3a3",
+  danger: "#ff7b7b",
+  page_background: "#121212",
+  highlight_surface: "#1f1f1f",
+  primary_fill: "#121212",
+  on_primary: "#e6e6e6",
+  overlay_background: "#121212",
+  overlay_text: "#e6e6e6",
+  border_color: "#8a8a8a",
+  focus_ring: "#6cb6ff",
+};
+
+describe("V20-M10-T01: 暗い側の組の置き場(ADR-0458 §Decision 2 / 限定1 / 限定2)", () => {
+  const appTheme = () => (canonicalManifestSchema().$defs.app as Any).properties.theme as Any;
+
+  test("app.theme の properties は slots / slots_dark / origin の3キーで、slots_dark は required に入っていない", () => {
+    expect(Object.keys(appTheme().properties)).toEqual(["slots", "slots_dark", "origin"]);
+    expect(appTheme().required).toEqual(["slots"]);
+    expect(appTheme().additionalProperties).toBe(false);
+  });
+
+  test("slots_dark は役割の層 $defs/theme をそのまま参照する(独自の枠集合を作らない)", () => {
+    expect(appTheme().properties.slots_dark.$ref).toBe("#/$defs/theme");
+    expect(appTheme().properties.slots.$ref).toBe("#/$defs/theme");
+  });
+
+  test("$defs の本数は31のまま(暗い側のために新しい $defs を作らない)", () => {
+    expect(Object.keys(canonicalManifestSchema().$defs)).toHaveLength(31);
+  });
+
+  test("テーマを持たないアプリは今日どおり valid(構造・incoming・stored)", () => {
+    expect(validateManifest(bookTrackerManifest)).toEqual({ valid: true });
+    expect(validateManifestFull(bookTrackerManifest)).toEqual({ valid: true });
+    expect(validateManifestFull(bookTrackerManifest, "stored")).toEqual({ valid: true });
+  });
+
+  test("slots_dark を持たないテーマは今日どおり valid(構造・incoming・stored)", () => {
+    const manifest = manifestWithTheme({ slots: THEME_SLOTS_PASSING });
+    expect(validateManifest(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest, "stored")).toEqual({ valid: true });
+  });
+
+  test("slots_dark を持つテーマは valid(構造・incoming・stored)", () => {
+    const manifest = manifestWithTheme({
+      slots: THEME_SLOTS_PASSING,
+      slots_dark: THEME_SLOTS_DARK_PASSING,
+    });
+    expect(validateManifest(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest)).toEqual({ valid: true });
+    expect(validateManifestFull(manifest, "stored")).toEqual({ valid: true });
+  });
+
+  test("モードは2値で閉じる: app.theme に4つ目のキー(slots_extra)は invalid", () => {
+    const errors = expectInvalid(
+      validateManifest(
+        manifestWithTheme({
+          slots: THEME_SLOTS_PASSING,
+          slots_dark: THEME_SLOTS_DARK_PASSING,
+          slots_extra: THEME_SLOTS_DARK_PASSING,
+        }),
+      ),
+    );
+    expect(errors.some((e) => e.message.includes("slots_extra"))).toBe(true);
+  });
+
+  test("slots_dark だけ(slots 無し)は invalid(明るい側は必須のまま)", () => {
+    const errors = expectInvalid(
+      validateManifest(manifestWithTheme({ slots_dark: THEME_SLOTS_DARK_PASSING })),
+    );
+    expect(errors.some((e) => e.message.includes("slots"))).toBe(true);
+  });
+
+  test("set_theme の差分に slots_dark を書ける(差分の設計図は0バイト)", () => {
+    const diff = {
+      diff_id: "d-dark-1",
+      intent: "暗い側の配色を足す",
+      operations: [
+        {
+          op: "set_theme",
+          theme: { slots: THEME_SLOTS_PASSING, slots_dark: THEME_SLOTS_DARK_PASSING },
+        },
+      ],
+    };
+    expect(validateDiff(diff)).toEqual({ valid: true });
+  });
+});
+
+describe("V20-M10-T01: 暗い側で枠が1つでも欠けたら拒否(ADR-0458 §Decision 4-1 の新設の見張り)", () => {
+  const roleSlots = Object.keys(THEME_SLOTS_PASSING);
+
+  test("欠けを試す枠は役割の層の必須の集合そのもの(27件)", () => {
+    expect([...roleSlots].sort()).toEqual(
+      [...((canonicalManifestSchema().$defs.theme as Any).required as string[])].sort(),
+    );
+  });
+
+  test.each(roleSlots)("slots_dark から %s が欠けると invalid で、slots_dark を指す", (slot) => {
+    const dark = { ...THEME_SLOTS_DARK_PASSING } as Record<string, string>;
+    delete dark[slot];
+    const errors = expectInvalid(
+      validateManifest(manifestWithTheme({ slots: THEME_SLOTS_PASSING, slots_dark: dark })),
+    );
+    expect(errors.some((e) => e.path.startsWith("/app/theme/slots_dark"))).toBe(true);
+    expect(errors.some((e) => e.message.includes(slot))).toBe(true);
+    expect(errors.every((e) => !e.path.startsWith("/app/theme/slots/"))).toBe(true);
   });
 });

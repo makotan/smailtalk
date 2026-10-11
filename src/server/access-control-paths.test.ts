@@ -533,7 +533,8 @@ describe("V7-M3-T02 (C): 判定の戻り値を捨てる呼び出しが1つも無
   test("(C-5) 予約規約フィールドは4本(`ADR-0294` 限定17 は v7 の話。減らしたのは `V8-M20`)", async () => {
     const source = await Bun.file(join(PRODUCT_ROOT, "src", "server", "owner-scope.ts")).text();
     const declared = source.match(/^export const [A-Z_]+_FIELD = /gm) ?? [];
-    expect(declared.length).toBe(4);
+    // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行3(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(declared.length).toBe(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で数え直して得た(5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+    expect(declared.length).toBe(5);
   });
 
   // =====================================================================================

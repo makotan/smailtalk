@@ -107,6 +107,10 @@ const TARGETS: readonly string[] = [
  * `NV-G[0-9]` / `CM-G[0-9]`)を下に3種足した。**上の「8種」の逐語は着手時点の数として
  * 残してある**(このリポジトリは既存の本文を書き換えない)。
  * **足した式が当たること・既存の式が当たり続けることは(記号5)(記号6)が打つ。**
+ *
+ * **追記(`V20-M16-T07a`)。今日は14種である** —— v20 の記号(`V2[0-9]-M[0-9]` /
+ * `DS-G[0-9]`)を末尾に2種足した。**上の「8種」「11種」の逐語は書いた時点の数として残してある。**
+ * **足した式が当たることは(記号8)が打つ。**
  */
 const INTERNAL_SYMBOLS: readonly { readonly label: string; readonly pattern: RegExp }[] = [
   { label: "ADR-[0-9]", pattern: /ADR-[0-9]/ },
@@ -130,6 +134,11 @@ const INTERNAL_SYMBOLS: readonly { readonly label: string; readonly pattern: Reg
   // (実測。(記号5)が `FU-G14` / `FU-G1` の当たり先を式まで固定している)。
   // **末尾に足す** —— 途中に挿すと(記号3)の当たり行の並び順が変わるためである。
   { label: "FU-G[0-9]", pattern: /FU-G[0-9]/ },
+  // **追記(`V20-M16-T07a`)。v20 の2式**(v10 以降の記号として足す。上の12式は1つも書き換えていない)。
+  // **`V20-M11` は既存の `V[0-9]-M[0-9]` にも `V1[0-9]-M[0-9]` にも当たらない**(実測。(記号8)が打つ)。
+  // `DS-G` は v20 の単位記号(`DS-G1`〜`DS-G16`)。**末尾に足す**(上の `FU-G` と同じ理由)。
+  { label: "V2[0-9]-M[0-9]", pattern: /V2[0-9]-M[0-9]/ },
+  { label: "DS-G[0-9]", pattern: /DS-G[0-9]/ },
 ];
 
 /**
@@ -141,12 +150,19 @@ const INTERNAL_SYMBOLS: readonly { readonly label: string; readonly pattern: Reg
  * **追記(`V10-M21-T06`)。ここに4種目(`FU-G[0-9]`)を足した。** **上の「3種」の逐語は
  * 書いた時点の数として残してある**(このリポジトリは既存の本文を書き換えない)。
  * **除外集合に入れる理由は `PLUGIN_SYMBOLS` の数え方(6種の和集合)を動かさないためである。**
+ *
+ * **追記(`V20-M16-T07a`)。定数名は `V10_` のままだが、今日は「v10 以降に足した記号」の集合で、
+ * 6語である**(v20 の `V2[0-9]-M[0-9]` / `DS-G[0-9]` を足した)。**定数名とテスト名は変えていない。**
+ * **入れる理由は同じ** —— 入れないと `PLUGIN_SYMBOLS` が6種から8種になり、(記号4)の 95 の突合が動く。
+ * **入れたので、(記号7)が `plugins/` に v20 の2記号が0行であることも見張る**(実測 0行。2026-09-27)。
  */
 const V10_SYMBOL_LABELS: ReadonlySet<string> = new Set([
   "V1[0-9]-M[0-9]",
   "NV-G[0-9]",
   "CM-G[0-9]",
   "FU-G[0-9]",
+  "V2[0-9]-M[0-9]",
+  "DS-G[0-9]",
 ]);
 
 /**
@@ -179,7 +195,9 @@ const VOCABULARY_SECTIONS: readonly {
 }[] = [
   { array: "RESOURCE_KINDS", heading: "## 扱えるリソースの種類", header: "種別", size: 8 },
   { array: "FIELD_TYPES", heading: "## フィールドの型", header: "型", size: 9 },
-  { array: "DIFF_OPS", heading: "## 差分操作", header: "操作", size: 17 },
+  // 【`V20-M15-T01A` / `ADR-0479`】17 → 18(18種目 `remember_design`)。旧(逐語): `size: 17`。MANUAL.md の表に1行足した。
+  // 【`V22-M2-T03b` / `ADR-0486`(門A)/ 授権 = `ADR-0487` 行27】18 → 19(19種目 `set_workspace`)。旧(逐語): `size: 18`。MANUAL.md の表に1行足した。
+  { array: "DIFF_OPS", heading: "## 差分操作", header: "操作", size: 19 },
 ];
 
 /** 行に分ける。**末尾の改行が作る空行は落とす**(`grep` の数え方に合わせる)。 */
@@ -332,6 +350,19 @@ const V10_POSITIVE_CASES: readonly { readonly 綴り: string; readonly 式: stri
   { 綴り: "FU-G1", 式: "FU-G[0-9]" },
 ];
 
+/**
+ * **陽性対照の綴り(v20)。** 追記(`V20-M16-T07a`)。**v10 の表(`V10_POSITIVE_CASES`)と
+ * (記号5)の名前は v10 のものなので混ぜず、別の表と(記号8)で撃つ。**
+ * **どの式が当たるかまで固定する**(既存の式にたまたま当たっただけの場合を素通りさせない)。
+ */
+const V20_POSITIVE_CASES: readonly { readonly 綴り: string; readonly 式: string }[] = [
+  { 綴り: "V20-M16", 式: "V2[0-9]-M[0-9]" },
+  { 綴り: "V20-M11", 式: "V2[0-9]-M[0-9]" },
+  { 綴り: "V20-M0", 式: "V2[0-9]-M[0-9]" },
+  { 綴り: "DS-G16", 式: "DS-G[0-9]" },
+  { 綴り: "DS-G1", 式: "DS-G[0-9]" },
+];
+
 describe("公開用の5本に内部記号が漏れていない", () => {
   test("(記号1)対象は5本ちょうどである", () => {
     expect(TARGETS.length).toBe(EXPECTED_TARGET_COUNT);
@@ -419,6 +450,20 @@ describe("公開用の5本に内部記号が漏れていない", () => {
       });
     }
     expect({ 当たった行: hits }).toEqual({ 当たった行: [] });
+  });
+
+  test("(記号8)陽性対照: v20 の記号が INTERNAL_SYMBOLS に当たる(足した2式ちょうど)", () => {
+    // 追記(`V20-M16-T07a`)。**式を足す理由(陰性の実測)** —— 既存の式は v20 の記号に当たらない。
+    // `V[0-9]-M[0-9]` は `V2` の次が `0` で `-` が来ない。`V1[0-9]-M[0-9]` は `V1` で始まらない。
+    expect(/V[0-9]-M[0-9]/.test("V20-M11")).toBe(false);
+    expect(/V1[0-9]-M[0-9]/.test("V20-M11")).toBe(false);
+    const actual = V20_POSITIVE_CASES.map((sample) => ({
+      綴り: sample.綴り,
+      当たった式: labelsMatching(sample.綴り),
+    }));
+    expect(actual).toEqual(
+      V20_POSITIVE_CASES.map((sample) => ({ 綴り: sample.綴り, 当たった式: [sample.式] })),
+    );
   });
 });
 

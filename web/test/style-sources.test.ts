@@ -150,7 +150,12 @@ test("(集合6) 集合の全要素に、色のリテラルが1つも無い", () 
 test("(集合7) 着手前から在った2本の文字列検査が、集合の全要素に当たる", () => {
   for (const source of STYLE_SOURCES) {
     const body = readStyleSource(source);
-    expect(body.includes("prefers-color-scheme"), source.path).toBe(false);
+    // 【V20-M10-T02 / 計画 §10 の 2】1本目の旧行の逐語:
+    //   `    expect(body.includes("prefers-color-scheme"), source.path).toBe(false);`
+    // **手で書く側はちょうど1回(配色設定の `@media` の条件)、生成側は0回**へ建て替えた。2本目は1バイトも変えていない。
+    expect(body.split("prefers-color-scheme").length - 1, source.path).toBe(
+      source.kind === "generated" ? 0 : 1,
+    );
     expect(body.includes("[data-theme]"), source.path).toBe(false);
   }
 });
@@ -166,6 +171,12 @@ test("(集合7) 着手前から在った2本の文字列検査が、集合の全
  * `--breakpoint-*: initial` で全部消してある。**
  * **AI も owner も断点を1つも指定できない** —— 語彙に置き場が無く、
  * `schemas/manifest.schema.json` に1バイトも触っていない。
+ *
+ * **【`V20-M5-T05b` が 2026-09-24 に追記。上の文を1バイトも消していない】**
+ * **今日から偽になった事実の記述**: 「`schemas/manifest.schema.json` に1バイトも触っていない」は
+ * 今日から偽である(`V20-M5` が並べ方の木 `$defs/layout_node` と画面のキー `layout` を足した。
+ * `ADR-0462` / `ADR-0471`)。 **今日も真の条文**: **AI も owner も断点を1つも指定できない**
+ * (`ADR-0089` 限定3)。 並べ方の木の値は有限の名前だけで、画面幅の条件を1つも受けない。
  */
 export const BREAKPOINT_COUNT = 2;
 

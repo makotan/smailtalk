@@ -66,6 +66,13 @@ import type {
 } from "../../src/kernel/types.ts";
 import { normalizeSort } from "../../src/kernel/types.ts";
 import { runPasskeyLogin, runPasskeyRegistration } from "./auth/passkey.ts";
+import {
+  notePreviewExpired,
+  notePreviewHeader,
+  PREVIEW_HEADER_NAME,
+  previewAppIdOfPath,
+} from "./preview.ts";
+import type { PreviewCompare } from "./preview-compare.ts";
 
 export type {
   AppRecord,
@@ -106,13 +113,62 @@ export type AppUser = AuthUser & {
 export class ApiError extends Error {
   readonly status: number;
   readonly errors: ValidationError[];
+  /**
+   * **下見の頭**(`X-Smailtalk-Preview` の値。`V20-M13-T02c`)。下見の綴り(`pv-…`)の API の応答が
+   * 頭を持っていたときだけ入る。それ以外は `null`(今日の全経路)。
+   */
+  readonly preview: string | null;
+  /**
+   * **本文の最上位の `kind`**(`V23-M2-T08`)。 サーバが一意違反の文言(`unique_message`)や島の断り(`reject`)で
+   * 書込を断ったときの `422` は `"app_rejected"` を載せる。 **文字列の `kind` を持たない応答では `null`**(今日の全経路)。
+   */
+  readonly kind: string | null;
 
-  constructor(status: number, errors: ValidationError[]) {
+  constructor(
+    status: number,
+    errors: ValidationError[],
+    preview: string | null = null,
+    kind: string | null = null,
+  ) {
     super(errors.map((error) => error.message).join(" / ") || `HTTP ${status}`);
     this.name = "ApiError";
     this.status = status;
     this.errors = errors;
+    this.preview = preview;
+    this.kind = kind;
   }
+}
+
+/**
+ * **アプリが決めた理由の断り(`422` と `kind: "app_rejected"`)の印**(`V23-M2-T08`)。 サーバの
+ * `src/server/app.ts` が書込の断りの全部がアプリの文言のときだけ付ける(今日の検査の失敗が混ざれば `400` で付かない)。
+ * **関数にしていない**(`web/test/reference-candidate-permission.test.tsx` が `export function` の集合を固定している。
+ * 読む側は `reason instanceof ApiError && reason.kind === APP_REJECTED_KIND` で問う)。
+ */
+export const APP_REJECTED_KIND = "app_rejected";
+
+/**
+ * **下見の前段の断り(`403`)か**(`V20-M13-T02c` / `D-V20-46` / 計画 §10-4)。
+ *
+ * 下見の頭を持つ 403 で、本文が前段の2文言(`src/server/preview-front.ts` の
+ * `PREVIEW_READ_ONLY_MESSAGE` / `PREVIEW_NOT_READABLE_MESSAGE` と同じ綴り)のどれかを持つもの。
+ * **画面はこれを権限不足と読まず、本文の `message` をそのまま出す**(「権限がありません(閲覧のみ)」を
+ * 出さない)。**頭つきでも写しの中の権限の断り(別の文言)は今日どおり権限不足である。**
+ */
+export const PREVIEW_REFUSAL_MESSAGES: readonly string[] = Object.freeze([
+  "下見なので保存されません",
+  "下見では開けません",
+]);
+
+// **export しない**(`web/test/reference-candidate-permission.test.tsx` (5) が `api.ts` の export する関数の
+// 集合を全量一致で固定している。画面の呼び手は {@link isForbidden} 越しにだけ使う)。
+function isPreviewRefusal(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.preview !== null &&
+    error.errors.some((entry) => PREVIEW_REFUSAL_MESSAGES.includes(entry.message))
+  );
 }
 
 /**
@@ -122,7 +178,9 @@ export class ApiError extends Error {
  * その場で「閲覧のみ」と伝える(V1-M3-T02)。
  */
 export function isForbidden(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 403;
+  // **【`V20-M13-T02c`】下見の前段の断りは権限不足と読まない**(呼び手は統一形式のエラーとして
+  // 本文の文言をそのまま出す)。旧(逐語): `return error instanceof ApiError && error.status === 403;`
+  return error instanceof ApiError && error.status === 403 && !isPreviewRefusal(error);
 }
 
 /**
@@ -188,9 +246,13 @@ export type CascadeDeleteDenial =
   | { kind: "children_confirmation"; total: number; message: string; hint: string };
 
 /** ③ / ④ / ⑤ に共通の語 / ③ だけが持つ語 / ④ ⑤ から「今の件数」を取り出す形。 */
-const CASCADE_CHILDREN_MARKER = "ぶら下がっている行";
+// 【V23-M14-T02。D-V23-451・D-V23-464・D-V23-465】③ は今日の文(「ぶら下がっている行」)のまま、
+// ④ ⑤ は使う人の言葉の新しい文(「一緒に消える行」。親と子の表を表示名で言う)。 印に読むのは
+// 合計(「全部で N 件」)だけで、表ごとの内訳の件数は読まない。 旧は ④ ⑤ も「ぶら下がっている行」で
+// 見分け、件数を「ぶら下がっている行が N 件あります」「今は N 件です」から読んでいた。
+const CASCADE_CHILDREN_MARKERS = ["ぶら下がっている行", "一緒に消える行"] as const;
 const CASCADE_FORBIDDEN_MARKER = "あなたには消せないものがあります";
-const CASCADE_TOTAL_PATTERNS = [/ぶら下がっている行が (\d+) 件あります/, /今は (\d+) 件です/];
+const CASCADE_TOTAL_PATTERNS = [/全部で (\d+) 件/];
 
 /**
  * **ぶら下がっている行の断りを読み、③ と ④ / ⑤ を見分ける**(`V18-M7-T05`)。 **呼び出し側はこの
@@ -205,7 +267,9 @@ export function readCascadeDeleteDenial(error: unknown): CascadeDeleteDenial | n
   if (!(error instanceof ApiError) || (error.status !== 403 && error.status !== 409)) {
     return null;
   }
-  const entry = error.errors.find((row) => row.message.includes(CASCADE_CHILDREN_MARKER));
+  const entry = error.errors.find((row) =>
+    CASCADE_CHILDREN_MARKERS.some((marker) => row.message.includes(marker)),
+  );
   if (entry === undefined) {
     return null;
   }
@@ -259,15 +323,60 @@ type RequestExtras = {
 
 /** 失敗応答を `ApiError` に変換し、必要なら 401 共通ハンドラを発火させる。 */
 async function toApiError(response: Response, extras: RequestExtras): Promise<ApiError> {
-  const errors = await readErrors(response);
-  if (response.status === 401 && extras.skipUnauthorized !== true && extras.appId !== undefined) {
+  // **【`V23-M2-T08`】本文の最上位の `kind` も読む。** 旧はこの位置で `readErrors(response)` だけを読んでいた
+  // (本文は1度しか読めないので、`errors` と `kind` を同じ1回の読みから取る。`errors` の読み方は旧と同じ)。
+  const { errors, kind } = await readErrorsAndKind(response);
+  const preview = previewHeaders.get(response) ?? null;
+  // **【`V20-M13-T02c`】下見の頭つきの 401 では失効の共通ハンドラを発火させない** —— 発火させると
+  // 本物のアプリのログイン画面へ誘導する(下見は頼んだ人のセッションを前段が付けるので、来ない見込み)。
+  if (
+    response.status === 401 &&
+    extras.skipUnauthorized !== true &&
+    extras.appId !== undefined &&
+    preview === null
+  ) {
     unauthorizedHandler?.(extras.appId);
   }
-  return new ApiError(response.status, errors);
+  return new ApiError(response.status, errors, preview, kind);
+}
+
+/**
+ * **下見の綴り(`pv-…`)の API の応答が持っていた頭**(`V20-M13-T02c`)。`apiFetch` が入れ、
+ * `toApiError` が `ApiError.preview` に写す。**下見の綴りでない応答は1つも入らない。**
+ */
+const previewHeaders = new WeakMap<Response, string | null>();
+
+/**
+ * **画面の API 呼び出しの `fetch` の1本**(`V20-M13-T02c`)。**要求は1バイトも変えない。**
+ * 下見の綴り(`pv-…`)の応答だけ、頭(`X-Smailtalk-Preview`)と 410 を下見の状態(`preview.ts`)へ
+ * 知らせる。**それ以外の応答では何も読まない**(今日の全経路と同じ)。
+ */
+async function apiFetch(
+  path: string,
+  init: RequestInit,
+  options: { notePreview?: boolean } = {},
+): Promise<Response> {
+  const response = await fetch(path, init);
+  const previewAppId = previewAppIdOfPath(path);
+  if (previewAppId === undefined) {
+    return response;
+  }
+  const header = response.headers.get(PREVIEW_HEADER_NAME);
+  previewHeaders.set(response, header);
+  // **【`V20-M14-T01C`】`/compare` の応答の頭では帯を出さない**(`notePreview: false`)。 前段は案の識別子への
+  // `/compare` の 404 にも下見の頭を付けるので、ここで知らせると作業画面より先に帯が出る(今日より早い)。
+  // 帯が出る時刻は今日どおり写しの読み物の応答で決める。 **410 は今日どおり知らせる。**
+  if (options.notePreview !== false) {
+    notePreviewHeader(previewAppId, header);
+  }
+  if (response.status === 410) {
+    notePreviewExpired(previewAppId, await readErrors(response.clone()));
+  }
+  return response;
 }
 
 async function getJson<T>(path: string, extras: RequestExtras = {}): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     headers: { accept: "application/json" },
     credentials: "include",
   });
@@ -278,6 +387,28 @@ async function getJson<T>(path: string, extras: RequestExtras = {}): Promise<T> 
 }
 
 /** エラーボディを読む。JSON でない(想定外の)応答でも統一形式に揃えて返す。 */
+/**
+ * **`readErrors` と同じ読み方で `errors` を取り、あわせて本文の最上位の文字列の `kind` を取る**(`V23-M2-T08`)。
+ * JSON として読めない応答・`kind` が文字列でない応答では `kind` は `null`。 `errors` の既定は `readErrors` と同じ1文。
+ */
+async function readErrorsAndKind(
+  response: Response,
+): Promise<{ errors: ValidationError[]; kind: string | null }> {
+  try {
+    const body = (await response.json()) as { errors?: unknown; kind?: unknown };
+    const kind = typeof body.kind === "string" ? body.kind : null;
+    if (Array.isArray(body.errors)) {
+      return { errors: body.errors as ValidationError[], kind };
+    }
+  } catch {
+    // JSON として読めない応答(プロキシ不調など)。下の既定に落ちる。
+  }
+  return {
+    errors: [{ path: "", message: `サーバが ${response.status} を返しました。` }],
+    kind: null,
+  };
+}
+
 async function readErrors(response: Response): Promise<ValidationError[]> {
   try {
     const body = (await response.json()) as { errors?: unknown };
@@ -392,6 +523,14 @@ export type PublicAppInfo = {
    * 1文字も入らない**(`D-V8-64` / `ADR-0338` 限定3 / 限定13)。
    */
   signup?: SignupFacts;
+  /**
+   * **【`V22-M2-T05`。`T06` の `GET /public` の受け手】メニューの位置(アプリの既定だけ)**(`ADR-0486` §Decision 1 の 7 / 限定11)。
+   *
+   * **アプリが `navigation.placement` を宣言しているときだけ載る**(トップレベルの5つ目のキー)。 **役割ごとの上書き
+   * (`by_role`)は1件も載らない** —— 未ログインには役割の上書きが効かず(`D-V22-10`)、載せると役割の ID の一覧を
+   * 未ログインへ渡すことになる。 宣言が無い(または上書きだけの)アプリでは `undefined`。
+   */
+  workspace?: { navigation: { placement: "side" | "top" } };
 };
 
 /** **セルフ登録で名乗れる立場1つ**(`ADR-0338` §3-1)。**3キーちょうどで閉じる。** */
@@ -437,7 +576,7 @@ async function sendJson<T>(
   extras: RequestExtras = {},
   headers: Record<string, string> = {},
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method,
     headers: { accept: "application/json", "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -460,6 +599,12 @@ function recordPath(appId: string, tableId: string, recordId: string): string {
 }
 
 /**
+ * **一覧の束ねるキーを読取の引数へ渡す形**(`V20-M4-T03`)。画面の `list_view.group_by` と同じ形
+ * (`field` と、日付の項目のときだけ `granularity`)。
+ */
+export type ListGroupByQuery = { field: string; granularity?: string };
+
+/**
  * ADR-0003 §5 のクエリ文字列を組み立てる(`sort` / `order` / `filter.<field>`)。
  *
  * 値の文字列化はサーバ側のデコード(`number` は `Number()`、`boolean` は
@@ -474,6 +619,8 @@ function buildListQuery(options: {
   offset?: number;
   view?: string;
   sumField?: string;
+  groupBy?: ListGroupByQuery;
+  myPage?: boolean;
 }): string {
   const parts: string[] = [];
   // 複合ソート(V1-M0-T03)は sort= と order= の組を**キーの順に**繰り返す。
@@ -520,8 +667,27 @@ function buildListQuery(options: {
   // **載せるのは「その画面の対象テーブルを引くとき」だけである** —— 参照ラベルの取得
   // (別テーブル)には載せない。
   // **束ねるキーも2つ目の演算も、ここに書く場所が無い**(限定2 / 限定8)。
+  // **【2026-09-24 訂正(`V20-M4-T07`)。直前の1文を消していない】「束ねるキー…ここに書く場所が無い」は今日は偽である** ——
+  // 一覧の束ねるキーは直下で `group_by=` / `granularity=` として載せる(`ADR-0470`)。**`sum=` の値に束ねるキーを
+  // 書く場所が無いこと、2つ目の演算が無いことは今日も真である**(集計表の `group_by` はこの関数を通らない)。
   if (options.sumField !== undefined) {
     parts.push(`sum=${encodeURIComponent(options.sumField)}`);
+  }
+  // **【`V20-M4-T03`】一覧の束ねるキー。** **画面の `list_view.group_by` を `sum` と同じ形で読取の引数
+  // `group_by=` / `granularity=` へ翻訳する**(読取の引数であって、並べ替えの語彙ではない)。
+  // **書いていない画面では1バイトも載らず、URL は着手前と1バイトも変わらない。**
+  // **載せるのは「その画面の対象テーブルを引くとき」だけである**(参照ラベルの取得には載せない)。
+  if (options.groupBy !== undefined) {
+    parts.push(`group_by=${encodeURIComponent(options.groupBy.field)}`);
+    if (options.groupBy.granularity !== undefined) {
+      parts.push(`granularity=${encodeURIComponent(options.groupBy.granularity)}`);
+    }
+  }
+  // **【`V22-M3-T05`】マイページの「自分の記録」**(`ADR-0488` §Decision 1 の 5)。 **サーバが「持ち主の列 = 自分」で
+  // 絞る印 `my_page=1` を載せる。** **渡さなければ1バイトも載らず、URL は着手前と1バイトも変わらない。**
+  // **呼ぶのはマイページ(`web/src/MyPage.tsx`)だけで、`?view=` とは同時に載せない**(サーバは同時の指定を 400 で断る)。
+  if (options.myPage === true) {
+    parts.push("my_page=1");
   }
   return parts.length === 0 ? "" : `?${parts.join("&")}`;
 }
@@ -540,11 +706,24 @@ export async function fetchRecords(
   appId: string,
   tableId: string,
   options: { sort?: Sort | Sort[]; filter?: FilterCondition[] | FilterNode; view?: string } = {},
+  /**
+   * **【`V23-M7-T05b`】応答の行ごとの判定(`access`)を受け取る手**(任意)。 **渡さなければ今日どおり捨てる**
+   * (戻り値の形も読みの本数も変えない。子の作成フォームの親の選択肢を絞るためだけに使う)。
+   */
+  onAccess?: (access: Record<string, RowAccess> | undefined) => void,
+  /**
+   * **【`V23-M12-T04`。`D-V23-357`】付与の表の一覧に添えた相手の行の代表項目(`principal_labels`)を受け取る手**(任意)。
+   * **渡さなければ今日どおり捨てる**(戻り値の形も読みの本数も変えない。子の一覧で結んだ相手を名前で出すためだけに使う)。
+   */
+  onPrincipalLabels?: (labels: (string | null)[] | undefined) => void,
 ): Promise<RecordRow[]> {
-  const body = await getJson<{ records: RecordRow[] }>(
-    `${recordsPath(appId, tableId)}${buildListQuery(options)}`,
-    { appId },
-  );
+  const body = await getJson<{
+    records: RecordRow[];
+    access?: Record<string, RowAccess>;
+    principal_labels?: (string | null)[];
+  }>(`${recordsPath(appId, tableId)}${buildListQuery(options)}`, { appId });
+  onAccess?.(body.access);
+  onPrincipalLabels?.(Array.isArray(body.principal_labels) ? body.principal_labels : undefined);
   return body.records;
 }
 
@@ -577,12 +756,66 @@ export async function fetchRecords(
  * **宣言していない表では、この値がそもそも返ってこない**(限定4)。**そのとき画面は
  * 着手前と1バイトも同じ見え方をする。**
  */
+/**
+ * **行の変更履歴の1件**(`V23-M8-T07`。単件の読取に `?history=1` を付けたときの `history.items` の要素。サーバの形のまま)。
+ * 変えた人はサーバが名前に差し替え済み(空は操作者の無い書込)。 `changes` は項目ごとの変更前と変更後、
+ * 招待の記録では招かれた人と配る権限名。
+ */
+export type RecordHistoryItem = {
+  seq: number;
+  op:
+    | "create"
+    | "update"
+    | "delete"
+    | "invite"
+    | "invite_accept"
+    | "invite_decline"
+    | "invite_revoke";
+  actor: string;
+  entry: "http" | "manual" | "inbound" | "on_create/on_update" | "schedule" | "mcp";
+  at: string;
+  changes:
+    | { field: string; before: RecordValue | undefined; after: RecordValue | undefined }[]
+    | { invitee: string; permission: string }[];
+};
+
+/** 行の変更履歴の1ページ(新しい順。limit は50)。 */
+export type RecordHistoryPage = {
+  items: RecordHistoryItem[];
+  total: number;
+  offset: number;
+  limit: number;
+};
+
 export type RowAccess = {
   readonly read: boolean;
   readonly write: boolean;
   readonly delete: boolean;
   readonly grant_write: boolean;
+  /**
+   * **【`V23-M7-T05b`】5つ目のキー**(親の表の権限が子を作れる権限を宣言しているときだけサーバが載せる)。
+   * **鍵は子の表 ID、値はその行の下に作れるか。** **画面はこの鍵の有無で宣言を知る**(マニフェストを読まない)。
+   */
+  readonly create_child?: Readonly<Record<string, boolean>>;
 };
+
+/**
+ * **誰にも開けなくなった行・管理者のいない行の一覧**(`V23-M1-T10`。運営だけ。読取専用)。
+ *
+ * 叩くのは既存の `GET .../tables/:table_id/unreachable-records` だけである(口を1本も足していない)。
+ * 並ぶ行には、行ごとの権限を宣言した表なら理由 `_orphan_reason`(`no_grants` = 付与が1件も無い /
+ * `no_admin` = 管理者がいない)が載る。 運営でなければ 403 の `ApiError`。
+ */
+export async function fetchUnreachableRecords(
+  appId: string,
+  tableId: string,
+): Promise<{ records: RecordRow[]; total: number }> {
+  const body = await getJson<{ records: RecordRow[]; total?: number }>(
+    `/api/apps/${encodeURIComponent(appId)}/tables/${encodeURIComponent(tableId)}/unreachable-records`,
+    { appId },
+  );
+  return { records: body.records, total: body.total ?? body.records.length };
+}
 
 /**
  * GET .../records with pagination — records と total を返す(EC-G11 / ADR-0042)。
@@ -607,22 +840,42 @@ export async function fetchRecordPage(
      * **画面の `list_view.sum_field` をそのまま渡す。渡さなければサーバは合計しない。**
      */
     sumField?: string;
+    /**
+     * **束ねるキー**(`V20-M4-T03`)。**画面の `list_view.group_by` をそのまま渡す。**
+     * **渡さなければサーバは並べ直さず、`group_keys` も返さない。**
+     */
+    groupBy?: ListGroupByQuery;
+    /** **【`V22-M3-T05`】マイページの「自分の記録」として読む**(`my_page=1`)。 渡さなければ今日どおり。 */
+    myPage?: boolean;
   } = {},
 ): Promise<{
   records: RecordRow[];
   total: number;
   sum?: number;
   /**
+   * **行ごとの群の値**(`V20-M4-T03`。`records` と同じ順・同じ長さ)。**日付は粒度で丸めた値。**
+   * **丸めはサーバ(カーネルの `truncateToGranularity` の1本)であり、画面は1文字も丸めない**
+   * (`ADR-0339` 限定7)。**束ねるキーを渡したときにサーバが返したときだけ持つ。**
+   */
+  groupKeys?: RecordValue[];
+  /**
    * **行ごとの判定**(`V14-M2-T01`。鍵は行の `_id`)。**サーバが返したときだけ持つ。**
    * **宣言していない表では、このキーごと存在しない**(`ADR-0402` 限定4)。
    */
   access?: Record<string, RowAccess>;
+  /**
+   * 【`V23-M6-T06b`】**付与表の行ごとの相手の行の代表項目**(`records` と同じ順・同じ長さ。相手の欄が空・隠れている・
+   * 行が無ければ `null`)。 サーバが返したとき(読んだ表が相手の行を宣言した付与表のとき)だけ持つ。
+   */
+  principalLabels?: (string | null)[];
 }> {
   const body = await getJson<{
     records: RecordRow[];
     total?: number;
     sum?: number;
     access?: Record<string, RowAccess>;
+    group_keys?: RecordValue[];
+    principal_labels?: (string | null)[];
   }>(`${recordsPath(appId, tableId)}${buildListQuery(options)}`, { appId });
   return {
     records: body.records,
@@ -635,6 +888,10 @@ export async function fetchRecordPage(
     // キーごと持たない。** **【禁止】`{}` に倒さない** —— **`{}` は「この一覧の行は
     // 誰も何もできない」という嘘になる。**
     ...(body.access === undefined ? {} : { access: body.access }),
+    // **【`V20-M4-T03`】束ねたときの群の値。** 返さなければキーごと持たない(画面は見出しを出さない)。
+    ...(Array.isArray(body.group_keys) ? { groupKeys: body.group_keys } : {}),
+    // 【`V23-M6-T06b`】相手の行の代表項目。 返さなければキーごと持たない。
+    ...(Array.isArray(body.principal_labels) ? { principalLabels: body.principal_labels } : {}),
   };
 }
 
@@ -766,14 +1023,28 @@ export async function fetchRecord(
   tableId: string,
   recordId: string,
   viewId?: string,
-): Promise<{ record: RecordRow; access?: RowAccess }> {
-  const query = viewId === undefined ? "" : `?view=${encodeURIComponent(viewId)}`;
+  // 【`V23-M8-T07`。`D-V23-211`】行の変更履歴の1ページを一緒に読む(詳細画面の `history` の部品だけが渡す)。
+  // 渡さなければ URL も戻りも今日と1バイトも同じ。 export を増やさないため、既存の関数に省略できる引数を足した。
+  history?: { offset: number },
+): Promise<{
+  record: RecordRow;
+  access?: RowAccess;
+  principalLabel?: string | null;
+  history?: RecordHistoryPage;
+}> {
+  const params = [
+    ...(viewId === undefined ? [] : [`view=${encodeURIComponent(viewId)}`]),
+    ...(history === undefined ? [] : ["history=1", `history_offset=${history.offset}`]),
+  ];
+  const query = params.length === 0 ? "" : `?${params.join("&")}`;
   // **サーバから受ける形は、一覧と1バイトも同じ「行の `_id` を鍵にした写像」である**
   // (`V14-M4-T01`)。**裸の `RowAccess` ではない。**
-  const body = await getJson<{ record: RecordRow; access?: Record<string, RowAccess> }>(
-    `${recordPath(appId, tableId, recordId)}${query}`,
-    { appId },
-  );
+  const body = await getJson<{
+    record: RecordRow;
+    access?: Record<string, RowAccess>;
+    principal_label?: string | null;
+    history?: RecordHistoryPage;
+  }>(`${recordPath(appId, tableId, recordId)}${query}`, { appId });
   // **鍵で引くだけである** —— **可否を1ミリも決めていない。** **鍵は URL に載せた
   // `recordId` そのものを使う**(サーバ側の鍵は行の `_id` であり、同じ値である)——
   // **射影(`projectForRoleFields`)が `_id` を落としうる `body.record._id` には
@@ -788,6 +1059,10 @@ export async function fetchRecord(
     // **既定は「出す」に倒れる**(`rowAccessAllows` の doc / `ADR-0402` 限定4)。
     // **【禁止】「全部偽」に倒さない** —— **それは「この人は何もできない」という嘘になる。**
     ...(rowAccess === undefined ? {} : { access: rowAccess }),
+    // 【`V23-M6-T06b`】付与表の1行の相手の行の代表項目。 サーバが返したときだけ持つ。
+    ...(body.principal_label === undefined ? {} : { principalLabel: body.principal_label }),
+    // 【`V23-M8-T07`】サーバが返したときだけ持つ(未ログイン・表に宣言が無い・引数を渡さないときは返らない)。
+    ...(body.history === undefined ? {} : { history: body.history }),
   };
 }
 
@@ -888,7 +1163,7 @@ export async function uploadFile(
   // **`kind` は必ず明示して送る**(`V5-M16-T05`)。サーバの既定は `image` だが、
   // 既定に頼ると「どちらの入口を使うつもりか」が呼び出し側のコードから読めなくなる。
   form.append("kind", kind);
-  const response = await fetch(filesPath(appId), {
+  const response = await apiFetch(filesPath(appId), {
     method: "POST",
     headers: { accept: "application/json" },
     body: form,
@@ -948,7 +1223,7 @@ export async function deleteRecord(
   expectedVersion: string,
   childrenSeal?: number,
 ): Promise<void> {
-  const response = await fetch(recordPath(appId, tableId, recordId), {
+  const response = await apiFetch(recordPath(appId, tableId, recordId), {
     method: "DELETE",
     headers: {
       accept: "application/json",
@@ -985,7 +1260,7 @@ export async function runViewAction(
   const path =
     `/api/apps/${encodeURIComponent(appId)}/views/${encodeURIComponent(viewId)}/actions/run` +
     `?workflow=${encodeURIComponent(workflowId)}&record=${encodeURIComponent(recordId)}`;
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method: "POST",
     headers: { accept: "application/json" },
     credentials: "include",
@@ -1416,6 +1691,172 @@ export async function revokeInvitation(appId: string, username: string): Promise
   );
 }
 
+// ---------------------------------------------------------------------------
+// 行単位の招待(`V23-M5-T06`。決定 `D-V23-121`・`D-V23-126`・`D-V23-129`、門A `ADR-0532`)
+// ---------------------------------------------------------------------------
+//
+// **上の登録用の招待(`/auth/invitations`)とは別の口である。** 登録用の招待の関数と型は1バイトも変えていない。
+// 口は4本(`src/server/app.ts`): 行の招待の発行・行の招待の一覧・自分宛ての一覧・返答(`action` の3値)。
+// **取消も返答の口の `POST` で表す**(`sendJson` に `DELETE` を足さない。`D-V23-121`)。
+
+/** 自分宛ての招待1件(サーバが返す6つのキーちょうど。`D-V23-126`)。 */
+export type MyRowInvitation = {
+  readonly id: string;
+  /** 行の代表項目の値。 受け手の役割の規則で隠れている・空のときは `null`。 */
+  readonly representative: string | null;
+  readonly inviter_name: string;
+  readonly permission_name: string;
+  readonly table_name: string;
+  readonly expires_at: string;
+  /**
+   * 【`V23-M5-T11`】承諾で所属グループが替わるか(真なら、今のグループを通した権限は無くなる)。
+   * グループの名前は返らない。 古いサーバは返さないので省けるものとして読む。
+   */
+  readonly changes_group?: boolean;
+  /**
+   * 【`V23-M6-T06b`】コードの招待の宛先の行の代表項目(どの行として受けるか)。 **コードの招待の1件にだけ在る**
+   * (名前の招待にはキーが無い)。 受け手の役割の規則で隠れていれば `null`。
+   */
+  readonly principal_label?: string | null;
+};
+
+/** 行の招待の一覧(`grantable` と `pending` だけ。計画 §24-6 軽2)。 */
+export type RowInvitationList = {
+  readonly grantable: readonly { readonly id: string; readonly name: string }[];
+  readonly pending: readonly {
+    readonly id: string;
+    readonly login: string;
+    /** 権限の ID(表示名は `grantable` から引く)。 */
+    readonly permission: string;
+    readonly inviter_name: string;
+    readonly expires_at: string;
+    /**
+     * 【`V23-M6-T06b`】コードの招待の宛先の行の代表項目。 **コードの招待の1件にだけ在る**(`login` は空文字)。
+     * 隠れている・行が無ければ `null`。
+     */
+    readonly principal_label?: string | null;
+  }[];
+};
+
+function rowInvitationsPath(appId: string, tableId: string, recordId: string): string {
+  return `${recordPath(appId, tableId, recordId)}/invitations`;
+}
+
+function myInvitationsPath(appId: string): string {
+  return `/api/apps/${encodeURIComponent(appId)}/invitations`;
+}
+
+/** GET /api/apps/:app_id/invitations — 自分宛ての招待(ログインが要る)。 */
+export async function fetchMyRowInvitations(appId: string): Promise<MyRowInvitation[]> {
+  const body = await getJson<{ invitations: MyRowInvitation[] }>(myInvitationsPath(appId), {
+    appId,
+  });
+  return body.invitations;
+}
+
+/**
+ * POST /api/apps/:app_id/invitations/:invitation_id — 招待への返答(`accept` / `decline` は受け手、`revoke` は招待できる人)。
+ * 断りは `ApiError`(403 の理由・422 のアプリの文言・404)。
+ */
+export async function answerRowInvitation(
+  appId: string,
+  invitationId: string,
+  action: "accept" | "decline" | "revoke",
+): Promise<void> {
+  await sendJson<unknown>(
+    `${myInvitationsPath(appId)}/${encodeURIComponent(invitationId)}`,
+    "POST",
+    { action },
+    { appId },
+  );
+}
+
+/**
+ * GET /api/apps/:app_id/tables/:table_id/records/:record_id/invitations — 行の招待の一覧。
+ * **招待できない人には 404**(存在しない行と同じ)。 画面はそれを「何も出さない」と読む。
+ */
+export async function fetchRowInvitations(
+  appId: string,
+  tableId: string,
+  recordId: string,
+): Promise<RowInvitationList> {
+  return await getJson<RowInvitationList>(rowInvitationsPath(appId, tableId, recordId));
+}
+
+/**
+ * POST /api/apps/:app_id/tables/:table_id/records/:record_id/invitations — 行の招待の発行。
+ * **応答は相手の名前が在っても無くても同じ**(`D-V23-122`)なので、本文は読み捨てる。
+ */
+export async function issueRowInvitation(
+  appId: string,
+  tableId: string,
+  recordId: string,
+  login: string,
+  permission: string,
+): Promise<void> {
+  await sendJson<unknown>(
+    rowInvitationsPath(appId, tableId, recordId),
+    "POST",
+    { login, permission },
+    { appId },
+  );
+}
+
+/**
+ * 【`V23-M6-T06b`】POST …/invitations の本文に `code`(相手の行の招待用コード)— コードで相手の行を招待する。
+ * 応答はコードが在っても無くても同じなので、本文は読み捨てる(名前の招待と同じ)。
+ */
+export async function issueRowInvitationByCode(
+  appId: string,
+  tableId: string,
+  recordId: string,
+  code: string,
+  permission: string,
+): Promise<void> {
+  await sendJson<unknown>(
+    rowInvitationsPath(appId, tableId, recordId),
+    "POST",
+    { code, permission },
+    { appId },
+  );
+}
+
+function rowInviteCodePath(appId: string, tableId: string, recordId: string): string {
+  return `${recordPath(appId, tableId, recordId)}/invite-code`;
+}
+
+/**
+ * 【`V23-M6-T06b`】GET …/records/:record_id/invite-code — 行の招待用コードを見る(まだ無ければ `null`)。
+ * **見られない人・指されていない表には 404**(存在しない行と同じ)。 画面はそれを「何も出さない」と読む
+ * (行の招待の一覧と同じく `appId` を渡さず、失効の共通の扱いを起こさない)。
+ */
+export async function fetchRowInviteCode(
+  appId: string,
+  tableId: string,
+  recordId: string,
+): Promise<string | null> {
+  const body = await getJson<{ code: string | null }>(rowInviteCodePath(appId, tableId, recordId));
+  return typeof body.code === "string" ? body.code : null;
+}
+
+/**
+ * 【`V23-M6-T06b`】POST …/records/:record_id/invite-code — 行の招待用コードの発行と再発行(置き換え)。
+ * 再発行すると古いコードでは招待できなくなる(古いコードで出した招待と付与はそのまま)。
+ */
+export async function reissueRowInviteCode(
+  appId: string,
+  tableId: string,
+  recordId: string,
+): Promise<string> {
+  const body = await sendJson<{ code: string }>(
+    rowInviteCodePath(appId, tableId, recordId),
+    "POST",
+    {},
+    { appId },
+  );
+  return body.code;
+}
+
 /**
  * PATCH /api/apps/:app_id/auth/users/:user_id — ロール変更(owner のみ)。
  * 最後の owner の降格は 409、不正 role は 400、未知ユーザは 404(いずれも `ApiError`)。
@@ -1519,7 +1960,7 @@ export async function revokeConnection(appId: string, connectionId: string): Pro
 
 /** DELETE で `{ ok: true }` を返す口(records の 204 とは違い本体を持つ)。 */
 async function getJsonDelete(path: string, extras: RequestExtras = {}): Promise<void> {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method: "DELETE",
     headers: { accept: "application/json" },
     credentials: "include",
@@ -1638,6 +2079,59 @@ export async function applyThemeDiff(appId: string, diff: ThemeDiff): Promise<Ap
     diff,
   );
   return { diffId: body.change.entry.diff_id };
+}
+
+// --- 見比べの画面(`V20-M14-T01C` / `ADR-0478`)-------------------------------------------
+
+/**
+ * `GET /api/apps/pv-<id>/compare` —— **前段が束の識別子にだけ答える読み物**(`V20-M14-T01B`)。
+ *
+ * - 200 → 束(`{ compare }`)を返す。 **この応答には下見の頭が付かない**(見比べの画面は自分の帯を出す)。
+ * - 404(案の識別子 = 1案の下見)→ `null`(呼び手は今日どおり1案の下見を描く)。
+ * - 410(期限切れ・不在)→ `apiFetch` が下見の状態へ知らせたうえで `ApiError` を投げる(`PreviewGate` が
+ *   期限切れの画面を出す)。 他の失敗も `ApiError`。
+ *
+ * **新しい HTTP の口ではない**(前段の `app.all("/api/apps/:app_id/*")` の中の1本。`HTTP_ENTRY_POINTS` は動かない)。
+ * 非保護 API なので、401 の失効ハンドラには繋がない(`appId` を `RequestExtras` に載せない)。
+ */
+export async function fetchPreviewCompare(appId: string): Promise<PreviewCompare | null> {
+  try {
+    const response = await apiFetch(
+      `/api/apps/${encodeURIComponent(appId)}/compare`,
+      { headers: { accept: "application/json" }, credentials: "include" },
+      { notePreview: false },
+    );
+    if (!response.ok) {
+      throw await toApiError(response, {});
+    }
+    return ((await response.json()) as { compare: PreviewCompare }).compare;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * `POST /api/apps/:app_id/diffs` —— **見比べで選んだ案の差分を、そのまま本物へ1回だけ送る**(`D-V20-48`)。
+ *
+ * **送るのは前段の `/compare` が返した `diff`(AI が `dry_run_diff` に渡した差分そのもの)であり、
+ * 画面は1バイトも組み替えない。** 口は {@link applyThemeDiff} と同じ既存の1本で、壁(セッション・設定を
+ * 変えられる人・`Origin` の照合)は今日のまま。 **401 の失効ハンドラには繋がない**(見比べの画面は本物の
+ * ログイン画面へ落とさず、自分で「適用するにはログインが要ります」を出す。`D-V20-54`)。
+ */
+export async function applyCandidateDiff(
+  appId: string,
+  diff: unknown,
+): Promise<{ diffId: string | null }> {
+  const body = await sendJson<{ change?: { entry?: { diff_id?: unknown } } }>(
+    `/api/apps/${encodeURIComponent(appId)}/diffs`,
+    "POST",
+    diff,
+  );
+  const diffId = body.change?.entry?.diff_id;
+  return { diffId: typeof diffId === "string" ? diffId : null };
 }
 
 // --- 逃げ道(任意 CSS)の資産の発行・失効(owner 限定・V3-M5-T03 / ADR-0055 限定5・7)---------

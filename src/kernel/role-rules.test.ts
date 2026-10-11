@@ -213,11 +213,15 @@ describe("(T-1) `roles[]` の要素は `id` / `name` / `rules` の3キーで閉�
     // 宣言順をその文言に揃えた。****当初は `name` と `rules` の間に挿入しており、
     // 文言と宣言順が食い違っていた** —— **見つけたのは `V8-M1-T07`(語彙の名前の一覧
     // との突合)であって、`V8-M1-T02` の検査ではない。**
+    // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys(roleItemSchema().properties as Any)).toEqual(["id", "name", "rules", "signup"]);`
+    // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
     expect(Object.keys(roleItemSchema().properties as Any)).toEqual([
       "id",
       "name",
       "rules",
       "signup",
+      "density",
     ]);
     expect(roleItemSchema().additionalProperties).toBe(false);
     expect(roleItemSchema().required).toEqual(["id"]);
@@ -250,7 +254,8 @@ describe("(T-1) `roles[]` の要素は `id` / `name` / `rules` の3キーで閉�
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(manifestDefs())).toHaveLength(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(manifestDefs())).toHaveLength(31);
     expect(Object.keys(manifestDefs())).toContain("role_condition");
   });
 
@@ -586,14 +591,17 @@ describe("(T-6) 対象が指す先が実在しない規則も `apply` を通る(
 // ===========================================================================
 
 describe("(T-7) `$defs/view_action` に識別子のキーが1本増えた(`V8-M17` 時点で9キー)", () => {
-  test("キーは8つである(**`V8-M20` が `audience` を消して8キーに戻った**)", () => {
+  // **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧テスト名(逐語)**: 「キーは8つである(**`V8-M20` が `audience` を消して8キーに戻った**)」。
+  // **旧値の逐語は 8。** **9本目 `action_emphasis`(ボタンの強調)を足したのは本段であり、
+  // `V8-M17` の識別子とは別の決定である。****検査は消していない。**
+  test("キーは9つである(**`V8-M20` が `audience` を消して8キー、`V20-M2` が強調を足して9キー**)", () => {
     // **【禁止】キー数の期待値を1つの数字に揃えない**(裁定 `R-13-1` / 申し送り2)——
     // **揃えると `V8-M17` と `V8-M20` の完了条件が互いを赤くする。**
     // **【`V8-M20-T01` / 台帳 `J-G29` / 手続きは `ADR-0301`。2026-08-10】**
     // **`audience` が廃止されたので、予告どおり 9 → 8 にした。旧値の逐語は 9。**
     // **`V8-M17` が足した `id` は今日も在る**(下の `toContain("id")` が測っている)。
     const properties = Object.keys((manifestDefs().view_action?.properties as Any) ?? {});
-    expect(properties).toHaveLength(8);
+    expect(properties).toHaveLength(9);
     expect(properties).toContain("id");
   });
 
@@ -739,8 +747,11 @@ describe("(T-8) `set_roles` は `rules` を含めて丸ごと差し替える(部
   // **旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);`
   // **この検査が測っているのは「`V8-M17` が19種目を足していないこと」であり、そちらは1ミリも弱めていない**
   // (下の禁止5語の絞り込みが今日も測る)。**テスト名の「18」は当時の逐語である**(テスト名は書き換えない)。
+  // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(17);` —— 18種目 `remember_design` を足したので 17 → 18。
+  // **この行が固定していたのは「`V8-M17` が op を足していないこと」であり、足したのは別の決定である。** 禁止5語の絞り込みは1バイトも弱めていない。
   test("`DIFF_OPS` は 18 のままである(19種目を足していない)", () => {
-    expect(DIFF_OPS).toHaveLength(17);
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行8)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(`V8-M17` が足したのではない)。 禁止5語の絞り込みは1バイトも弱めていない。
+    expect(DIFF_OPS).toHaveLength(19);
     for (const forbidden of ["set_rules", "add_rule", "remove_rule", "grant", "revoke"]) {
       expect(DIFF_OPS as readonly string[]).not.toContain(forbidden);
     }
@@ -767,7 +778,9 @@ describe("(T-8) `set_roles` は `rules` を含めて丸ごと差し替える(部
   test("`$defs/operation.properties` は10キーのままである(11キー目を足していない)", () => {
     const operation = ((diffSchema as unknown as { $defs: Record<string, Any> }).$defs.operation ??
       {}) as Any;
-    expect(Object.keys(operation.properties as Any)).toHaveLength(9);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `.toHaveLength(9);` —— 10キー目 `design_memory` を足したので 9 → 10(`V8-M17` が足したのではない)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行8)】旧(逐語)**: `expect(Object.keys(operation.properties as Any)).toHaveLength(10);` —— 11キー目 `workspace` を足したので 10 → 11(`V8-M17` が足したのではない)。
+    expect(Object.keys(operation.properties as Any)).toHaveLength(11);
   });
 });
 
@@ -1140,12 +1153,22 @@ describe("(T-12) 器の本数は着手前(`V8-M28` の着手時実測)と1つも
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(manifestDefs())).toHaveLength(30);
-    expect(Object.keys((manifestDefs().app as Any).properties as Any)).toHaveLength(8);
-    expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(6);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(manifestDefs())).toHaveLength(31);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `...app as Any).properties as Any)).toHaveLength(8);` —— 9本目 `design_memory` を足したので 8 → 9(別の決定)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行8)】旧(逐語)**: `expect(Object.keys((manifestDefs().app as Any).properties as Any)).toHaveLength(9);` —— 10本目 `workspace` を足したので 9 → 10(別の決定)。 `$defs` 31 と `$defs/table` 6 は動いていない。
+    expect(Object.keys((manifestDefs().app as Any).properties as Any)).toHaveLength(10);
+    // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行24】7キー目 history(表への書込を変更履歴に残すか)が末尾に足されて 6 → 7(決定 `D-V23-205`)。 旧行の逐語: `expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(6);` 新しい値は manifest.schema.json の $defs/table.properties を python で読んで数えた。
+    expect(Object.keys((manifestDefs().table as Any).properties as Any)).toHaveLength(7);
   });
 
   test("`rules.items.properties` は 7 / `roles.items.properties` は 3 のままである", () => {
+    // **【2026-09-27 追記(`V21-M2B`。`ADR-0482` の `AN-G2` §2-2。授権 `ADR-0483` 行19)。
+    // 旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys(ruleItemSchema().properties as Any)).toEqual(["target", "table", "field", "view", "action", "can", "when"]);`
+    // **8キー目 `hidden_fields`(未ログインにだけ隠す項目。未ログインの表の規則にだけ書ける)を
+    // 足したので 7 → 8。** **テスト名の「7」は当時の逐語である**(テスト名は書き換えない)。
+    // **`roles.items.properties` の5本・未ログインの分岐の `target` の3語・`can` は動かしていない。**
     expect(Object.keys(ruleItemSchema().properties as Any)).toEqual([
       "target",
       "table",
@@ -1154,6 +1177,7 @@ describe("(T-12) 器の本数は着手前(`V8-M28` の着手時実測)と1つも
       "action",
       "can",
       "when",
+      "hidden_fields",
     ]);
     // **【2026-08-14。`V8-M1-T02`。台帳 `I-G1` / `I-G6`。判定値 = 限定採用(`ADR-0334`)】**
     // **`roles.items.properties` に4キー目 `signup` を足したので 3 → 4。**
@@ -1163,11 +1187,15 @@ describe("(T-12) 器の本数は着手前(`V8-M28` の着手時実測)と1つも
     // `can.items.enum` の3語は1バイトも動いていない。****テスト名の「3」は当時の逐語である**
     // (テスト名は書き換えない)。**`signup` は宣言の末尾に在る**(`ADR-0334` の限定表と
     // 新設 `$comment` の文言「`id` / `name` / `rules` / `signup`」に宣言順を揃えた)。
+    // **【2026-09-25 追記(`V20-M11-T01`。`ADR-0464` 限定1)。旧の期待値を1バイトも消していない】**
+    // **旧(逐語)**: `expect(Object.keys(roleItemSchema().properties as Any)).toEqual(["id", "name", "rules", "signup"]);`
+    // **5キー目 `density`(この役割の人が開く画面の詰め具合)を足したので 4 → 5。** **6キー目は足さない。**
     expect(Object.keys(roleItemSchema().properties as Any)).toEqual([
       "id",
       "name",
       "rules",
       "signup",
+      "density",
     ]);
   });
 
@@ -1180,8 +1208,11 @@ describe("(T-12) 器の本数は着手前(`V8-M28` の着手時実測)と1つも
   test("`$defs/operation.properties` は 10 / `DIFF_OPS` は 18 のままである", () => {
     const operation = (diffSchema as unknown as { $defs: Record<string, Any> }).$defs
       .operation as Any;
-    expect(Object.keys(operation.properties as Any)).toHaveLength(9);
-    expect(DIFF_OPS).toHaveLength(17);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `.toHaveLength(9);` と `expect(DIFF_OPS).toHaveLength(17);` —— 10キー目と18種目を足したので 9 → 10 / 17 → 18(別の決定)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行8)】旧(逐語)**: `expect(Object.keys(operation.properties as Any)).toHaveLength(10);` —— 11キー目 `workspace` を足したので 10 → 11(別の決定)。
+    expect(Object.keys(operation.properties as Any)).toHaveLength(11);
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行8)】旧(逐語)**: `expect(DIFF_OPS).toHaveLength(18);` —— 19種目 `set_workspace` を足したので 18 → 19(別の決定)。
+    expect(DIFF_OPS).toHaveLength(19);
   });
 
   test("動いたのは `target.enum` の 4 → 6 だけである", () => {

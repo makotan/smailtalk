@@ -397,6 +397,12 @@ describe("V1-M0-T05: create_app の changelog 追記が語彙と書き込み経�
       // いない、という対比がこのファイルの主張であり、本決定はその対比を1ミリも
       // 崩していない。**
       "set_roles",
+      // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】18種目 `remember_design`(旧の期待値は `"set_roles"` で終わる17要素)。**
+      // **`SYSTEM_TABLES` は今日も2本のままである** —— 選んだ記録と型はマニフェストの `app.design_memory` に書かれ、
+      // **予約名もシステムテーブルも1本も増えていない。** テスト名は当時の逐語のまま。
+      "remember_design",
+      // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行22)】19種目 `set_workspace`(`ADR-0486`。旧の期待値は `"remember_design"` で終わる18要素。逐語)。 書き込み経路は広げていない(`app.workspace` を差し替えるだけ)。**
+      "set_workspace",
     ]);
   });
 

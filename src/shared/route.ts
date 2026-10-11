@@ -16,6 +16,12 @@
  * パスは今日も上の4形だけであり、`ADR-0003` の「アプリの内容に依存しない URL 空間」
  * (アプリID・ビューID がパスパラメータであること)は1バイトも変えていない。
  *
+ * **【`V21-M4` / `ADR-0482` §5(`AN-G5`)/ `D-V21-17` の追記。上の段落を1バイトも消していない】**
+ * **パスの形が1つ増えた**: `/apps/<app_id>/login`(ログイン画面の専用の場所)。 **上の「パスの4形は
+ * ここから1つも増えていない」は今日から偽である。** **ただし `Route` の種別は4つのまま**で、
+ * `app` 種別の中の印(`login: true`)で表す(`ADR-0482` §5-2)。 URL はアプリの内容に依存しない
+ * (`ADR-0003` の URL 空間には当たらない。`ADR-0482` §破る条文 23)。
+ *
  * 画面状態が完全に URL に載っているので、ブラウザのリロードで同じ画面に戻る
  * (V0-P3-T07 の前提)。
  *
@@ -56,7 +62,30 @@ export type RoutePrefill = {
 
 export type Route =
   | { kind: "app-list" }
-  | { kind: "app"; appId: string }
+  | {
+      kind: "app";
+      appId: string;
+      /**
+       * **ログイン画面の専用の場所 `/apps/<app_id>/login`**(`V21-M4` / `ADR-0482` §5 / `D-V21-17`)。
+       * **種別を増やさず `app` の中の印で表す**(§5-2。`ADR-0465` 限定1 の5種目の枠は下見の器の
+       * ためのもので、ここでは使わない)。 **印の無い `app` の URL は今日と1バイトも同じ**
+       * (MCP の `get_preview_url` / `create_app` はこの印を付けない)。
+       */
+      login?: true | undefined;
+      /**
+       * **【`V22-M3-T05`】マイページの場所 `/apps/<app_id>/my-page`**(`ADR-0488` §Decision 1 の 6 /
+       * `D-V22-6`・`D-V22-20`)。 **`login` と同じく種別を増やさず `app` の中の印で表す**(限定15)。
+       * **`login` と同時には成り立たない** —— `parseRoute` は3階層目が1つなのでどちらか一方しか作らず、
+       * `routePath` は両方立っていたら `login` を優先する。 **印の無い `app` の URL は今日と1バイトも同じ。**
+       */
+      myPage?: true | undefined;
+      /**
+       * **【`V23-M5-T06`】招待の受け取り画面の場所 `/apps/<app_id>/invitations`**(`D-V23-129`・`ADR-0532` §Decision 1-8)。
+       * **`myPage` と同じく種別を増やさず `app` の中の印で表す。** `login`・`myPage` と同時には成り立たず、
+       * `routePath` は `login`、次に `myPage` を優先する。 **印の無い `app` の URL は今日と1バイトも同じ。**
+       */
+      invitations?: true | undefined;
+    }
   | {
       kind: "view";
       appId: string;
@@ -75,6 +104,12 @@ export type Route =
 const APPS_SEGMENT = "apps";
 const VIEWS_SEGMENT = "views";
 const RECORDS_SEGMENT = "records";
+/** `/apps/<app_id>/login` の3階層目(`V21-M4`)。 */
+const LOGIN_SEGMENT = "login";
+/** `/apps/<app_id>/my-page` の3階層目(`V22-M3-T05`)。 */
+const MY_PAGE_SEGMENT = "my-page";
+/** `/apps/<app_id>/invitations` の3階層目(`V23-M5-T06`)。 */
+const INVITATIONS_SEGMENT = "invitations";
 
 /**
  * プリフィルを載せるクエリの鍵の接頭辞(V5-M24-T01)。
@@ -131,6 +166,18 @@ export function parseRoute(url: string): Route {
     if (segments.length === 2) {
       return { kind: "app", appId };
     }
+    // **【`V21-M4`】ログイン画面の専用の場所。** クエリ文字列は画面状態にしない(prefill も載せない)。
+    if (segments.length === 3 && views === LOGIN_SEGMENT) {
+      return { kind: "app", appId, login: true };
+    }
+    // **【`V22-M3-T05`】マイページの場所。** ログイン画面と同じく、クエリ文字列は画面状態にしない。
+    if (segments.length === 3 && views === MY_PAGE_SEGMENT) {
+      return { kind: "app", appId, myPage: true };
+    }
+    // **【`V23-M5-T06`】招待の受け取り画面の場所。** マイページと同じく、クエリ文字列は画面状態にしない。
+    if (segments.length === 3 && views === INVITATIONS_SEGMENT) {
+      return { kind: "app", appId, invitations: true };
+    }
     if (views === VIEWS_SEGMENT && viewId !== undefined) {
       const prefill = parsePrefill(search);
       const withPrefill = prefill === undefined ? {} : { prefill };
@@ -152,7 +199,26 @@ export function routePath(route: Route): string {
     case "app-list":
       return "/";
     case "app":
-      return `/${APPS_SEGMENT}/${route.appId}`;
+      // **印が無ければ今日と1バイトも同じ**(`V21-M4`。MCP の応答を変えない)。
+      // **【`V22-M3-T05`】旧の逐語(1バイトも消していない)**:
+      //   `return route.login === true`
+      //   `  ? \`/${APPS_SEGMENT}/${route.appId}/${LOGIN_SEGMENT}\``
+      //   `  : \`/${APPS_SEGMENT}/${route.appId}\`;`
+      // **マイページの印を足した。 両方立っていたら `login` を優先する**(計画の点検 軽-1)。
+      if (route.login === true) {
+        return `/${APPS_SEGMENT}/${route.appId}/${LOGIN_SEGMENT}`;
+      }
+      // **【`V23-M5-T06`】旧の逐語(1バイトも消していない)**:
+      //   `return route.myPage === true`
+      //   `  ? \`/${APPS_SEGMENT}/${route.appId}/${MY_PAGE_SEGMENT}\``
+      //   `  : \`/${APPS_SEGMENT}/${route.appId}\`;`
+      // **招待の受け取り画面の印を足した。 `myPage` と両方立っていたら `myPage` を優先する。**
+      if (route.myPage === true) {
+        return `/${APPS_SEGMENT}/${route.appId}/${MY_PAGE_SEGMENT}`;
+      }
+      return route.invitations === true
+        ? `/${APPS_SEGMENT}/${route.appId}/${INVITATIONS_SEGMENT}`
+        : `/${APPS_SEGMENT}/${route.appId}`;
     case "view": {
       const base = `/${APPS_SEGMENT}/${route.appId}/${VIEWS_SEGMENT}/${route.viewId}`;
       const path =

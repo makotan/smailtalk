@@ -491,7 +491,8 @@ describe("(7) `V7-M2-T01` が動かしていないもの", () => {
     // **書き換えた理由**: この行が固定していたのは「**その決定**が新しい `$defs` を作らなかったこと」
     // であり、**30本目を作ったのは別の決定である**(`V8-M8` が集計表の中身 `$defs/report` を新設した)。
     // **検査は消していない。**
-    expect(Object.keys(schema.$defs)).toHaveLength(30);
+    // **【2026-09-24。`V20-M5-T04` / `ADR-0471`(`ADR-0462` 限定1・限定2)で 30 → 31 に更新した】** 旧の期待値は 30。$defs/layout_node(31本目) が1本増えた。
+    expect(Object.keys(schema.$defs)).toHaveLength(31);
     expect(Object.keys(schema.$defs)).toContain("role_condition");
     expect(Object.keys(schema.$defs.table.properties)).toEqual([
       "id",
@@ -500,6 +501,8 @@ describe("(7) `V7-M2-T01` が動かしていないもの", () => {
       "representative_field",
       "reference_search_fields",
       "access_control",
+      // 【2026-10-02。`V23-M8-T02` / 授権 `ADR-0545` 行56】`history`(変更履歴。決定 `D-V23-205`)を足した。 旧の期待値はこの行が無い並びであり、直上の `access_control` の次は `]);` だった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "history",
     ]);
     expect(schema.$defs.table.required).toEqual(["id", "name", "fields"]);
   });
@@ -515,7 +518,9 @@ describe("(7) `V7-M2-T01` が動かしていないもの", () => {
   // **足したのは6キー目 `restrictive`(「この権限名は上限である」の符号)である。**
   // **`required` と `additionalProperties: false` は1バイトも動いていない**(`ADR-0429` 限定2)。
   // -------------------------------------------------------------------------------
-  test("`permissions` の要素は今日 6キーちょうどである(`Z-G10` 限定 (2) / `ADR-0429` 限定1)", () => {
+  // **【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543`】7キー目 `create_child` を足したので、テスト名の「6キー」が今日は偽になる。打ち直した。**
+  // **旧テスト名の逐語**: "`permissions` の要素は今日 6キーちょうどである(`Z-G10` 限定 (2) / `ADR-0429` 限定1)"
+  test("`permissions` の要素は今日 7キーちょうどである(`Z-G10` 限定 (2) / `ADR-0429` 限定1 / `ADR-0542`)", () => {
     const item = accessControlSchema().properties.permissions.items as Any;
     expect(Object.keys(item.properties)).toEqual([
       "id",
@@ -524,6 +529,8 @@ describe("(7) `V7-M2-T01` が動かしていないもの", () => {
       "write",
       "delete",
       "restrictive",
+      // 【2026-10-01。`V23-M7-T02` / 授権 `ADR-0543` 行6】7キー目 `create_child` を末尾に足した(子の表に行を作れる権限。門A `ADR-0503` を補う `ADR-0542` §Decision 1-1)。 旧の期待値は直上の `"restrictive",` で終わる6本であり、この行が無かった(逐語で残す)。 新しい値はスキーマを python で読んで得た。
+      "create_child",
     ]);
     expect(item.required).toEqual(["id", "name", "read", "write", "delete"]);
     expect(item.additionalProperties).toBe(false);
@@ -542,13 +549,20 @@ describe("(7) `V7-M2-T01` が動かしていないもの", () => {
     // 「書く中身が無い」という形で満たされている。** **これを「守った」とは書かない。**
     const appProperties = readManifestSchema().$defs.app.properties as Any;
     expect(Object.hasOwn(appProperties, "user_kinds")).toBe(false);
-    expect(Object.keys(appProperties)).toHaveLength(8);
+    // **【`V20-M15-T01A` / `ADR-0479`(門A = `ADR-0466`)】旧(逐語)**: `expect(Object.keys(appProperties)).toHaveLength(8);` —— 9本目 `design_memory` を足したので 8 → 9(別の決定)。
+    // **【`V22-M2-T02` / `ADR-0486`(門A = `MN-G1` / `MN-G2`。授権 `ADR-0487` 行16)】旧(逐語)**: `expect(Object.keys(appProperties)).toHaveLength(9);` —— 10本目 `workspace` を足したので 9 → 10(別の決定)。 `user_kinds` が `$defs/app` に無いことは直上の1行が今日も測る。
+    expect(Object.keys(appProperties)).toHaveLength(10);
   });
 
+  // **【2026-09-24。`V20-M5-T04` / `ADR-0471` / `ADR-0462` 限定4】テスト名の「今日も1本」は書いた日の値である。**
+  // **並べ方の木の深さの上限 `MAX_LAYOUT_DEPTH` を export したので、今日は2本である**(メインの裁定の申11。
+  // `ADR-0456` 限定3 の「深さの上限を名乗る公開の識別子は7本を超えない」の内側)。**旧の期待値は1本。**
+  // **`V7-M2-T01` の宣言の判定の側は1本も増えていない** —— 増えたのは定数1本だけである。
   test("`src/kernel/referential-integrity.ts` の公開エクスポートは今日も1本である(`Z-G10` `S2`)", () => {
     const source = readFileSync(join(ROOT, "src", "kernel", "referential-integrity.ts"), "utf8");
     const exported = source.split("\n").filter((line) => line.startsWith("export "));
-    expect(exported).toHaveLength(1);
-    expect(exported[0]).toContain("validateReferentialIntegrity");
+    expect(exported).toHaveLength(2);
+    expect(exported[0]).toContain("MAX_LAYOUT_DEPTH");
+    expect(exported[1]).toContain("validateReferentialIntegrity");
   });
 });

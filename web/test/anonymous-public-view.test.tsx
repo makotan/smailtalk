@@ -130,8 +130,35 @@ test("(f) ログイン画面への導線は残る(T-G26b / T-G28。ログイン�
   }
 });
 
-test("(f) 画面を名乗らない URL では、今日どおりログイン画面が出る", async () => {
+/*
+ * **【`V21-M4` で書き換えたテストである。`ADR-0483` 行27 の授権(「(f) の「画面を名乗らない URL
+ * ではログイン画面」」)。 旧の題名と旧の期待値の逐語(1バイトも消していない。`ADR-0483` 限定3)】**
+ *
+ *   test("(f) 画面を名乗らない URL では、今日どおりログイン画面が出る", async () => {
+ *     window.history.replaceState({}, "", `/apps/${APP_ID}`);
+ *     stub();
+ *     render(<App />);
+ *
+ *     const loginPage = await screen.findByTestId("login-page");
+ *     expect(loginPage.textContent).toContain("みどり商店にログイン");
+ *     // **公開画面への導線は今日どおり並ぶ**(`D-V4-20` (b))。
+ *     expect(screen.getByTestId("anonymous-views").querySelectorAll("a").length).toBe(1);
+ *   });
+ *
+ * **今日の正**: 画面を名乗らない URL(`/apps/<id>`)では、公開の一覧画面を持つアプリなら最初の
+ * 公開一覧画面が出る(`ADR-0482` §5-1 / `D-V21-18` / `D-V21-20`)。 **ログイン画面は
+ * `/apps/<id>/login` で必ず開ける** —— 旧の期待値(見出し・公開画面への導線1本)は、その URL で
+ * 1つも変えずに測る(「ログイン画面は必ず開ける」は `ADR-0483` 行27 の「動かしてはならないもの」)。
+ */
+test("(f) 画面を名乗らない URL では最初の公開一覧画面が出て、ログイン画面は /apps/<id>/login で出る(V21-M4)", async () => {
   window.history.replaceState({}, "", `/apps/${APP_ID}`);
+  stub();
+  render(<App />);
+  await screen.findByTestId("anonymous-workspace");
+  expect(screen.queryByTestId("login-page")).toBeNull();
+  cleanup();
+
+  window.history.replaceState({}, "", `/apps/${APP_ID}/login`);
   stub();
   render(<App />);
 

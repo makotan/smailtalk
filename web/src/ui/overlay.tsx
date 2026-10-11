@@ -72,6 +72,18 @@
  * `prefers-color-scheme` / `[data-theme]` / `light-dark()` / `color-scheme:` / `dark:` を
  * 1バイトも書いていない。
  *
+ * **【V20-M10-T05 の追記。上の2行を消していない】見出しの「ダークモードを実装していない」は、このファイルの
+ * 射程では今日も真だが、製品としては今日から偽である。** 暗い表示は `web/src/styles.css` の末尾の2規則と
+ * `web/src/color-scheme.ts` に閉じて入った(`ADR-0458`)。器の地色と文字色は枠(`--color-overlay-*`)の値の
+ * 入れ替えで暗くなり、このファイルは分岐を1つも持たない。**`body` 直下へ出るメニューと知らせはテーマの器の
+ * 外なので、暗い側の組(`slots_dark`)を持つテーマでも既定の暗い値で描かれる。**
+ *
+ * **【V22-M2-T05 の追記。上の2行を消していない】「`body` 直下へ出るメニュー」は、メニューの位置を上に置いた
+ * アプリの「≡ メニュー」(`web/src/ViewNavigation.tsx`)については今日から偽である。** `OverlayMenu` に任意の
+ * `container` を足し、その呼び手は `.app-theme` の要素を渡す(`ADR-0486` §Decision 1 の 11)。 **そのメニューは
+ * テーマの器の内側に出るので、テーマの色と暗い側の組(`slots_dark`)が当たる。** `container` を渡さない呼び手
+ * (今日は無い)と知らせ(`OverlayNotice`)は、上の2行のとおり今日も `body` 直下である。
+ *
  * ## `undo` の射程外である(`ADR-0094` §6 の 5)
  *
  * **本ファイルの変更は changelog にも undo にも1バイトも残らない。**
@@ -198,6 +210,13 @@ export type OverlayMenuItem = {
   readonly label: React.ReactNode;
   readonly onSelect: () => void;
   readonly disabled?: boolean | undefined;
+  /**
+   * **【V22-M2-T05】任意。いま開いている画面を指す項目に `"page"` を渡す**(`ADR-0486` §Decision 1 の 11。
+   * メニューの位置を上に置いたアプリの「≡ メニュー」が使う)。 渡さなければ属性を出さない。
+   */
+  readonly "aria-current"?: "page" | undefined;
+  /** **【V22-M2-T05】任意。項目の `data-testid`。** 渡さなければ属性を出さない。 */
+  readonly "data-testid"?: string | undefined;
 };
 
 export type OverlayMenuProps = {
@@ -207,14 +226,36 @@ export type OverlayMenuProps = {
    * 入れ子を足す提案は改めて門A である(`ADR-0094` §Decision 4 の 1 と同じ向き)。
    */
   readonly items: readonly OverlayMenuItem[];
+  /**
+   * **【V22-M2-T05】任意。器を差し込む先**(`OverlayDialog` の同名の口と同じ意味。`ADR-0486` §Decision 1 の 11)。
+   * **省略すると今日どおり `document.body` の直下に差さる**(テーマの器の外)。 テーマを当てたい呼び手は
+   * `.app-theme` の要素を渡す。
+   */
+  readonly container?: HTMLElement | null | undefined;
+  /** **【V22-M2-T05】任意。開くボタンの見た目**(クラス名)。 省略すると今日どおり何も付けない。 */
+  readonly triggerClassName?: string | undefined;
+  /** **【V22-M2-T05】任意。開くボタンの `data-testid`。** 省略すると属性を出さない。 */
+  readonly triggerTestId?: string | undefined;
 };
 
 /** **選べる操作が多いときに畳んで出す器**(`P-G18`)。 */
-export function OverlayMenu({ trigger, items }: OverlayMenuProps) {
+export function OverlayMenu({
+  trigger,
+  items,
+  container,
+  triggerClassName,
+  triggerTestId,
+}: OverlayMenuProps) {
   return (
     <Menu.Root>
-      <Menu.Trigger data-slot="overlay-menu-trigger">{trigger}</Menu.Trigger>
-      <Menu.Portal>
+      <Menu.Trigger
+        data-slot="overlay-menu-trigger"
+        {...(triggerClassName === undefined ? {} : { className: triggerClassName })}
+        {...(triggerTestId === undefined ? {} : { "data-testid": triggerTestId })}
+      >
+        {trigger}
+      </Menu.Trigger>
+      <Menu.Portal container={container ?? undefined}>
         <Menu.Positioner
           data-slot="overlay-menu-positioner"
           className="z-(--layer-overlay)"
@@ -235,6 +276,12 @@ export function OverlayMenu({ trigger, items }: OverlayMenuProps) {
                 data-slot="overlay-menu-item"
                 disabled={item.disabled ?? false}
                 onClick={item.onSelect}
+                {...(item["aria-current"] === undefined
+                  ? {}
+                  : { "aria-current": item["aria-current"] })}
+                {...(item["data-testid"] === undefined
+                  ? {}
+                  : { "data-testid": item["data-testid"] })}
                 className={cn(
                   "cursor-default rounded-ui px-s2 py-s1 text-sm",
                   "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",

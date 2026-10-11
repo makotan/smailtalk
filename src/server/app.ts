@@ -23,14 +23,19 @@
  */
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
-import { join, normalize, resolve, sep } from "node:path";
+import { dirname, join, normalize, resolve, sep } from "node:path";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import type { MiddlewareHandler } from "hono/types";
 import { type AuthConfig, loadAuthConfig } from "../auth/config.ts";
 import { resolveSession } from "../auth/session.ts";
-import { AuthStore, ensureAuthActivitySchema, recordActivity } from "../auth/store.ts";
+import {
+  AuthStore,
+  effectiveRolesOnDb,
+  ensureAuthActivitySchema,
+  recordActivity,
+} from "../auth/store.ts";
 // **【`V8-M27-T04` / `T-G5`】`Role` 型の import も撤去した。**
 // **旧(逐語)**: `import type { ActivityAction, ActivityChange, Role } from "../auth/types.ts";`
 // **このファイルで `Role` を使っていたのは `hasAdminWriteRole(roles: readonly Role[])` の
@@ -73,7 +78,10 @@ import {
   KernelMetaStore,
   unknownTableError as kernelUnknownTableError,
   type ListRecordsOptions,
+  listGroupKey,
   type Manifest,
+  orderRowsByListGroup,
+  parseListGroupBy,
   previewUndo,
   putBlob,
   type ReadSource,
@@ -117,6 +125,11 @@ import {
  * 写した(写しであることを同関数のコメントに明記してある)。**
  */
 import { filterFieldRefs, normalizeSort } from "../kernel/types.ts";
+/*
+ * **【`V23-M2-T03` / `ADR-0517` §Decision 9 の行36・行37】アプリの理由の印を問う1名**は、
+ * `src/kernel/index.ts` を触らずにモジュールを直接 import する(上の2本と同じ作法)。
+ */
+import { isAppReason } from "../kernel/workflow-runner.ts";
 import {
   ALLOWED_IMAGE_MIME,
   type AllowedImageMime,
@@ -129,6 +142,7 @@ import {
   type UploadKind,
 } from "../shared/files-table.ts";
 import { isSystemTableId } from "../shared/system-tables.ts";
+import { anonymousMarkerQueryManifest, manifestForAnonymous } from "./anonymous-hidden-fields.ts";
 import type { AuthEnv, AuthUser } from "./auth-context.ts";
 import { registerAuthRoutes, signupFacts, signupKindValues } from "./auth-routes.ts";
 // **編集系5ルート**(`V5-M3-T01`)。**`profile === "full"` のときだけ呼ぶ。**
@@ -136,14 +150,22 @@ import { registerChangeRoutes } from "./change-routes.ts";
 // **`A-G1` / `ADR-0249` の 403 だけがここに在る**(発注書 `v5-m28.md` §6-2 `T02` の指定)。
 // **既存の `…Error()` 組み立て関数は1本も動かしていない** —— それらは今日も本ファイル内にある。
 // **【`V8-M10-T05`】集計表の上限に当たったときの応答文も、同じ1本のファイルが翻訳する。**
-import { recordAccessLimitError, reportLimitError } from "./errors.ts";
+// **【`V23-M12-T05`】付与の書込の断りの文は名前空間で持ち込む** —— 下の1行に名前を足すと整形で複数行に
+// 割れ、`access-control-limit-honesty.test.ts` (E-4) が読む「同じ持ち込み元の名前の並びの行」の形が変わるため。
+import * as grantRefusal from "./errors.ts";
+import { lastRowAdminError, recordAccessLimitError, reportLimitError } from "./errors.ts";
 import { ensureFilesTable, getFileMeta, insertFileRecord, sniffImageMime } from "./files-store.ts";
 import { registerInboundRoute } from "./inbound-route.ts";
+// **【`V22-M3-T04` / `ADR-0488` §Decision 1 の 5】マイページの「自分の記録」の読取(`?my_page=1`)。** 口は足さない。
+import { keepMyPageRows, myPageListRead } from "./my-page-records.ts";
 import {
   // **【`V8-M39` / 台帳 `F-G8`】止めた層の名前の型**(`"role" | "grant"`)。
   // **型だけを取る** —— **判定を行う述語を1本も増やしていない。**
   type AccessLayerName,
   type ActorRoles,
+  // **【`V21-M2` / `ADR-0482` の `AN-G1`】未ログインの表ごとの読取の窓を開けてよい表か(1本)。**
+  anonymousHiddenFieldIds,
+  anonymousTableReadable,
   type CombinedRecordAccessResolution,
   type CreateParentAccessVerdict,
   type CreatorGrantPlan,
@@ -184,10 +206,17 @@ import {
   judgeRoleAccess,
   judgeRoleFieldWrite,
   judgeRootCreatableRoles,
+  // **【`V23-M5-T04`】行の招待の承諾の判定**(`ADR-0532` §Decision 1-3。招待者を主体に付与表への作成と同じ関門を通す1本)。
+  judgeRowInvitationAccept,
+  lastRowAdminVanishes,
   // **【`V8-M27-T04` / `T-G5`】`nonAdminTableAccess` の import は撤去した**(関数ごと消えた)。
   OWNER_FIELD,
   ownerDisplayName,
   personalOwnerField,
+  // **【`V23-M12-T04`】変更履歴の招待の件で、結んだ相手の名前を見せてよいか**(判定は判定の家の1本)。
+  principalNameVisibleInHistory,
+  // **【`V23-M6-T04b`】付与の行ごとの相手の名前**(`ADR-0538` §1-7。解決は判定の家の1本)。
+  principalRowLabels,
   projectForAnonymous,
   projectForRoleFields,
   projectOwnerDisplay,
@@ -211,14 +240,29 @@ import {
   roleGateBlocksWithoutGrants,
   roleReadCrossesOwnerScope,
   rowGrantWriteJudge,
+  // **【`V23-M5-T03`】行の招待の宣言と「出せるか・見られるか」**(`ADR-0532` §Decision 1-2。
+  // 宣言を読む綴りは `owner-scope.ts` の側に置く。`D-V23-134` (1))。
+  rowInvitationAccess,
   scrubHiddenFieldIds,
+  // **【`V23-M4-T05`】更新者(`st_updated_by`)の表示名への差し替え(`resolveUpdatedByDisplays`)。**
+  stampedUpdatedByField,
+  UNRESOLVED_OWNER_DISPLAY,
+  UPDATED_BY_FIELD,
 } from "./owner-scope.ts";
+import { type PreviewFrontCache, registerPreviewFront } from "./preview-front.ts";
+import { manifestSha256, type PreviewClock, resolvePreviewRoot } from "./preview-store.ts";
 import {
   clientKeyFromHeader,
   RateLimiter,
   type RateLimitOptions,
   rateLimitError,
 } from "./rate-limit.ts";
+import {
+  appendRecordHistory,
+  readRecordHistoryPage,
+  recordHistoryDisplayNames,
+  withInvitationHistory,
+} from "./record-history.ts";
 // **【`V8-M10-T05` / 台帳 `Q-G17`〜`Q-G19`】集計表が読取時に当たる上限2本。**
 // **数値も述語もあちらに在り、ここには1つも書かない**(置き場所を決めた理由は
 // `src/server/report-limits.ts` の冒頭)。
@@ -227,6 +271,27 @@ import {
   exceedsReportScannedRows,
   type ReportLimitKind,
 } from "./report-limits.ts";
+// **【`V23-M6-T04b`】表の代表項目の読み方**(`app.ts` から移した。MCP と共有する)。
+import { representativeTextField } from "./representative-field.ts";
+import {
+  deleteRowInvitation,
+  ensureRowInvitationsTable,
+  findRowInvitation,
+  listRowCodeInvitations,
+  listRowInvitationsForInvitee,
+  listRowInvitationsForRecord,
+  principalRowInviteeKey,
+  principalRowOfInvitation,
+  purgeExpiredRowInvitations,
+  upsertRowInvitation,
+} from "./row-invitations.ts";
+// **【`V23-M6-T05`】行の招待用コードの内部表**(SQL はこのファイルにだけ在る。`ADR-0538` 式11)。
+import {
+  ensureRowInviteCodesTable,
+  findRowByInviteCode,
+  issueRowInviteCode,
+  readRowInviteCode,
+} from "./row-invite-codes.ts";
 
 /**
  * **起動プロファイル**(`V5-M3-T02` / `R-G1` のサーバ側。契約は `v5-m0.md` §2-1 / §6-3)。
@@ -279,6 +344,17 @@ export function resolveServerProfile(raw: string | undefined): ServerProfile {
 export type CreateServerAppOptions = {
   /** データルート(`data/` 相当)。`kernel.sqlite` と `apps/<app_id>/` がこの下にある。 */
   dataRoot: string;
+  /**
+   * **下見の前段**(`V20-M13-T02b` / `ADR-0476`。`src/server/preview-front.ts`)。
+   *
+   * - 省略時: `profile === "full"` なら前段を載せ、置き場の根は `ST_PREVIEW_ROOT`(無ければ
+   *   `<dataRoot>.previews`)。**前段は要求を受けたときに置き場を読むだけで、根を作らない。**
+   * - `root` / `now` / `cache`: 検査が置き場の根・時計・写しの2本目の置き場を差し替える。
+   * - `false`: 前段を載せない(**写しを描く2本目がこれを使う**。2本目の前に前段を重ねない)。
+   *
+   * **`profile === "runner"` では何を渡しても載せない**(`ADR-0419` 限定3)。
+   */
+  preview?: { root?: string; now?: PreviewClock; cache?: PreviewFrontCache } | false;
   /**
    * 起動プロファイル(`V5-M3-T02`)。省略時は環境変数 `ST_SERVER_PROFILE` を読み、
    * それも無ければ `full`(今日どおり)。**引数は環境変数より優先する。**
@@ -376,6 +452,28 @@ type ErrorBody = { errors: ValidationError[] };
 
 function errorBody(errors: ValidationError[]): ErrorBody {
   return { errors };
+}
+
+/**
+ * **書込の断りの状態コードと本文**(`V23-M2-T03` / `ADR-0498` 限定4 / 決定 `D-V23-47`・`D-V23-53`)。
+ *
+ * - 失敗の**全部**がアプリの理由(`unique_message` の差し替え。`V23-M2-T04` から島の断りも)の
+ *   ときだけ 422 にし、本文は今日の `{ errors }` の最上位に `kind: "app_rejected"` を1つ足す。
+ * - 今日の検査の失敗が1件でも混ざれば、今日の 400 と今日の本文(差し替えた文言は残る)。
+ * - **印は失敗の物の、直列化されない欄である**(`workflow-runner.ts` の `isAppReason`)。
+ *   本文に欄は増えない。
+ *
+ * 受信口(`inbound-route.ts`)にも同じ1本を渡す(入口ごとに判定を複製しない)。
+ */
+type WriteRefusal =
+  | { status: 400; body: ErrorBody }
+  | { status: 422; body: ErrorBody & { kind: "app_rejected" } };
+
+function writeRefusal(errors: ValidationError[]): WriteRefusal {
+  if (errors.length > 0 && errors.every((error) => isAppReason(error))) {
+    return { status: 422, body: { kind: "app_rejected", errors } };
+  }
+  return { status: 400, body: errorBody(errors) };
 }
 
 // --- 認証境界のエラー(ADR-0014 §5/§6)------------------------------------------
@@ -1007,14 +1105,261 @@ function createParentDenial(
  * トランザクションに入っていない**(作成できた行の `_id` が決まらないと付与を書けないため)。
  * **したがってこの応答が返ったとき、行は残り、その行は誰にも見えない。**
  * **消して戻す処理を1バイトも書いていない。**
+ *
+ * 【2026-09-29。`V23-M2-T05` の訂正。上の段落を消していない】**上の段落は今日は偽である。**
+ * 付与は行の作成と同じ書込のトランザクションの内側で書き(`D-V23-12`・`D-V23-48`)、
+ * 付与が落ちたら行ごと巻き戻す({@link writeCreatorGrant})。 付与表の検査で落ちたときは
+ * 400(全部がアプリの理由なら 422)で付与表の失敗を返し、この 500 は**検査の外の例外**で
+ * 落ちたときだけ返る。 そのとき行も付与も残らないので、旧の文「行は作成しましたが、
+ * 作成者への権限を付けられませんでした。この行は今、誰にも見えない状態です。」は偽になり、
+ * 文を下の新しい文に替えた(`ADR-0517` §Decision 4 の1)。 `hint` は今日のまま。
  */
 function creatorGrantWriteFailedError(): ValidationError {
   return {
     path: "",
     message:
-      "行は作成しましたが、作成者への権限を付けられませんでした。この行は今、誰にも見えない状態です。",
+      "行を作成できませんでした。作成者への権限を付けるところで想定外の失敗が起きたため、行も権限も書いていません。",
     hint: "アプリの管理者に連絡してください。権限を記録する表の設定が原因の可能性があります。",
   };
+}
+
+/**
+ * **付与表の検査で付与が落ちたとき、行ごと巻き戻すための内部の例外**(`V23-M2-T05` /
+ * `D-V23-48`・`D-V23-54`)。 書込のトランザクションの内側で投げ、外側で捕まえて
+ * 付与表の失敗(`errors`)を応答にする。 `writeWithAudit`・`batch.ts`・`errors.ts` は変えない。
+ *
+ * `history` は、付与表の自動処理の失敗の履歴の控え(巻き戻しの後に書き直す。`D-V23-55`)。
+ */
+class CreatorGrantRollback extends Error {
+  constructor(
+    readonly errors: ValidationError[],
+    readonly history: HeldHistoryRow[],
+  ) {
+    super("creator grant rollback");
+  }
+}
+
+/**
+ * **行の招待の承諾で、付与の作成が付与表の検査・自動処理で落ちたとき、招待の削除ごと巻き戻すための
+ * 内部の例外**(`V23-M5-T04`。`ADR-0532` §Decision 1-4。決定 `D-V23-124`・`D-V23-133` 重1)。
+ * {@link CreatorGrantRollback} と同じ形: 書込のトランザクション(`writeWithAudit` の器)の内側で投げ、
+ * 外側で捕まえて付与表の失敗(`errors`)を応答にし、控えた失敗の履歴を書き直す。
+ */
+class RowInvitationAcceptRollback extends Error {
+  constructor(
+    readonly errors: ValidationError[],
+    readonly history: HeldHistoryRow[],
+  ) {
+    super("row invitation accept rollback");
+  }
+}
+
+/**
+ * **行の招待の承諾で、招待の行がもう無かったとき(2回目の承諾・同時の承諾の負けた側)の内部の例外**
+ * (`V23-M5-T04`)。 条件付きの削除(`deleteRowInvitation` が1行も消さない)で投げ、器ごと巻き戻す。
+ */
+class RowInvitationAlreadyAnswered extends Error {
+  constructor() {
+    super("row invitation already answered");
+  }
+}
+
+/**
+ * **行の招待の承諾で、名簿のグループ欄を書き換えると前のグループ経由でだけ管理者だった行が管理者0人に
+ * なるときの内部の例外**(`V23-M5-T04b`。`ADR-0532` §Decision 1-5。決定 `D-V23-125`・`D-V23-135` (1))。
+ * 器の中で投げて、招待の削除と付与の作成ごと巻き戻す。 外側で理由の文(403)にする。
+ */
+class RowInvitationGroupLastAdmin extends Error {
+  constructor() {
+    super("row invitation group last admin");
+  }
+}
+
+/**
+ * **行の招待の承諾で、器の中で見直した判定が断ったときの内部の例外**(`V23-M5-T11`。`ADR-0537` §3 軽4)。
+ * 器の外の判定の後に行・付与・名簿が替わった(招待者が `by` を失った等)とき、器の中で同じ接続で読み直した
+ * 値で判定をもう一度通し、断るならこれを投げて器ごと巻き戻す。 外側で理由の文(403)か 404 にする。
+ */
+class RowInvitationAcceptRefused extends Error {
+  constructor(
+    readonly reason: Exclude<
+      ReturnType<typeof judgeRowInvitationAccept>,
+      { kind: "allowed" }
+    >["reason"],
+  ) {
+    super("row invitation accept refused");
+  }
+}
+
+/**
+ * **付与の書込が検査の外の例外で落ちたとき、行ごと巻き戻すための内部の例外**(`V23-M2-T05`)。
+ * 外側で捕まえて 500({@link creatorGrantWriteFailedError})にする。 付与の書込の外で起きた
+ * 例外は今日どおり投げ直す(この型で包まない)。
+ */
+class CreatorGrantCrash extends Error {
+  constructor(readonly original: unknown) {
+    super("creator grant crash");
+  }
+}
+
+/** 巻き戻しの後に書き直す、自動処理の失敗の履歴の1行(表と5列)。 */
+type HeldHistoryRow = { table: string; values: Record<string, unknown> };
+
+/** 履歴の表の5列(`workflow-runner.ts` の `WORKFLOW_HISTORY_COLUMNS` と同じ並び)。 */
+const HELD_HISTORY_COLUMNS = ["ran_at", "workflow", "trigger_type", "status", "error"] as const;
+
+function quotedTable(id: string): string {
+  return `"${id.replaceAll('"', '""')}"`;
+}
+
+/** 宣言された自動処理の履歴の表(重なりを除く)。 */
+function historyTablesOf(manifest: Manifest): string[] {
+  const tables = new Set<string>();
+  for (const workflow of manifest.app.workflows ?? []) {
+    if (typeof workflow.history_table === "string") {
+      tables.add(workflow.history_table);
+    }
+  }
+  return [...tables];
+}
+
+/**
+ * 付与を書く直前の、履歴の表ごとの最後の行の位置(`rowid`)。 表が無い・読めないときは控えない
+ * (その表の履歴は書き直さない。今日の履歴の書込も、その表には書けない)。
+ */
+function markHistory(db: Database, manifest: Manifest): Map<string, number> {
+  const marks = new Map<string, number>();
+  for (const table of historyTablesOf(manifest)) {
+    try {
+      const row = db
+        .query<{ last: number | null }, []>(`SELECT max(rowid) AS last FROM ${quotedTable(table)}`)
+        .get();
+      marks.set(table, row?.last ?? 0);
+    } catch {
+      // 表が無い・壊れている: 控えない。
+    }
+  }
+  return marks;
+}
+
+/**
+ * 付与が落ちた後に、付与を書く直前より後ろに書かれた履歴の行を控える。 付与の作成は自分の
+ * 器(`records.ts` の `runWithWorkflows`)を巻き戻した後に**失敗の履歴だけ**を書き直しているので
+ * (`ADR-0066` 限定5)、ここに在るのは付与表の自動処理の失敗の履歴だけである。
+ */
+function holdHistorySince(db: Database, marks: Map<string, number>): HeldHistoryRow[] {
+  const held: HeldHistoryRow[] = [];
+  const columns = HELD_HISTORY_COLUMNS.map((column) => quotedTable(column)).join(", ");
+  for (const [table, mark] of marks) {
+    try {
+      const rows = db
+        .query<Record<string, unknown>, [number]>(
+          `SELECT ${columns} FROM ${quotedTable(table)} WHERE rowid > ? ORDER BY rowid`,
+        )
+        .all(mark);
+      for (const values of rows) {
+        held.push({ table, values });
+      }
+    } catch {
+      // 5列を持たない表: 控えない(今日の履歴の書込も、その表には書けない)。
+    }
+  }
+  return held;
+}
+
+/**
+ * 巻き戻した後で、控えた失敗の履歴を書き直す(`D-V23-55`。`records.ts` の器の書き直しと同じく、
+ * 同じ5列の行をもう一度書く)。 書き直しが断られたら、既定の履歴の書込の失敗と同じく
+ * サーバのログに残す(黙って捨てない)。 応答には載せない(断りの応答の形を変えない)。
+ */
+function rewriteHeldHistory(db: Database, manifest: Manifest, held: HeldHistoryRow[]): void {
+  for (const row of held) {
+    const rewritten = createRecord(db, manifest, row.table, row.values);
+    if (!rewritten.ok) {
+      console.error(
+        "[server] 自動処理の失敗の履歴を書き直せませんでした:",
+        row.table,
+        rewritten.errors,
+      );
+    }
+  }
+}
+
+/**
+ * **作成者への付与を、行の作成と同じ書込のトランザクションの内側で書く**(`V23-M2-T05` /
+ * `D-V23-12`・`D-V23-48`)。 **必ず書込のトランザクションの中で呼ぶこと。**
+ *
+ * - 付与が付与表の検査で落ちたら {@link CreatorGrantRollback} を投げる(行ごと巻き戻る)。
+ * - 付与の書込が検査の外の例外で落ちたら {@link CreatorGrantCrash} を投げる。
+ * - 付与の判定(誰に何を付与するか)は今日どおり `creatorGrantPlan` の計画であり、
+ *   ここに条件式は無い。 カーネルから `creatorGrantPlan` を呼ばない(`ADR-0297` 限定15)。
+ */
+function writeCreatorGrant(
+  db: Database,
+  manifest: Manifest,
+  plan: Extract<CreatorGrantPlan, { kind: "grant" }>,
+  recordId: string,
+  /** **【`V23-M4-T03`】起点の操作者**(行を作った、ログイン中の利用者。`D-V23-93`)。 */
+  origin?: { readonly id: string; readonly login: string; readonly role: string },
+): void {
+  const marks = markHistory(db, manifest);
+  let granted: ReturnType<typeof createRecord>;
+  try {
+    granted = createRecord(db, manifest, plan.grantTable, plan.grantValues(recordId), origin);
+  } catch (error) {
+    throw new CreatorGrantCrash(error);
+  }
+  if (!granted.ok) {
+    throw new CreatorGrantRollback(granted.errors, holdHistorySince(db, marks));
+  }
+}
+
+/**
+ * **【`V23-M4-T03` / `D-V23-93`】ログイン中の利用者から、連鎖の起点の操作者(`$actor`)を作る。**
+ * `login` はログイン名、`role` はアカウントの役割1つ(`_auth_users.role`。`D-V23-90`)。
+ * 未ログインは空(3つとも空文字)。 **送信内容から1バイトも読まない**(`ADR-0500` 限定16)。
+ */
+/**
+ * **【`V23-M8-T03b` / `D-V23-221`】行の招待の記録の1件**(招待の先の行の表が `history: true` のときだけ。
+ * 無ければ `undefined` で、呼び手は今日の形のまま書く)。 入口は `http`、操作者はその操作をした人。
+ * `changes` は招かれた人(利用者の id。利用者がまだ居ない名前の招待は `login:<名前>`、コードの招待は相手の行の鍵)
+ * と配る権限名(項目を持たない)。
+ * 【2026-10-02 訂正。`V23-M9-T01` / `D-V23-234`・`D-V23-262`】名前の招待の発行と取消の1件は、相手の利用者が
+ * 居ても居なくても `login:<打った名前>`。 利用者の id で残るのは承諾・辞退の1件(本人)と、それより前に記録した分。
+ */
+function invitationHistoryOf(
+  manifest: Manifest,
+  tableId: string,
+  recordId: string,
+  op: "invite" | "invite_accept" | "invite_decline" | "invite_revoke",
+  actor: AuthUser,
+  invitee: string,
+  permission: string,
+): Parameters<typeof appendRecordHistory>[1] | undefined {
+  if (manifest.app.tables.find((table) => table.id === tableId)?.history !== true) {
+    return undefined;
+  }
+  return {
+    tableId,
+    recordId,
+    op,
+    actor: originOf(actor),
+    entry: "http",
+    at: new Date().toISOString(),
+    changes: [{ invitee, permission }],
+  };
+}
+
+function originOf(user: AuthUser | undefined): {
+  id: string;
+  login: string;
+  role: string;
+  entry: "http";
+} {
+  // **【`V23-M8-T03`】HTTP の入口は `http`**(変更履歴の入口の値。`$actor` としては解かない)。
+  return user === undefined
+    ? { id: "", login: "", role: "", entry: "http" }
+    : { id: user.id, login: user.username, role: user.role, entry: "http" };
 }
 
 /**
@@ -1039,11 +1384,21 @@ function creatorGrantWriteFailedError(): ValidationError {
  * **MCP / 受信口 / ワークフロー / 島は今日も同じ表に書ける**(`V8-M21` の担当)。
  * **読取は1ミリも絞っていない** —— **参加者の表は今日も誰でも一覧できる。**
  */
-function forbiddenMembershipWriteError(kind: "member" | "group"): ValidationError {
+// **【`V23-M12-T05`。`D-V23-360` (5)・`D-V23-407`】引数を1つ足した。旧の宣言の行(逐語)**:
+//     `function forbiddenMembershipWriteError(kind: "member" | "group"): ValidationError {`
+// 名簿が本人の名前の欄を宣言しているとき(判定の答えの `ownNameColumn`)だけ、文を確定の文に替える。
+// グループの表と、名前の欄を宣言しない名簿は今日の文のまま。 添える文は替えない。
+function forbiddenMembershipWriteError(
+  kind: "member" | "group",
+  ownNameColumn?: true,
+): ValidationError {
   const what = kind === "member" ? "参加者" : "グループ";
   return {
     path: "",
-    message: `${what}の表は、アプリの運営者だけが書き換えられます。`,
+    message:
+      ownNameColumn === true
+        ? "参加者の表で書き換えられるのは、自分の行の名前だけです。ほかの欄と、ほかの人の行は、アプリの運営者だけが書き換えられます。"
+        : `${what}の表は、アプリの運営者だけが書き換えられます。`,
     hint:
       "自分の所属や、自分のアカウントの結びつきを自分で書き換えることはできません" +
       "(書き換えられると、他の人に配ってある権限を受け取れてしまうためです)。" +
@@ -1051,13 +1406,19 @@ function forbiddenMembershipWriteError(kind: "member" | "group"): ValidationErro
   };
 }
 
-function forbiddenGrantWriteError(): ValidationError {
-  return {
-    path: "",
-    message: "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
-    hint: "この行を作った人か、アプリの運営者に頼んでください。",
-  };
-}
+// --- 【`V23-M12-T05`。`D-V23-360` (2)・`D-V23-407`】この応答体は呼び出しを `./errors.ts` の
+// `grantWriteRefusalError` に替えて撤去した。 **ここに在ったもの(逐語)**:
+//
+//     function forbiddenGrantWriteError(): ValidationError {
+//       return {
+//         path: "",
+//         message: "この行の権限を他の人に渡せるのは、この行を作った人と運営者だけです。",
+//         hint: "この行を作った人か、アプリの運営者に頼んでください。",
+//       };
+//     }
+//
+// 文は「作った人」と言うが、条件は行の管理の権限を持つ人だった(`D-V23-360` の (2))。 今日の文は操作
+// (付ける・変える・外す)と管理の権限の宣言の名前で組む(HTTP と AI の口で同じ1本)。
 
 /**
  * **自分に権限を付ける要求を拒む(403)。** `V7-M3-T03`。
@@ -1106,6 +1467,28 @@ function forbiddenGrantParentAccessError(): ValidationError {
     path: "",
     message: "この相手は、元になっている行を見る権限を持っていないため、ここには追加できません。",
     hint: "先に元の行の権限をこの相手に渡してから、もう一度試してください。",
+  };
+}
+
+/**
+ * **【`V23-M6-T04`】相手の行を指す欄を、招待の承諾の外で書く要求を拒む(403)。** 判定は `owner-scope.ts` の
+ * `judgeGrantWrite`(中で `principalRowWriteRefused`)1本。 **運営者も例外にしない。** 権限の欄の変更と行の削除は
+ * 今日どおり通る。
+ */
+function forbiddenPrincipalRowWriteError(): ValidationError {
+  return {
+    path: "",
+    message: "相手の行を指す欄は、招待の承諾でだけ書けます。",
+    hint: "相手の行の管理者に招待を承諾してもらってください。権限の欄の変更と、行ごとの削除は今までどおりできます。",
+  };
+}
+
+/** **【`V23-M6-T04`】相手の行を指す欄と、利用者やグループの欄を同じ行に書く要求を拒む(400)。** */
+function mixedPrincipalRowHolderError(): ValidationError {
+  return {
+    path: "",
+    message: "相手の行を指す欄と、利用者やグループの欄を、同じ行に書くことはできません。",
+    hint: "利用者やグループに権限を渡すときは、別の行として作ってください。",
   };
 }
 
@@ -1211,6 +1594,22 @@ export function forbiddenRoleAccessError(what: string, verb: string): Validation
     hint:
       "アプリの役割の一覧(roles)で、この対象にその操作を許す規則(rules)を持つ役割が要ります。" +
       "規則は足すことしかできません(拒否は書けません) —— set_roles で役割に規則を足してください。",
+  };
+}
+
+/**
+ * **製品の内部の表への書込を断る(403)**(`V23-M12-T05`。決定 `D-V23-360` の (6)・`D-V23-407`。門A
+ * `ADR-0571` §Decision 1-5・`ADR-0575` §Decision 1 の3)。
+ *
+ * 内部の表(変更の記録・利用者・変更履歴など。`_` で始まる)は役割の規則を足しても書けないので、
+ * 「役割に規則を足す」案内(添える文)を出さない。 表の ID も出さない。 止めるのは今日と同じ関門
+ * (`records` の口の役割の門)で、状態コードも同じ 403。 共用の文({@link forbiddenRoleAccessError})は
+ * 1バイトも変えていない。
+ */
+function internalTableWriteError(): ValidationError {
+  return {
+    path: "",
+    message: "この表はアプリの中の記録のために製品が使う表なので、書き換えられません。",
   };
 }
 
@@ -1682,6 +2081,134 @@ function unknownRecordError(tableId: string, recordId: string): ValidationError 
 }
 
 /**
+ * **行の招待が見つからない**(`V23-M5-T03`。`D-V23-133` 軽3)。 取り消せない人・他人宛て・存在しない招待・
+ * 期限切れで、**同じ文**を返す(招待の ID も文に入れない。どれかを見分けられないようにする)。
+ */
+function unknownRowInvitationError(): ValidationError {
+  return {
+    path: "",
+    message: "その招待は見つかりません。",
+    hint: "期限が切れたか、取り消された・返答済みの可能性があります。招待の一覧を開き直してください。",
+  };
+}
+
+/** 行の招待の発行で、相手のログイン名が無い・文字列でない(`V23-M5-T03`)。 */
+function rowInvitationLoginError(): ValidationError {
+  return {
+    path: "/login",
+    message: "招待する相手のログイン名(login)を文字列で指定してください。",
+    hint: '{ "login": "<相手のログイン名>", "permission": "<渡す権限>" } の形で送ってください。',
+  };
+}
+
+/** 行の招待の発行で、渡す権限が `grantable` に無い(`V23-M5-T03`)。 */
+function rowInvitationPermissionError(grantable: readonly string[]): ValidationError {
+  return {
+    path: "/permission",
+    message: "招待で渡す権限(permission)は、この表で招待に使える権限から選んでください。",
+    allowed_values: [...grantable],
+    hint: "招待で渡せる権限は、表の定義で決まっています。",
+  };
+}
+
+/**
+ * **【`V23-M6-T06`】コードの招待の発行で、招待用コードが文字列でない・空**(`ADR-0538` §Decision 1-6)。
+ * 守る表が相手の行を宣言しているときだけ出る(他の表は `code` を見ず、今日と同じ応答)。
+ */
+function rowInvitationCodeError(): ValidationError {
+  return {
+    path: "/code",
+    message: "相手の行の招待用コード(code)を文字列で指定してください。",
+    hint: '{ "code": "<相手の行の招待用コード>", "permission": "<渡す権限>" } の形で送ってください。',
+  };
+}
+
+/** **【`V23-M6-T06`】コードの招待の発行で、ログイン名とコードを一緒に送った。** */
+function rowInvitationCodeWithLoginError(): ValidationError {
+  return {
+    path: "/code",
+    message: "ログイン名(login)と招待用コード(code)は、どちらか1つだけを指定してください。",
+    hint: "人を招待するときは login を、相手の行を招待するときは code を送ってください。",
+  };
+}
+
+/** 行の招待の発行で、相手が自分自身(`V23-M5-T03`。`D-V23-122`)。 */
+function rowInvitationSelfError(): ValidationError {
+  return {
+    path: "/login",
+    message: "自分自身は招待できません。",
+    hint: "招待する相手のログイン名を指定してください。",
+  };
+}
+
+/**
+ * **行の招待の承諾を断った理由**(`V23-M5-T04`。`ADR-0532` §Decision 1-3。決定 `D-V23-115`・`D-V23-123`)。
+ * 判定は `owner-scope.ts` の `judgeRowInvitationAccept` 1本で、ここは理由を文に写すだけである。
+ * **文に内部の名前(表の ID・権限の ID・宣言のキー)を入れない。** 断っても招待は残る。
+ */
+function rowInvitationAcceptRefusedError(
+  reason:
+    | "expired"
+    | "row_gone"
+    | "inviter_gone"
+    | "not_grantable"
+    | "role_mismatch"
+    | "not_member"
+    | "member_ambiguous"
+    | "inviter_denied"
+    | "parent_denied"
+    | "group_last_admin"
+    | "group_not_inviters"
+    | "principal_self"
+    | "principal_parent_denied"
+    | "principal_granted",
+): ValidationError {
+  const messages: Record<typeof reason, string> = {
+    expired: "招待の期限が切れているため承諾できません。",
+    row_gone: "招待された行が見つからないため承諾できません。",
+    inviter_gone: "招待した人がもういないため承諾できません。招待し直してもらってください。",
+    not_grantable: "この招待の権限は、今は渡せないため承諾できません。",
+    role_mismatch: "この招待は、あなたの役割では承諾できません。",
+    // **`D-V23-115` の理由**(逐語の趣旨「名簿に登録されていないため承諾できません。運営者に登録を頼んでください」)。
+    not_member: "名簿に登録されていないため承諾できません。運営者に登録を頼んでください。",
+    member_ambiguous:
+      "名簿にあなたの行が2つ以上あるため承諾できません。運営者に名簿の整理を頼んでください。",
+    inviter_denied:
+      "招待した人が、この行の権限を渡せなくなったため承諾できません。招待し直してもらってください。",
+    parent_denied:
+      "あなたは、この行の元になっている行を読めないため承諾できません。先に元の行に招待してもらってください。",
+    // **【`V23-M5-T04b`】** 承諾で所属グループが替わると、今のグループを通じてだけ管理していた行の
+    // 管理者がいなくなるとき(受け手の役割によらない。`D-V23-135` (1))。
+    group_last_admin:
+      "承諾すると所属グループが替わり、今のグループを通じて管理している行の管理者がいなくなるため承諾できません。先に別の管理者を立ててもらってください。",
+    // **【`V23-M5-T11`】** 承諾で書くグループが、承諾の時点の招待者自身の名簿のグループと違うとき
+    // (招待者の名簿の行が0行か2行以上のときも。運営者の招待は問わない。`ADR-0537` §1)。
+    group_not_inviters:
+      "この招待は、招待した人の所属グループとは別のグループへ入れるものなので承諾できません。招待した人に確かめてもらってください。",
+    // **【`V23-M6-T06`】** コードの招待で、承諾の時点の招待者が宛先の行に属している(`D-V23-163`)。
+    principal_self:
+      "招待した人が、宛先の行に属しているため承諾できません。招待した人に確かめてもらってください。",
+    // **【`V23-M6-T06`】** コードの招待で、宛先の行に属する人の誰かが、招待された行の元の行を読めない(`D-V23-152`)。
+    principal_parent_denied:
+      "宛先の行に属する人の中に、この行の元になっている行を読めない人がいるため承諾できません。先に元の行に招待してもらってください。",
+    // **【2026-10-01。決定 `D-V23-176`】** コードの招待で、同じ行と同じ宛先の行を指す付与の行が既に在る。
+    principal_granted:
+      "宛先の行には、この行の権限がもう渡されているため承諾できません。招待した人に確かめてもらってください。",
+  };
+  return { path: "", message: messages[reason] };
+}
+
+/** 招待への返答で、`action` が3値の外(`V23-M5-T03`)。 */
+function rowInvitationActionError(): ValidationError {
+  return {
+    path: "/action",
+    message: "action には accept / decline / revoke のどれかを指定してください。",
+    allowed_values: ["accept", "decline", "revoke"],
+    hint: '{ "action": "revoke" } の形で送ってください。',
+  };
+}
+
+/**
  * 削除不可規約(`st_undeletable`)により `DELETE` を止めたときの応答(V4-M4-T05 / ADR-0073)。
  *
  * **403 ではなく 409 を返す** —— 止めているのは**行の状態**であって actor の権限ではない
@@ -1731,25 +2258,40 @@ function forbiddenCascadeDeleteError(): ValidationError {
  * 計画 §10-6 の16 / 17)。 **この doc もその語を1文字も書いていない** —— **限定10 の式は綴りで走査
  * するので、引用するだけで赤くなる。** **3つの断りはそれぞれ違う文面を持つ** —— **(a) 版の印が無い
  * (400)/(b) 版がずれた(409)/(c) 件数の印(409。この関数)。**
- * @param total 合計(下の段まで)/ @param tableIds 子が居る表のID / @param seal 印(無ければ ④)。
+ * @param total 合計(下の段まで)/ @param parentName 親の表の表示名 / @param perTable 子が居る表の表示名と件数(`V23-M14-T02` までは表のIDの並び `tableIds`)/ @param seal 印(無ければ ④)。
  */
 function cascadeChildrenConfirmationError(
   total: number,
-  tableIds: readonly string[],
+  parentName: string | undefined,
+  perTable: readonly { readonly name: string | undefined; readonly count: number }[],
   seal: number | undefined,
 ): ValidationError {
-  const where = tableIds.length > 0 ? `(${tableIds.join(" / ")})` : "";
+  // 【V23-M14-T02。D-V23-451・D-V23-458・D-V23-465】message は使う人の言葉で言う —— 行の主語は親の表の
+  // 表示名、内訳は子の居る表ごとの表示名と件数。 表の ID とヘッダの名は message に1つも書かない
+  // (印の付け方は hint だけが言う)。 表示名を引けないとき(定義の表に name が無い・空)は、親は
+  // 「この行」、子の表は「別の表」と言い、表の ID には落とさない。 旧の文(逐語)は
+  // 「この行には、ぶら下がっている行が N 件あります(表の ID を「 / 」でつないだもの)。…」。
+  const subject =
+    parentName === undefined || parentName.trim() === "" ? "この行" : `この「${parentName}」`;
+  const breakdown = perTable
+    .map((entry) =>
+      entry.name === undefined || entry.name.trim() === ""
+        ? `別の表 ${entry.count} 件`
+        : `「${entry.name}」${entry.count} 件`,
+    )
+    .join("、");
+  const where = breakdown.length > 0 ? `(${breakdown})` : "";
   if (seal === undefined) {
     return {
       path: "",
-      message: `この行には、ぶら下がっている行が ${total} 件あります${where}。まとめて消してよければ、件数の印を付けて同じ操作をもう一度実行してください。1行も消していません。`,
-      hint: `件数の印は If-Match-Children ヘッダで、値は10進の整数 ${total} です。版の印(If-Match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。`,
+      message: `${subject}を消すと、一緒に消える行が全部で ${total} 件あります${where}。まとめて消してよければ、件数を確かめたうえで、もう一度削除してください。まだ1行も消していません。`,
+      hint: `まとめて消すには、件数の印として If-Match-Children ヘッダに10進の整数 ${total} を付けて、同じ削除をもう一度送ってください。版の印(If-Match)とは別のもので、版の印は今までどおり必要です。まとめて消した行は取り消しでは戻りません。`,
     };
   }
   return {
     path: "",
-    message: `ぶら下がっている行の件数が、指定された件数の印(${seal})と合いません。今は ${total} 件です${where}。1行も消していません。`,
-    hint: `件数の印(If-Match-Children)に ${total} を指定して、同じ操作をもう一度実行してください。版の印(If-Match)ではありません。ぶら下がっている行は、数えた後にも増えたり減ったりします。`,
+    message: `${subject}と一緒に消える行の件数が、確かめた件数(${seal} 件)から変わりました。今は全部で ${total} 件です${where}。まだ1行も消していません。`,
+    hint: `件数の印(If-Match-Children)に ${total} を指定して、同じ削除をもう一度送ってください。版の印(If-Match)ではありません。一緒に消える行は、数えた後にも増えたり減ったりします。`,
   };
 }
 
@@ -1795,7 +2337,19 @@ function resolveTableForRoute(manifest: Manifest, tableId: string): TableResolut
  * **判定を1つも持たない** —— **どの画面をこの関数に渡すかは呼び出し側の
  * `judgeRoleAccess` が決めており、ここに規則を読む条件式は1行も無い**(`ADR-0314` 限定4)。
  */
-function publicTablesForView(manifest: Manifest, view: View): Table[] {
+//
+// **【`V21-M3` / `ADR-0482` の `AN-G4` §4-1 / §4-2。上の doc を1バイトも消していない】**
+// **上の「集めるのは2種だけ」「参照先の表は集めていない」は、今日から偽である。**
+// **3種目として「1・2 の表の `reference` 項目が指す表のうち、未ログインで読める表」を集める**
+// (`ADR-0319` 限定5・限定6 を `ADR-0482` が引き直した)。 **読めない参照先の表の定義は
+// 1バイトも渡さない。** **代表項目を未ログインに隠した参照先の表も渡さない**(§4-2。画面は
+// 今日どおり「(見つかりません: 行ID)」を出す。別の項目へ代わりに落とさない)。
+// **判定は {@link anonymousReferenceTableReadable} に置き、そこも `owner-scope.ts` の判定を
+// 呼ぶだけである**(規則を読む式を足していない)。
+// **旧の署名(逐語)**: `function publicTablesForView(manifest: Manifest, view: View): Table[] {`
+// **`manifest` は未ログインの写し(`manifestForAnonymous`)、`source` は読み込んだマニフェスト
+// そのもの**(隠す項目の集合と規則は写しの前の姿で判定する)。
+function publicTablesForView(manifest: Manifest, view: View, source: Manifest): Table[] {
   const wanted: string[] = [view.table];
   for (const related of (view as { related?: { table?: unknown }[] }).related ?? []) {
     if (typeof related.table === "string") {
@@ -1814,8 +2368,71 @@ function publicTablesForView(manifest: Manifest, view: View): Table[] {
       tables.push(structuredClone(table));
     }
   }
+  // **【`V21-M3`】3種目: 読める参照先の表。** **写しの項目から拾う** —— 未ログインに隠した
+  // 参照の項目は写しに無いので、その参照先は集めない(隠した項目は「無い項目」)。
+  const primary = [...tables];
+  for (const table of primary) {
+    for (const field of table.fields) {
+      if (field.type !== "reference" || seen.has(field.reference_table)) {
+        continue;
+      }
+      seen.add(field.reference_table);
+      const target = manifest.app.tables.find(
+        (candidate) => candidate.id === field.reference_table,
+      );
+      if (target !== undefined && anonymousReferenceTableReadable(source, field.reference_table)) {
+        tables.push(structuredClone(target));
+      }
+    }
+  }
   return tables;
 }
+
+/**
+ * **未ログインの公開画面に、参照先の表として定義を渡してよいか**(`V21-M3`。`ADR-0482` §4-1 / §4-2)。
+ *
+ * **真になるのは次の両方を満たすときだけである**:
+ *
+ * 1. **未ログインで読める表** —— `st_public` を持ち未ログインの表の読取規則で開いた表
+ *    (`judgeRoleAccess` の主体 = 未ログイン)、または表ごとの読取の枝に入る表
+ *    (`anonymousTableReadable`)。 **どちらも `owner-scope.ts` の判定を呼ぶだけ。**
+ * 2. **その表の代表項目が未ログインに隠されていない** —— 代表項目は画面の
+ *    `representativeField`(`web/src/fields/reference-label.ts`)と同じ読み方で決める:
+ *    宣言(`representative_field`)が自表の `text` 項目を指していればそれ、無ければ最初の `text`。
+ *    **それが H(`anonymousHiddenFieldIds`)に入っていれば渡さない**(§4-2。写しで代表項目の
+ *    キーを落とすと、画面は別の `text` 項目を名前にしてしまうため)。
+ *
+ * **`source` は写しの前のマニフェストである**(写しは H を消しているので、2 が判定できない)。
+ */
+function anonymousReferenceTableReadable(source: Manifest, tableId: string): boolean {
+  const table = source.app.tables.find((candidate) => candidate.id === tableId);
+  if (table === undefined || isSystemTableId(tableId)) {
+    return false;
+  }
+  const readable =
+    publicField(table) !== undefined
+      ? judgeRoleAccess({
+          manifest: source,
+          roles: null,
+          target: { target: "table", table: tableId },
+          verb: "read",
+        }).allowed
+      : anonymousTableReadable(source, table);
+  if (!readable) {
+    return false;
+  }
+  const hidden = anonymousHiddenFieldIds(source, tableId);
+  if (hidden.size === 0) {
+    return true;
+  }
+  // 【2026-09-30。`V23-M5-T05`】代表項目の解決は {@link representativeTextField} に移した(写しを増やさない)。
+  const representative = representativeTextField(table);
+  return representative === undefined || !hidden.has(representative.id);
+}
+
+// **表の代表項目 {@link representativeTextField}**(`V23-M5-T05` で {@link anonymousReferenceTableReadable} の中の
+// 式を関数にしたもの)は、【2026-10-01。`V23-M6-T04b`】本文を1文字も変えずに `./representative-field.ts` へ
+// 移した(MCP の `list_records` も相手の名前を同じ読み方で返すため。写しを増やさない)。
 
 // --- クエリのデコード(ADR-0003 §5)---------------------------------------------
 
@@ -1976,6 +2593,41 @@ function parseListOptions(table: Table, params: URLSearchParams): RecordResult<L
 }
 
 /**
+ * **【`V21-M2B`】未ログインの窓の合計の列の検査**(`ADR-0482` §2-6)。 **カーネルの
+ * `countAndSumRecords`(`src/kernel/records.ts`)の実在・型の検査の写しである** —— 文言・
+ * `path`・`allowed_values` の組み方を1バイトも変えずに写した(件数の関数を2度呼ばないため)。
+ * **受け取る表は未ログインの写し**(隠した項目が無い)なので、隠した項目を名指しすると
+ * 存在しない項目と同じ 400 になり、`allowed_values` にも出ない。
+ */
+function anonymousSumFieldErrors(table: Table, sumField: string): ValidationError[] {
+  const field = table.fields.find((candidate) => candidate.id === sumField);
+  const numberFields = table.fields
+    .filter((candidate) => candidate.type === "number")
+    .map((candidate) => candidate.id);
+  if (field === undefined) {
+    return [
+      {
+        path: "/sum",
+        message: `合計を出す列 "${sumField}" はテーブル "${table.id}" にありません。`,
+        allowed_values: numberFields,
+        hint: "そのテーブルに実在する number のフィールドを指定してください。",
+      },
+    ];
+  }
+  if (field.type !== "number") {
+    return [
+      {
+        path: "/sum",
+        message: `合計を出す列 "${sumField}" は ${field.type} 型です。合計を出せるのは number だけです。`,
+        allowed_values: numberFields,
+        hint: "number のフィールドを指定してください(足し算の意味が定まるのは number だけです)。",
+      },
+    ];
+  }
+  return [];
+}
+
+/**
  * **【`V8-M20` / `T02` の置き直し】面の規則が名指しした項目**(旧: `$defs/field.audience`
  * を宣言した項目)**が、読取のリクエスト引数の
  * 絞り込み・並べ替えの条件に現れていないかを見る**(`V4-M28-T01`。`D-V4-93` /
@@ -1996,6 +2648,14 @@ function parseListOptions(table: Table, params: URLSearchParams): RecordResult<L
  * MCP の `list_records`・`?sort=` の 400 の `allowed_values` は1バイトも変えていない**
  * (限定7 / 限定11 / 限定9)。**アプリが `view.sort` に宣言つき項目を書いた画面の順序から
  * 大小関係が漏れることも、ここでは塞がらない**(`ADR-0120` §限界3)。
+ *
+ * **【2026-09-24 訂正(`V20-M4-T07`)。上の段落を消していない】上の最後の1文は今日は偽である。**
+ * 画面が `view.sort` / `view.filter` に名指しした項目を書いていても、その画面が送る読取は
+ * `sort=` / `filter.<項目>=` を載せるので**この関数が 400 で止め、行も順序も1つも返らない**
+ * (相手を問わない。`docs/plan/v20/records/v20-m4-t06.md` §3-5 で3人 × 画面名つきで撃ち直した)。
+ * **大小関係は漏れない。** 漏れない代わりに、その画面は誰にも開けない(宣言は今日も適用できる)。
+ * **一覧の束ねるキー(`view.group_by`)は、名指しした項目を指す宣言を適用の時点で拒否する**
+ * (`src/kernel/referential-integrity.ts` 類型2e。`sort` / `filter` の宣言の扱いは変えていない)。
  */
 function hiddenFieldQueryErrors(
   manifest: Manifest,
@@ -2767,7 +3427,7 @@ function recordGrantWritePipe(
   actorId: string | null,
   sources: RecordAccessSourceTables | undefined,
   roles: ActorRoles = null,
-): ((row: Record<string, unknown>) => boolean) | undefined {
+): ReturnType<typeof rowGrantWriteJudge> | undefined {
   if (sources === undefined) {
     return undefined;
   }
@@ -2843,8 +3503,12 @@ function grantWriteVerdict(
   op: GrantWriteOp,
   values: Record<string, unknown>,
   actor: AuthUser | undefined,
+  // **【`V23-M1-T07`】行の最後の管理者の判定を掛けるか。** 親の行を消す連鎖の子1件ずつの判定だけが
+  // 偽を渡す(連鎖は全体を1度に数える。`ADR-0510` §Decision 4)。
+  lastRowAdmin = true,
 ): GrantWriteVerdict | undefined {
   return judgeGrantWrite({
+    ...(lastRowAdmin ? { userExists: userExistsOn(db) } : {}),
     manifest,
     tableId,
     op,
@@ -2878,9 +3542,13 @@ function grantWriteVerdict(
  */
 function grantWriteDenial(
   verdict: GrantWriteVerdict | undefined,
-): { readonly errors: ValidationError[]; readonly status: 400 | 403 | 404 } | null {
+): { readonly errors: ValidationError[]; readonly status: 400 | 403 | 404 | 409 } | null {
   if (verdict === undefined || verdict.kind === "allowed") {
     return null;
+  }
+  if (verdict.kind === "last_row_admin") {
+    // **【`V23-M1-T07`。`SC-G5`】行の最後の管理者が自分を外す書込は 409。**
+    return { errors: [lastRowAdminError()], status: 409 };
   }
   if (verdict.kind === "invisible_target") {
     return {
@@ -2889,7 +3557,11 @@ function grantWriteDenial(
     };
   }
   if (verdict.kind === "not_creator") {
-    return { errors: [forbiddenGrantWriteError()], status: 403 };
+    // **【`V23-M12-T05`】旧の1行(逐語)**: `return { errors: [forbiddenGrantWriteError()], status: 403 };`
+    return {
+      errors: [grantRefusal.grantWriteRefusalError(verdict.op, verdict.authorityNames)],
+      status: 403,
+    };
   }
   if (verdict.kind === "self") {
     return { errors: [forbiddenSelfGrantError()], status: 403 };
@@ -2897,7 +3569,11 @@ function grantWriteDenial(
   if (verdict.kind === "membership_locked") {
     // **【`V8-M19` / `J-G33` / `U-2`】所属の書き換えは 403。** **存在を伏せる必要は無い**
     // —— **要求した人はその表を今日も読めている**(読取は1ミリも絞っていない)。
-    return { errors: [forbiddenMembershipWriteError(verdict.role)], status: 403 };
+    // **【`V23-M12-T05`】旧の1行(逐語)**: `return { errors: [forbiddenMembershipWriteError(verdict.role)], status: 403 };`
+    return {
+      errors: [forbiddenMembershipWriteError(verdict.role, verdict.ownNameColumn)],
+      status: 403,
+    };
   }
   if (verdict.kind === "no_target") {
     return { errors: [unknownGrantTargetError()], status: 400 };
@@ -2906,6 +3582,12 @@ function grantWriteDenial(
     // **相手の権限の問題であり、対象の行はこの actor には見えている** —— **403。**
     // **存在を伏せる必要は無い**(親の行の id を文面に出さない)。
     return { errors: [forbiddenGrantParentAccessError()], status: 403 };
+  }
+  if (verdict.kind === "principal_row_locked") {
+    // **【`V23-M6-T04`】承諾の外で相手の欄を書く要求は 403、両方の欄を書く要求は 400。**
+    return verdict.reason === "mixed_holder"
+      ? { errors: [mixedPrincipalRowHolderError()], status: 400 }
+      : { errors: [forbiddenPrincipalRowWriteError()], status: 403 };
   }
   return { errors: [unknownGrantHolderError()], status: 400 };
 }
@@ -2989,10 +3671,51 @@ function cascadeChildDeleteJudge(input: {
     // **(5) 付与表を対象にした削除かどうかの判定。**
     return (
       grantWriteDenial(
-        grantWriteVerdict(source, db, manifest, child.tableId, "delete", child.row, actor),
+        grantWriteVerdict(source, db, manifest, child.tableId, "delete", child.row, actor, false),
       ) === null
     );
   };
+}
+
+/**
+ * **利用者IDが実在するか**を問う関数を作る(`V23-M1-T07`。`ADR-0497` 限定11)。 判定の家
+ * (`owner-scope.ts`)は `_auth_users` を読まないので、ここで読んで渡す。 1回の要求の中で同じIDを
+ * 2度読まない。
+ */
+function userExistsOn(db: Database): (userId: string) => boolean {
+  const known = new Map<string, boolean>();
+  return (userId) => {
+    let exists = known.get(userId);
+    if (exists === undefined) {
+      exists = effectiveRolesOnDb(db, userId) !== null;
+      known.set(userId, exists);
+    }
+    return exists;
+  };
+}
+
+/**
+ * **親の行を消す連鎖が、連鎖に入らない行の最後の管理者の付与を消すか**(`V23-M1-T07`。
+ * `D-V23-28` / `ADR-0510` §Decision 4)。 真なら呼び出し側が連鎖ごと 409 で断る(何も消さない)。
+ *
+ * 連鎖で消える行(親を含む)を全部1度に除いた後の付与で数える。 付与先の行も同じ連鎖で消えるなら
+ * 数えない。 運営(人の操作)は断らない。 判定は `owner-scope.ts` の1本。 **`DELETE` ハンドラの本文の
+ * 付与まわりの綴り(`ADR-0444` 限定15)を増やさないため、ハンドラの外に置いた。**
+ */
+function cascadeLastAdminBlocked(input: {
+  readonly db: Database;
+  readonly manifest: Manifest;
+  readonly actor: AuthUser | undefined;
+  readonly removed: readonly { readonly tableId: string; readonly recordId: string }[];
+  readonly readRows: (tableId: string) => readonly Record<string, unknown>[];
+}): boolean {
+  return lastRowAdminVanishes({
+    manifest: input.manifest,
+    readRows: input.readRows,
+    userExists: userExistsOn(input.db),
+    removed: input.removed,
+    role: input.actor?.roles ?? null,
+  });
 }
 
 // --- 画像配信の可視範囲(V2-M2-T03 / ADR-0035 §1c・限定6)---------------------------
@@ -3190,10 +3913,31 @@ function isFileReferencedByVisibleRow(
       const isPublicTable = publicField(table) !== undefined;
       let rowVisible: (row: Record<string, unknown>) => boolean;
       if (viewer.kind === "anonymous") {
+        // **【`V21-M2` / `ADR-0482` の `AN-G3` §3。旧の3行を逐語で残す】**
+        // **旧**:
+        //     if (!isPublicTable) {
+        //       continue; // 匿名に開くのは公開テーブルだけ(ADR-0034 と同じゲート)
+        //     }
+        // **今日は、未ログインの表ごとの読取の枝に入る表(`anonymousTableReadable`。判定は
+        // `owner-scope.ts` の1本)の、規則の条件に合う行の `image` も配る。**
+        // **`file` 型は今日どおり配らない**(上の `deliverableTypes` が `image` だけに絞る)。
         if (!isPublicTable) {
-          continue; // 匿名に開くのは公開テーブルだけ(ADR-0034 と同じゲート)
+          if (!anonymousTableReadable(manifest, table)) {
+            continue; // 匿名に開くのは公開テーブルと表ごとの読取の表だけ(ADR-0034 / ADR-0482)
+          }
+          // **行ごとの判定は面の1本**(規則の条件。**未ログインの「自分」は偽**)。
+          rowVisible = (row) =>
+            judgeRoleAccess({
+              manifest,
+              roles: null,
+              target: { target: "table", table: table.id },
+              verb: "read",
+              row,
+              subject: null,
+            }).allowed;
+        } else {
+          rowVisible = (row) => isPublicRow(row);
         }
-        rowVisible = (row) => isPublicRow(row);
       } else if (ownerField !== undefined && !crossesOwnerScope(table.id)) {
         rowVisible = (row) => isOwnerVisible(row[OWNER_FIELD], viewer.actorId);
       } else {
@@ -3567,6 +4311,30 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
   const profile = options.profile ?? resolveServerProfile(process.env[SERVER_PROFILE_ENV]);
   const app = new Hono<AuthEnv>();
 
+  // **下見の前段**(`V20-M13-T02b` / `ADR-0476` §Decision 1 の 5)。**先頭に置く**(既存の関門より前) ——
+  // `/api/apps/pv-<16進32桁>/*` を、本体の関門(未ログインは 401)に当てずに写しへ振り分けるため。
+  // **`profile === "full"` のときだけ登録する。** **`pv-` の綴りでない要求と、本体に同じ綴りのアプリが
+  // 実在する要求は `next()` で今日の口へ渡す**(本体の振る舞いは1バイトも変えない)。
+  if (profile === "full" && options.preview !== false) {
+    const previewOptions = options.preview ?? {};
+    registerPreviewFront(app, {
+      root: previewOptions.root ?? resolvePreviewRoot(dataRoot, process.env),
+      realAppExists: (appId) => existsSync(dirname(appDbPath(dataRoot, appId))),
+      // **【`V20-M14-T01B`】`/compare` の `stale` の材料**(本物の `manifest.json` の生バイトの sha256。作る側と同じ1本)。
+      manifestSha: (appId) => manifestSha256(dataRoot, appId),
+      createInnerApp: (shadowDataRoot) =>
+        createServerApp({
+          dataRoot: shadowDataRoot,
+          profile,
+          webDistDir,
+          authConfig,
+          preview: false,
+        }),
+      ...(previewOptions.now === undefined ? {} : { now: previewOptions.now }),
+      ...(previewOptions.cache === undefined ? {} : { cache: previewOptions.cache }),
+    });
+  }
+
   // 最低限レート制限(V2-M1-T05 / ADR-0034 限定4)。**インスタンスごとに独立**(グローバル
   // 状態を持たない — テストは createServerApp を何度呼んでも独立に動く)。掛ける先は
   // (a) 匿名公開 GET 窓 と (b) サインアップ/ログイン経路の2つだけ。認証済み records CRUD は
@@ -3674,6 +4442,59 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     } finally {
       store.close();
     }
+  };
+
+  /**
+   * **【`V23-M4-T05` / `D-V23-92`・`D-V23-105`】行の更新者(`st_updated_by`)を表示名に差し替える。**
+   *
+   * **掛ける先は、今日 `st_owner` を表示名に差し替えている読取の2経路(一覧・単件)だけである**
+   * (`ADR-0524` 限定20・越えてはならない線4。MCP の読取・集計表・書込の応答には掛けない)。
+   * `st_owner` と違い、個人所有の表で運営が他人の行を見るときに限らない —— 更新者はどの表でも
+   * 他人でありうるからである。 **宣言の無い表(型が text で必須でない `st_updated_by` を持たない表)
+   * では行を1つも触らず、`_auth_users` も開かない**(`ADR-0500` 限定20)。
+   *
+   * - 空文字・null(受信口・時刻起動・起点の無い書込)→ そのまま。
+   * - 利用者の表に在る id → 表示名(`display_name`、無ければログイン名。`st_owner` と同じ `ownerDisplayName`)。
+   * - 在らない id(退会した人など)→ `UNRESOLVED_OWNER_DISPLAY`(生 id を出さない。`st_owner` と同じ)。
+   *
+   * **保存の値・絞り込み・並べ替えは ID のまま**(差し替えるのは返す行だけ)。 `_updated_at`(版)は
+   * 触らない。 **判定には使わない**(`ADR-0500` 限定19)。 `_auth_users` は1要求につき最大1回読む。
+   */
+  const resolveUpdatedByDisplays = (
+    appId: string,
+    table: Table,
+    rows: Record<string, unknown>[],
+  ): Record<string, unknown>[] => {
+    if (stampedUpdatedByField(table) === undefined) {
+      return rows;
+    }
+    const needsResolve = (row: Record<string, unknown>): boolean => {
+      const value = row[UPDATED_BY_FIELD];
+      return typeof value === "string" && value !== "";
+    };
+    if (!rows.some(needsResolve)) {
+      return rows;
+    }
+    const store = AuthStore.openForApp(dataRoot, appId);
+    let displayNames: ReadonlyMap<string, string>;
+    try {
+      displayNames = new Map(
+        store
+          .listUsers()
+          .map((user) => [user.id, ownerDisplayName(user.displayName, user.username)]),
+      );
+    } finally {
+      store.close();
+    }
+    return rows.map((row) =>
+      needsResolve(row)
+        ? {
+            ...row,
+            [UPDATED_BY_FIELD]:
+              displayNames.get(row[UPDATED_BY_FIELD] as string) ?? UNRESOLVED_OWNER_DISPLAY,
+          }
+        : row,
+    );
   };
 
   // --- per-app 認証 middleware(ADR-0014 v3 / アプリ単位認証)----------------------
@@ -3959,13 +4780,28 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // マニフェスト読取が壊れている(JSON 破損等)場合は公開窓を開けず、従来どおり 401 に
         // 倒す(未認証に 500 の内部状態を見せない)。app 不在は上の ensureApp で既に 404 済み。
         let table: Table | undefined;
+        // **【`V21-M2`】表ごとの読取の判定にはマニフェストそのものが要る**(規則を読むため)。
+        // **読み直さない** —— 同じ1回の `loadManifest` の結果を持ち回る。
+        let publicManifest: Manifest | undefined;
         try {
           const loaded = loadManifest(appId);
+          publicManifest = loaded.ok ? loaded.value : undefined;
           table = loaded.ok ? resolveTable(loaded.value, tableId) : undefined;
         } catch {
           table = undefined;
         }
-        if (table !== undefined && publicField(table) !== undefined) {
+        // **【`V21-M2` / `ADR-0482` の `AN-G1` §1-1】未ログインの表ごとの読取の窓。**
+        // **公開の印を持つ表は今日の枝のまま**(§1-3。印の有無を先に見る)。
+        // **判定は `owner-scope.ts` の1本**(`anonymousTableReadable`。ここに規則を読む式を書かない。
+        // `ADR-0482` §1-6)。 **レート制限は公開の枝と同じ1本を通す**(§1-4。別に作らない)。
+        const anonymousTableRead =
+          table !== undefined &&
+          publicManifest !== undefined &&
+          publicField(table) === undefined &&
+          anonymousTableReadable(publicManifest, table);
+        // **【`V21-M2`。旧の1行を逐語で残す】**
+        // **旧: `if (table !== undefined && publicField(table) !== undefined) {`**
+        if (table !== undefined && (publicField(table) !== undefined || anonymousTableRead)) {
           const decision = publicGetLimiter.hit(
             clientKeyFromHeader(c.req.header("x-forwarded-for")),
           );
@@ -3973,7 +4809,11 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             c.header("Retry-After", String(decision.retryAfterSec));
             return c.json(errorBody([rateLimitError(decision.retryAfterSec)]), 429);
           }
-          c.set("anonymousPublic", true);
+          if (anonymousTableRead) {
+            c.set("anonymousTableRead", true);
+          } else {
+            c.set("anonymousPublic", true);
+          }
           await next();
           return;
         }
@@ -4029,12 +4869,22 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             recordAccessSourceTables(roleManifest, tableId) !== undefined,
         })
       ) {
+        // **【`V23-M12-T05`。`D-V23-360` (6)・`D-V23-407`】製品の内部の表(`_` で始まる表。利用者の表は
+        // 英小文字で始まる)への書込は、役割の規則を足しても書けないので、確定の文を返す(表の ID と
+        // 添える文を出さない)。 状態コードと止める場所は今日のまま。 旧の配列の中身(逐語):
+        //     forbiddenRoleAccessError(
+        //       `表 "${tableId}"`,
+        //       roleTableVerb === "delete" ? "削除" : "書き込み",
+        //     ),
         return c.json(
           errorBody([
-            forbiddenRoleAccessError(
-              `表 "${tableId}"`,
-              roleTableVerb === "delete" ? "削除" : "書き込み",
-            ),
+            // この関門は表の名指しの無い口(集計表など)も通るので、表の ID が在るときだけ見る。
+            typeof tableId === "string" && tableId.startsWith("_")
+              ? internalTableWriteError()
+              : forbiddenRoleAccessError(
+                  `表 "${tableId}"`,
+                  roleTableVerb === "delete" ? "削除" : "書き込み",
+                ),
           ]),
           403,
         );
@@ -4727,7 +5577,17 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
        * **【隠さない】押した人と `act_as` が違うとき、利用者にはそれが見えない**
        * (`ADR-0175` §限界5: 本 ADR は表示を1つも作っていない)。
        */
-      const failures = runManualWorkflow(db, manifest, workflow, existing.value, actor.id);
+      // **【`V23-M4-T03`】`$actor` は押した人**(`act_as` があっても。判定の主体は上の `actor.id` と
+      // `act_as` の規則のまま。`D-V23-93` / `ADR-0500` 限定19)。
+      const failures = runManualWorkflow(
+        db,
+        manifest,
+        workflow,
+        existing.value,
+        actor.id,
+        // **【`V23-M8-T03`】手動起動の入口は `manual`。**
+        { ...originOf(actor), entry: "manual" },
+      );
       return c.json({ workflow: workflowId, record: recordId, failures });
     });
   });
@@ -5268,7 +6128,12 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
   // 受信 HTTP ルート(`POST /inbound/:endpoint_id`。V2-M5-T02 / ADR-0041)。**署名で認証する**
   // (ロール認証を通さない)ので `/api/*` の認証 middleware とは別経路に置く。署名検証は書込直前・
   // 実行層で、人間 owner が発行した inbound endpoint の下で書込先テーブル1つへ1行 create する。
-  registerInboundRoute(app, { dataRoot, rateLimit: options.rateLimit?.inbound });
+  registerInboundRoute(app, {
+    dataRoot,
+    rateLimit: options.rateLimit?.inbound,
+    // **【`V23-M2-T03`】書込の断りの 400 / 422 の決め方を1本で渡す**(`writeRefusal`)。
+    writeRefusal,
+  });
 
   // 1. アプリ一覧
   //
@@ -5502,7 +6367,11 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     if (!loaded.ok) {
       return c.json(errorBody(loaded.errors), 404);
     }
-    const manifest = loaded.value;
+    // **【`V21-M2B` / `ADR-0482` §2-6・§4-1】この口は未ログインに渡す定義なので、未ログインに隠す
+    // 項目を「無い項目」にした写しから組む**(画面の列・並べ替え・絞り込み・合計・区切り・まとまり・
+    // 並べ方の木・検索の対象と、表の定義の項目・代表項目)。 **写しを作るのは `owner-scope.ts` の1本。**
+    // **旧: `const manifest = loaded.value;`**
+    const manifest = manifestForAnonymous(loaded.value);
     const views = manifest.app.views
       .filter((view) => {
         // **主体は「未ログイン」である** —— **`roles: null` を渡すと `judgeRoleAccess` は
@@ -5532,7 +6401,8 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // **この画面が描くのに要る表の定義**(項目を含む)。**`ADR-0319` 限定5 の形を採り、
         // トップレベルに4つ目のキーを作らずに画面の中へ入れてある。**
         // **行(データ)は1行も入っていない** —— **`D-V8-64` の線である。**
-        tables: publicTablesForView(manifest, view),
+        // **【`V21-M3`】旧(逐語)**: `tables: publicTablesForView(manifest, view),`
+        tables: publicTablesForView(manifest, view, loaded.value),
       }));
     // **テーマは宣言されていなければキーごと出さない**(マニフェストの側と同じ形)。
     const theme = manifest.app.theme;
@@ -5566,13 +6436,73 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // 予約3語の宣言で決まる。** **画面が読む事実も、サーバの判定と同じ1本から出す。**
       declaredRoleIds: declaredRoleIdsFor(appId),
     });
+    // =====================================================================================
+    // **【`V22-M2-T06`。`ADR-0486` §Decision 1 の 7 / 限定11。ユーザ決定 `D-V22-10`】メニューの位置(アプリの既定)を、
+    // 宣言があるときだけトップレベルの5つ目のキー `workspace` として渡す。**
+    //
+    // **渡すのは `navigation.placement` の1値だけである** —— **役割ごとの上書き(`by_role`)は1件も渡さない。**
+    // 未ログインには役割の上書きが効かず(描くのに要らない)、渡すと役割の ID の一覧を未ログインへ漏らすからである
+    // (`ADR-0486` §Decision 4-3 の (b))。 **上書きだけの宣言(`placement` を書いていない)ではキーごと出さない。**
+    // **宣言が無いアプリの応答は1バイトも変わらない。**
+    //
+    // **【破っている条文。隠さない】** `ADR-0338` 限定3(トップレベルは4つで閉じる)/ `ADR-0319` 限定1 /
+    // `ADR-0314` 限定11 / `ADR-0482` 限定8 を、`ADR-0486` の門A の本審査が引き直した(§Decision 4-1 の #15〜#19)。
+    // **6つ目を足す提案は `ADR-0486` を根拠にできない。**
+    // =====================================================================================
+    const navigationPlacement = manifest.app.workspace?.navigation?.placement;
     return c.json({
       app: { id: manifest.app.id, name: manifest.app.name },
       views,
       ...(theme === undefined ? {} : { theme }),
       signup,
+      ...(navigationPlacement === undefined
+        ? {}
+        : { workspace: { navigation: { placement: navigationPlacement } } }),
     });
   });
+
+  /**
+   * **【`V23-M6-T04b`】付与の行ごとの相手の名前**(`ADR-0538` §Decision 1-7。決定 `D-V23-156`・`D-V23-165`)。
+   * **判定と解決は `owner-scope.ts` の {@link principalRowLabels} 1本**(ここに条件式を書かない)。 ここは S の行を
+   * 読む手を渡すだけで、`app.sqlite` は S の行が要るときに初めて開く(付与表でなければ1度も開かない)。
+   * `undefined` は「`principal_row` の付与表ではない」= 応答にキーを出さない。
+   */
+  const principalLabelsOf = (
+    manifest: Manifest,
+    tableId: string,
+    rows: readonly Record<string, unknown>[],
+    viewer: AuthUser | undefined,
+  ): (string | null)[] | undefined =>
+    withReadSource(dataRoot, manifest.app.id, (source) =>
+      principalRowLabels({
+        manifest,
+        tableId,
+        rows,
+        roles: viewer?.roles ?? null,
+        subject: viewer?.id ?? null,
+        readRow: memoizedRowReaders(source, manifest).readRow,
+        representative: representativeTextField,
+      }),
+    );
+
+  /** 1行の応答に添える相手の名前(`principal_label`。見る人の射影の後の行から採る)。 */
+  const principalLabelOf = (
+    manifest: Manifest,
+    tableId: string,
+    table: Table,
+    row: Record<string, unknown>,
+    viewer: AuthUser | undefined,
+  ): { principal_label?: string | null } => {
+    const projected = projectForRoleFields({
+      manifest,
+      table,
+      row,
+      roles: viewer?.roles ?? null,
+      subject: viewer?.id ?? null,
+    });
+    const labels = principalLabelsOf(manifest, tableId, [projected], viewer);
+    return labels === undefined ? {} : { principal_label: labels[0] ?? null };
+  };
 
   // 3. レコード一覧
   app.get("/api/apps/:app_id/tables/:table_id/records", (c) => {
@@ -5581,11 +6511,49 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     if (!loaded.ok) {
       return c.json(errorBody(loaded.errors), 404);
     }
-    const manifest = loaded.value;
+    // **【`V21-M2B` / `ADR-0482` の `AN-G2` §2-6】未ログインの窓(公開の印の表 / 表ごとの読取)では、
+    // 未ログインに隠す項目を「無い項目」にした写しで読む。** カーネルは宣言された列だけを読み、
+    // 並べ替え・絞り込み・区切りの項目の実在を写しで検査するので、隠した項目は行に載らず、
+    // 名指しすると存在しない項目と同じ 400 になる(`allowed_values` にも出ない)。
+    // **ログインした人は写しを使わない**(`D-V21-16`)。 **旧: `const manifest = loaded.value;`**
+    const anonymousWindow =
+      c.get("anonymousPublic") === true || c.get("anonymousTableRead") === true;
+    // **【2026-10-02。`V23-M9-T02`。`D-V23-235`・`D-V23-261`】** 未ログインの要求が「消せない」
+    // 「直接作れない」の印の2列を名指しし、名乗った画面の宣言と同じでなければ、2列も「無い項目」にした
+    // 写しで読む(存在しない項目と同じ 400)。 2列を名指ししない要求・宣言と同じ要求は今日どおり。
+    // **旧(逐語)**: `const manifest = anonymousWindow ? manifestForAnonymous(loaded.value) : loaded.value;`
+    const manifest = anonymousWindow
+      ? anonymousMarkerQueryManifest(
+          loaded.value,
+          manifestForAnonymous(loaded.value),
+          tableId,
+          new URL(c.req.url).searchParams,
+          (table) => parseListOptions(table, new URL(c.req.url).searchParams),
+        )
+      : loaded.value;
     const resolved = resolveTableForRoute(manifest, tableId);
     if (!resolved.ok) {
       return c.json(errorBody(resolved.errors), resolved.status);
     }
+    // **【`V22-M3-T04` / `ADR-0488` §Decision 1 の 5 / `ADR-0490` §Decision 1 の行2】マイページの読取 `?my_page=1`。**
+    // **`my_page` が無ければ `off` で、以下の読取は着手前と1バイトも変わらない。** 断る理由(未ログイン 401 /
+    // 値・`?view=` と同時・マイページの無いアプリ・載らない表・持ち主の列が隠れている 400)はあちらが決める。
+    // **絞るのは下の母集団の判定の後**(`keepMyPageRows`。読める範囲は広げない。運営者にも掛かる)。
+    const myPage = myPageListRead({
+      manifest,
+      tableId,
+      searchParams: new URL(c.req.url).searchParams,
+      actorId: (c.get("user") as AuthUser | undefined)?.id ?? null,
+      roles: (c.get("user") as AuthUser | undefined)?.roles ?? null,
+    });
+    if (myPage.kind === "unauthenticated") {
+      return c.json(errorBody([unauthenticatedError(manifest.app.id)]), 401);
+    }
+    if (myPage.kind === "rejected") {
+      return c.json(errorBody(myPage.errors), 400);
+    }
+    const mine = <T extends Record<string, unknown>>(rows: T[]): T[] =>
+      myPage.kind === "on" ? keepMyPageRows(rows, myPage) : rows;
 
     const parsed = parseListOptions(resolved.table, new URL(c.req.url).searchParams);
     if (!parsed.ok) {
@@ -5654,6 +6622,78 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       }
       sumField = sumParam;
     }
+    // **【`V21-M2B`】未ログインの窓で、隠す項目を持つ表の合計の列は、写しの表で実在と型を
+    // 先に確かめる**(`ADR-0482` §2-6 の「合計も同じ 400」)。 未ログインの窓は行を JS で絞る枝で、
+    // そのままでは合計の列の実在を誰も見ない(隠した項目は行に無いので合計は 0 になる)。
+    // **隠した項目と存在しない項目を同じ 400 に揃える**(`anonymousSumFieldErrors` はカーネルの
+    // `countAndSumRecords` の検査の写し。件数の関数を2度呼ばないため —— `list-view-sum-boundary.test.ts` の (D))。
+    // **隠す項目の無い表・ログインした人は1バイトも変わらない。**
+    if (
+      anonymousWindow &&
+      sumField !== undefined &&
+      anonymousHiddenFieldIds(loaded.value, tableId).size > 0
+    ) {
+      const sumErrors = anonymousSumFieldErrors(resolved.table, sumField);
+      if (sumErrors.length > 0) {
+        return c.json(errorBody(sumErrors), 400);
+      }
+    }
+    /**
+     * **一覧の束ねるキー**(`V20-M4-T01`。メインの裁定 案A / 読取の口 / 壁)。
+     *
+     * **読取の口は `group_by=<項目>&granularity=<粒度>`**(`sum=` の先例。表示層が画面の宣言
+     * `list_view.group_by` をこの2引数へ翻訳する)。**設計図のキーではなく読取の引数なので、
+     * 並べ替えの語彙(`view.sort` / `report.sort`)には数えない。**
+     *
+     * **壁は `sort` の壁と同じである** —— **同じ述語(`isRoleGovernedField`)・同じ層・ロールを見ない
+     * (owner も同じ 400)・値域の検査より先。** `sort` の壁は `hiddenFieldQueryErrors` の並べ替えの
+     * 節である(`sort` で指せない項目は `group_by` でも指せない)。
+     * **値域(実在 / 型4種 / 粒度3値 / date に必須 / date 以外不可)はカーネルの1本
+     * (`parseListGroupBy`)**、その 400 の `allowed_values` からは名指しされた項目を伏せる
+     * (`sort` の 400 と同じ `scrubHiddenFieldIds`)。
+     *
+     * **引数が無ければ `listGroup` は `undefined` で、以下の読取は着手前と1バイトも変わらない。**
+     */
+    const groupParams = new URL(c.req.url).searchParams;
+    const groupFieldParam = groupParams.get("group_by");
+    if (
+      groupFieldParam !== null &&
+      resolved.table.fields.some((field) => field.id === groupFieldParam) &&
+      isRoleGovernedField(manifest, resolved.table.id, groupFieldParam)
+    ) {
+      return c.json(
+        errorBody([
+          {
+            path: "/group_by",
+            message: `束ねるキーに指定されたフィールド "${groupFieldParam}" は、役割の規則が名指ししています。規則の対象になっている項目で束ねることはできません。`,
+            hint: "役割の規則(roles の rules)が名指ししていないフィールドを指定してください。",
+          },
+        ]),
+        400,
+      );
+    }
+    const parsedGroup = parseListGroupBy(
+      resolved.table,
+      groupFieldParam,
+      groupParams.get("granularity"),
+    );
+    if (!parsedGroup.ok) {
+      return c.json(
+        errorBody(scrubHiddenFieldIds(manifest, resolved.table, parsedGroup.errors)),
+        400,
+      );
+    }
+    const listGroup = parsedGroup.value;
+    /**
+     * **束ねるときだけ並べ直す**(安定ソート。群の中は SQL が利用者の `sort` で並べた順のまま)。
+     * **母集団を閉じた後の行に掛け、その後でページを切る**(`slicePage`)。
+     */
+    // **【`V22-M3-T04`】マイページの読取では、母集団を閉じた後の行を先に自分の行へ絞る(`mine`)。**
+    // **この1本は母集団の全分岐(`population.rows`)が通るので、絞りを分岐ごとに書かない**(`my_page` が無ければ素通し)。
+    // **旧(逐語)**: `const inGroupOrder = <T extends Record<string, unknown>>(rows: T[]): T[] =>` /
+    // `listGroup === undefined ? rows : orderRowsByListGroup(rows, listGroup);`
+    const inGroupOrder = <T extends Record<string, unknown>>(rows: T[]): T[] =>
+      listGroup === undefined ? mine(rows) : orderRowsByListGroup(mine(rows), listGroup);
     /**
      * **post-filter 分岐の合計**(限定7)—— **SQL で合計しない。**
      * **`total` を数えている同じ可視集合(`visible`)をそのまま足す** ので、
@@ -5707,6 +6747,8 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // する(ADR-0042 §限界2 の正直な代償: 可視分岐は全件をメモリに読む)。非スコープ(既定・
     // システムテーブル)は post-filter が無いので DB の LIMIT/OFFSET を使い、total は countRecords。
     const anonymousPublic = c.get("anonymousPublic") === true;
+    // **【`V21-M2` / `ADR-0482` の `AN-G1`】未ログインの表ごとの読取の窓(middleware が立てる)。**
+    const anonymousTableRead = c.get("anonymousTableRead") === true;
     // **【`V8-M10-T02` / `Q-G16a`。旧の1行を逐語で残す】**
     // **旧**: `const ownerField = anonymousPublic ? undefined : personalOwnerField(resolved.table);`
     // **母集団の分岐を決める判定は `owner-scope.ts` の `recordPopulationScope` へ移した** ——
@@ -5806,12 +6848,17 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       tableRead: roleTableRead,
       unnamedViewRead,
       roles: readerRoles,
+      anonymousTableRead,
     });
     const postFiltered = populationScope !== "unfiltered";
 
     // post-filter 分岐ではページング前の全行が要るので、limit/offset を外した条件で読む。
+    // **【`V20-M4-T01`】束ねるときも同じ運びにする**(群の順はページを切る前に決める必要がある)。
+    // **SQL の形は着手前と同じ**(`LIMIT` / `OFFSET` が付かないだけ。post-filter 分岐と同じ)。
     const listQuery: ListRecordsOptions = { ...options };
-    if (postFiltered) {
+    // **【`V22-M3-T04`】マイページの読取も同じ運びにする**(自分の行に絞った後でページを切り、`total` を数える)。
+    // **旧(逐語)**: `if (postFiltered || listGroup !== undefined) {`
+    if (postFiltered || listGroup !== undefined || myPage.kind === "on") {
       delete listQuery.limit;
       delete listQuery.offset;
     }
@@ -5885,6 +6932,8 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // **【`V18-M4-T02` / `PM-G10`】口の形をそのまま渡す。** **判定は
         // `owner-scope.ts` の1本であり、ここに壁の条件式を1行も書かない。**
         unnamedViewRead,
+        // **【`V21-M2`】未ログインの表ごとの読取の旗もそのまま渡す**(壁を掛けないのもあちら)。
+        anonymousTableRead,
       });
       // **1行でも上限に当たったら要求全体を 4xx にする**(`Z-G17` / `V7-M4-T04`)——
       // **黙って行を落とすと、上限に当たった状態と「本当に見えない」状態が
@@ -5899,11 +6948,25 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         switch (population.scope) {
           case "anonymous_public": {
             // 匿名公開読み取り(ADR-0034 §3 限定3): 予約規約フィールドを伏せて返す。
-            const visible = population.rows.map(projectForAnonymous).map(dropHidden);
+            const visible = inGroupOrder(population.rows).map(projectForAnonymous).map(dropHidden);
             return {
               status: 200 as const,
               // **合計は SQL ではなく、`total` を数えている同じ `visible` から採る**
               // (`V4-M23-T02` / `ADR-0104` 限定7)。**追加の DB 往復は0である。**
+              json: withSum(
+                { records: slicePage(visible, limit, offset), total: visible.length },
+                sumVisible(visible),
+              ),
+            };
+          }
+          case "anonymous_table_read": {
+            // **【`V21-M2` / `ADR-0482` §1-1・§1-2c】未ログインの表ごとの読取。**
+            // **返し方は匿名公開の枝と1バイトも同じ形である**(予約規約フィールドを伏せ、
+            // 面の項目の規則を当てる)。 **違うのは母集団の決め方だけであり、それは
+            // `owner-scope.ts` の側に在る**(公開の印を見ず、規則の条件で絞る)。
+            const visible = inGroupOrder(population.rows).map(projectForAnonymous).map(dropHidden);
+            return {
+              status: 200 as const,
               json: withSum(
                 { records: slicePage(visible, limit, offset), total: visible.length },
                 sumVisible(visible),
@@ -5918,7 +6981,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
               roles: actor.roles,
               table: tableId,
             });
-            const visible = population.rows;
+            const visible = inGroupOrder(population.rows);
             // **他人の行が見えうるときだけ** owner id を表示名に解決する(V3-M8-T03 /
             // ADR-0016 §6 / ADR-0061 限定7 と同じ形)。**ページを切ったあとに掛ける** ——
             // 解決するのは返す行だけでよい。
@@ -5967,7 +7030,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             // **束ねを割ったのは、`role_conditional` 枝が判定のクロージャを1度も
             // 呼んでおらず、載せようとすると全行ぶんの判定を新しく走らせることになる
             // からである**(計画 `A-8b` の実測)。
-            const visible = population.rows;
+            const visible = inGroupOrder(population.rows);
             const page = slicePage(visible, limit, offset);
             return {
               status: 200 as const,
@@ -6002,7 +7065,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             // **`access` は載せない** —— **この表は行ごとの付与を1つも宣言していない
             // (点が無い)。** **`total` も `sum` も可視集合から採るので、絞ったあとの
             // 件数とページ送りが構造的に一致する**(計画 §11-4 の追加条件A)。
-            const visible = population.rows;
+            const visible = inGroupOrder(population.rows);
             return {
               status: 200 as const,
               json: withSum(
@@ -6018,7 +7081,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             // **条件つきの読取規則だけが立っている表(`J-G12`)。**
             // **`access` は載せない**(この枝は判定のクロージャを1度も呼んでいない。
             // **そもそもこの表は行ごとの付与を宣言していないので、点が無い**)。
-            const visible = population.rows;
+            const visible = inGroupOrder(population.rows);
             return {
               status: 200 as const,
               json: withSum(
@@ -6036,6 +7099,21 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
             throw new Error(`未知の母集団の分類: ${String(exhaustive)}`);
           }
         }
+      }
+      // **【`V22-M3-T04`】マイページの読取は、非スコープの表でも自分の行に絞ってから数えて切る** ——
+      // `LIMIT` / `OFFSET` を外して読んだ全行(`result.value`)を絞り、`total` と合計は絞った後の集合から採る。
+      if (myPage.kind === "on") {
+        const visible = inGroupOrder(result.value);
+        return {
+          status: 200 as const,
+          json: withSum(
+            {
+              records: slicePage(visible, limit, offset).map((row) => dropHidden(row)),
+              total: visible.length,
+            },
+            sumVisible(visible),
+          ),
+        };
       }
       // 非スコープ(既定・システムテーブル): DB 層で LIMIT/OFFSET 済み。total は filter 適用後の全件。
       // **件数と合計は同じ1文で採る**(`V4-M23-T02` / `ADR-0104` 限定6)—— `readRecordCountAndSum`
@@ -6057,25 +7135,77 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         status: 200 as const,
         json: withSum(
           {
-            records: result.value.map((row) => dropHidden(row)),
+            // **【`V20-M4-T01`】束ねるときは SQL の `LIMIT` / `OFFSET` を外して読んだので、
+            // 並べ直してからここでページを切る。** 束ねないときは着手前と同じ(DB 層でページ済み)。
+            records: (listGroup === undefined
+              ? result.value
+              : slicePage(inGroupOrder(result.value), limit, offset)
+            ).map((row) => dropHidden(row)),
             total: total.value.count,
           },
           total.value.sum ?? 0,
         ),
       };
     });
+    // **【`V23-M4-T05` / `D-V23-92`】返す行の更新者(`st_updated_by`)を表示名に差し替える**
+    // (`resolveUpdatedByDisplays`)。 **全部の枝の後で1回だけ掛ける** —— 絞り込み・並べ替え・件数・
+    // 合計・ページ切りは ID のまま済んでいる。 未ログインの枝では予約規約フィールドとして既に
+    // 伏せてあるので、掛けない。 **宣言の無い表では何もしない。**
+    if (body.status === 200 && !anonymousPublic && !anonymousTableRead) {
+      const json = body.json as { records?: Record<string, unknown>[] };
+      if (Array.isArray(json.records)) {
+        json.records = resolveUpdatedByDisplays(manifest.app.id, resolved.table, json.records);
+        // **【`V23-M6-T04b`】付与の行ごとに相手の行の代表項目だけ**(`ADR-0538` §1-7。返す行と同じ順・同じ長さ)。
+        // `principal_row` の付与表でなければキーを出さない(宣言の無いアプリの応答は1バイトも変わらない)。
+        const labels = principalLabelsOf(manifest, tableId, json.records, c.get("user"));
+        if (labels !== undefined) {
+          (json as { principal_labels?: (string | null)[] }).principal_labels = labels;
+        }
+      }
+    }
+    /**
+     * **【`V20-M4-T03`】束ねるときだけ、行ごとの群の値を `group_keys` に添える**(返す行と同じ順・同じ長さ)。
+     *
+     * **画面は見出しの文字をこの値から作る** —— **日付は粒度で丸めた値であり、丸めはカーネルの
+     * `truncateToGranularity` の1本だけである**(`listGroupKey` はそれを呼ぶだけ。`ADR-0339` 限定7)。
+     * **画面はカーネルの関数を値として import できない**(`ADR-0009` 限定2)ので、丸めた値を
+     * サーバが渡す。**並べるときに使ったのと同じ関数で、返す行(射影の後)から採る。**
+     * **`group_by=` を渡さない読取では1バイトも足さない**(応答は着手前と同じ)。
+     */
+    if (listGroup !== undefined && body.status === 200) {
+      const json = body.json as { records?: Record<string, unknown>[] };
+      if (Array.isArray(json.records)) {
+        return c.json(
+          { ...json, group_keys: json.records.map((row) => listGroupKey(row, listGroup)) },
+          200,
+        );
+      }
+    }
     return c.json(body.json, body.status);
   });
 
   // 4. レコード1件取得
   app.get("/api/apps/:app_id/tables/:table_id/records/:record_id", (c) => {
+    // **【`V21-M2` / `ADR-0482` §1-1・§1-2c・§1-5】未ログインの表ごとの読取の窓(middleware が立てる)。**
+    // **下の匿名公開の分岐で、公開の印の表と同じ形(予約規約フィールドを伏せ、面の項目の規則を
+    // 当てる)で返す。** **公開の印は見ない** —— **規則の条件に合わない行は、その手前の面の判定
+    // (行を渡した `judgeRoleAccess`)が既に 404 にしている。** **名乗らない読取の壁より前に返る。**
+    // **旧(その分岐の2行。逐語)**: `if (c.get("anonymousPublic") === true) {` /
+    // `if (!isPublicRow(result.value)) {`
+    // **(この注記と2つの値をここに置いたのは、`access-control-paths.test.ts` の (C-1) が
+    // 単件の判定の呼び出し(`access:` の項目)から 3000 字の窓で動詞の参照を探しており、
+    // 窓の中に書き足すと答えを変えていないのに赤くなるためである。)**
+    const anonymousTable = c.get("anonymousTableRead") === true;
+    const anonymousRead = anonymousTable || c.get("anonymousPublic") === true;
     const tableId = c.req.param("table_id");
     const recordId = c.req.param("record_id");
     const loaded = loadManifest(c.req.param("app_id"));
     if (!loaded.ok) {
       return c.json(errorBody(loaded.errors), 404);
     }
-    const manifest = loaded.value;
+    // **【`V21-M2B`】未ログインの窓では、隠す項目を「無い項目」にした写しで読む**(一覧と同じ。
+    // 判定の家は `owner-scope.ts` の `manifestForAnonymous`)。 **旧: `const manifest = loaded.value;`**
+    const manifest = anonymousRead ? manifestForAnonymous(loaded.value) : loaded.value;
     const resolved = resolveTableForRoute(manifest, tableId);
     if (!resolved.ok) {
       return c.json(errorBody(resolved.errors), resolved.status);
@@ -6131,6 +7261,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           result: read,
           access: undefined,
           grantWrite: false,
+          createChild: undefined,
           registryHidden: false,
           unnamedViewHidden: false,
         };
@@ -6184,6 +7315,8 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // **【`V18-M4-T02` / `PM-G10`】単票の口の形。** **一覧の口とまったく同じ1本
         // (`judgeRecordPopulation`)に渡す** —— **判定の家を2本目にしていない。**
         unnamedViewRead: unnamedViewReads.get(c.req.raw),
+        // **【`V21-M2` / `ADR-0482` §1-5】未ログインの表ごとの読取には壁を掛けない。**
+        anonymousTableRead: c.get("anonymousTableRead") === true,
       });
       return {
         result: read,
@@ -6200,6 +7333,9 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           singlePopulation.rows.length === 0,
         unnamedViewHidden:
           singlePopulation.kind === "visible" && singlePopulation.scope === "unnamed_view_wall",
+        // **【`V23-M7-T05b`】5つ目のキー(親の表に `create_child` の宣言があるときだけ在る)。** **`access:` の
+        // 前に置く**(後ろに置くと (C-1) の綴りの距離の窓がはみ出す。`ADR-0543` 行17)。
+        createChild: grantWrite?.createChild?.(read.value as Record<string, unknown>),
         access: judge === undefined ? undefined : judge(read.value as Record<string, unknown>),
         grantWrite:
           grantWrite === undefined ? false : grantWrite(read.value as Record<string, unknown>),
@@ -6228,8 +7364,8 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // 匿名公開読み取り(ADR-0034 §3 限定3): 非公開行(st_public!==true)は**存在も値も出さない**
     // ため 404 で伏せる。公開行は予約規約フィールドを伏せて返す(ETag は付けない —— 匿名は
     // 書込に使えない)。認証済みの分岐(st_owner 可視性)より前に置く。
-    if (c.get("anonymousPublic") === true) {
-      if (!isPublicRow(result.value)) {
+    if (anonymousRead) {
+      if (!anonymousTable && !isPublicRow(result.value)) {
         return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
       }
       return c.json({
@@ -6332,19 +7468,59 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
                 verdict: loadedRecord.access.verdict,
               },
             ],
-            grantWrite: () => loadedRecord.grantWrite,
+            // **【`V23-M7-T05b`】一覧と同じ1本で5つ目のキーを載せる**(宣言の無い表では `createChild` が無い)。
+            grantWrite: Object.assign(
+              () => loadedRecord.grantWrite,
+              loadedRecord.createChild === undefined
+                ? {}
+                : { createChild: () => loadedRecord.createChild ?? {} },
+            ),
           });
+    // **【`V23-M8-T05`】応答の `record` の式を変数に束ねただけ(引数は1文字も変えていない。旧は `record:` の値に直に書いていた)。**
+    const projectedRecord = projectForRoleFields({
+      manifest,
+      table: resolved.table,
+      // **【`V23-M4-T05` / `D-V23-92`】更新者を表示名に差し替える**(一覧と同じ1本。宣言の無い表では何もしない)。
+      row: resolveUpdatedByDisplays(manifest.app.id, resolved.table, [resolvedRecord])[0] as Record<
+        string,
+        unknown
+      >,
+      roles: actor?.roles ?? null,
+      // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
+      subject: actor?.id ?? null,
+    });
+    // **【`V23-M8-T05` / `D-V23-211`・`D-V23-224`】行の変更履歴**(`?history=1` のときだけ)。
+    // **全部の関門を通った後の、ログインした人の枝にだけ足す**(未ログインの枝はこの手前で返っている)。
+    // 表が `history: true` でない・引数が無い要求の応答は1バイトも変えない。 隠す項目は、上で今の行に
+    // 項目の規則を1回当てて落ちたキー(条件つきの規則は今の行で当たる)。 消した項目は落とす。
+    const historyPage =
+      c.req.query("history") === "1" && actor !== undefined && resolved.table.history === true
+        ? withAppDb(dataRoot, manifest.app.id, (db) =>
+            readRecordHistoryPage(db, {
+              tableId,
+              recordId,
+              known: new Set(resolved.table.fields.map((field) => field.id)),
+              hidden: new Set(
+                resolved.table.fields
+                  .map((field) => field.id)
+                  .filter((fieldId) => !Object.hasOwn(projectedRecord, fieldId)),
+              ),
+              displayNames: recordHistoryDisplayNames(dataRoot, manifest.app.id),
+              // **【`V23-M12-T04`。`D-V23-357`・`D-V23-367`・`D-V23-401`】行のコードの招待の相手の名前。** 見せてよいかは
+              // 判定の家の1本が答え、ここは読む手を渡して代表項目を1つ読むだけ(条件式を書かない)。 見せてよい人に、
+              // 相手の行が無い・代表項目が隠れるときは「(表示できません)」。 見せない人は `undefined`(行の鍵のまま)。
+              principalName: historyPrincipalName(db, manifest, tableId, recordId, actor),
+              offset: Math.max(0, Number.parseInt(c.req.query("history_offset") ?? "0", 10) || 0),
+              limit: 50,
+            }),
+          )
+        : undefined;
     return c.json({
       // **【`V8-M17` / `J-G7`】面の項目の規則を旧層の射影の隣で当てる**(重ね順は AND)。
-      record: projectForRoleFields({
-        manifest,
-        table: resolved.table,
-        row: resolvedRecord,
-        roles: actor?.roles ?? null,
-        // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
-        subject: actor?.id ?? null,
-      }),
+      record: projectedRecord,
       ...(singleAccess === undefined ? {} : { access: singleAccess }),
+      ...principalLabelOf(manifest, tableId, resolved.table, result.value, actor),
+      ...(historyPage === undefined ? {} : { history: historyPage }),
     });
   });
 
@@ -6545,6 +7721,1127 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     });
   });
 
+  // ===================================================================================
+  // **行の招待の口4本**(`V23-M5-T03`。`ADR-0532` §Decision 1-2・1-6。決定 `D-V23-120`〜`D-V23-122`・
+  // `D-V23-127`・`D-V23-131`〜`D-V23-134`。計画 §24-6 中4・中5・軽2・軽3)
+  // ===================================================================================
+  //
+  // - **招待を宣言していないアプリ・表への4本の口は、`app.sqlite` に触れずに、今日と同じ
+  //   「対応するエンドポイントはありません」の 404 を返す**(`c.notFound()`。宣言の無いアプリの応答を
+  //   1ビットも変えない)。 宣言の有無は `rowInvitationAccess`(`owner-scope.ts`)1本で読む。
+  // - **認証の関門と POST の Origin の照合は、レコードの書込の口と同じもの。** 行の2本は
+  //   `recordsAuthMiddleware` をそのまま通す。 アプリの2本は `:table_id` を持たないので、
+  //   `recordsAuthMiddleware` の表ごとの面の関門(表が無いと閉じる)を通せない —— 同じ Origin の照合
+  //   (既存の `connectionsOriginGuard`)と同じセッションの解決(`resolveRecordsUser`)だけを掛ける。
+  // - **`app.use` は完全一致である**(`…/records/:record_id` の関門は `…/invitations` に掛からない)。
+  //   だから3本の `app.use` を口ごとのパスで置く。
+  // - 内部表の SQL は `row-invitations.ts` にだけ在る(`ADR-0532` 式10)。 内部表を作るのは、宣言を
+  //   確かめた後の口の中だけである。
+  // - **【禁止】登録の行を折らない**(入口の全量表は登録の綴りを1行で拾う。上の `access-sources` の注と同じ)。
+  const rowInvitationsGate: MiddlewareHandler<AuthEnv> = async (c, next) => {
+    const appId = c.req.param("app_id") as string;
+    const tableId = c.req.param("table_id");
+    let manifest: Manifest | undefined;
+    // 【2026-09-30。`V23-M5-T11` の処置(`D-V23-141`)。旧の形を注記に残す】旧は `ensureApp(appId) === null` を
+    // 確かめてから `loadManifest` を呼んでいた。 `loadManifest` も中で `ensureApp` を呼ぶので、台帳
+    // (kernel.sqlite)を1要求で2回開いていた。 今日は `loadManifest` 1回だけ(無いアプリは `ok: false`)。
+    try {
+      const loaded = loadManifest(appId);
+      manifest = loaded.ok ? loaded.value : undefined;
+    } catch {
+      manifest = undefined;
+    }
+    if (
+      manifest === undefined ||
+      rowInvitationAccess(tableId === undefined ? { manifest } : { manifest, tableId }) ===
+        undefined
+    ) {
+      return c.notFound();
+    }
+    if (tableId !== undefined) {
+      return await recordsAuthMiddleware(c, next);
+    }
+    // Origin の照合は既存の関門(`connectionsOriginGuard`。レコードの書込の口と同じ照合)をそのまま通す
+    // (照合の綴りを増やさない。`src/mcp/http-transport.test.ts` の「ヘッダが在るときだけ照合する」7箇所)。
+    let originPassed = false;
+    const originRejected = await connectionsOriginGuard(c, async () => {
+      originPassed = true;
+    });
+    if (!originPassed) {
+      return originRejected as Response;
+    }
+    const resolved = resolveRecordsUser(appId, c);
+    if (resolved === undefined) {
+      return c.json(errorBody([unauthenticatedError(appId)]), 401);
+    }
+    c.set("user", resolved);
+    await next();
+  };
+  app.use("/api/apps/:app_id/tables/:table_id/records/:record_id/invitations", rowInvitationsGate);
+  app.use("/api/apps/:app_id/invitations", rowInvitationsGate);
+  app.use("/api/apps/:app_id/invitations/:invitation_id", rowInvitationsGate);
+
+  // ===================================================================================
+  // **【`V23-M6-T05`】行の招待用コードの口2本**(`ADR-0538` §Decision 1-5。決定 `D-V23-153`・`D-V23-169`)
+  // ===================================================================================
+  //
+  // - **その表がどこかの表の `grant.principal_row.table` でなければ、2本とも `app.sqlite` に触れずに、登録の無い
+  //   パスと同じ 404**(`c.notFound()`。宣言の無いアプリの応答を1ビットも変えない)。 判定は `owner-scope.ts` の
+  //   `rowInvitationAccess`(`inviteCode`)1本で読む(ここに `principal_row` を読む式を書かない)。
+  // - **認証の関門と POST の Origin の照合は、レコードの書込の口と同じ `recordsAuthMiddleware`。**
+  // - **見られるのは、その行に `creator_permission` を持つ人(直接とグループ経由。親は辿らない)と運営。**
+  //   他は存在しない行と同じ 404。 適用の最中は 409(招待の口と同じ `rowInvitationContext`)。
+  // - **GET は書かない**(無ければ `null`)。 **POST は発行と再発行の1本**で、内部表を作るのはこの口の書く器の中だけ。
+  //   内部表の SQL は `row-invite-codes.ts` にだけ在る。
+  // - **【禁止】登録の行を折らない**(入口の全量表は登録の綴りを1行で拾う)。
+  const rowInviteCodeGate: MiddlewareHandler<AuthEnv> = async (c, next) => {
+    const appId = c.req.param("app_id") as string;
+    const tableId = c.req.param("table_id") as string;
+    let manifest: Manifest | undefined;
+    try {
+      const loaded = loadManifest(appId);
+      manifest = loaded.ok ? loaded.value : undefined;
+    } catch {
+      manifest = undefined;
+    }
+    if (
+      manifest === undefined ||
+      rowInvitationAccess({ manifest, inviteCode: { tableId } }) === undefined
+    ) {
+      return c.notFound();
+    }
+    return await recordsAuthMiddleware(c, next);
+  };
+  app.use("/api/apps/:app_id/tables/:table_id/records/:record_id/invite-code", rowInviteCodeGate);
+
+  /** 招待の口で、宣言を確かめた後にマニフェストとログイン中の人を引く(関門を通った後なので揃っている)。 */
+  const rowInvitationContext = (
+    c: Context<AuthEnv>,
+  ): { manifest: Manifest; actor: AuthUser } | Response => {
+    const appId = c.req.param("app_id") as string;
+    const loaded = loadManifest(appId);
+    if (!loaded.ok) {
+      return c.json(errorBody(loaded.errors), 404);
+    }
+    const actor = c.get("user") as AuthUser | undefined;
+    if (actor === undefined) {
+      return c.json(errorBody([unauthenticatedError(appId)]), 401);
+    }
+    // **【`V23-M5-T11`】適用中(apply 窓)は、招待の口の書込を全部 409**(`ADR-0537` §3 軽1)。 発行・辞退・
+    // 取消・承諾に加えて、2本の一覧も期限切れの掃除(内部表の DELETE)と内部表の作成を流すので同じく 409。
+    // 窓の中で書いたものは、適用が失敗してスナップショットへ戻ると黙って消えるため。
+    const applying = isApplyInProgress(dataRoot, loaded.value.app.id);
+    if (applying.inProgress) {
+      return c.json(errorBody([applyInProgressError(applying)]), 409);
+    }
+    return { manifest: loaded.value, actor };
+  };
+
+  /** 招待の口の DB の器: 内部表を作り、期限切れを掃除してから `run` を呼ぶ。 */
+  const withRowInvitations = <T>(
+    manifest: Manifest,
+    run: (db: Database, readRows: (tableId: string) => readonly Record<string, unknown>[]) => T,
+  ): T =>
+    withAppDb(dataRoot, manifest.app.id, (db) => {
+      ensureRowInvitationsTable(db);
+      purgeExpiredRowInvitations(db, new Date().toISOString());
+      const source: ReadSource = { dataRoot, appDb: () => db };
+      return run(db, memoizedRowReaders(source, manifest).readRows);
+    });
+
+  /**
+   * **【`V23-M6-T06`】受け取り画面に見せる、行の代表項目の値**(行が無ければ `undefined`)。 受け手の役割の規則で
+   * 隠れていれば `null`(別の項目を繰り上げない)。 名前の招待の一覧と同じ読み方(`representativeTextField` と投影)。
+   */
+  const rowInvitationRepresentative = (
+    db: Database,
+    manifest: Manifest,
+    table: Table,
+    recordId: string,
+    actor: AuthUser,
+  ): string | null | undefined => {
+    const read = readRecord({ dataRoot, appDb: () => db }, manifest, table.id, recordId);
+    if (!read.ok || read.value === null) {
+      return undefined;
+    }
+    const field = representativeTextField(table);
+    const projected =
+      field === undefined
+        ? {}
+        : projectForRoleFields({
+            manifest,
+            table,
+            row: read.value as Record<string, unknown>,
+            roles: actor.roles,
+            subject: actor.id,
+          });
+    const value =
+      field !== undefined && Object.hasOwn(projected, field.id) ? projected[field.id] : undefined;
+    return typeof value === "string" && value !== "" ? value : null;
+  };
+
+  /**
+   * **【`V23-M12-T04`】変更履歴の招待の件の相手(行のコードの招待)の名前を引く手**(`D-V23-357`・`D-V23-367`・`D-V23-401`)。
+   * 見せてよいかは `owner-scope.ts` の {@link principalNameVisibleInHistory} 1本。 同じ相手は1要求につき1回だけ解く。
+   */
+  const historyPrincipalName = (
+    db: Database,
+    manifest: Manifest,
+    tableId: string,
+    recordId: string,
+    actor: AuthUser,
+  ): ((principalTableId: string, principalRecordId: string) => string | undefined) => {
+    // 子の一覧・受け取り画面と同じ文(画面の `PRINCIPAL_LABEL_HIDDEN`。`ADR-0575` §Decision 1 の3)。
+    const unavailable = "(表示できません)";
+    let readers: ReturnType<typeof memoizedRowReaders> | undefined;
+    const memo = new Map<string, string | undefined>();
+    return (principalTableId, principalRecordId) => {
+      const key = JSON.stringify([principalTableId, principalRecordId]);
+      if (memo.has(key)) {
+        return memo.get(key);
+      }
+      readers ??= memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+      const principalTable = manifest.app.tables.find((item) => item.id === principalTableId);
+      const name =
+        principalTable === undefined ||
+        !principalNameVisibleInHistory({
+          manifest,
+          tableId,
+          recordId,
+          principal: { tableId: principalTableId, recordId: principalRecordId },
+          actorId: actor.id,
+          roles: actor.roles,
+          readRows: readers.readRows,
+          readRow: readers.readRow,
+        })
+          ? undefined
+          : (rowInvitationRepresentative(db, manifest, principalTable, principalRecordId, actor) ??
+            unavailable);
+      memo.set(key, name);
+      return name;
+    };
+  };
+
+  /** 行があって、その人が招待について何をできるか(行が無ければ `undefined`)。 */
+  const rowInvitationSubject = (
+    db: Database,
+    manifest: Manifest,
+    readRows: (tableId: string) => readonly Record<string, unknown>[],
+    actor: AuthUser,
+    tableId: string,
+    recordId: string,
+  ) => {
+    const read = readRecord({ dataRoot, appDb: () => db }, manifest, tableId, recordId);
+    if (!read.ok || read.value === null) {
+      return undefined;
+    }
+    return rowInvitationAccess({
+      manifest,
+      tableId,
+      subject: { recordId, actorId: actor.id, role: actor.roles, readRows },
+    });
+  };
+
+  /**
+   * **【`V23-M6-T05`】行の招待用コードを見られるか**(行が無い・見られない人は偽)。 判定は `owner-scope.ts` の
+   * `rowInvitationAccess`(`inviteCode`)1本。 読む手は呼ぶたびに作る(書く器の中の見直しは、書く接続で読み直す)。
+   */
+  const rowInviteCodeAdmin = (
+    db: Database,
+    manifest: Manifest,
+    actor: AuthUser,
+    tableId: string,
+    recordId: string,
+  ): boolean => {
+    const source: ReadSource = { dataRoot, appDb: () => db };
+    const read = readRecord(source, manifest, tableId, recordId);
+    if (!read.ok || read.value === null) {
+      return false;
+    }
+    return (
+      rowInvitationAccess({
+        manifest,
+        inviteCode: {
+          tableId,
+          recordId,
+          actorId: actor.id,
+          role: actor.roles,
+          readRows: memoizedRowReaders(source, manifest).readRows,
+        },
+      })?.codeAdmin === true
+    );
+  };
+
+  /** **【`V23-M6-T05`】行の招待用コードを見る**(書かない。無ければ `null`。`D-V23-169`)。 */
+  app.get("/api/apps/:app_id/tables/:table_id/records/:record_id/invite-code", (c) => {
+    const context = rowInvitationContext(c);
+    if (context instanceof Response) {
+      return context;
+    }
+    const { manifest, actor } = context;
+    const tableId = c.req.param("table_id");
+    const recordId = c.req.param("record_id");
+    const seen = withAppDb(dataRoot, manifest.app.id, (db) =>
+      rowInviteCodeAdmin(db, manifest, actor, tableId, recordId)
+        ? { code: readRowInviteCode(db, tableId, recordId) }
+        : undefined,
+    );
+    if (seen === undefined) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    return c.json(seen, 200);
+  });
+
+  /**
+   * **【`V23-M6-T05`】行の招待用コードの発行と再発行**(置き換え。旧コードは引けなくなる。旧コードの頃の付与の行には
+   * 触れない)。 **書くのは `writeWithAudit` の器の中**(器の開き方の綴りを
+   * このファイルに足さない。`ADR-0538` §1-5・式8)。 監査の行は残さない(行の中身は変わらないため)。 **見られるかは器の中で見直す。**
+   */
+  app.post("/api/apps/:app_id/tables/:table_id/records/:record_id/invite-code", (c) => {
+    const context = rowInvitationContext(c);
+    if (context instanceof Response) {
+      return context;
+    }
+    const { manifest, actor } = context;
+    const tableId = c.req.param("table_id");
+    const recordId = c.req.param("record_id");
+    const issued = withAppDb(dataRoot, manifest.app.id, (db) => {
+      if (!rowInviteCodeAdmin(db, manifest, actor, tableId, recordId)) {
+        return undefined;
+      }
+      const written = writeWithAudit(
+        db,
+        actor,
+        "update_record",
+        tableId,
+        (): RecordResult<string> => {
+          if (!rowInviteCodeAdmin(db, manifest, actor, tableId, recordId)) {
+            return { ok: false, errors: [unknownRecordError(tableId, recordId)] };
+          }
+          ensureRowInviteCodesTable(db);
+          const code = issueRowInviteCode(
+            db,
+            tableId,
+            recordId,
+            actor.id,
+            new Date().toISOString(),
+          );
+          return { ok: true, value: code };
+        },
+        () => recordId,
+        () => false,
+      );
+      return written.ok ? written.value : undefined;
+    });
+    if (issued === undefined) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    return c.json({ code: issued }, 200);
+  });
+
+  /** 行の招待の発行。 */
+  app.post("/api/apps/:app_id/tables/:table_id/records/:record_id/invitations", async (c) => {
+    const context = rowInvitationContext(c);
+    if (context instanceof Response) {
+      return context;
+    }
+    const { manifest, actor } = context;
+    const tableId = c.req.param("table_id");
+    const recordId = c.req.param("record_id");
+    const declared = rowInvitationAccess({ manifest, tableId });
+    if (declared === undefined) {
+      return c.notFound();
+    }
+    const raw = await readJsonBody(c.req.raw);
+    if (!raw.ok) {
+      return c.json(errorBody(raw.errors), 400);
+    }
+    const body = (
+      typeof raw.value === "object" && raw.value !== null && !Array.isArray(raw.value)
+        ? raw.value
+        : {}
+    ) as { login?: unknown; permission?: unknown; code?: unknown };
+    // **【`V23-M6-T06`】コードの招待**(`ADR-0538` §Decision 1-6。決定 `D-V23-154`・`D-V23-163`・`D-V23-166`・
+    // `D-V23-167`・`D-V23-168`)。 **`code` を見るのは、守る表が相手の行を宣言しているときだけ**(他の表では `code` を
+    // 読まず、今日と1ビットも同じ)。 相手の表を知っているのは判定の家の1本(`rowInvitationAccess` の `principalRow`)。
+    const codeTable = rowInvitationAccess({
+      manifest,
+      tableId,
+      principalRow: {},
+    })?.principalRowTable;
+    const byCode = codeTable !== undefined && body.code !== undefined;
+    // 【2026-09-30。`V23-M5-T11` の処置(`ADR-0537` §3 軽3)】**招待できない人には、本文の検査より先に
+    // 存在しない行と同じ 404 を返す**(旧は本文の検査(ログイン名・権限の値・自分宛て)が行の関門より前で、
+    // 行に何の権限も無い人にも 400 と `grantable` の ID を返していた)。 本文の検査は、行の関門を通した後に
+    // 同じ器の中で行う(旧の3つの検査の式と応答は1文字も変えていない)。
+    const grantableIds = declared.grantable.map((permission) => permission.id);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + declared.expiresDays * 24 * 60 * 60 * 1000);
+    const issued = withRowInvitations(manifest, (db, readRows) => {
+      const access = rowInvitationSubject(db, manifest, readRows, actor, tableId, recordId);
+      if (access === undefined || !access.issue) {
+        return false;
+      }
+      // **【`V23-M6-T06`】コードの招待**: 宛先はコードで引いた行(S)。 **存在しないコード・相手の表でない行のコード・
+      // 招待者が S に `via` を持つときは保存しないが、応答は同じ 202 と同じ本文**(`D-V23-163`・`D-V23-167`)。
+      // 内部表には `invitee_key` = `row:<表>:<行ID>`、ログイン名と利用者 ID は空文字(`D-V23-168`)。 同じ R・同じ S は上書き。
+      if (byCode) {
+        if (body.login !== undefined) {
+          return { error: rowInvitationCodeWithLoginError() };
+        }
+        if (typeof body.code !== "string" || body.code === "") {
+          return { error: rowInvitationCodeError() };
+        }
+        if (typeof body.permission !== "string" || !grantableIds.includes(body.permission)) {
+          return { error: rowInvitationPermissionError(grantableIds) };
+        }
+        // 【2026-10-02。`V23-M9-T06` / `D-V23-239`】照合の前に前後の空白を落とし、小文字を大文字に直す(コードは
+        // 32字表の大文字と数字だけ)。 直しても合わないコードは今日どおり同じ 202 と同じ本文で保存しない。
+        const found = findRowByInviteCode(db, body.code.trim().toUpperCase());
+        const target =
+          found === undefined
+            ? undefined
+            : rowInvitationAccess({
+                manifest,
+                tableId,
+                principalRow: {
+                  tableId: found.table_id,
+                  recordId: found.record_id,
+                  actorId: actor.id,
+                  readRows,
+                  targetRecordId: recordId,
+                },
+              });
+        // 【2026-10-01。決定 `D-V23-176`】同じ R と同じ S を指す付与の行が既に在れば保存しない(同じ 202 と同じ本文)。
+        if (
+          found !== undefined &&
+          target?.principalRowMatches === true &&
+          target.principalRowHolds !== true &&
+          target.principalRowGranted !== true
+        ) {
+          const inviteeKey = principalRowInviteeKey(found.table_id, found.record_id);
+          const permission = body.permission;
+          // **【`V23-M8-T03b`】招待の先の行の表が `history: true` のときだけ、同じ器で履歴を1件足す。**
+          withInvitationHistory(
+            db,
+            () =>
+              upsertRowInvitation(db, {
+                id: crypto.randomUUID(),
+                table_id: tableId,
+                record_id: recordId,
+                invitee_login: "",
+                invitee_user_id: "",
+                invitee_key: inviteeKey,
+                permission,
+                inviter_id: actor.id,
+                created_at: now.toISOString(),
+                expires_at: expiresAt.toISOString(),
+              }),
+            invitationHistoryOf(
+              manifest,
+              tableId,
+              recordId,
+              "invite",
+              actor,
+              inviteeKey,
+              permission,
+            ),
+            () => true,
+          );
+        }
+        return { permission: body.permission };
+      }
+      if (typeof body.login !== "string" || body.login === "") {
+        return { error: rowInvitationLoginError() };
+      }
+      if (typeof body.permission !== "string" || !grantableIds.includes(body.permission)) {
+        return { error: rowInvitationPermissionError(grantableIds) };
+      }
+      if (body.login === actor.username) {
+        return { error: rowInvitationSelfError() };
+      }
+      const login = body.login;
+      const permission = body.permission;
+      // **利用者は必ず1回だけ引く**(`D-V23-132`)。 在っても無くても、この後の処理は同じ。
+      const store = AuthStore.openForApp(dataRoot, manifest.app.id);
+      let inviteeUserId: string;
+      try {
+        inviteeUserId = store.findUserByUsername(login)?.id ?? "";
+      } finally {
+        store.close();
+      }
+      // **【`V23-M8-T03b`】招待の先の行の表が `history: true` のときだけ、同じ器で履歴を1件足す。**
+      withInvitationHistory(
+        db,
+        () =>
+          upsertRowInvitation(db, {
+            id: crypto.randomUUID(),
+            table_id: tableId,
+            record_id: recordId,
+            invitee_login: login,
+            invitee_user_id: inviteeUserId,
+            permission,
+            inviter_id: actor.id,
+            created_at: now.toISOString(),
+            expires_at: expiresAt.toISOString(),
+          }),
+        invitationHistoryOf(
+          manifest,
+          tableId,
+          recordId,
+          "invite",
+          actor,
+          // 【2026-10-02。`V23-M9-T01` / `D-V23-234`】相手が居ても居なくても、招待した人が打ったログイン名で記録する
+          // (相手の有無を履歴の1件から読めなくする)。 旧は相手が居れば利用者の id だった。
+          `login:${login}`,
+          permission,
+        ),
+        () => true,
+      );
+      return { permission };
+    });
+    if (issued === false) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    if ("error" in issued) {
+      return c.json(errorBody([issued.error]), 400);
+    }
+    // **同じ応答**(`D-V23-122`): 名前が在るか・役割・名簿・既に付与を持つか・上書きかで変えない。
+    return c.json(
+      { invitation: { permission: issued.permission, expires_at: expiresAt.toISOString() } },
+      202,
+    );
+  });
+
+  /** 行の招待の一覧(`grantable` と `pending` だけ。 見られない人には存在しない行と同じ 404)。 */
+  app.get("/api/apps/:app_id/tables/:table_id/records/:record_id/invitations", (c) => {
+    const context = rowInvitationContext(c);
+    if (context instanceof Response) {
+      return context;
+    }
+    const { manifest, actor } = context;
+    const tableId = c.req.param("table_id");
+    const recordId = c.req.param("record_id");
+    const listed = withRowInvitations(manifest, (db, readRows) => {
+      const access = rowInvitationSubject(db, manifest, readRows, actor, tableId, recordId);
+      if (access === undefined || !access.manage) {
+        return undefined;
+      }
+      const rows = listRowInvitationsForRecord(db, tableId, recordId);
+      // **【2026-10-01。`V23-M6-T06b`】コードの招待の宛先の行の代表項目**(`D-V23-156`。`ADR-0538` §Decision 1-7)。
+      // 自分宛ての一覧の8つ目の値と同じ読み方(見る人の役割の規則で隠れていれば `null`。行が無ければ `null`)。
+      // **コードの招待の1件にだけ付け、名前の招待にはキーを出さない**(宣言の無いアプリの応答は1バイトも同じ)。
+      const principalLabels = new Map<string, string | null>();
+      for (const row of rows) {
+        const target = principalRowOfInvitation(row);
+        if (target === undefined) {
+          continue;
+        }
+        const principalTable = manifest.app.tables.find((item) => item.id === target.tableId);
+        principalLabels.set(
+          row.id,
+          principalTable === undefined
+            ? null
+            : (rowInvitationRepresentative(db, manifest, principalTable, target.recordId, actor) ??
+                null),
+        );
+      }
+      return { grantable: access.grantable, rows, principalLabels };
+    });
+    if (listed === undefined) {
+      return c.json(errorBody([unknownRecordError(tableId, recordId)]), 404);
+    }
+    const names = new Map<string, string>();
+    const store = AuthStore.openForApp(dataRoot, manifest.app.id);
+    try {
+      for (const row of listed.rows) {
+        if (!names.has(row.inviter_id)) {
+          const inviter = store.findUserById(row.inviter_id);
+          names.set(
+            row.inviter_id,
+            inviter === undefined
+              ? UNRESOLVED_OWNER_DISPLAY
+              : inviter.displayName !== null && inviter.displayName !== ""
+                ? inviter.displayName
+                : inviter.username,
+          );
+        }
+      }
+    } finally {
+      store.close();
+    }
+    return c.json({
+      grantable: listed.grantable,
+      pending: listed.rows.map((row) => ({
+        id: row.id,
+        login: row.invitee_login,
+        permission: row.permission,
+        inviter_name: names.get(row.inviter_id) ?? UNRESOLVED_OWNER_DISPLAY,
+        expires_at: row.expires_at,
+        ...(listed.principalLabels.has(row.id)
+          ? { principal_label: listed.principalLabels.get(row.id) ?? null }
+          : {}),
+      })),
+    });
+  });
+
+  /**
+   * 自分宛ての招待の一覧。 **`V23-M5-T03` では口だけ**(宣言・認証・掃除を通して空の一覧を返す)。
+   * 中身(承諾前に見せる6つの値)は `T05`(`D-V23-126`)。
+   */
+  //
+  // 【2026-09-30。`V23-M5-T05` の訂正。上の doc を消していない】上の「口だけ」は今日は偽である。
+  // - **返すのは、ログイン中の人宛て(発行の時点で結びつけた利用者の ID が自分)・期限内・未承諾で、
+  //   受け手の実効ロールが `target_roles` のどれかに合う招待だけ**(`D-V23-126`・`D-V23-132`)。
+  // - **1件ごとに6つだけ**: `id`(招待の ID)/ `representative`(行の代表項目の値1つ)/ `inviter_name`
+  //   (招待者の表示名。無ければログイン名、利用者が消えていれば行の一覧と同じ表記)/ `permission_name`
+  //   (`permissions[].name`)/ `table_name`(表の表示名)/ `expires_at`(期限)。 行のほかの項目・行の ID・
+  //   付与表の中身・招待者の ID・ほかの受け手は返さない(`ADR-0532` §Decision 1-7。`ADR-0501` 線3)。
+  //   【2026-09-30。`V23-M5-T11` の処置(`ADR-0537` §2)。上の行を消していない】今日は7つ: 6つに、承諾で
+  //   所属グループが替わるかどうかの真偽 `changes_group` を足した(グループの名前・ID は返さない)。
+  // - 代表項目は {@link representativeTextField}。 **受け手の役割の規則で隠れていれば `null`**(別の項目を
+  //   繰り上げない)。 隠れは `projectForRoleFields` の投影の後に残るかで見る(計画 §24-6 軽1)。
+  // - **行が消えた招待・権限が今の `grantable` に無い招待は返さない**(どちらも承諾で断られる招待で、
+  //   代表項目・権限の表示名を出せない)。 内部表の行は消さない(期限・取消・辞退で消える)。
+  app.get("/api/apps/:app_id/invitations", (c) => {
+    const context = rowInvitationContext(c);
+    if (context instanceof Response) {
+      return context;
+    }
+    const { manifest, actor } = context;
+    const listed = withRowInvitations(manifest, (db, readRows) => {
+      const items: {
+        invitation: { id: string; inviter_id: string; expires_at: string; created_at: string };
+        representative: string | null;
+        permissionName: string;
+        tableName: string;
+        changesGroup: boolean;
+        /** 【`V23-M6-T06`】宛先の行(S)の代表項目。 コードの招待にだけ在る(名前の招待にはキーを出さない)。 */
+        principalLabel?: string | null;
+      }[] = [];
+      for (const invitation of listRowInvitationsForInvitee(
+        db,
+        actor.id,
+        new Date().toISOString(),
+      )) {
+        const declared = rowInvitationAccess({
+          manifest,
+          tableId: invitation.table_id,
+          inviteeRoles: actor.roles,
+        });
+        const permission = declared?.grantable.find((item) => item.id === invitation.permission);
+        const table = manifest.app.tables.find((item) => item.id === invitation.table_id);
+        if (declared?.targetMatches !== true || permission === undefined || table === undefined) {
+          continue;
+        }
+        const read = readRecord(
+          { dataRoot, appDb: () => db },
+          manifest,
+          invitation.table_id,
+          invitation.record_id,
+        );
+        if (!read.ok || read.value === null) {
+          continue;
+        }
+        const field = representativeTextField(table);
+        const projected =
+          field === undefined
+            ? {}
+            : projectForRoleFields({
+                manifest,
+                table,
+                row: read.value as Record<string, unknown>,
+                roles: actor.roles,
+                subject: actor.id,
+              });
+        const value =
+          field !== undefined && Object.hasOwn(projected, field.id)
+            ? projected[field.id]
+            : undefined;
+        // **【`V23-M5-T11`】承諾で所属グループが替わるか**(`ADR-0537` §2。式は owner-scope.ts の1本)。
+        const changesGroup =
+          rowInvitationAccess({
+            manifest,
+            tableId: invitation.table_id,
+            inviteeRoles: actor.roles,
+            inviteeGroup: {
+              row: read.value as Record<string, unknown>,
+              inviteeId: actor.id,
+              readRows,
+            },
+          })?.changesGroup === true;
+        items.push({
+          invitation,
+          representative: typeof value === "string" && value !== "" ? value : null,
+          permissionName: permission.name,
+          tableName: table.name,
+          changesGroup,
+        });
+      }
+      // **【`V23-M6-T06`】コードの招待**(`ADR-0538` §Decision 1-6。決定 `D-V23-154`・`D-V23-155`・`D-V23-166`)。
+      // - 届くのは、宛先の行(S)の管理者(`creator_permission` を直接かグループ経由で。親と S 経由は数えない。運営は受け手
+      //   ではない)だけ。 判定は判定の家の1本(`rowInvitationAccess` の `principalRow`)。
+      // - `target_roles` と `group_from` は効かない(`changes_group` は偽)。 8つ目の値は S の代表項目(受け手の役割の
+      //   規則で隠れていれば `null`)。 **名前の招待にはキーを出さない**(コードの招待が無ければ応答は今日と1バイトも同じ)。
+      // - 行が消えた招待・権限が今の `grantable` に無い招待・S が相手の表でなくなった招待は返さない(内部表の行は消さない)。
+      const codeItems: typeof items = [];
+      // **【独立点検の処置。決定 `D-V23-177`】どの表も相手の行を宣言していないアプリでは、コードの招待を探す読みを
+      // 出さない**(SQL の本数も着手前と同じ)。 宣言を知っているのは判定の家の1本(`rowInvitationAccess` の `principalRow`)。
+      const codeDeclared = manifest.app.tables.some(
+        (table) =>
+          rowInvitationAccess({ manifest, tableId: table.id, principalRow: {} })
+            ?.principalRowTable !== undefined,
+      );
+      for (const invitation of codeDeclared
+        ? listRowCodeInvitations(db, new Date().toISOString())
+        : []) {
+        const target = principalRowOfInvitation(invitation);
+        if (target === undefined) {
+          continue;
+        }
+        const declared = rowInvitationAccess({
+          manifest,
+          tableId: invitation.table_id,
+          principalRow: { ...target, actorId: actor.id, readRows },
+        });
+        const permission = declared?.grantable.find((item) => item.id === invitation.permission);
+        const table = manifest.app.tables.find((item) => item.id === invitation.table_id);
+        const principalTable = manifest.app.tables.find((item) => item.id === target.tableId);
+        if (
+          declared?.principalRowMatches !== true ||
+          declared.principalRowAdmin !== true ||
+          permission === undefined ||
+          table === undefined ||
+          principalTable === undefined
+        ) {
+          continue;
+        }
+        const representative = rowInvitationRepresentative(
+          db,
+          manifest,
+          table,
+          invitation.record_id,
+          actor,
+        );
+        const principalLabel = rowInvitationRepresentative(
+          db,
+          manifest,
+          principalTable,
+          target.recordId,
+          actor,
+        );
+        if (representative === undefined || principalLabel === undefined) {
+          continue;
+        }
+        codeItems.push({
+          invitation,
+          representative,
+          permissionName: permission.name,
+          tableName: table.name,
+          changesGroup: false,
+          principalLabel,
+        });
+      }
+      if (codeItems.length === 0) {
+        return items;
+      }
+      // 名前の招待と同じ並び(発行の古い順。内部表の問い合わせの `ORDER BY created_at, id` と同じ鍵)。
+      return [...items, ...codeItems].sort((a, b) =>
+        a.invitation.created_at === b.invitation.created_at
+          ? a.invitation.id < b.invitation.id
+            ? -1
+            : a.invitation.id > b.invitation.id
+              ? 1
+              : 0
+          : a.invitation.created_at < b.invitation.created_at
+            ? -1
+            : 1,
+      );
+    });
+    const names = new Map<string, string>();
+    const store = AuthStore.openForApp(dataRoot, manifest.app.id);
+    try {
+      for (const { invitation } of listed) {
+        if (!names.has(invitation.inviter_id)) {
+          const inviter = store.findUserById(invitation.inviter_id);
+          names.set(
+            invitation.inviter_id,
+            inviter === undefined
+              ? UNRESOLVED_OWNER_DISPLAY
+              : inviter.displayName !== null && inviter.displayName !== ""
+                ? inviter.displayName
+                : inviter.username,
+          );
+        }
+      }
+    } finally {
+      store.close();
+    }
+    return c.json({
+      invitations: listed.map((item) => ({
+        id: item.invitation.id,
+        representative: item.representative,
+        inviter_name: names.get(item.invitation.inviter_id) ?? UNRESOLVED_OWNER_DISPLAY,
+        permission_name: item.permissionName,
+        table_name: item.tableName,
+        expires_at: item.invitation.expires_at,
+        changes_group: item.changesGroup,
+        // 【`V23-M6-T06`】8つ目(コードの招待の1件にだけ。名前の招待にはキーを出さない。`D-V23-166`)。
+        ...(item.principalLabel === undefined ? {} : { principal_label: item.principalLabel }),
+      })),
+    });
+  });
+
+  /**
+   * 招待への返答(本文の `action` は `accept` / `decline` / `revoke`)。
+   * - `revoke`: 行の一覧を見られる人だけ(`D-V23-127`・`D-V23-133` 中7)。
+   * - **取り消せない人・他人宛て・存在しない招待は、どれも同じ 404**(`D-V23-133` 軽3)。
+   * - **`accept` / `decline` は `V23-M5-T04` まで、どの招待にも同じ 404**(承諾と辞退は `T04`)。
+   *
+   * 【2026-09-30。`V23-M5-T04` の訂正。上の行を消していない】上の3つ目は今日は偽である。
+   * - `accept` / `decline` は、**発行の時点で結びつけた利用者の ID が自分である受け手だけ**ができる。
+   *   それ以外・存在しない招待・期限切れは、取消と同じ 404(軽3)。
+   * - `decline`: 招待を消すだけ(付与は作らない)。
+   * - `accept`: 判定は `owner-scope.ts` の `judgeRowInvitationAccept` 1本(招待者を主体に、付与表への
+   *   作成と同じ関門を順に通す。`ADR-0532` §Decision 1-3)。 通したら
+   *   **`writeWithAudit` の書込の関数の中で**、招待の条件付きの削除と付与の作成をまとめる(§Decision 1-4)。
+   *   付与が付与表の検査・自動処理で落ちたら内部の例外で全部を巻き戻す(`CreatorGrantRollback` と同じ形)。
+   *   断ったときは理由を返し、招待は残す。 `$actor` の起点は承諾した人(`originOf`)。
+   * - 名簿のグループ欄の書き換え(`group_from`)は `V23-M5-T04b` の担当で、ここでは付与だけを作る。
+   *
+   * 【2026-09-30。`V23-M5-T04b` の訂正。上の行を消していない】上の最後の行は今日は偽である。
+   * - 判定が名簿のグループ欄に書く値を返したとき(`group_from` を宣言し、招待した行のその項目に値があり、
+   *   今の値と違うとき)は、**同じ書込の関数の中で**付与の作成の後に受け手の名簿の行のグループ欄を書く
+   *   (`ADR-0532` §Decision 1-5)。 値は判定が招待した行から引いたものだけで、本文からは受けない。
+   * - 書く前に、書いた後の名簿で、前のグループ経由でだけ管理者だった行が管理者0人になるかを
+   *   `lastRowAdminVanishes` の `membersAfter` で数え、なるなら受け手の役割によらず理由を付けて断る
+   *   (`D-V23-135` (1))。 断りも名簿の書込の失敗(`on_update` の島の `reject` を含む)も内部の例外で
+   *   全部を巻き戻す。 名簿の書込は判定の関門(`membership_locked`)を通らない、この経路だけの例外である。
+   * - 名簿の書込の起点も承諾した人(`originOf`)で、監査の行を1行足す(`update_record`)。
+   */
+  app.post("/api/apps/:app_id/invitations/:invitation_id", async (c) => {
+    const context = rowInvitationContext(c);
+    if (context instanceof Response) {
+      return context;
+    }
+    const { manifest, actor } = context;
+    const invitationId = c.req.param("invitation_id");
+    const raw = await readJsonBody(c.req.raw);
+    if (!raw.ok) {
+      return c.json(errorBody(raw.errors), 400);
+    }
+    const action = (
+      typeof raw.value === "object" && raw.value !== null && !Array.isArray(raw.value)
+        ? (raw.value as { action?: unknown }).action
+        : undefined
+    ) as unknown;
+    if (action !== "accept" && action !== "decline" && action !== "revoke") {
+      return c.json(errorBody([rowInvitationActionError()]), 400);
+    }
+    if (action === "accept") {
+      // 適用中(apply 窓)なら書かずに 409(単件 `POST` と同じ。監査の行も残さない)。
+      const applying = isApplyInProgress(dataRoot, manifest.app.id);
+      if (applying.inProgress) {
+        return c.json(errorBody([applyInProgressError(applying)]), 409);
+      }
+      const outcome = withRowInvitations(manifest, (db) => {
+        const invitation = findRowInvitation(db, invitationId);
+        // **【`V23-M6-T06`】コードの招待は宛先の行(S)の管理者が受け手**(判定の家の `judgeRowInvitationAccept` が
+        // `principalRow` で見る。違えば `gone` = 同じ 404)。 名前の招待は今日どおり利用者の ID で見る。
+        const principalRow =
+          invitation === undefined ? undefined : principalRowOfInvitation(invitation);
+        if (
+          invitation === undefined ||
+          (principalRow === undefined &&
+            (invitation.invitee_user_id === "" || invitation.invitee_user_id !== actor.id))
+        ) {
+          return { missing: true as const };
+        }
+        // 招待者は承諾の時点の姿で引く(利用者が消えていれば `undefined`。運営者かも今の実効ロールで見る)。
+        const store = AuthStore.openForApp(dataRoot, manifest.app.id);
+        let inviter: { id: string; roles: ActorRoles } | undefined;
+        try {
+          const found = store.findUserById(invitation.inviter_id);
+          inviter =
+            found === undefined
+              ? undefined
+              : { id: found.id, roles: store.effectiveRoles(found.id) };
+        } finally {
+          store.close();
+        }
+        const readers = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+        const verdict = judgeRowInvitationAccept({
+          manifest,
+          tableId: invitation.table_id,
+          recordId: invitation.record_id,
+          permission: invitation.permission,
+          inviter,
+          invitee: { id: actor.id, roles: actor.roles },
+          expiresAt: invitation.expires_at,
+          now: new Date().toISOString(),
+          readRows: readers.readRows,
+          readRow: readers.readRow,
+          ...(principalRow === undefined ? {} : { principalRow }),
+        });
+        if (verdict.kind === "refused") {
+          return verdict.reason === "gone"
+            ? { missing: true as const }
+            : { refusedReason: verdict.reason };
+        }
+        try {
+          const written = collectWorkflowHistoryFailures(() =>
+            writeWithAudit(
+              db,
+              actor,
+              "create_record",
+              verdict.grantTableId,
+              () => {
+                // **【`V23-M5-T11`】判定を器の中で見直す**(`ADR-0537` §3 軽4)。 同じ接続で読み直した
+                // 行・付与・名簿で同じ判定をもう一度通し、書く値もこちらの答えから取る。
+                const recheck = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+                const current = judgeRowInvitationAccept({
+                  manifest,
+                  tableId: invitation.table_id,
+                  recordId: invitation.record_id,
+                  permission: invitation.permission,
+                  inviter,
+                  invitee: { id: actor.id, roles: actor.roles },
+                  expiresAt: invitation.expires_at,
+                  now: new Date().toISOString(),
+                  readRows: recheck.readRows,
+                  readRow: recheck.readRow,
+                  ...(principalRow === undefined ? {} : { principalRow }),
+                });
+                if (current.kind === "refused") {
+                  throw new RowInvitationAcceptRefused(current.reason);
+                }
+                // 条件付きの削除: もう無ければ(2回目・同時の負けた側)器ごと巻き戻す。
+                if (!deleteRowInvitation(db, invitationId)) {
+                  throw new RowInvitationAlreadyAnswered();
+                }
+                // **【`V23-M8-T03b`】承諾を先の行の履歴に1件**(同じ器。宣言の無い表では何もしない)。
+                // 招かれた相手は、コードの招待なら相手の行の鍵、名前の招待なら承諾した人。
+                const accepted = invitationHistoryOf(
+                  manifest,
+                  invitation.table_id,
+                  invitation.record_id,
+                  "invite_accept",
+                  actor,
+                  principalRowOfInvitation(invitation) === undefined
+                    ? actor.id
+                    : invitation.invitee_key,
+                  invitation.permission,
+                );
+                if (accepted !== undefined) {
+                  appendRecordHistory(db, accepted);
+                }
+                const marks = markHistory(db, manifest);
+                const created = createRecord(
+                  db,
+                  manifest,
+                  current.grantTableId,
+                  current.values,
+                  originOf(actor),
+                );
+                if (!created.ok) {
+                  throw new RowInvitationAcceptRollback(
+                    created.errors,
+                    holdHistorySince(db, marks),
+                  );
+                }
+                // **【`V23-M5-T04b`】名簿のグループ欄**(判定が値を返したときだけ。`ADR-0532` §Decision 1-5)。
+                // 【`V23-M5-T11`】値は器の中で見直した判定から取る(旧は `verdict.group`)。 読み手は付与を作った
+                // 後の姿を読むため、ここで作り直す(旧と同じ)。
+                const group = current.group;
+                if (group !== undefined) {
+                  const fresh = memoizedRowReaders({ dataRoot, appDb: () => db }, manifest);
+                  const memberRows = fresh.readRows(group.memberTableId);
+                  const previous = memberRows.find((row) => row._id === group.memberRecordId);
+                  if (
+                    lastRowAdminVanishes({
+                      manifest,
+                      readRows: fresh.readRows,
+                      userExists: userExistsOn(db),
+                      membersAfter: {
+                        memberTableId: group.memberTableId,
+                        afterRows: memberRows.map((row) =>
+                          row._id === group.memberRecordId
+                            ? { ...row, [group.fieldId]: group.value }
+                            : row,
+                        ),
+                      },
+                    })
+                  ) {
+                    throw new RowInvitationGroupLastAdmin();
+                  }
+                  const updated = updateRecord(
+                    db,
+                    manifest,
+                    group.memberTableId,
+                    group.memberRecordId,
+                    { [group.fieldId]: group.value },
+                    undefined,
+                    originOf(actor),
+                  );
+                  if (!updated.ok) {
+                    throw new RowInvitationAcceptRollback(
+                      updated.errors,
+                      holdHistorySince(db, marks),
+                    );
+                  }
+                  recordActivity(db, {
+                    userId: actor.id,
+                    username: actor.username,
+                    action: "update_record",
+                    tableId: group.memberTableId,
+                    recordId: group.memberRecordId,
+                    changes:
+                      previous === undefined
+                        ? null
+                        : describeRecordChanges(previous, updated.value),
+                  });
+                }
+                return created;
+              },
+              (record) => record._id,
+            ),
+          );
+          return {
+            accepted: {
+              tableId: invitation.table_id,
+              recordId: invitation.record_id,
+              failures: written.failures,
+            },
+          };
+        } catch (error) {
+          if (error instanceof RowInvitationAlreadyAnswered) {
+            return { missing: true as const };
+          }
+          if (error instanceof RowInvitationGroupLastAdmin) {
+            return { refusedReason: "group_last_admin" as const };
+          }
+          if (error instanceof RowInvitationAcceptRefused) {
+            return error.reason === "gone"
+              ? { missing: true as const }
+              : { refusedReason: error.reason };
+          }
+          if (error instanceof RowInvitationAcceptRollback) {
+            // 付与表の検査・自動処理の失敗: 全部がアプリの理由なら 422、それ以外は 400。 招待は残る。
+            rewriteHeldHistory(db, manifest, error.history);
+            return { rejected: writeRefusal(error.errors) };
+          }
+          throw error;
+        }
+      });
+      if ("missing" in outcome) {
+        return c.json(errorBody([unknownRowInvitationError()]), 404);
+      }
+      if ("refusedReason" in outcome) {
+        return c.json(errorBody([rowInvitationAcceptRefusedError(outcome.refusedReason)]), 403);
+      }
+      if ("rejected" in outcome) {
+        return c.json(outcome.rejected.body, outcome.rejected.status);
+      }
+      const { tableId, recordId, failures } = outcome.accepted;
+      return c.json(
+        failures.length > 0
+          ? {
+              status: "accepted",
+              table_id: tableId,
+              record_id: recordId,
+              workflow_history_failures: failures,
+            }
+          : { status: "accepted", table_id: tableId, record_id: recordId },
+      );
+    }
+    if (action === "decline") {
+      const declined = withRowInvitations(manifest, (db, readRows) => {
+        const invitation = findRowInvitation(db, invitationId);
+        if (invitation === undefined) {
+          return false;
+        }
+        // **【`V23-M6-T06`】コードの招待を辞退できるのは、宛先の行(S)の管理者だけ**(判定の家の1本。違えば同じ 404)。
+        const principalRow = principalRowOfInvitation(invitation);
+        if (principalRow !== undefined) {
+          const target = rowInvitationAccess({
+            manifest,
+            tableId: invitation.table_id,
+            principalRow: { ...principalRow, actorId: actor.id, readRows },
+          });
+          if (target?.principalRowMatches !== true || target.principalRowAdmin !== true) {
+            return false;
+          }
+        } else if (invitation.invitee_user_id === "" || invitation.invitee_user_id !== actor.id) {
+          return false;
+        }
+        // **【`V23-M8-T03b`】辞退を先の行の履歴に1件**(同じ器。宣言の無い表では今日の形のまま)。
+        return withInvitationHistory(
+          db,
+          () => deleteRowInvitation(db, invitationId),
+          invitationHistoryOf(
+            manifest,
+            invitation.table_id,
+            invitation.record_id,
+            "invite_decline",
+            actor,
+            invitation.invitee_user_id === "" ? invitation.invitee_key : invitation.invitee_user_id,
+            invitation.permission,
+          ),
+          (deleted) => deleted,
+        );
+      });
+      if (!declined) {
+        return c.json(errorBody([unknownRowInvitationError()]), 404);
+      }
+      return c.json({ status: "declined" });
+    }
+    const revoked = withRowInvitations(manifest, (db, readRows) => {
+      if (action !== "revoke") {
+        return false;
+      }
+      const invitation = findRowInvitation(db, invitationId);
+      if (invitation === undefined) {
+        return false;
+      }
+      const access = rowInvitationAccess({
+        manifest,
+        tableId: invitation.table_id,
+        subject: {
+          recordId: invitation.record_id,
+          actorId: actor.id,
+          role: actor.roles,
+          readRows,
+        },
+      });
+      if (access === undefined || !access.manage) {
+        return false;
+      }
+      // **【`V23-M8-T03b`】取消を先の行の履歴に1件**(同じ器。宣言の無い表では今日の形のまま)。
+      return withInvitationHistory(
+        db,
+        () => deleteRowInvitation(db, invitationId),
+        invitationHistoryOf(
+          manifest,
+          invitation.table_id,
+          invitation.record_id,
+          "invite_revoke",
+          actor,
+          // 【2026-10-02。`V23-M9-T01` / `D-V23-262`】名前の招待の取消も、相手の有無にかかわらず打ったログイン名で
+          // 記録する。 コードの招待は今日どおり相手の行の鍵。 旧は相手が居れば利用者の id だった。
+          principalRowOfInvitation(invitation) === undefined
+            ? `login:${invitation.invitee_login}`
+            : invitation.invitee_key,
+          invitation.permission,
+        ),
+        (deleted) => deleted,
+      );
+    });
+    if (!revoked) {
+      return c.json(errorBody([unknownRowInvitationError()]), 404);
+    }
+    return c.json({ status: "revoked" });
+  });
+
   /**
    * **4b. 「誰にも見えない行」を見つける、運営専用の口**(`Z-G19` / `V7-M5-T02` /
    * `D-V7-15`)。**`Z-G18` が閉じた行のうち、付与が1件も無いものだけを一覧で返す。**
@@ -6733,12 +9030,21 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // **点を宣言した表では、着手前と1バイトも同じ1本が今日も通る。** **宣言していない表でだけ、
       // 面の側の母集団の述語を通す** —— **どちらも `owner-scope.ts` の述語であり、
       // ここに条件式を1つも書いていない**(`ADR-0061` 限定4)。
+      // **【`V23-M1-T07`。`SC-G6` / `D-V23-16`・`D-V23-30`】点を宣言した表では、利用者の実在を問う
+      // 関数を渡し、母集団を「付与0件、または管理者0人」に広げ、並ぶ理由を行に1欄だけ載せる。**
+      const userExists = userExistsOn(source.appDb());
       const scanned = (result.value as Record<string, unknown>[]).map((row) => ({
         row,
         orphan: grantGoverned
-          ? resolveRecordWithoutGrants({ manifest, tableId, row, readRows, readRow })
+          ? resolveRecordWithoutGrants({ manifest, tableId, row, readRows, readRow, userExists })
           : resolveRecordUnreachableByRoles({ manifest, tableId, row }),
       }));
+      const reasons = new Map<Record<string, unknown>, string>();
+      for (const entry of scanned) {
+        if (entry.orphan.kind === "orphan" && "reason" in entry.orphan && entry.orphan.reason) {
+          reasons.set(entry.row, entry.orphan.reason);
+        }
+      }
       // **1行でも上限に当たったら要求全体を 400 にする** —— **`V7-M4-T04`(`Z-G17`)が
       // 単件・一覧で採った形にそろえた。** **黙って落とすと、「辿りきれなかった行」が
       // 「取り残しは無い」と読める応答になり、運営者が取り残しを見落とす。**
@@ -6754,17 +9060,20 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // **応答の形は既存の一覧 `GET` とそろえる**(`records` と `total`)。
         // **隠し項目の落とし方も同じ2本を通す** —— **新しい射影を書いていない。**
         json: {
-          records: slicePage(visible, limit, offset).map((row) =>
+          records: slicePage(visible, limit, offset).map((row) => {
             // **【`V8-M17` / `J-G7`】面の項目の規則を旧層の射影の隣で当てる**(重ね順は AND)。
-            projectForRoleFields({
+            const projected = projectForRoleFields({
               manifest,
               table: resolved.table,
               row,
               roles: actor.roles,
               // **【`V8-M18`】項目の規則に条件が書いてあれば行ごとに効く。**
               subject: actor.id,
-            }),
-          ),
+            });
+            // **【`V23-M1-T07`】並ぶ理由(`no_grants` / `no_admin`)。点を宣言した表だけ。**
+            const reason = reasons.get(row);
+            return reason === undefined ? projected : { ...projected, _orphan_reason: reason };
+          }),
           total: visible.length,
         },
       };
@@ -6917,6 +9226,11 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
     // **【正直に書く。原子性は無い】** —— **(3) と (4) は別々の書込である**(付与は作成できた
     // 行の `_id` を要るため)。**(4) が失敗したら行だけが残る** —— **そのときは 500 を返すが、
     // 行を消して戻す処理は1バイトも書いていない**(`creatorGrantWriteFailedError` の doc)。
+    //
+    // 【2026-09-29。`V23-M2-T05` の訂正。上の段落を消していない】**上の段落は今日は偽である。**
+    // (3) と (4) は同じ書込のトランザクションの内側で続けて書き、(4) が落ちたら行ごと巻き戻す
+    // (`D-V23-12`・`D-V23-48`)。 付与表の検査の失敗は 400(全部がアプリの理由なら 422)、
+    // 検査の外の例外は 500 で、どちらも行は残らない。
     const accessSources = recordAccessSourceTables(manifest, tableId);
     // V1-M9-T12: on_create の履歴書き込み失敗を、この同期書き込みが生んだぶんだけ収集する。
     // install→書き込み→collect→restore を withAppDb の同期コールバック内に閉じる(§4-2)。
@@ -7110,29 +9424,59 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           return { denied: [creatorGrantUnreachableError()], status: 400 as const };
         }
       }
-      const written = collectWorkflowHistoryFailures(() =>
-        writeWithAudit(
-          db,
-          actor,
-          "create_record",
-          tableId,
-          () => createRecord(db, manifest, tableId, body.value),
-          (record) => record._id,
-        ),
-      );
-      if (written.value.ok && plan?.kind === "grant") {
-        const granted = createRecord(
-          db,
-          manifest,
-          plan.grantTable,
-          plan.grantValues(written.value.value._id),
+      // **【`V23-M2-T05` / `D-V23-12`・`D-V23-48`】作成者への付与を、行の作成と同じ書込の
+      // トランザクション(`writeWithAudit` の器)の内側で書く。** 付与が落ちたら内部の例外で
+      // 行ごと巻き戻す(`writeWithAudit` は1バイトも変えていない)。 旧は、行を書いた後に
+      // 器の外で付与を1件書き、落ちたら行を残したまま 500 を返していた。
+      let written: ReturnType<
+        typeof collectWorkflowHistoryFailures<ReturnType<typeof createRecord>>
+      >;
+      try {
+        written = collectWorkflowHistoryFailures(() =>
+          writeWithAudit(
+            db,
+            actor,
+            "create_record",
+            tableId,
+            () => {
+              // **【`V23-M10-T02c-c` / `D-V23-300`】付与を、作成の自動処理より先に書く。**
+              // **旧(逐語。並びだけを変えた)**:
+              //   const created = createRecord(db, manifest, tableId, body.value, originOf(actor));
+              //   if (created.ok && plan?.kind === "grant") {
+              //     writeCreatorGrant(db, manifest, plan, created.value._id, originOf(actor));
+              //   }
+              const created = createRecord(
+                db,
+                manifest,
+                tableId,
+                body.value,
+                originOf(actor),
+                plan?.kind === "grant"
+                  ? (row) => writeCreatorGrant(db, manifest, plan, row._id, originOf(actor))
+                  : undefined,
+              );
+              return created;
+            },
+            (record) => record._id,
+          ),
         );
-        if (!granted.ok) {
+      } catch (error) {
+        if (error instanceof CreatorGrantRollback) {
+          // 付与表の検査の失敗: 400(全部がアプリの理由なら 422)。 付与表の自動処理の失敗の
+          // 履歴は、巻き戻しの後に書き直して残す(`D-V23-55`)。
+          rewriteHeldHistory(db, manifest, error.history);
+          return { refused: writeRefusal(error.errors) };
+        }
+        if (error instanceof CreatorGrantCrash) {
           return { denied: [creatorGrantWriteFailedError()], status: 500 as const };
         }
+        throw error;
       }
       return written;
     });
+    if ("refused" in outcome) {
+      return c.json(outcome.refused.body, outcome.refused.status);
+    }
     if ("denied" in outcome) {
       return c.json(errorBody(outcome.denied), outcome.status);
     }
@@ -7142,7 +9486,11 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // **理由 = その項目は今日も書ける**(単位C は保留)**ので、「使える項目」の一覧から
       // 落とすと一覧が事実と食い違う**(憲法6 / `ADR-0086` 限定4 の原理。同 §2 の表)。
       // **落とすのは「読取の要求のデコードで出た 400」だけである。**
-      return c.json(errorBody(result.errors), 400);
+      //
+      // **【`V23-M2-T03`】全部がアプリの理由なら 422(`writeRefusal`)。 旧は、失敗をそのまま
+      // 今日の本文にして 400 を返す1行だった(それ以外の場合の応答は1バイトも変えていない)。**
+      const refusal = writeRefusal(result.errors);
+      return c.json(refusal.body, refusal.status);
     }
     // 書き込みは成功しているので 201 のまま。履歴失敗は成功レスポンスの明示項目に載せる
     // (失敗が無ければ項目を付けない)。§6: エラーでない情報をエラー形式で返さない。
@@ -7445,7 +9793,16 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           c.get("user"),
           "update_record",
           tableId,
-          () => updateRecord(db, manifest, tableId, recordId, body.value, ifMatch),
+          () =>
+            updateRecord(
+              db,
+              manifest,
+              tableId,
+              recordId,
+              body.value,
+              ifMatch,
+              originOf(c.get("user")),
+            ),
           () => recordId,
           () => true,
           // **E-G53 / D-V4-49**: 「どの項目を何から何に変えたか」を監査に残す。
@@ -7459,7 +9816,14 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // 版不一致(CAS 衝突)は 409。通常のバリデーション失敗(400)と区別する。
         // **(c) `V4-M35` / `ADR-0135` 限定1**: **書込の 400 / 409 には1バイトも掛けない**
         // (`POST` と同じ理由。**その項目は今日も書けるので、落とすと一覧が嘘になる**)。
-        return c.json(errorBody(result.errors), result.conflict === true ? 409 : 400);
+        //
+        // **【`V23-M2-T03`】版の衝突でなく、全部がアプリの理由なら 422。 旧は、衝突なら 409・
+        // それ以外は 400 を1行の三項で返していた(その2つの応答は1バイトも変えていない)。**
+        if (result.conflict === true) {
+          return c.json(errorBody(result.errors), 409);
+        }
+        const refusal = writeRefusal(result.errors);
+        return c.json(refusal.body, refusal.status);
       }
       // 更新後の版を ETag で返す(次の If-Match に使える。M5)。
       c.header("ETag", result.value._updated_at);
@@ -7767,16 +10131,48 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           if (cascade.hasUndeletableChild) {
             return c.json(errorBody([forbiddenCascadeDeleteError()]), 403);
           }
+          // **【`V23-M1-T07`。`D-V23-28`】③ の後・④ の前**: 連鎖に入らない行の最後の管理者が
+          // 消えるなら、連鎖ごと断る(何も消さない)。
+          if (
+            cascadeLastAdminBlocked({
+              db,
+              manifest,
+              actor: who,
+              removed: [
+                { tableId, recordId },
+                ...cascade.deleteOrder.map((entry) => ({
+                  tableId: entry.tableId,
+                  recordId: entry.recordId,
+                })),
+              ],
+              readRows: cascadeReaders.readRows,
+            })
+          ) {
+            return c.json(errorBody([lastRowAdminError()]), 409);
+          }
           // **件数の印は10進の整数ちょうどで、10進でない値・負の値・空・小数・符号つきはいずれも「印が
           // 無い」と同じ扱いにする**(断り方を3本目にしない)—— **この段に来た人は ③ を通っている
           // (= 全部の子を消せる)ので、④ の文面を返しても件数は1件も漏れない。**
           const sealHeader = c.req.header("if-match-children")?.trim() ?? "";
           const seal = /^[0-9]+$/.test(sealHeader) ? Number.parseInt(sealHeader, 10) : undefined;
-          const tableIds = cascade.perTable.map((entry) => entry.tableId);
+          // 【V23-M14-T02。D-V23-465】表の ID でなく、定義の表の表示名を渡す。
+          const tableNameOf = (id: string): string | undefined =>
+            manifest.app.tables.find((table) => table.id === id)?.name;
+          const perTableNamed = cascade.perTable.map((entry) => ({
+            name: tableNameOf(entry.tableId),
+            count: entry.count,
+          }));
           // **④ / ⑤** —— **どちらも1行も消さない。** **文面は別である。**
           if (seal === undefined || seal !== cascade.total) {
             return c.json(
-              errorBody([cascadeChildrenConfirmationError(cascade.total, tableIds, seal)]),
+              errorBody([
+                cascadeChildrenConfirmationError(
+                  cascade.total,
+                  tableNameOf(tableId),
+                  perTableNamed,
+                  seal,
+                ),
+              ]),
               409,
             );
           }
@@ -7790,7 +10186,15 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
               actor,
               "delete_record",
               child.tableId,
-              () => deleteRecord(db, manifest, child.tableId, child.recordId),
+              () =>
+                deleteRecord(
+                  db,
+                  manifest,
+                  child.tableId,
+                  child.recordId,
+                  undefined,
+                  originOf(actor),
+                ),
               () => child.recordId,
               (deleted) => deleted,
             );
@@ -7805,7 +10209,7 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         actor,
         "delete_record",
         tableId,
-        () => deleteRecord(db, manifest, tableId, recordId, ifMatch),
+        () => deleteRecord(db, manifest, tableId, recordId, ifMatch, originOf(actor)),
         () => recordId,
         // 実際に削除できたときだけ記録する(存在しない id の no-op DELETE は監査しない)。
         (deleted) => deleted,
@@ -7904,6 +10308,10 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // **op の索引を鍵にして覚え、`writeRecords` が成功したあとで1件ずつ入れる**
       // (`onWritten` の中で書かないのは、あちらが `writeRecords` の IMMEDIATE tx の**中**で
       // あり、`createRecord` が自前の tx を開くためである)。
+      // 【2026-09-29。`V23-M2-T05` の訂正。上の3行を消していない】**上の3行は今日は偽である。**
+      // 付与は `onWritten` の中(`writeRecords` の IMMEDIATE tx の内側)で書く(`D-V23-12`・
+      // `D-V23-48`)。 内側の `createRecord` の器は外側の tx の中では入れ子の器になるので、
+      // 付与が落ちたら内部の例外でバッチごと巻き戻る。
       // **【`V15-M3-T02` / `CR-G5`。`ADR-0404`】作成の関門が行を読む手を、ループの**外**で
       // 1度だけ作る。**
       //
@@ -8399,7 +10807,22 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       // `results` の索引と op の索引は一致する**(`src/kernel/batch.ts`)。**順序への暗黙の
       // 依存が1つ減る。**
       const writtenTables: (Table | undefined)[] = [];
+      // **【`V23-M10-T02c-c` / `D-V23-300`】作成者への付与は、作成の自動処理より先に書く**
+      // (`writeRecords` の `beforeWorkflows`。下の `onWritten` の旧の5行は注記に逐語で残した)。
+      const beforeWorkflows = (written: BatchWrittenOp): void => {
+        const creatorPlan = creatorPlans.get(written.index);
+        if (creatorPlan !== undefined) {
+          writeCreatorGrant(db, manifest, creatorPlan, written.record._id, originOf(actor));
+        }
+      };
       const onWritten = (written: BatchWrittenOp): void => {
+        // **【`V23-M2-T05`】作成者への付与を、同じ IMMEDIATE tx の内側で書く。** 落ちたら内部の
+        // 例外を投げ、`writeRecords` がそれを投げ直すので tx ごと巻き戻る(`batch.ts` は変えない)。
+        // **【`V23-M10-T02c-c`】旧(逐語。上の `beforeWorkflows` へ移した)**:
+        //   const creatorPlan = creatorPlans.get(written.index);
+        //   if (creatorPlan !== undefined) {
+        //     writeCreatorGrant(db, manifest, creatorPlan, written.record._id, originOf(actor));
+        //   }
         writtenTables[written.index] = resolveTable(manifest, written.op.table);
         recordActivity(db, {
           userId: actor.id,
@@ -8409,9 +10832,28 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
           recordId: written.record._id,
         });
       };
-      const { value: result, failures } = collectWorkflowHistoryFailures(() =>
-        writeRecords(db, manifest, ops, { onWritten }),
-      );
+      let batchOutcome: ReturnType<
+        typeof collectWorkflowHistoryFailures<ReturnType<typeof writeRecords>>
+      >;
+      try {
+        batchOutcome = collectWorkflowHistoryFailures(() =>
+          writeRecords(db, manifest, ops, { onWritten, beforeWorkflows }, originOf(actor)),
+        );
+      } catch (error) {
+        // **【`V23-M2-T05`】付与が落ちてバッチごと巻き戻った。** 付与表の検査の失敗は 400
+        // (全部がアプリの理由なら 422)、検査の外の例外は 500。 付与表の自動処理の失敗の
+        // 履歴は巻き戻しの後に書き直す(`D-V23-55`)。 それ以外の例外は今日どおり投げ直す。
+        if (error instanceof CreatorGrantRollback) {
+          rewriteHeldHistory(db, manifest, error.history);
+          const refusal = writeRefusal(error.errors);
+          return c.json(refusal.body, refusal.status);
+        }
+        if (error instanceof CreatorGrantCrash) {
+          return c.json(errorBody([creatorGrantWriteFailedError()]), 500);
+        }
+        throw error;
+      }
+      const { value: result, failures } = batchOutcome;
       if (!result.ok) {
         // 版不一致(CAS 衝突)は 409、それ以外の検証失敗は 400(create/update と同一)。
         //
@@ -8420,22 +10862,23 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
         // 引き直す13行のインラインの式を持っていたが、審査記録 §5-4 の #5 が限定表の外と
         // 判定したので取り消した** —— **判定を呼び出し側に書かない**(`ADR-0077` 限定6)
         // という向きにも、取り消した側が一致する。
-        return c.json(errorBody(result.errors), result.conflict === true ? 409 : 400);
+        //
+        // **【`V23-M2-T03`】版の衝突でなく、全部がアプリの理由なら 422**(印は `batch.ts` の
+        // `/ops/N` の前置きの後も保たれる)。 **旧は、衝突なら 409・それ以外は 400 を1行の三項で
+        // 返していた(その2つの応答は1バイトも変えていない)。**
+        if (result.conflict === true) {
+          return c.json(errorBody(result.errors), 409);
+        }
+        const refusal = writeRefusal(result.errors);
+        return c.json(refusal.body, refusal.status);
       }
       // **作成者への自動付与(`D-V7-23` / `V7-M3-T02`)。** **単件 `POST` とまったく同じ形で
       // ある** —— **行が書けたあとに、作成者への付与を1件入れる。**
       // **【正直に書く。原子性は無い】** —— **ここは `writeRecords` の IMMEDIATE tx の外で
       // ある。** **付与の書込が失敗したら、行だけが残る**(単件 `POST` と同じ限界)。
-      for (const [index, plan] of creatorPlans) {
-        const row = result.results[index];
-        if (row === undefined) {
-          continue;
-        }
-        const granted = createRecord(db, manifest, plan.grantTable, plan.grantValues(row._id));
-        if (!granted.ok) {
-          return c.json(errorBody([creatorGrantWriteFailedError()]), 500);
-        }
-      }
+      // 【2026-09-29。`V23-M2-T05` の訂正。上の段落を消していない】**上の段落は今日は偽である。**
+      // 付与は上の `onWritten` の中(IMMEDIATE tx の内側)で書き、落ちたらバッチごと巻き戻す。
+      // ここに在った付与のループ(tx の外で1件ずつ入れ、落ちたら 500)は消した。
       // **(b) `V4-M35` / `D-V4-124`**: **書込の応答にも読取と同じ射影を掛ける。**
       // **表ごとに判定する** —— 1リクエストの中で表が変われば宣言も変わる。
       //
@@ -8660,7 +11103,14 @@ export function createServerApp(options: CreateServerAppOptions): Hono<AuthEnv> 
       let manifest: Manifest | undefined;
       try {
         const loaded = loadManifest(appId);
-        manifest = loaded.ok ? loaded.value : undefined;
+        // **【`V21-M2B` / `ADR-0482` §3】未ログインには、隠す項目を「無い項目」にした写しで走査する**
+        // —— 隠した `image` の列は読まれず、その列だけが指すファイルは 404 になる。
+        // **旧: `manifest = loaded.ok ? loaded.value : undefined;`**
+        manifest = loaded.ok
+          ? user === undefined
+            ? manifestForAnonymous(loaded.value)
+            : loaded.value
+          : undefined;
       } catch {
         manifest = undefined;
       }

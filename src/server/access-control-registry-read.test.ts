@@ -898,7 +898,16 @@ test("(E-0) 【台の確かめ】AI の口が行を返す道具は `list_records
       list_records: true,
       read_record: false,
       get_record: false,
-      record_tools: ["delete_record", "list_records", "update_record", "write_records"],
+      // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行6】`list_record_history` を足した。** 旧(逐語):
+      //   `record_tools: ["delete_record", "list_records", "update_record", "write_records"],`
+      // **足した1本は行の変更履歴を読む参照系で、行そのもの(単票)を返す道具ではない** —— 単票を読む道具は今日も0本。
+      record_tools: [
+        "delete_record",
+        "list_record_history",
+        "list_records",
+        "update_record",
+        "write_records",
+      ],
     });
   } finally {
     await client.close();

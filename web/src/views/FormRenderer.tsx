@@ -60,7 +60,11 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Field, FormView, Manifest, Table } from "../../../src/kernel/types.ts";
+// **【`V23-M4-T05` / `D-V23-98`】更新者(`st_updated_by`)を押す表かの判定は、サーバと同じ述語1本。**
+import { stampedUpdatedByField } from "../../../src/server/owner-scope.ts";
 import {
+  APP_REJECTED_KIND,
+  ApiError,
   createRecord,
   fetchRecord,
   isApplyInProgress,
@@ -87,27 +91,33 @@ import {
   FieldInput,
   type FieldInputValue,
   grantMemberScope,
+  principalRowColumns,
   restrictReferenceChoices,
   usePermittedGrantMemberIds,
   useReferenceChoices,
 } from "../fields/input.tsx";
 // **名簿の `account` 欄を「利用者を選ぶプルダウン」にする**(`UM-G2`。`V13-M1-T02`)——
 // **どの項目がその欄かを解くのも、一覧を1度だけ読むのも、この1本に住んでいる。**
-import { accountFieldFor, useUserAccountChoices } from "../fields/user-account.ts";
+import {
+  accountFieldFor,
+  selfEditableRosterNameField,
+  useUserAccountChoices,
+} from "../fields/user-account.ts";
 import { navigate, resolveDetailViewTarget } from "../navigation.tsx";
 import type { RoutePrefill } from "../route.ts";
 import { resolveViewTable } from "../table-resolution.ts";
 import { Button } from "../ui/button.tsx";
 import { Label } from "../ui/form-controls.tsx";
-import { Alert } from "../ui/surfaces.tsx";
+import { Alert, Separator } from "../ui/surfaces.tsx";
 import { cn } from "../ui/utils.ts";
 // **【2026-08-21(`V10-M18-T03` / `FU-G3`)】** **`flowStepOf` はもう要らない** ——
 // **「戻る」を器(`ViewHost.tsx`)へ1本だけ移したので、このファイルは段の宣言を1度も読まない。**
 // **保存が成立したあとの行き先(`flowNextRoute`)だけが残っている。**
 import { flowNextRoute } from "./flow.ts";
+import { LayoutTree, layoutLeaves, SUBMIT_LEAF } from "./LayoutTree.tsx";
 import type { FormRendererProps } from "./types.ts";
 import { ApplyInProgress, WriteConflict } from "./WriteConflict.tsx";
-import { WriteForbidden } from "./WriteForbidden.tsx";
+import { formForbiddenTextShown, WriteForbidden } from "./WriteForbidden.tsx";
 
 type FormValues = Record<string, FieldInputValue>;
 
@@ -151,18 +161,41 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
    * **着手前は 403 だったものが 400 に変わるだけであり、どちらでも保存はできない。**
    * **「保存できるようになった」とは書かない。**
    */
+  /**
+   * **【`V23-M1-T10`】名簿への自動登録で名前の列を宣言した名簿では、運営でない人の編集画面に
+   * その列だけを出す**(`selfEditableRosterNameField`)。 サーバが通すのは「自分の行の名前の列だけを
+   * 変える更新」だけなので、他の列の入力欄は送れば必ず断られる欄である。 **作成と運営の画面は今日どおり。**
+   * 宣言の無い名簿・名簿でない表では `undefined` なので、1項目も減らない。
+   */
+  const selfNameField =
+    recordId !== undefined && role !== "owner"
+      ? selfEditableRosterNameField(manifest, view.table)
+      : undefined;
+  /**
+   * **【`V23-M4-T05` / `D-V23-98`】更新者(型が text で必須でない `st_updated_by`)の入力欄は出さない。**
+   * プラットフォームが行の作成と更新のたびに押す欄で、送っても捨てられる(書けない)。 型が text でないか
+   * 必須なら、ただの項目なので今日どおり出す。 宣言の無い表では `undefined` なので、1項目も減らない。
+   */
+  const updatedByField = table === undefined ? undefined : stampedUpdatedByField(table);
   const fields = useMemo(
     () =>
       table === undefined
         ? resolved.fields
-        : resolved.fields.filter((field) => canWriteFieldRole(role, manifest, table.id, field.id)),
-    [manifest, resolved.fields, role, table],
+        : resolved.fields.filter(
+            (field) =>
+              canWriteFieldRole(role, manifest, table.id, field.id) &&
+              (selfNameField === undefined || field.id === selfNameField) &&
+              field !== updatedByField,
+          ),
+    [manifest, resolved.fields, role, table, selfNameField, updatedByField],
   );
 
   const referenceChoices = useReferenceChoices(
     appId,
     manifest,
     fields.flatMap((field) => (field.type === "reference" ? [field.reference_table] : [])),
+    // **【`V23-M7-T05b`】新規作成のときだけ、作る表を渡す**(編集では絞らない。付け替えは今日どおり書込権で決まる)。
+    recordId === undefined ? view.table : undefined,
   );
 
   const [state, setState] = useState<AsyncState<FormValues>>({ status: "loading" });
@@ -170,10 +203,18 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
   const [submitting, setSubmitting] = useState(false);
   /** サーバが 403(権限不足)を返したか。401(失効)とは別に「閲覧のみ」を出す。 */
   const [writeForbidden, setWriteForbidden] = useState(false);
+  /** 【`V23-M12-T05`】403 の本文のうち画面に出す文(空なら一律の文)。 */
+  const [forbiddenMessages, setForbiddenMessages] = useState<string[]>([]);
   /** 409(版不一致)。別のユーザ/セッションが先に変更した。最新を取り込んでやり直す(M9-T02)。 */
   const [writeConflict, setWriteConflict] = useState(false);
   /** 409(適用中)。いま差分適用中なので、少し待って再試行する(M9-T02)。 */
   const [applyInProgress, setApplyInProgress] = useState(false);
+  /**
+   * **【`V23-M2-T08`】422 と `kind: "app_rejected"`(アプリが決めた理由の断り)の文言。**
+   * 一意違反の文言(`unique_message`)と島の断り(`reject`)の文言は、項目の位置の有無にかかわらず
+   * **フォームの上に1回だけ**出す(項目の下・フォームの下の器には出さない)。 空配列なら出さない。
+   */
+  const [appRejected, setAppRejected] = useState<ValidationError[]>([]);
   /**
    * 楽観ロック(M9-T02)用に、編集対象を読んだときの版(`_updated_at`)を保持する。
    * update の `If-Match` に載せる。新規作成では版が無いので `undefined`。
@@ -280,6 +321,14 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
   const userAccountChoices = useUserAccountChoices(appId, accountFieldId !== undefined);
 
   /**
+   * **【`V23-M6-T06b`】付与表の相手の行を指す欄は読むだけにする**(計画 §25-6 軽7)。 その欄に値を入れられるのは
+   * 招待の承諾だけで、ここで書くとサーバが断る。 宣言の無いアプリでは空(= 今日どおりの入力欄)。
+   */
+  const principalColumnIds = new Set(
+    principalRowColumns(manifest, view.table).map((item) => item.column),
+  );
+
+  /**
    * **付与表の「相手」の候補を、親の行に権限を持つ人へ絞る**(`Z-G27`。`V7-M6-T02`)。
    *
    * **【画面に出ないことを権限の担保にしていない】** —— **書込を止めているのはサーバ側の
@@ -318,6 +367,7 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
       setWriteForbidden(false);
       setWriteConflict(false);
       setApplyInProgress(false);
+      setAppRejected([]);
       const input = toRecordInput(fields, values);
       try {
         /*
@@ -360,10 +410,19 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
         // それ以外は統一形式のエラーを該当箇所に出す(M9-T02)。
         if (isForbidden(reason)) {
           setWriteForbidden(true);
+          // **【`V23-M12-T05`。`D-V23-398`・`D-V23-406`・`D-V23-413` (1)】** 層の名が混じる断り(役割の層と付与の層。
+          // 文に「(止めた層:」か「権限がありません(」を含む)は今日の一律の文のまま。 それ以外の 403(作れる立場・
+          // 付与の書込・名簿・内部表など)は本文の文を出す(添える文は出さない)。 見分けは文の綴りで行う
+          // (応答に種類の鍵を足すと宣言の無いアプリの応答が変わるため)。
+          setForbiddenMessages(forbiddenBodyMessages(reason));
         } else if (isApplyInProgress(reason)) {
           setApplyInProgress(true);
         } else if (isWriteConflict(reason)) {
           setWriteConflict(true);
+        } else if (reason instanceof ApiError && reason.kind === APP_REJECTED_KIND) {
+          // **【`V23-M2-T08`】アプリが決めた理由の断りは、文言だけをフォームの上に出す**(前置き・位置を足さない)。
+          // 今日の検査の失敗が混ざった応答はサーバが 400 にして `kind` を付けないので、下の今日の枝に落ちる。
+          setAppRejected(reason.errors);
         } else {
           setSubmitErrors(toValidationErrors(reason));
         }
@@ -443,13 +502,29 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
    * form の DOM が変わってしまう(限定6 に触れる)。**器を出さない画面では当たる規則が
    * 1つも無いので、器の有無で描画は変わらない。**
    */
-  const fieldNodes = fields.map((field) => {
+  const renderField = (field: Field) => {
     const inputId = `${view.id}-${field.id}`;
     const fieldErrors = grouped.byId.get(field.id) ?? [];
+    const width = view.field_width?.[field.id];
     return (
       // **狭い画面では縦**(項目名 → 入力欄 → エラー)。**`sm:` 以上では幅を戻す**
       // —— 入力部品の `w-full` が窓幅いっぱいに伸びるのを止める(`D-V4-44`)。
-      <div className={cn("field", "flex flex-col gap-s1 sm:max-w-md")} key={field.id}>
+      //
+      // **【`V20-M3-T02` / `ADR-0460` 限定4〜限定7】入力欄の幅は、この項目の枠に当てる。**
+      // **幅を書かなかった項目は、クラスも属性も着手前と1文字も変わらない**(`sm:max-w-md` のまま、
+      // `data-field-width` を出さない)。書いた項目だけ、3値に1対1で対応する有限のクラス
+      // (`FIELD_WIDTH_CLASS`)に差し替え、値を `data-field-width` に写す。
+      // **`web/src/styles.css` に `input` / `select` / `textarea` を的にした寸法の規則を1本も足さない**
+      // (`ADR-0469` §Decision 5-2)。入力部品は今日どおり `w-full` で、枠の幅に従う。
+      <div
+        className={cn(
+          "field",
+          "flex flex-col gap-s1",
+          width === undefined ? "sm:max-w-md" : FIELD_WIDTH_CLASS[width],
+        )}
+        key={field.id}
+        {...(width === undefined ? {} : { "data-field-width": width })}
+      >
         <Label htmlFor={inputId} data-testid={`field-label-${field.id}`}>
           {field.name}
           {field.required === true && (
@@ -458,26 +533,36 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
             </span>
           )}
         </Label>
-        <FieldInput
-          field={field}
-          inputId={inputId}
-          value={currentValues[field.id] ?? ""}
-          onChange={(value) => handleChange(field.id, value)}
-          referenceChoices={scopedReferenceChoices}
-          appId={appId}
-          // **画面ごとの「選び方」の上書きを届ける**(`K-G2`。`V6-M4-T01`)——
-          // **解決は `resolveReferencePicker` の1関数だけが行う。**
-          view={view}
-          // **参照先テーブルの「探せる項目」を引くために要る**(`K-G9` / `K-G11`)——
-          // **`type_filter` の項目でだけ使われる。**
-          manifest={manifest}
-          // **エラーがある欄にだけ `aria-invalid` が付く**(`V4-M15-T14` の一部)。
-          // 判定はここ(`groupErrorsByField` の結果)1箇所だけである。
-          invalid={fieldErrors.length > 0}
-          // **渡すのは名簿の `account` 欄ちょうど1つだけである**(`UM-G2`)——
-          // **他の `text` 項目の DOM は1バイトも変わらない。**
-          userAccountChoices={field.id === accountFieldId ? userAccountChoices : undefined}
-        />
+        {principalColumnIds.has(field.id) ? (
+          <p
+            id={inputId}
+            className={cn("m-0", "text-sm text-muted-foreground")}
+            data-testid={`field-readonly-${field.id}`}
+          >
+            この欄は招待の承諾でだけ入ります(ここでは変えられません)。
+          </p>
+        ) : (
+          <FieldInput
+            field={field}
+            inputId={inputId}
+            value={currentValues[field.id] ?? ""}
+            onChange={(value) => handleChange(field.id, value)}
+            referenceChoices={scopedReferenceChoices}
+            appId={appId}
+            // **画面ごとの「選び方」の上書きを届ける**(`K-G2`。`V6-M4-T01`)——
+            // **解決は `resolveReferencePicker` の1関数だけが行う。**
+            view={view}
+            // **参照先テーブルの「探せる項目」を引くために要る**(`K-G9` / `K-G11`)——
+            // **`type_filter` の項目でだけ使われる。**
+            manifest={manifest}
+            // **エラーがある欄にだけ `aria-invalid` が付く**(`V4-M15-T14` の一部)。
+            // 判定はここ(`groupErrorsByField` の結果)1箇所だけである。
+            invalid={fieldErrors.length > 0}
+            // **渡すのは名簿の `account` 欄ちょうど1つだけである**(`UM-G2`)——
+            // **他の `text` 項目の DOM は1バイトも変わらない。**
+            userAccountChoices={field.id === accountFieldId ? userAccountChoices : undefined}
+          />
+        )}
         {fieldErrors.length > 0 && (
           <div data-testid={`field-error-${field.id}`}>
             {/* 本文は `ErrorList` のまま。ここは器だけを足す。 */}
@@ -488,7 +573,100 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
         )}
       </div>
     );
-  });
+  };
+
+  /**
+   * **項目の並べ方**(段組の器を挟むかどうか)。段組数を書いた form でだけ `.form-fields` で包む
+   * (上の「段の器を挟むか」の説明のとおり。書かなかった form の DOM は着手前と1文字も変わらない)。
+   */
+  const renderFieldRun = (run: Field[]) =>
+    view.preset_field_columns === undefined ? (
+      run.map(renderField)
+    ) : (
+      <div className="form-fields">{run.map(renderField)}</div>
+    );
+
+  /*
+   * **項目のまとまり**(`V20-M3-T03` / `ADR-0469`)。
+   *
+   * **描画の順序は詳細画面と同じである**(`DetailViewRenderer` の `ungroupedFields` を描いてから
+   * `fieldGroups` を記述順に描く箇所): **(1) どのまとまりにも属さない項目を `fields` の順で先に
+   * 並べ、(2) そのあとに、まとまりをマニフェストの記述順(`Object.entries`)で並べる。**
+   * まとまりの中の項目は、まとまりに書いた順である。
+   *
+   * **器は詳細画面と同じ「見出し付きの区切り」**(`section` + `h3` + `Separator`)で、Tailwind の
+   * クラスも詳細画面のまとまりと同じ組(`flex flex-col gap-s2` / `m-0 font-semibold text-foreground`)。
+   * 意味のクラス名だけは入力フォーム用(`form-field-section`)にした —— 詳細画面の
+   * `.detail-field-group` には `web/src/styles.css` の規則が在り、同じ名前を使うとその規則の
+   * 当たり先を入力フォームへ黙って広げることになるため。**styles.css に規則を1本も足していない。**
+   *
+   * **段組数(`preset_field_columns`)との関係**: 段は「属さない項目の並び」と「まとまりごとの
+   * 並び」のそれぞれに別々に掛かる(詳細画面でまとまりごとに `dl.detail-fields` が出るのと同じ)。
+   * 見出しと区切りは段に入れない。
+   *
+   * **まとまりを書かなかった form は、着手前と1文字も変わらない**(`field_sections` が無いときは
+   * 着手前と同じ式で描く)。実在しないIDは適用時に拒否されているが、`find` の結果を絞るのは
+   * 「到達しないはず」に安全性を預けないためである(詳細画面と同じ)。
+   */
+  const sections = view.field_sections;
+  const groupedFieldIds = new Set(
+    Object.values(sections ?? {}).flatMap((group) => (Array.isArray(group) ? group : group.fields)),
+  );
+  const ungroupedFields = fields.filter((field) => !groupedFieldIds.has(field.id));
+  const fieldSections = Object.entries(sections ?? {}).map(([name, group]) => ({
+    name,
+    fields: (Array.isArray(group) ? group : group.fields)
+      .map((id) => fields.find((field) => field.id === id))
+      .filter((field): field is Field => field !== undefined),
+  }));
+
+  /*
+   * **送信ボタン(書けない人には「閲覧のみ」の注記)**。**要素そのものは着手前と1文字も同じ**で、
+   * 描く場所だけを選べるように変数へ出した(`V20-M5-T03`)。
+   */
+  const submitControl =
+    // viewer は保存できない。書込ボタンを出さず「閲覧のみ」を明示する(先回りガード)。
+    canWrite ? (
+      // **送信中は押せない。** `disabled` の体裁(不透明度・カーソル)は部品側が持つ。
+      // 狭い画面では幅いっぱい、`sm:` 以上は従来どおりの内容幅(`D-V4-44`)。
+      //
+      // **`render` で `type="submit"` を渡す。** `Button` の既定は
+      // `<button type="button" />` で、**`props` の側に `type` を書いても既定が勝つ**
+      // (`useRender` の合成順。実測した)—— そのままだと form の submit が起きず、
+      // 保存が1件も飛ばなくなる。**`render` を使うのはそのためであって、見た目のためではない。**
+      <Button render={<button type="submit" />} disabled={submitting} className="w-full sm:w-auto">
+        保存
+      </Button>
+    ) : (
+      <p
+        className={cn("read-only-note", "text-note text-muted-foreground")}
+        data-testid="form-read-only"
+      >
+        閲覧のみ(書き込み権限がありません)。
+      </p>
+    );
+
+  /*
+   * **並べ方の木**(`V20-M5-T03` / `ADR-0462` / `ADR-0471`)。
+   *
+   * - **木を書かなかった form は、着手前と1文字も変わらない**(下の分岐で `layout === undefined` の
+   *   ときは着手前と同じ式で描く。固定は `web/test/layout-tree.test.tsx` の (d))。
+   * - **葉は今日と同じ部品で描く** —— 項目は `renderField`、`action:submit` は上の `submitControl`。
+   * - **木に置かなかった項目は、木の後ろに `fields` の順で今日と同じ式(`renderFieldRun`)で積む。**
+   * - **木とまとまり(`field_sections`)は同じ画面に書けない**(適用時に拒否。`ADR-0471`)ので、
+   *   木はまとまりを書かない側の分岐にだけ現れる。
+   */
+  const layout = view.layout;
+  const placedLeaves = new Set(layout === undefined ? [] : layoutLeaves(layout));
+  const submitInTree = placedLeaves.has(SUBMIT_LEAF);
+  const unplacedFields = fields.filter((field) => !placedLeaves.has(field.id));
+  const renderLayoutLeaf = (leaf: string) => {
+    if (leaf === SUBMIT_LEAF) {
+      return submitControl;
+    }
+    const field = fields.find((candidate) => candidate.id === leaf);
+    return field === undefined ? null : renderField(field);
+  };
 
   return (
     <section data-testid="view-renderer-form" className="font-sans">
@@ -504,10 +682,57 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
         onSubmit={handleSubmit}
         {...formPresets}
       >
-        {view.preset_field_columns === undefined ? (
-          fieldNodes
+        {/*
+          **【`V23-M2-T08`】アプリが決めた理由の断り(422 と `kind: "app_rejected"`)の文言は、フォームの上に出す。**
+          断りが無いとき(今日の全経路)は1要素も描かない。 文言は作者が書いた文字列をそのまま出す(切り詰めない)。
+        */}
+        {appRejected.length > 0 && (
+          <div data-testid="form-app-rejected">
+            <Alert variant="destructive">
+              <ul className={cn("errors", "m-0 flex flex-col gap-s1")}>
+                {appRejected.map((error, index) => (
+                  // サーバが返した並び順がそのまま意味なので index を使う(`ErrorList` と同じ)。
+                  // biome-ignore lint/suspicious/noArrayIndexKey: サーバが返した配列の並び順が同一性そのもの
+                  <li key={index}>{error.message}</li>
+                ))}
+              </ul>
+            </Alert>
+          </div>
+        )}
+        {sections === undefined ? (
+          layout === undefined ? (
+            renderFieldRun(fields)
+          ) : (
+            <>
+              <LayoutTree node={layout} renderLeaf={renderLayoutLeaf} />
+              {unplacedFields.length > 0 && renderFieldRun(unplacedFields)}
+            </>
+          )
         ) : (
-          <div className="form-fields">{fieldNodes}</div>
+          <>
+            {ungroupedFields.length > 0 && renderFieldRun(ungroupedFields)}
+            {fieldSections.map((section) => (
+              <section
+                className={cn("form-field-section", "flex flex-col gap-s2")}
+                key={section.name}
+                data-testid="form-field-section"
+                data-field-section={section.name}
+              >
+                <h3
+                  className={cn(
+                    "form-field-section-heading",
+                    "m-0",
+                    "font-semibold",
+                    "text-foreground",
+                  )}
+                >
+                  {section.name}
+                </h3>
+                <Separator />
+                {section.fields.length > 0 && renderFieldRun(section.fields)}
+              </section>
+            ))}
+          </>
         )}
         {grouped.rest.length > 0 && (
           <div data-testid="form-errors">
@@ -516,37 +741,38 @@ export function FormRenderer({ appId, manifest, view, recordId, prefill }: FormR
             </Alert>
           </div>
         )}
-        {writeForbidden && <WriteForbidden />}
+        {writeForbidden && <WriteForbidden messages={forbiddenMessages} />}
         {writeConflict && <WriteConflict />}
         {applyInProgress && <ApplyInProgress />}
-        {/* viewer は保存できない。書込ボタンを出さず「閲覧のみ」を明示する(先回りガード)。 */}
-        {canWrite ? (
-          // **送信中は押せない。** `disabled` の体裁(不透明度・カーソル)は部品側が持つ。
-          // 狭い画面では幅いっぱい、`sm:` 以上は従来どおりの内容幅(`D-V4-44`)。
-          //
-          // **`render` で `type="submit"` を渡す。** `Button` の既定は
-          // `<button type="button" />` で、**`props` の側に `type` を書いても既定が勝つ**
-          // (`useRender` の合成順。実測した)—— そのままだと form の submit が起きず、
-          // 保存が1件も飛ばなくなる。**`render` を使うのはそのためであって、見た目のためではない。**
-          <Button
-            render={<button type="submit" />}
-            disabled={submitting}
-            className="w-full sm:w-auto"
-          >
-            保存
-          </Button>
-        ) : (
-          <p
-            className={cn("read-only-note", "text-note text-muted-foreground")}
-            data-testid="form-read-only"
-          >
-            閲覧のみ(書き込み権限がありません)。
-          </p>
-        )}
+        {/*
+          **【`V20-M5-T03`】送信ボタンを木の葉(`action:submit`)に置いた画面では、ここに描かない**
+          (メインの申7: 名指しされたボタンは葉の位置に描き、元の場所に描かない)。**木を書かない
+          画面では `submitInTree` が偽なので、ここは着手前と1文字も同じ要素を描く。**
+        */}
+        {submitInTree ? null : submitControl}
       </form>
     </section>
   );
 }
+
+/**
+ * **入力欄の幅の3値 → 項目の枠に当てるクラス**(`V20-M3-T02` / `ADR-0460` 限定5)。
+ *
+ * **3値に1対1で、有限である**(値域は `schemas/manifest.schema.json` の enum が閉じている)。
+ * 効くのは `sm:`(40rem)以上だけで、それ未満では3値とも枠いっぱい(書かない項目と同じ)。
+ *
+ * - `short` —— `sm:max-w-3xs`(16rem)。郵便番号・数量・日付のような短い値の欄。
+ * - `medium` —— `sm:max-w-md`(28rem)。**書かない項目の着手前の幅と同じ**(既定を名指しで選べる)。
+ * - `full` —— `sm:max-w-none`。入力フォームの枠いっぱい(長い文・住所など)。
+ *
+ * **クラスの文字列はここに字面で書く** —— `web/src/tailwind.css` の `@source` がこのファイルを読み、
+ * ビルド出力に3つの規則が落ちる(`web/src/styles.css` は1バイトも触らない)。
+ */
+const FIELD_WIDTH_CLASS: Readonly<Record<"short" | "medium" | "full", string>> = {
+  short: "sm:max-w-3xs",
+  medium: "sm:max-w-md",
+  full: "sm:max-w-none",
+};
 
 // --- マニフェストの解釈 ----------------------------------------------------------
 
@@ -824,4 +1050,20 @@ function afterSubmitRoute(
   return list === undefined
     ? ({ kind: "app", appId } as const)
     : ({ kind: "view", appId, viewId: list.id } as const);
+}
+
+/**
+ * **【`V23-M12-T05`。`D-V23-398`・`D-V23-406`・`D-V23-413` (1)】入力画面の 403 で出す本文の文。**
+ * **【`V23-M12-T05b`。`D-V23-418`・`D-V23-419`】見分けを、層の名の綴りの否定から、出してよい文の一覧
+ * ({@link formForbiddenTextShown})に替えた。** 断りの文が全部一覧に当たるときだけ本文を出し、1つでも当たらなければ
+ * 空(一律の文)。 旧の見分けの式(逐語):
+ *     `texts.some((text) => text.includes("(止めた層:") || text.includes("権限がありません("))`
+ * (旧はこれが真なら空。 今日の一覧は層の名を含む文を1つも持たないので、旧で空だった文は今日も空)。
+ */
+function forbiddenBodyMessages(reason: unknown): string[] {
+  if (!(reason instanceof ApiError)) {
+    return [];
+  }
+  const texts = reason.errors.map((error) => error.message);
+  return texts.length > 0 && texts.every((text) => formForbiddenTextShown(text)) ? texts : [];
 }

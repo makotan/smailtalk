@@ -695,6 +695,19 @@ function isViewMenuListed(view: View): boolean {
 }
 
 /**
+ * **画面の並びから、メニューに載せる画面だけを並びのまま残す**(`V22-M4-T01` / `ADR-0494` §Decision 1 の 1・6)。
+ *
+ * **判定は上の `isViewMenuListed` 1本を呼ぶだけで、掲載の綴りを2か所目に書かない**(`ADR-0494` 限定2)。
+ * **開けるかどうかは見ない** —— 未ログインの公開の経路では、開ける画面はサーバが `GET /public` の
+ * `views[]` で決めており、ここは「載せる」だけを掛ける(`ADR-0084` 限定4 の掲載の判定の右辺)。
+ * **絞った結果は「メニューに並べる集合」であって「開ける集合」ではない**(URL を直に開けば今日どおり開く。
+ * `ADR-0084` 限定5)。 `visibleViewsForRole` は1バイトも変えていない。
+ */
+export function menuListedViews<T extends View>(views: readonly T[]): T[] {
+  return views.filter((view) => isViewMenuListed(view));
+}
+
+/**
  * ロールの表示名。`Role` 型と網羅一致(`Record<Role, string>` なのでロールを足すと
  * ここが tsc で落ちる)。V2-M1-T01 で customer(顧客)を追加した(ADR-0033 限定1)。
  * customer の書込可否・可視性の UI 制御は V2-M1-T03 で扱う(本追加は表示名のみ)。

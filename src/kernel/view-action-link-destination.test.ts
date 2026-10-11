@@ -306,7 +306,14 @@ describe("(T04-1) `L-G7` は却下である —— 3形目は詳細画面に書�
   test("一覧の `set` 形は書けるようになった(`V5-M25-T07` で順序拘束が解けた)", () => {
     const [listBranch] = viewBranches();
     const actions = ((listBranch.then as Any).properties as Any).actions as Any;
-    expect((actions.items ?? {}) as Any).toEqual({});
+    // **【`V20-M2-T01` / `ADR-0459` 限定4。2026-09-24】** **旧行の逐語**:
+    // `expect((actions.items ?? {}) as Any).toEqual({});`
+    // **`items` が戻ったのは、一覧の行のボタンに強調(`action_emphasis`)を書かせないため
+    // だけである。****`set` は今日も閉じていない**(下の `validateManifest` が実測する)。
+    expect((actions.items ?? {}) as Any).toEqual({
+      type: "object",
+      properties: { action_emphasis: false },
+    });
     expect(validateManifest(baseManifest([listView([SET_ACTION]), detailView()])).valid).toBe(true);
   });
 });
@@ -366,8 +373,14 @@ describe("(T01-2) 語彙の本数(`ADR-0173` 限定8 / 限定9)", () => {
    * **代わりに担うのは `app.roles[].rules` の「役割 × 対象(表)× 書込」と
    * 「役割 × 対象(ボタン)× 読取」の2本である。****旧文を1バイトも消していない。**
    */
-  test("`$defs/view_action.properties` は 8 である(`ADR-0173` が増やしたのは `view` 1本だけ)", () => {
+  /*
+   * **【`V20-M2-T01` / `ADR-0459` 限定1。2026-09-24】** **旧テスト名(逐語)**: 「**`$defs/view_action.properties` は 8 である
+   * (`ADR-0173` が増やしたのは `view` 1本だけ)**」。**9本目 `action_emphasis` を足したのは
+   * `ADR-0173` ではない。****`ADR-0173` の増分は今日も `view` 1本である。**
+   */
+  test("`$defs/view_action.properties` は 9 である(`ADR-0173` が増やしたのは `view` 1本だけ)", () => {
     expect(Object.keys(viewActionSchema().properties as Any).sort()).toEqual([
+      "action_emphasis",
       "form",
       "id",
       "name",

@@ -414,7 +414,9 @@ describe("V17-M6-T04 (S): 計画 §2b の 4 の7項", () => {
         ).matchAll(/server\.registerTool\(\s*"([a-z_]+)"/g),
       ].map((match) => match[1] as string),
     );
-    expect(tools.length).toBe(26);
+    // **【2026-10-02。`V23-M8-T05` / 授権 `ADR-0545` 行11】期待値を 26 → 27 へ書き換えた**(`list_record_history`)。
+    // **旧行の逐語**: `expect(tools.length).toBe(26);` **テスト名は書き換えていない。**
+    expect(tools.length).toBe(27);
   });
 });
 

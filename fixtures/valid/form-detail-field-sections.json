@@ -1,0 +1,41 @@
+{
+  "app": {
+    "id": "member-desk",
+    "name": "会員受付",
+    "tables": [
+      {
+        "id": "members",
+        "name": "会員",
+        "fields": [
+          { "id": "full_name", "name": "氏名", "type": "text", "required": true },
+          { "id": "email", "name": "メール", "type": "text" },
+          { "id": "phone", "name": "電話", "type": "text" },
+          { "id": "zip", "name": "郵便番号", "type": "text" },
+          { "id": "address", "name": "住所", "type": "long_text" },
+          { "id": "note", "name": "備考", "type": "long_text" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "member-form",
+        "type": "form",
+        "table": "members",
+        "fields": ["full_name", "email", "phone", "zip", "address", "note"],
+        "field_sections": {
+          "基本情報": ["full_name", "email", "phone"],
+          "配送先": { "id": "shipping", "fields": ["zip", "address"] }
+        }
+      },
+      {
+        "id": "member-detail",
+        "type": "detail_view",
+        "table": "members",
+        "field_sections": {
+          "基本情報": ["full_name", "email", "phone"],
+          "配送先": ["zip", "address"]
+        }
+      }
+    ]
+  }
+}

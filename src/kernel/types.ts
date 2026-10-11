@@ -202,6 +202,29 @@ export const DIFF_OPS = [
   //    **【正直に書く】判定の実装は `V8-M16` に1バイトも無い** —— 規則(`rules`)は
   //    `V8-M17`、条件(`when`)は `V8-M18` が足す。
   "set_roles",
+  // **9. 末尾の `remember_design` は `V20-M15-T01A` が足した18種目**(17種 → 18種。
+  //    門A = `ADR-0466`(`DS-S22` = 限定採用)/ 綴り・値域・意味は `ADR-0479`。
+  //    (この配列の中の注釈に角括弧を書かない —— 配列の字面を読む検査が閉じ括弧で読み終えるため。)
+  //    ユーザ決定 `D-V20-18` / `D-V20-56`〜`D-V20-64`)。**破壊的ではない** ——
+  //    マニフェストの `app.design_memory` に、選んだ案の記録を1件足す(`choice`)か、
+  //    アプリの型を丸ごと差し替える(`patterns`。空配列で型を全部外す)だけで、
+  //    テーブル・フィールド・レコード・ビュー・ワークフロー・関数・テーマ・役割を1バイトも失わない。
+  //    **選んだ記録は最新20件まで**(21件目で最古が落ちる。落ちるのは変更の一部であり、元に戻すと戻る)。
+  //    **19種目を足さない**(`ADR-0466` 限定1)—— 型や記録を消す手段もこの op の中で担う。
+  //    **既存17種の名前と順序を1つも動かしていない**(同 限定2)。
+  "remember_design",
+  // **10. 末尾の `set_workspace` は `V22-M2-T02` が足した19種目**(18種 → 19種。
+  //    門A = `ADR-0486`(`MN-G1` / `MN-G2` = 限定採用)。ユーザ決定 `D-V22-1` / `D-V22-9` /
+  //    `D-V22-10` / `D-V22-13`)。 **上の 9. の「19種目を足さない」は `ADR-0486` が引き直した**
+  //    (`ADR-0466` 限定1 / `ADR-0454` 限定12 / `ADR-0302` 限定5。9. の本文は1バイトも書き換えていない)。
+  //    **破壊的ではない** —— マニフェストの `app.workspace`(メニューの位置)を**丸ごと差し替える**だけで、
+  //    テーブル・フィールド・レコード・ビュー・ワークフロー・関数・テーマ・役割・選んだ記録と型を1バイトも失わない。
+  //    **空の器を渡すと宣言が消え、定義は宣言前と1バイトも違わない状態に戻る。**
+  //    **20種目を足さない**(`ADR-0486` 限定3)。 **既存18種の名前と順序を1つも動かしていない**(同)。
+  //    **【`V22-M3-T02`。`ADR-0488` §Decision 2 による改訂。上の「丸ごと差し替える」「空の器を渡すと宣言が消え」は
+  //    今日の正ではない】** `workspace` の**直下のキーごとに置き換える**(書かなかったキーは残る・`null` でそのキーを
+  //    消す・空の `{}` は断る・すべて消えると宣言前と1バイトも違わない)。 `my_page`(マイページ)も同じ op で書く。
+  "set_workspace",
 ] as const;
 export type DiffOp = (typeof DIFF_OPS)[number];
 
@@ -258,6 +281,14 @@ export type Field =
       required?: boolean;
       unique?: boolean | "owner";
       /**
+       * **`unique` の検査に当たったときに返す文言**(`V23-M2-T02` / `ADR-0498` §Decision 1・限定3 /
+       * 決定 `D-V23-46`・`D-V23-56`)。**`unique` が `true` か `"owner"` の列にだけ書ける**
+       * (`unique` が無いか `false` の列に書くと、適用時の参照整合性検査が拒否する)。
+       * 長さは文字(コードポイント)で 1〜200。 **全型で書ける**(`unique` と同じく4バリアント
+       * 全部に同じ形で持たせる)。 書込時に文言を返すのは `V23-M2-T03` の段である。 【2026-09-29 追記】`V23-M2-T03` で実装済み(書込の応答は 422 とこの文言)。
+       */
+      unique_message?: string;
+      /**
        * この値が何の単位か(`E-G14` / `F-9` の4回目。`V4-M10-T46` / `ADR-0086`)。
        *
        * **`number` 型にだけ書ける**(限定4)。**他の7型に書いた差分は全体が拒否される**
@@ -309,6 +340,8 @@ export type Field =
       type: "select";
       required?: boolean;
       unique?: boolean | "owner";
+      /** `unique` の検査に当たったときに返す文言。詳細は1つ目のバリアント。 */
+      unique_message?: string;
       options: string[];
       /**
        * この値のうち、どれが注意を要するか(`P-G28` + `P-G22` の (C) 側。
@@ -345,6 +378,8 @@ export type Field =
       type: "reference";
       required?: boolean;
       unique?: boolean | "owner";
+      /** `unique` の検査に当たったときに返す文言。詳細は1つ目のバリアント。 */
+      unique_message?: string;
       reference_table: ResourceId;
       /**
        * この参照項目を画面でどう選ばせるか(`K-G1`。`V6-M1-T01` / `ADR-0288` 限定1〜限定4)。
@@ -415,6 +450,8 @@ export type Field =
       type: "image";
       required?: boolean;
       unique?: boolean | "owner";
+      /** `unique` の検査に当たったときに返す文言。詳細は1つ目のバリアント。 */
+      unique_message?: string;
       /**
        * 値が無いとき、この項目の行ごと画面から出すか(`V4-M19-T07` / `ADR-0119`)。
        * 詳細は最初のバリアントの `hide_when_empty`。**9型すべてに書けるので5つの
@@ -441,6 +478,8 @@ export type Field =
       type: "file";
       required?: boolean;
       unique?: boolean | "owner";
+      /** `unique` の検査に当たったときに返す文言。詳細は1つ目のバリアント。 */
+      unique_message?: string;
       /**
        * 値が無いとき、この項目の行ごと画面から出すか(`V4-M19-T07` / `ADR-0119`)。
        * 詳細は最初のバリアントの `hide_when_empty`。**9型すべてに書けるので5つの
@@ -511,6 +550,7 @@ export type Table = {
       write: boolean;
       delete: boolean;
       restrictive?: boolean;
+      create_child?: string[];
     }[];
     creator_permission: string;
     grant: {
@@ -519,8 +559,25 @@ export type Table = {
       member?: ResourceId;
       group?: ResourceId;
       permission: ResourceId;
+      /**
+       * **【`V23-M6-T02`。`SC-G20` / `ADR-0538` §1-1】`principal_row` は `grant` の6つ目のキー。**
+       * 付与の相手に別の表(`table`)の行を書く。付与表の `column` がその行を指し、その行に `via` のどれかを
+       * 持つ人が付与を受け取る(1段だけ)。 中は3キーで閉じ、3つとも必須。 新しい型エイリアスを export しない
+       * (カーネルの公開の識別子を増やさない。`ADR-0538` 式12)。
+       */
+      principal_row?: { column: ResourceId; table: ResourceId; via: string[] };
     };
-    members?: { table: ResourceId; account: ResourceId; group?: ResourceId };
+    /**
+     * **【`V23-M1-T02`。`SC-G1` / `ADR-0497` 限定1】`auto_enroll` は `members` の4つ目のキー。**
+     * 中は `roles`(必須・自動で入れる役割の一覧)と `name`(任意・ログイン名を入れる
+     * text 列)の2キーで閉じる。 新しい型エイリアスを export しない。
+     */
+    members?: {
+      table: ResourceId;
+      account: ResourceId;
+      group?: ResourceId;
+      auto_enroll?: { roles: string[]; name?: ResourceId };
+    };
     groups?: { table: ResourceId };
     inherit_from?: ResourceId[];
     /**
@@ -587,7 +644,25 @@ export type Table = {
      * **当たり先は同じ段の `V17-M5-T03d` である。**
      */
     creatable_by_roles?: readonly string[];
+    /**
+     * **行の招待の宣言**(`V23-M5-T02`。`ADR-0532` §Decision 1-1。決定 `D-V23-119`)。 **10キー目。中は5キーで閉じ、
+     * `grantable` だけが必須。** `by` を省くと `[creator_permission]` と同じ。 `expires_days` は1〜30(省略は7)。
+     * `group_from` は、この表の reference 項目(グループの表を指す)の ID。 **値域の正は設計図である**(ここに写さない)。
+     * 指し先の実在は `referential-integrity.ts` の類型17 の項目13 が見る。
+     */
+    invitations?: {
+      by?: readonly string[];
+      grantable: readonly string[];
+      target_roles?: readonly string[];
+      expires_days?: number;
+      group_from?: ResourceId;
+    };
   };
+  /**
+   * **変更履歴を残すかの宣言**(`V23-M8-T02` / `D-V23-205`。`$defs/table` の7キー目)。 省略は残さない。
+   * `true` の詳細画面(`DetailView.history`)が残っている間は外せない(`referential-integrity.ts` が断る)。
+   */
+  history?: boolean;
 };
 
 /**
@@ -974,8 +1049,19 @@ export type ListView = ViewDisplayName &
      * 1つも無く、押した回数だけ書込が起きる**(`ADR-0100` §限界1 は set 形については
      * 1バイトも無効化されていない)。
      */
+    /*
+     * **【`V20-M2-T01` / `ADR-0459` 限定4】一覧の行のボタンには強調(`action_emphasis`)を
+     * 書けない。** **`DetailView["actions"]` の各形から `action_emphasis` だけを除いて
+     * 受ける**(スキーマの `list_view` 分岐の `items.properties.action_emphasis: false` と対)。
+     * **形ごとに除く**(`Omit` を和にそのまま当てると共通キーしか残らないので、
+     * 条件型で1形ずつ分けてから除いている)。**新しい型名を1つも export していない。**
+     */
     actions?: (
-      | NonNullable<DetailView["actions"]>[number]
+      | (NonNullable<DetailView["actions"]>[number] extends infer DetailAction
+          ? DetailAction extends unknown
+            ? Omit<DetailAction, "action_emphasis">
+            : never
+          : never)
       | {
           view: ResourceId;
           name?: string;
@@ -1170,6 +1256,32 @@ export type ListView = ViewDisplayName &
      */
     sum_field?: ResourceId;
     /**
+     * **一覧の束ねるキー**(`V20-M4-T02` / `ADR-0470`。`ADR-0461` 限定1 を引き直した)。
+     *
+     * **値はオブジェクト1つ**(`field` と、日付の項目のときだけ `granularity`)。**配列にしない。
+     * 1本ちょうど・1段だけ。** 綴りは集計表と同じ `group_by` だが、集計表は配列である
+     * ({@link ReportGroupBy})。**一覧でだけ書ける。**
+     *
+     * **`field` はこの一覧の表示列(`columns`)に在る select / reference / boolean / date の項目。**
+     * **date には `granularity` が必須、date 以外には書けない。** `_id` は書けない。
+     * 判定は `referential-integrity.ts`(適用時。拒否は差分全体)。
+     *
+     * **行は今までどおり1件ずつ出る。見出しを挟むだけである**(`D-V20-11`)。
+     * **【正直に書く】本葉の時点では、読取の並びも描画もこのキーを読まない**
+     * (並びは `V20-M4-T01` の記録が止めた理由を持つ。描画は `V20-M4-T03`)。
+     * **【2026-09-24 追記。上の行を1バイトも消していない】直前の「読取の並びも描画もこのキーを読まない」は
+     * 今日は偽である。** 並びは `V20-M4-T01`(読取の引数 `group_by=` / `granularity=`)、描画は
+     * `V20-M4-T03`(表は群ごとに `<tbody>` と `scope="rowgroup"` の見出しの行、カードは群ごとに `<h4>`。
+     * 見出しの文字はサーバが応答の `group_keys` に添えた群の値から作る)。
+     */
+    group_by?: ListGroupBy;
+    /**
+     * **画面の中の並べ方の木**(`V20-M5-T01` / `ADR-0462` / `ADR-0471`)。形は {@link LayoutNode}。
+     * 省略すると今日どおり自動で並ぶ。判定(葉の実在・重複・深さ・一覧はカードだけ・まとまりと両方は不可)は
+     * `referential-integrity.ts`(適用時。拒否は差分全体)。
+     */
+    layout?: LayoutNode;
+    /**
      * **この画面の詰まり具合**(余白・寸法。`P-G32` の (C) 側。`V4-M19-T03` /
      * `ADR-0118` 限定1〜限定13)。
      *
@@ -1188,6 +1300,12 @@ export type ListView = ViewDisplayName &
      * **既定は `resolveUiFamily()` が返す値(今日は `comfortable`)であり、書かなかった画面は
      * 今日と1ピクセルも変わらない**(限定8)。**`schema` に `default` を書いていない** ——
      * **既定は表示層の1箇所が持つ**(既定を2箇所に住まわせない)。
+     *
+     * **【`V20-M11` の点検の処置(軽2)。2026-09-25。直前の文を1バイトも消していない】**
+     * **直前の「書かなかった画面は今日と1ピクセルも変わらない」は、役割に詰め具合
+     * (`app.roles[].density`)を書いたアプリでは偽である** —— その役割の人には、書かなかった画面へ
+     * 役割の詰め具合が効く。**今日の正は「画面にも役割にも詰め具合を書かなかった画面は今日と
+     * 1ピクセルも変わらない」である**(`ADR-0475` が `ADR-0118` 限定8 を引き直した)。
      *
      * **系統の判定は `web/src/ui/family.ts` の `resolveUiFamily()` の1箇所に保つ**(限定7)。
      * **`--space-1`〜`--space-6` を1バイトも動かさない**(限定5。`ADR-0047` 限定1 不可侵)——
@@ -1363,7 +1481,37 @@ export type FormView = ViewDisplayName &
      * 今日は効かない」。**
      */
     reference_pickers?: Record<ResourceId, "list" | "type_filter" | "search">;
+    /**
+     * **項目のまとまり**(`V20-M3-T01` / `ADR-0469` 限定1)。値の形と整合の規則は
+     * {@link DetailView} の `field_sections` と同じである(同じIDを2つのまとまりに書くと拒否、
+     * `fields` に無いIDを書くと拒否。判定は `referential-integrity.ts` の1箇所)。
+     *
+     * **【正直に書く】本葉の時点では入力フォームの描画はこのキーを1度も読まない** ——
+     * **書けるが画面に効かない。** 見出し付きに束ねて描くのは `V20-M3-T03` の持ち分である。
+     */
+    field_sections?: Record<string, ResourceId[] | { id?: ResourceId; fields: ResourceId[] }>;
+    /**
+     * **入力欄の幅**(`V20-M3-T02` / `ADR-0460` 限定4〜限定7)。キーは `fields` に在るフィールドID、
+     * 値は3値だけ(長さのリテラルを書けない)。**入力フォームでだけ書ける。** **`preset_` で始めない。**
+     *
+     * **描画は入力欄を包む項目の枠(`div.field`)に、描画側の有限のクラスを当てる**
+     * (`web/src/views/FormRenderer.tsx`)。**書かなかった項目は今日と1ピクセルも変わらない。**
+     * **`fields` に無いIDは `referential-integrity.ts` が拒否する。** **`update_view` で後から書けて
+     * 値が実際に運ばれる**(`applyViewChanges` の `form` 分岐)。**全置換である。**
+     */
+    field_width?: Record<ResourceId, FieldWidth>;
+    /**
+     * **画面の中の並べ方の木**(`V20-M5-T01` / `ADR-0462` / `ADR-0471`)。形は {@link LayoutNode}。
+     * 省略すると今日どおり自動で並ぶ。判定(葉の実在・重複・深さ・一覧はカードだけ・まとまりと両方は不可)は
+     * `referential-integrity.ts`(適用時。拒否は差分全体)。
+     */
+    layout?: LayoutNode;
   };
+
+/**
+ * 入力欄の幅の3値(`V20-M3-T02` / `ADR-0460` 限定5)。**4値目を足さない。**
+ */
+type FieldWidth = "short" | "medium" | "full";
 
 /**
  * 1レコードの詳細表示。
@@ -1487,6 +1635,15 @@ export type DetailView = ViewDisplayName &
           visible_when?: FilterLeaf;
           /** ボタンの識別子(`V8-M17` / `J-G9`。任意。同じ画面の中で一意)。 */
           id?: ResourceId;
+          /**
+           * **ボタンの強調**(`V20-M2-T01`。`ADR-0459` 限定1〜限定5。任意)。
+           * **`primary`(主)/ `secondary`(副)/ `danger`(危険)の3値だけ。**
+           * **書かなければ副として描く**(並び順で主は決まらない)。
+           * **詳細画面の型にだけ足した** —— 一覧(`ListView["actions"]`)の行のボタンには
+           * 書けない(スキーマの `list_view` 分岐が `items.properties.action_emphasis: false`
+           * で閉じている)。
+           */
+          action_emphasis?: "primary" | "secondary" | "danger";
         }
       /*
        * **【V4-M20-T01 / ADR-0100 限定1】形は列挙された有限の2形だけである。**
@@ -1506,6 +1663,15 @@ export type DetailView = ViewDisplayName &
           visible_when?: FilterLeaf;
           /** ボタンの識別子(`V8-M17` / `J-G9`。任意。同じ画面の中で一意)。 */
           id?: ResourceId;
+          /**
+           * **ボタンの強調**(`V20-M2-T01`。`ADR-0459` 限定1〜限定5。任意)。
+           * **`primary`(主)/ `secondary`(副)/ `danger`(危険)の3値だけ。**
+           * **書かなければ副として描く**(並び順で主は決まらない)。
+           * **詳細画面の型にだけ足した** —— 一覧(`ListView["actions"]`)の行のボタンには
+           * 書けない(スキーマの `list_view` 分岐が `items.properties.action_emphasis: false`
+           * で閉じている)。
+           */
+          action_emphasis?: "primary" | "secondary" | "danger";
         }
       /*
        * **【`V5-M25-T01` / `L-G8` / `ADR-0174` 限定1〜限定12】4つ目の形(自動処理の起動)。**
@@ -1528,6 +1694,15 @@ export type DetailView = ViewDisplayName &
           visible_when?: FilterLeaf;
           /** ボタンの識別子(`V8-M17` / `J-G9`。任意。同じ画面の中で一意)。 */
           id?: ResourceId;
+          /**
+           * **ボタンの強調**(`V20-M2-T01`。`ADR-0459` 限定1〜限定5。任意)。
+           * **`primary`(主)/ `secondary`(副)/ `danger`(危険)の3値だけ。**
+           * **書かなければ副として描く**(並び順で主は決まらない)。
+           * **詳細画面の型にだけ足した** —— 一覧(`ListView["actions"]`)の行のボタンには
+           * 書けない(スキーマの `list_view` 分岐が `items.properties.action_emphasis: false`
+           * で閉じている)。
+           */
+          action_emphasis?: "primary" | "secondary" | "danger";
         }
     )[];
     /**
@@ -1606,8 +1781,23 @@ export type DetailView = ViewDisplayName &
      * **画面に出る文字はまとまりの名前(このマップのキー)である。**
      * **新しい `export type` を1本も足していない**(union をここにインラインで書く)——
      * **`$defs` 30 / `$defs/view.properties` 31 も1つも増えていない。**
+     *
+     * **【`V20-M3-T01` / `ADR-0469`。2026-09-24】綴りを `field_groups` から `field_sections` に
+     * 改めた。** **入力フォームにも書ける**({@link FormView} の `field_sections`)。**値の形
+     * (2形)は1バイトも変えていない。** 上の「`detail_view` でだけ持てる」は旧綴りの時点の記述である。
      */
-    field_groups?: Record<string, ResourceId[] | { id?: ResourceId; fields: ResourceId[] }>;
+    field_sections?: Record<string, ResourceId[] | { id?: ResourceId; fields: ResourceId[] }>;
+    /**
+     * **画面の中の並べ方の木**(`V20-M5-T01` / `ADR-0462` / `ADR-0471`)。形は {@link LayoutNode}。
+     * 省略すると今日どおり自動で並ぶ。判定(葉の実在・重複・深さ・一覧はカードだけ・まとまりと両方は不可)は
+     * `referential-integrity.ts`(適用時。拒否は差分全体)。
+     */
+    layout?: LayoutNode;
+    /**
+     * **行の変更履歴を出すか**(`V23-M8-T02` / `D-V23-205`。`$defs/view` の35キー目。詳細画面だけ)。
+     * 表が `history: true` を宣言していないと適用時に断る(`referential-integrity.ts`)。
+     */
+    history?: boolean;
     /**
      * **この画面の書換ボタンが成立したあとの行き先**(`NV-G3a`。`V10-M1-T01` /
      * `ADR-0358` 限定1〜限定9)。**任意**である。
@@ -1695,6 +1885,53 @@ export type DetailView = ViewDisplayName &
  * **`text` / `long_text` / `number` / `image` / `file` は束ねられない**(値が実質1行1値に
  * なるか、束ねる意味が定まらない)。
  */
+/**
+ * **一覧の束ねるキーの値**(`V20-M4-T02` / `ADR-0470`)。**オブジェクト1つ。**
+ * `granularity` の値域は集計表の束ねるキー({@link ReportGroupBy})と同じ3値である
+ * (スキーマは `$ref` で共有している)。
+ */
+type ListGroupBy = {
+  field: ResourceId;
+  granularity?: "day" | "week" | "month";
+};
+
+/**
+ * **並べ方の木の間隔**(`ADR-0462` 限定3)。5値だけ。**6値目を足さない。**
+ */
+type LayoutGap = "xs" | "sm" | "md" | "lg" | "xl";
+/** 脇の幅・切り替え幅・最小幅の3値(`ADR-0471`)。 */
+type LayoutSize = "sm" | "md" | "lg";
+/**
+ * **並べ方の木の子**。文字列は葉(その画面の表示項目のフィールドID か `"action:<ボタンの識別子>"`)、
+ * オブジェクトは入れ子の節。
+ */
+type LayoutChild = string | LayoutNode;
+/**
+ * **並べ方の木の節**(`V20-M5-T01` / `ADR-0462` / `ADR-0471`。`$defs/layout_node`)。
+ *
+ * **型は6種ちょうど。** 持てるキーは PRD F3 の表の逐語どおりで、`sidebar` と `split` は `gap` を持たない。
+ * **値はすべて有限の名前**(数値・px を1つも持たない)。深さの上限は `MAX_LAYOUT_DEPTH`
+ * (`referential-integrity.ts`。根の節が1段目で3段まで)。
+ */
+type LayoutNode =
+  | { type: "stack"; gap?: LayoutGap; children: LayoutChild[] }
+  | {
+      type: "cluster";
+      gap?: LayoutGap;
+      justify?: "start" | "end" | "between";
+      children: LayoutChild[];
+    }
+  | {
+      type: "sidebar";
+      side: LayoutChild;
+      main: LayoutChild;
+      side_width?: LayoutSize;
+      side_position?: "start" | "end";
+    }
+  | { type: "switcher"; gap?: LayoutGap; threshold?: LayoutSize; children: LayoutChild[] }
+  | { type: "grid"; gap?: LayoutGap; min_item?: LayoutSize; children: LayoutChild[] }
+  | { type: "split"; start: LayoutChild[]; end: LayoutChild[] };
+
 export type ReportGroupBy = {
   /**
    * **【`V10-M24-T02` / `CM-G23a` / `ADR-0371` 限定1〜限定6】この束ねるキーの名札。**
@@ -1927,6 +2164,12 @@ export type WorkflowTriggerOnCreate = {
 export type WorkflowTriggerOnUpdate = {
   type: "on_update";
   table: ResourceId;
+  /**
+   * **列挙した項目のどれかの値が変わった更新でだけ発火する**(`SC-G14` / `ADR-0500` 限定5・限定6 /
+   * `ADR-0524` §Decision 1-3)。**`on_update` だけが持つ**(他の3種別はスキーマが `false` にしている)。
+   * 書かなければ今日どおり更新のたびに発火する。項目の実在は `referential-integrity.ts` が見る。
+   */
+  changed_fields?: ResourceId[];
 };
 
 /**
@@ -2284,7 +2527,16 @@ export type FunctionInput =
       via?: ResourceId;
     }
   | { source: "view"; view: ResourceId }
-  | { source: "record" };
+  | { source: "record" }
+  /*
+   * **【`V23-M4-T02` / `SC-G15` / `ADR-0500` §Decision 1-3 / `ADR-0524` §Decision 1-4】** 選択肢に
+   * 2値を足した(enum 案。3値から5値)。 上の doc の「3枝」「入力の種類は1つも増えていない」は
+   * 制定時の事実であり、今日は5枝である(doc は1バイトも書き換えていない)。
+   * `actor` は操作した人(`id` / `login` / `role`)、`previous` は更新前の行全体。
+   * `previous` は `on_update` のワークフローの `run_function` からだけ受ける(適用時に断る)。
+   */
+  | { source: "actor" }
+  | { source: "previous" };
 
 /**
  * 関数の定義(ADR-0024)。**リソース種の7種目である。**
@@ -2406,6 +2658,85 @@ export type App = {
    * ふるまいは1つも変わらない。**
    */
   roles?: RoleDeclaration[];
+  /**
+   * **このアプリで選んだ形の記録と、このアプリの型**(`V20-M15-T01A`。`ADR-0479` §Decision 1。
+   * **書き込む差分操作は18種目の `remember_design` である**)。
+   *
+   * **`$defs/app` の9本目(末尾)のキーである。** **optional である**(`roles` と同じ理由 ——
+   * `required` に入れると既存マニフェストが全部 invalid になる)。省略は「選んだ記録も型も
+   * 持たない」という意味であり、**1度も書いていないアプリの定義は1バイトも変わらない。**
+   *
+   * **値域(件数・字数・改行の禁止・重複の禁止)はこの型で表さない。** **正は
+   * `schemas/manifest.schema.json` の `$defs/app/properties/design_memory` である**(`roles` と同じ扱い)。
+   * **型(`patterns`)は描画を1つも決めない** —— 読むのは AI と要件定義書だけである。
+   */
+  design_memory?: DesignMemory;
+  /**
+   * **メニュー(画面の一覧)の置き方**(`V22-M2-T02`。`ADR-0486` §Decision 1。
+   * **書き込む差分操作は19種目の `set_workspace` である**)。
+   *
+   * **`$defs/app` の10本目(末尾)のキーである。** **optional である**(`roles` / `design_memory` と同じ理由 ——
+   * `required` に入れると既存マニフェストが全部 invalid になる)。 省略は「メニューはアプリの既定の左」を意味し、
+   * **1度も書いていないアプリの定義は1バイトも変わらない。**
+   *
+   * **値域(空の器を許さない・位置の値は2つ)の正は `schemas/manifest.schema.json` の
+   * `$defs/app/properties/workspace` である。** 役割を指す参照(宣言済みの役割だけ・`anonymous` を書けない・
+   * 重複を許さない・役割を宣言していないアプリでは `by_role` を書けない)は `referential-integrity.ts` が見る。
+   */
+  workspace?: Workspace;
+};
+
+/**
+ * **メニューの置き方の器**(`V22-M2-T02`。`ADR-0486` §Decision 1)。
+ *
+ * - `navigation.placement` —— アプリの既定の位置(`"side"` = 左 / `"top"` = 上。省略時は左)。
+ * - `navigation.by_role` —— 役割ごとの上書き(要素は `role` / `placement` の2キー)。 **並びは意味を持たない**
+ *   (同じ役割は2回書けない)。 指定の無い役割と、ログインしていない人はアプリの既定に従う(`D-V22-10`)。
+ *
+ * **中は `navigation` の1キーで閉じる**(`ADR-0486` 限定7)。 **値域の正は設計図である**(ここに写さない)。
+ *
+ * **export しない**(`SetWorkspaceOperation` も同じ)。 **`src/kernel/` の公開エクスポートを1本も増やさない**
+ * (`ADR-0007` の `Δ8` を発火させない、より小さい増分。先例は `ADR-0334` 限定7 のインラインの union)。
+ * 外から要るときは `NonNullable<App["workspace"]>` / `Extract<Operation, { op: "set_workspace" }>` で引く。
+ *
+ * **【`V22-M3-T02`。`ADR-0488` §Decision 1 による改訂。上の「中は `navigation` の1キーで閉じる」は今日の正ではない】**
+ * **中は `navigation` と `my_page` の2キーで閉じる**(`ADR-0488` 限定1)。
+ * - `my_page` —— マイページを置く(`{}` は既定どおり置く)。 `open_after_login` / `tables`(`exclude` / `include`)/
+ *   `views` の3キー(限定2)。 持ち主が分かる表を決めるのは `src/shared/my-page.ts` の `myPageTables` 1本である。
+ */
+type Workspace = {
+  navigation?: WorkspaceNavigation;
+  my_page?: {
+    open_after_login?: boolean;
+    tables?: {
+      exclude?: string[];
+      include?: { table: string; owner_field: string }[];
+    };
+    views?: string[];
+  };
+  /** 自分宛ての招待の受け取り画面(`V23-M5-T02`。`ADR-0532` §Decision 1-1。`label` はメニューに出す名前)。 */
+  invitations?: { label: string };
+};
+
+/** `Workspace` の `navigation` の値(`V22-M3-T02`。`set_workspace` の値でも使うので名前を付けた。export しない)。 */
+type WorkspaceNavigation = {
+  placement?: "side" | "top";
+  by_role?: { role: string; placement: "side" | "top" }[];
+};
+
+/**
+ * **選んだ形の記録と型の器**(`V20-M15-T01A`。`ADR-0479` §Decision 1)。
+ *
+ * - `choices` —— 利用者が見比べで選んで適用した案の記録(古い順・末尾が最新・最新20件まで)。
+ *   要素は `name` / `tradeoff` / `reason?` の3キーで閉じる(`ADR-0479` 限定2)。
+ * - `patterns` —— このアプリの型(1文ずつ・10件まで・重複不可)。
+ *
+ * **中は2キーで閉じる**(限定1)。 **空の配列も空の器も定義に残さない**(畳み込みが消す)。
+ * **値域の正は設計図である**(ここに写さない)。
+ */
+export type DesignMemory = {
+  choices?: { name: string; tradeoff: string; reason?: string }[];
+  patterns?: string[];
 };
 
 /**
@@ -2459,6 +2790,12 @@ export type RoleDeclaration = {
    * **`"invite"` は「招待が要る」を意味するが、判定はサーバ層が持つ**(`ADR-0335`)。
    */
   signup?: "open" | "invite";
+  /**
+   * **この役割の人が開く画面の詰め具合**(`V20-M11`。`ADR-0464`)。**省略できる(既定なし)。**
+   * **画面に `preset_density` を書いた画面ではそちらが勝つ。** **色は1つも変えない。**
+   * **カーネルはこの値を1つも検査しない**(値域と `anonymous` に書けないことはスキーマだけが持つ)。
+   */
+  density?: "comfortable" | "compact";
   rules?: RoleRule[];
 };
 
@@ -2523,6 +2860,16 @@ export type RoleRule = {
    * 正は `schemas/manifest.schema.json` である)。
    */
   when?: RoleCondition;
+  /**
+   * **【`V21-M2B`。`ADR-0482` の `AN-G2` §2-2】未ログインにだけ隠す項目の ID の並び(8キー目)。**
+   *
+   * **書けるのは未ログイン(`anonymous`)の要素の、対象が表(`table`)の規則だけである**
+   * (スキーマの役割の分岐の `else` と対象ごとの分岐の `false` で閉じる)。 **この型はその
+   * 部分集合を表せない**(`can` / `when` と同じ扱い。正は `schemas/manifest.schema.json`)。
+   * **未ログインにだけ効く** —— 集合 H(T) を決めるのは `src/server/owner-scope.ts` の1本
+   * (`anonymousHiddenFieldIds`)。
+   */
+  hidden_fields?: ResourceId[];
 };
 
 /**
@@ -2698,6 +3045,12 @@ export const DEFAULT_ROLE_IDS = ["owner", "editor", "viewer"] as const;
 export type Theme = {
   /** スロット名 → 値。**25キーちょうど**であることは `$defs/theme` が担保する。 */
   slots: Record<string, string>;
+  /**
+   * 暗いモードの配色(`V20-M10` / `ADR-0458` §Decision 2)。`slots` と同じ役割の層の枠を
+   * すべて持つ(`$defs/theme` をそのまま参照する)。省略できる —— 省略したテーマは暗い側を
+   * 持たず、OS が暗くても明るいまま描かれる(`D-V20-31`)。
+   */
+  slots_dark?: Record<string, string>;
   /** 由来。省略できる(手で作ったテーマは由来を持たない)。**真偽は検証されない。** */
   origin?: {
     template_app_id: ResourceId;
@@ -2792,8 +3145,12 @@ export type ViewChanges = {
    * **`update_view` の経路でも名札を書ける**(`applyViewChanges` はキー単位で丸ごと
    * 差し替えるので、運び先は1バイトも変えていない)。**`DIFF_OPS` は17のままである**
    * (名札専用の op を1つも足していない)。
+   *
+   * **【`V20-M3-T01` / `ADR-0469`。2026-09-24】綴りを `field_groups` から `field_sections` に
+   * 改めた。** **書ける種別は `form` と `detail_view` の2つ**(`CHANGE_KEYS_BY_VIEW_TYPE`)。
+   * 上の「`detail_view` でだけ書ける」は旧綴りの時点の記述である。
    */
-  field_groups?: Record<string, ResourceId[] | { id?: ResourceId; fields: ResourceId[] }>;
+  field_sections?: Record<string, ResourceId[] | { id?: ResourceId; fields: ResourceId[] }>;
   /**
    * 一覧の器の形(`P-G24` の (C) 側。`V4-M16-T13` / `ADR-0093` 限定2・限定8・限定10)。
    * 詳細は {@link ListView} の `preset_list_shape`。
@@ -2877,6 +3234,18 @@ export type ViewChanges = {
    */
   sum_field?: ResourceId;
   /**
+   * **一覧の束ねるキーを後から書く**(`V20-M4-T02` / `ADR-0470`)。`view_changes` の29キー目。
+   * **`list_view` にだけ書ける**(`CHANGE_KEYS_BY_VIEW_TYPE`)。詳細は {@link ListView} の `group_by`。
+   * **全置換である。** 外すには undo か `remove_view` + `add_view`。
+   */
+  group_by?: ListGroupBy;
+  /**
+   * **並べ方の木を後から書く**(`V20-M5-T01` / `ADR-0471`)。`view_changes` の30キー目。
+   * **`list_view` / `form` / `detail_view` に書ける**(`CHANGE_KEYS_BY_VIEW_TYPE`)。**全置換である。**
+   * 外すには undo か `remove_view` + `add_view`。
+   */
+  layout?: LayoutNode;
+  /**
    * この画面の詰まり具合(`P-G32` の (C) 側。`V4-M19-T03` / `ADR-0118` 限定1・限定3・限定4)。
    * 詳細は {@link ListView} の `preset_density`。
    *
@@ -2953,6 +3322,12 @@ export type ViewChanges = {
    * `remove_view` + `add_view`。**`DIFF_OPS` は17のままである。**
    */
   flow?: NonNullable<ViewFlowStep["flow"]>;
+  /**
+   * **入力欄の幅を後から差し替える**(`V20-M3-T02` / `ADR-0460` 限定4〜限定7)。
+   * `view_changes` の28キー目。**`form` にだけ書ける**(`CHANGE_KEYS_BY_VIEW_TYPE`)。
+   * 詳細は {@link FormView} の `field_width`。**全置換である。**
+   */
+  field_width?: Record<ResourceId, FieldWidth>;
   /**
    * **操作起点を後から差し替える**(`L-G4`。`V5-M21-T03` / `ADR-0172` 限定1〜限定8)。
    *
@@ -3035,6 +3410,7 @@ export type ViewChanges = {
    * **`DIFF_OPS` は18のままである。**
    */
   report?: ReportDeclaration;
+  history?: boolean;
 };
 
 /**
@@ -3079,6 +3455,7 @@ export type TableChanges = {
    * schema 側でも `$ref`1本で受けて値域の定義を二重に持たない)。
    */
   access_control?: Table["access_control"];
+  history?: boolean;
 };
 
 /**
@@ -3105,6 +3482,14 @@ export type FieldChanges = {
    * **後付けの既存重複検査もスコープごとに行う** —— 持ち主が違う同値は「重複」ではない。
    */
   unique?: boolean | "owner";
+  /**
+   * 一意違反の文言(`V23-M2-T02` / `ADR-0498`)。詳細は {@link Field}。
+   *
+   * **`null` を書くと外れる**(`buildChangedField` が落とす。外すと定義が書く前と1バイトも
+   * 違わない)。 指定しなければ元の値を引き継ぐ。 **`unique` を外して文言が残る形は、
+   * 適用後マニフェストの参照整合性検査が差分全体を拒否する**(`D-V23-56`)。
+   */
+  unique_message?: string | null;
   /**
    * この値が何の単位か(`E-G14` / `V4-M10-T46` / `ADR-0086` 限定8)。詳細は {@link Field}。
    *
@@ -3280,6 +3665,52 @@ export type SetThemeOperation = { op: "set_theme"; theme: Theme };
  */
 export type SetRolesOperation = { op: "set_roles"; roles: RoleDeclaration[] };
 
+/**
+ * **選んだ案の記録を1件足す / アプリの型を丸ごと差し替える**(`V20-M15-T01A`。18種目。
+ * `ADR-0479` §Decision 2。**操作の器の10キー目 `design_memory` を使う唯一の op である**)。
+ *
+ * **`design_memory` キーは2面を持つ**(「1義」とは書かない)—— (a) 選んだ記録の追記(`choice`)と
+ * (b) 型の丸ごとの置き換え(`patterns`)。 **2面は中のキーで分かれ、どちらも app に1つしか無い器
+ * (`app.design_memory`)を対象にし、対象IDを取らない。** 中は少なくとも一方を書く(`minProperties: 1`)。
+ *
+ * - `choice` は `app.design_memory.choices` の**末尾**に足され、21件以上になったら最も古いものから落ちる。
+ * - `patterns` は**丸ごと置き換える**。 **空配列は「型を全部外す」**(操作の側だけ `minItems` を持たない)。
+ *   **省けば型に1バイトも触らない。**
+ *
+ * **11キー目を `$defs/operation.properties` に足してはならない。19種目の op を足してはならない。**
+ */
+export type RememberDesignOperation = {
+  op: "remember_design";
+  design_memory: {
+    choice?: { name: string; tradeoff: string; reason?: string };
+    patterns?: string[];
+  };
+};
+
+/**
+ * **19種目 `set_workspace`**(`V22-M2-T02`。`ADR-0486` §Decision 1 の 3・4。**操作の器の11キー目
+ * `workspace` を使う唯一の op である**)。
+ *
+ * - アプリの `workspace` を**丸ごと差し替える**(部分更新ではない)。
+ * - **空の器(`{}`)を渡すと `app.workspace` のキーごと消える**(定義は宣言前と1バイトも違わない)。
+ * - 失敗の形を持たない(`set_theme` と同型。対象IDを取らない)。 役割を指す参照の検査は畳み込んだ後の定義に対して行う。
+ *
+ * **12キー目を `$defs/operation.properties` に足してはならない。20種目の op を足してはならない。**
+ *
+ * **【`V22-M3-T02`。`ADR-0488` §Decision 2 による改訂。上の「丸ごと差し替える」「空の器で消える」は今日の正ではない】**
+ * - `workspace` の**直下のキーごとに置き換える**。 書かなかったキーは残る。 **値が `null` ならそのキーを消す。**
+ * - **空の `{}` は断る**(設計図の `minProperties 1`。何も変えない指示なので)。
+ * - すべてのキーが消えたら `app.workspace` のキーごと消える(定義は宣言前と1バイトも違わない)。
+ */
+type SetWorkspaceOperation = {
+  op: "set_workspace";
+  workspace: {
+    navigation?: WorkspaceNavigation | null;
+    my_page?: NonNullable<Workspace["my_page"]> | null;
+    invitations?: NonNullable<Workspace["invitations"]> | null;
+  };
+};
+
 export type Operation =
   | AddTableOperation
   | AddFieldOperation
@@ -3297,7 +3728,9 @@ export type Operation =
   | UpdateFunctionOperation
   | RemoveFunctionOperation
   | SetThemeOperation
-  | SetRolesOperation;
+  | SetRolesOperation
+  | RememberDesignOperation
+  | SetWorkspaceOperation;
 
 /** 差分パッチ。intent(なぜこの変更をするのか)は必須。 */
 export type Diff = {

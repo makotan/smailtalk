@@ -101,7 +101,7 @@ function manifest(options: {
           id: "entry-detail",
           type: "detail_view",
           table: "entries",
-          ...(options.fieldGroups === undefined ? {} : { field_groups: options.fieldGroups }),
+          ...(options.fieldGroups === undefined ? {} : { field_sections: options.fieldGroups }),
         },
       ],
     },

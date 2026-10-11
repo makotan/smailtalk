@@ -1,0 +1,3302 @@
+{
+  "$comment": [
+    "V20-M7B-T01 の検査の入力(値の一覧だけ)。製品のコードは読まない。",
+    "tailwind: tailwindlabs/tailwindcss のコミット 41d9cae8e5 の packages/tailwindcss/theme.css から、oklch(...) を値に持つ定義を上から順に全件写した(286件)。Tailwind CSS は MIT License(Copyright (c) Tailwind Labs, Inc.)。",
+    "shadcn: shadcn-ui/ui のコミット 98a1fe67b4 の apps/v4/app/globals.css から、oklch(...) を値に持つ定義を上から順に全件写した(65件。block は定義が在るセレクタ)。shadcn/ui は MIT License(Copyright (c) 2023 shadcn)。",
+    "out_of_gamut: 上の2つのうち V20-M7 の実装が色域の外として null を返した84件(Tailwind 82 + shadcn 2。84件はすべて許容差 0.5/255 の外)。値はどれも製品の実装と独立に計算した白地 / 黒地との比(小数3桁に丸めた)。srgb_* は通常の画面(sRGB に切り詰めた色)の比で、メインが 2026-09-25 に計算した値(scratchpad の gamut/oog-table.tsv の CRw_clip / CRk_clip)。p3_* は広色域の画面の比で、V20-M7B の点検の処置(2026-09-25)で焼き直した値: CSS Color Module Level 4 の OKLab_to_XYZ(conversions.js の OKLabtoLMS と LMStoXYZ)で XYZ(D65)に直し → XYZ_to_lin_P3(有理数の行列)で線形 display-p3 に直し → 各チャンネルを [0, 1] に切り詰め → lin_P3_to_XYZ の2行目(35783/156275, 247089/357200, 198249/2500400)で Y を出し → (明るい方 + 0.05) / (暗い方 + 0.05)(白地の Y = 1、黒地の Y = 0)。python3 の標準ライブラリだけの倍精度の計算で、製品のコードを通っていない(scratchpad の m7b-fix/indep.py と rebake.py)。焼き直す前の p3_* は、切り詰めない線形 sRGB に WCAG の係数(0.2126 / 0.7152 / 0.0722)を掛けた Y から出した値だった(差は最大 0.001、168値のうち56値が動いた。336通りの合否の数は動かない)。",
+    "v20_m7_baseline: 上の2つのうち V20-M7 の実装(土台 0b7b2c45)が読めた oklch の、白地 / 黒地との比。土台の実装がそのまま返した値であり、独立の計算ではない(1ビットも変わらないことを固定するための値)。"
+  ],
+  "tailwind": [
+    {
+      "name": "--color-red-50",
+      "value": "oklch(97.1% 0.013 17.38)"
+    },
+    {
+      "name": "--color-red-100",
+      "value": "oklch(93.6% 0.032 17.717)"
+    },
+    {
+      "name": "--color-red-200",
+      "value": "oklch(88.5% 0.062 18.334)"
+    },
+    {
+      "name": "--color-red-300",
+      "value": "oklch(80.8% 0.114 19.571)"
+    },
+    {
+      "name": "--color-red-400",
+      "value": "oklch(70.4% 0.191 22.216)"
+    },
+    {
+      "name": "--color-red-500",
+      "value": "oklch(63.7% 0.237 25.331)"
+    },
+    {
+      "name": "--color-red-600",
+      "value": "oklch(57.7% 0.245 27.325)"
+    },
+    {
+      "name": "--color-red-700",
+      "value": "oklch(50.5% 0.213 27.518)"
+    },
+    {
+      "name": "--color-red-800",
+      "value": "oklch(44.4% 0.177 26.899)"
+    },
+    {
+      "name": "--color-red-900",
+      "value": "oklch(39.6% 0.141 25.723)"
+    },
+    {
+      "name": "--color-red-950",
+      "value": "oklch(25.8% 0.092 26.042)"
+    },
+    {
+      "name": "--color-orange-50",
+      "value": "oklch(98% 0.016 73.684)"
+    },
+    {
+      "name": "--color-orange-100",
+      "value": "oklch(95.4% 0.038 75.164)"
+    },
+    {
+      "name": "--color-orange-200",
+      "value": "oklch(90.1% 0.076 70.697)"
+    },
+    {
+      "name": "--color-orange-300",
+      "value": "oklch(83.7% 0.128 66.29)"
+    },
+    {
+      "name": "--color-orange-400",
+      "value": "oklch(75% 0.183 55.934)"
+    },
+    {
+      "name": "--color-orange-500",
+      "value": "oklch(70.5% 0.213 47.604)"
+    },
+    {
+      "name": "--color-orange-600",
+      "value": "oklch(64.6% 0.222 41.116)"
+    },
+    {
+      "name": "--color-orange-700",
+      "value": "oklch(55.3% 0.195 38.402)"
+    },
+    {
+      "name": "--color-orange-800",
+      "value": "oklch(47% 0.157 37.304)"
+    },
+    {
+      "name": "--color-orange-900",
+      "value": "oklch(40.8% 0.123 38.172)"
+    },
+    {
+      "name": "--color-orange-950",
+      "value": "oklch(26.6% 0.079 36.259)"
+    },
+    {
+      "name": "--color-amber-50",
+      "value": "oklch(98.7% 0.022 95.277)"
+    },
+    {
+      "name": "--color-amber-100",
+      "value": "oklch(96.2% 0.059 95.617)"
+    },
+    {
+      "name": "--color-amber-200",
+      "value": "oklch(92.4% 0.12 95.746)"
+    },
+    {
+      "name": "--color-amber-300",
+      "value": "oklch(87.9% 0.169 91.605)"
+    },
+    {
+      "name": "--color-amber-400",
+      "value": "oklch(82.8% 0.189 84.429)"
+    },
+    {
+      "name": "--color-amber-500",
+      "value": "oklch(76.9% 0.188 70.08)"
+    },
+    {
+      "name": "--color-amber-600",
+      "value": "oklch(66.6% 0.179 58.318)"
+    },
+    {
+      "name": "--color-amber-700",
+      "value": "oklch(55.5% 0.163 48.998)"
+    },
+    {
+      "name": "--color-amber-800",
+      "value": "oklch(47.3% 0.137 46.201)"
+    },
+    {
+      "name": "--color-amber-900",
+      "value": "oklch(41.4% 0.112 45.904)"
+    },
+    {
+      "name": "--color-amber-950",
+      "value": "oklch(27.9% 0.077 45.635)"
+    },
+    {
+      "name": "--color-yellow-50",
+      "value": "oklch(98.7% 0.026 102.212)"
+    },
+    {
+      "name": "--color-yellow-100",
+      "value": "oklch(97.3% 0.071 103.193)"
+    },
+    {
+      "name": "--color-yellow-200",
+      "value": "oklch(94.5% 0.129 101.54)"
+    },
+    {
+      "name": "--color-yellow-300",
+      "value": "oklch(90.5% 0.182 98.111)"
+    },
+    {
+      "name": "--color-yellow-400",
+      "value": "oklch(85.2% 0.199 91.936)"
+    },
+    {
+      "name": "--color-yellow-500",
+      "value": "oklch(79.5% 0.184 86.047)"
+    },
+    {
+      "name": "--color-yellow-600",
+      "value": "oklch(68.1% 0.162 75.834)"
+    },
+    {
+      "name": "--color-yellow-700",
+      "value": "oklch(55.4% 0.135 66.442)"
+    },
+    {
+      "name": "--color-yellow-800",
+      "value": "oklch(47.6% 0.114 61.907)"
+    },
+    {
+      "name": "--color-yellow-900",
+      "value": "oklch(42.1% 0.095 57.708)"
+    },
+    {
+      "name": "--color-yellow-950",
+      "value": "oklch(28.6% 0.066 53.813)"
+    },
+    {
+      "name": "--color-lime-50",
+      "value": "oklch(98.6% 0.031 120.757)"
+    },
+    {
+      "name": "--color-lime-100",
+      "value": "oklch(96.7% 0.067 122.328)"
+    },
+    {
+      "name": "--color-lime-200",
+      "value": "oklch(93.8% 0.127 124.321)"
+    },
+    {
+      "name": "--color-lime-300",
+      "value": "oklch(89.7% 0.196 126.665)"
+    },
+    {
+      "name": "--color-lime-400",
+      "value": "oklch(84.1% 0.238 128.85)"
+    },
+    {
+      "name": "--color-lime-500",
+      "value": "oklch(76.8% 0.233 130.85)"
+    },
+    {
+      "name": "--color-lime-600",
+      "value": "oklch(64.8% 0.2 131.684)"
+    },
+    {
+      "name": "--color-lime-700",
+      "value": "oklch(53.2% 0.157 131.589)"
+    },
+    {
+      "name": "--color-lime-800",
+      "value": "oklch(45.3% 0.124 130.933)"
+    },
+    {
+      "name": "--color-lime-900",
+      "value": "oklch(40.5% 0.101 131.063)"
+    },
+    {
+      "name": "--color-lime-950",
+      "value": "oklch(27.4% 0.072 132.109)"
+    },
+    {
+      "name": "--color-green-50",
+      "value": "oklch(98.2% 0.018 155.826)"
+    },
+    {
+      "name": "--color-green-100",
+      "value": "oklch(96.2% 0.044 156.743)"
+    },
+    {
+      "name": "--color-green-200",
+      "value": "oklch(92.5% 0.084 155.995)"
+    },
+    {
+      "name": "--color-green-300",
+      "value": "oklch(87.1% 0.15 154.449)"
+    },
+    {
+      "name": "--color-green-400",
+      "value": "oklch(79.2% 0.209 151.711)"
+    },
+    {
+      "name": "--color-green-500",
+      "value": "oklch(72.3% 0.219 149.579)"
+    },
+    {
+      "name": "--color-green-600",
+      "value": "oklch(62.7% 0.194 149.214)"
+    },
+    {
+      "name": "--color-green-700",
+      "value": "oklch(52.7% 0.154 150.069)"
+    },
+    {
+      "name": "--color-green-800",
+      "value": "oklch(44.8% 0.119 151.328)"
+    },
+    {
+      "name": "--color-green-900",
+      "value": "oklch(39.3% 0.095 152.535)"
+    },
+    {
+      "name": "--color-green-950",
+      "value": "oklch(26.6% 0.065 152.934)"
+    },
+    {
+      "name": "--color-emerald-50",
+      "value": "oklch(97.9% 0.021 166.113)"
+    },
+    {
+      "name": "--color-emerald-100",
+      "value": "oklch(95% 0.052 163.051)"
+    },
+    {
+      "name": "--color-emerald-200",
+      "value": "oklch(90.5% 0.093 164.15)"
+    },
+    {
+      "name": "--color-emerald-300",
+      "value": "oklch(84.5% 0.143 164.978)"
+    },
+    {
+      "name": "--color-emerald-400",
+      "value": "oklch(76.5% 0.177 163.223)"
+    },
+    {
+      "name": "--color-emerald-500",
+      "value": "oklch(69.6% 0.17 162.48)"
+    },
+    {
+      "name": "--color-emerald-600",
+      "value": "oklch(59.6% 0.145 163.225)"
+    },
+    {
+      "name": "--color-emerald-700",
+      "value": "oklch(50.8% 0.118 165.612)"
+    },
+    {
+      "name": "--color-emerald-800",
+      "value": "oklch(43.2% 0.095 166.913)"
+    },
+    {
+      "name": "--color-emerald-900",
+      "value": "oklch(37.8% 0.077 168.94)"
+    },
+    {
+      "name": "--color-emerald-950",
+      "value": "oklch(26.2% 0.051 172.552)"
+    },
+    {
+      "name": "--color-teal-50",
+      "value": "oklch(98.4% 0.014 180.72)"
+    },
+    {
+      "name": "--color-teal-100",
+      "value": "oklch(95.3% 0.051 180.801)"
+    },
+    {
+      "name": "--color-teal-200",
+      "value": "oklch(91% 0.096 180.426)"
+    },
+    {
+      "name": "--color-teal-300",
+      "value": "oklch(85.5% 0.138 181.071)"
+    },
+    {
+      "name": "--color-teal-400",
+      "value": "oklch(77.7% 0.152 181.912)"
+    },
+    {
+      "name": "--color-teal-500",
+      "value": "oklch(70.4% 0.14 182.503)"
+    },
+    {
+      "name": "--color-teal-600",
+      "value": "oklch(60% 0.118 184.704)"
+    },
+    {
+      "name": "--color-teal-700",
+      "value": "oklch(51.1% 0.096 186.391)"
+    },
+    {
+      "name": "--color-teal-800",
+      "value": "oklch(43.7% 0.078 188.216)"
+    },
+    {
+      "name": "--color-teal-900",
+      "value": "oklch(38.6% 0.063 188.416)"
+    },
+    {
+      "name": "--color-teal-950",
+      "value": "oklch(27.7% 0.046 192.524)"
+    },
+    {
+      "name": "--color-cyan-50",
+      "value": "oklch(98.4% 0.019 200.873)"
+    },
+    {
+      "name": "--color-cyan-100",
+      "value": "oklch(95.6% 0.045 203.388)"
+    },
+    {
+      "name": "--color-cyan-200",
+      "value": "oklch(91.7% 0.08 205.041)"
+    },
+    {
+      "name": "--color-cyan-300",
+      "value": "oklch(86.5% 0.127 207.078)"
+    },
+    {
+      "name": "--color-cyan-400",
+      "value": "oklch(78.9% 0.154 211.53)"
+    },
+    {
+      "name": "--color-cyan-500",
+      "value": "oklch(71.5% 0.143 215.221)"
+    },
+    {
+      "name": "--color-cyan-600",
+      "value": "oklch(60.9% 0.126 221.723)"
+    },
+    {
+      "name": "--color-cyan-700",
+      "value": "oklch(52% 0.105 223.128)"
+    },
+    {
+      "name": "--color-cyan-800",
+      "value": "oklch(45% 0.085 224.283)"
+    },
+    {
+      "name": "--color-cyan-900",
+      "value": "oklch(39.8% 0.07 227.392)"
+    },
+    {
+      "name": "--color-cyan-950",
+      "value": "oklch(30.2% 0.056 229.695)"
+    },
+    {
+      "name": "--color-sky-50",
+      "value": "oklch(97.7% 0.013 236.62)"
+    },
+    {
+      "name": "--color-sky-100",
+      "value": "oklch(95.1% 0.026 236.824)"
+    },
+    {
+      "name": "--color-sky-200",
+      "value": "oklch(90.1% 0.058 230.902)"
+    },
+    {
+      "name": "--color-sky-300",
+      "value": "oklch(82.8% 0.111 230.318)"
+    },
+    {
+      "name": "--color-sky-400",
+      "value": "oklch(74.6% 0.16 232.661)"
+    },
+    {
+      "name": "--color-sky-500",
+      "value": "oklch(68.5% 0.169 237.323)"
+    },
+    {
+      "name": "--color-sky-600",
+      "value": "oklch(58.8% 0.158 241.966)"
+    },
+    {
+      "name": "--color-sky-700",
+      "value": "oklch(50% 0.134 242.749)"
+    },
+    {
+      "name": "--color-sky-800",
+      "value": "oklch(44.3% 0.11 240.79)"
+    },
+    {
+      "name": "--color-sky-900",
+      "value": "oklch(39.1% 0.09 240.876)"
+    },
+    {
+      "name": "--color-sky-950",
+      "value": "oklch(29.3% 0.066 243.157)"
+    },
+    {
+      "name": "--color-blue-50",
+      "value": "oklch(97% 0.014 254.604)"
+    },
+    {
+      "name": "--color-blue-100",
+      "value": "oklch(93.2% 0.032 255.585)"
+    },
+    {
+      "name": "--color-blue-200",
+      "value": "oklch(88.2% 0.059 254.128)"
+    },
+    {
+      "name": "--color-blue-300",
+      "value": "oklch(80.9% 0.105 251.813)"
+    },
+    {
+      "name": "--color-blue-400",
+      "value": "oklch(70.7% 0.165 254.624)"
+    },
+    {
+      "name": "--color-blue-500",
+      "value": "oklch(62.3% 0.214 259.815)"
+    },
+    {
+      "name": "--color-blue-600",
+      "value": "oklch(54.6% 0.245 262.881)"
+    },
+    {
+      "name": "--color-blue-700",
+      "value": "oklch(48.8% 0.243 264.376)"
+    },
+    {
+      "name": "--color-blue-800",
+      "value": "oklch(42.4% 0.199 265.638)"
+    },
+    {
+      "name": "--color-blue-900",
+      "value": "oklch(37.9% 0.146 265.522)"
+    },
+    {
+      "name": "--color-blue-950",
+      "value": "oklch(28.2% 0.091 267.935)"
+    },
+    {
+      "name": "--color-indigo-50",
+      "value": "oklch(96.2% 0.018 272.314)"
+    },
+    {
+      "name": "--color-indigo-100",
+      "value": "oklch(93% 0.034 272.788)"
+    },
+    {
+      "name": "--color-indigo-200",
+      "value": "oklch(87% 0.065 274.039)"
+    },
+    {
+      "name": "--color-indigo-300",
+      "value": "oklch(78.5% 0.115 274.713)"
+    },
+    {
+      "name": "--color-indigo-400",
+      "value": "oklch(67.3% 0.182 276.935)"
+    },
+    {
+      "name": "--color-indigo-500",
+      "value": "oklch(58.5% 0.233 277.117)"
+    },
+    {
+      "name": "--color-indigo-600",
+      "value": "oklch(51.1% 0.262 276.966)"
+    },
+    {
+      "name": "--color-indigo-700",
+      "value": "oklch(45.7% 0.24 277.023)"
+    },
+    {
+      "name": "--color-indigo-800",
+      "value": "oklch(39.8% 0.195 277.366)"
+    },
+    {
+      "name": "--color-indigo-900",
+      "value": "oklch(35.9% 0.144 278.697)"
+    },
+    {
+      "name": "--color-indigo-950",
+      "value": "oklch(25.7% 0.09 281.288)"
+    },
+    {
+      "name": "--color-violet-50",
+      "value": "oklch(96.9% 0.016 293.756)"
+    },
+    {
+      "name": "--color-violet-100",
+      "value": "oklch(94.3% 0.029 294.588)"
+    },
+    {
+      "name": "--color-violet-200",
+      "value": "oklch(89.4% 0.057 293.283)"
+    },
+    {
+      "name": "--color-violet-300",
+      "value": "oklch(81.1% 0.111 293.571)"
+    },
+    {
+      "name": "--color-violet-400",
+      "value": "oklch(70.2% 0.183 293.541)"
+    },
+    {
+      "name": "--color-violet-500",
+      "value": "oklch(60.6% 0.25 292.717)"
+    },
+    {
+      "name": "--color-violet-600",
+      "value": "oklch(54.1% 0.281 293.009)"
+    },
+    {
+      "name": "--color-violet-700",
+      "value": "oklch(49.1% 0.27 292.581)"
+    },
+    {
+      "name": "--color-violet-800",
+      "value": "oklch(43.2% 0.232 292.759)"
+    },
+    {
+      "name": "--color-violet-900",
+      "value": "oklch(38% 0.189 293.745)"
+    },
+    {
+      "name": "--color-violet-950",
+      "value": "oklch(28.3% 0.141 291.089)"
+    },
+    {
+      "name": "--color-purple-50",
+      "value": "oklch(97.7% 0.014 308.299)"
+    },
+    {
+      "name": "--color-purple-100",
+      "value": "oklch(94.6% 0.033 307.174)"
+    },
+    {
+      "name": "--color-purple-200",
+      "value": "oklch(90.2% 0.063 306.703)"
+    },
+    {
+      "name": "--color-purple-300",
+      "value": "oklch(82.7% 0.119 306.383)"
+    },
+    {
+      "name": "--color-purple-400",
+      "value": "oklch(71.4% 0.203 305.504)"
+    },
+    {
+      "name": "--color-purple-500",
+      "value": "oklch(62.7% 0.265 303.9)"
+    },
+    {
+      "name": "--color-purple-600",
+      "value": "oklch(55.8% 0.288 302.321)"
+    },
+    {
+      "name": "--color-purple-700",
+      "value": "oklch(49.6% 0.265 301.924)"
+    },
+    {
+      "name": "--color-purple-800",
+      "value": "oklch(43.8% 0.218 303.724)"
+    },
+    {
+      "name": "--color-purple-900",
+      "value": "oklch(38.1% 0.176 304.987)"
+    },
+    {
+      "name": "--color-purple-950",
+      "value": "oklch(29.1% 0.149 302.717)"
+    },
+    {
+      "name": "--color-fuchsia-50",
+      "value": "oklch(97.7% 0.017 320.058)"
+    },
+    {
+      "name": "--color-fuchsia-100",
+      "value": "oklch(95.2% 0.037 318.852)"
+    },
+    {
+      "name": "--color-fuchsia-200",
+      "value": "oklch(90.3% 0.076 319.62)"
+    },
+    {
+      "name": "--color-fuchsia-300",
+      "value": "oklch(83.3% 0.145 321.434)"
+    },
+    {
+      "name": "--color-fuchsia-400",
+      "value": "oklch(74% 0.238 322.16)"
+    },
+    {
+      "name": "--color-fuchsia-500",
+      "value": "oklch(66.7% 0.295 322.15)"
+    },
+    {
+      "name": "--color-fuchsia-600",
+      "value": "oklch(59.1% 0.293 322.896)"
+    },
+    {
+      "name": "--color-fuchsia-700",
+      "value": "oklch(51.8% 0.253 323.949)"
+    },
+    {
+      "name": "--color-fuchsia-800",
+      "value": "oklch(45.2% 0.211 324.591)"
+    },
+    {
+      "name": "--color-fuchsia-900",
+      "value": "oklch(40.1% 0.17 325.612)"
+    },
+    {
+      "name": "--color-fuchsia-950",
+      "value": "oklch(29.3% 0.136 325.661)"
+    },
+    {
+      "name": "--color-pink-50",
+      "value": "oklch(97.1% 0.014 343.198)"
+    },
+    {
+      "name": "--color-pink-100",
+      "value": "oklch(94.8% 0.028 342.258)"
+    },
+    {
+      "name": "--color-pink-200",
+      "value": "oklch(89.9% 0.061 343.231)"
+    },
+    {
+      "name": "--color-pink-300",
+      "value": "oklch(82.3% 0.12 346.018)"
+    },
+    {
+      "name": "--color-pink-400",
+      "value": "oklch(71.8% 0.202 349.761)"
+    },
+    {
+      "name": "--color-pink-500",
+      "value": "oklch(65.6% 0.241 354.308)"
+    },
+    {
+      "name": "--color-pink-600",
+      "value": "oklch(59.2% 0.249 0.584)"
+    },
+    {
+      "name": "--color-pink-700",
+      "value": "oklch(52.5% 0.223 3.958)"
+    },
+    {
+      "name": "--color-pink-800",
+      "value": "oklch(45.9% 0.187 3.815)"
+    },
+    {
+      "name": "--color-pink-900",
+      "value": "oklch(40.8% 0.153 2.432)"
+    },
+    {
+      "name": "--color-pink-950",
+      "value": "oklch(28.4% 0.109 3.907)"
+    },
+    {
+      "name": "--color-rose-50",
+      "value": "oklch(96.9% 0.015 12.422)"
+    },
+    {
+      "name": "--color-rose-100",
+      "value": "oklch(94.1% 0.03 12.58)"
+    },
+    {
+      "name": "--color-rose-200",
+      "value": "oklch(89.2% 0.058 10.001)"
+    },
+    {
+      "name": "--color-rose-300",
+      "value": "oklch(81% 0.117 11.638)"
+    },
+    {
+      "name": "--color-rose-400",
+      "value": "oklch(71.2% 0.194 13.428)"
+    },
+    {
+      "name": "--color-rose-500",
+      "value": "oklch(64.5% 0.246 16.439)"
+    },
+    {
+      "name": "--color-rose-600",
+      "value": "oklch(58.6% 0.253 17.585)"
+    },
+    {
+      "name": "--color-rose-700",
+      "value": "oklch(51.4% 0.222 16.935)"
+    },
+    {
+      "name": "--color-rose-800",
+      "value": "oklch(45.5% 0.188 13.697)"
+    },
+    {
+      "name": "--color-rose-900",
+      "value": "oklch(41% 0.159 10.272)"
+    },
+    {
+      "name": "--color-rose-950",
+      "value": "oklch(27.1% 0.105 12.094)"
+    },
+    {
+      "name": "--color-slate-50",
+      "value": "oklch(98.4% 0.003 247.858)"
+    },
+    {
+      "name": "--color-slate-100",
+      "value": "oklch(96.8% 0.007 247.896)"
+    },
+    {
+      "name": "--color-slate-200",
+      "value": "oklch(92.9% 0.013 255.508)"
+    },
+    {
+      "name": "--color-slate-300",
+      "value": "oklch(86.9% 0.022 252.894)"
+    },
+    {
+      "name": "--color-slate-400",
+      "value": "oklch(70.4% 0.04 256.788)"
+    },
+    {
+      "name": "--color-slate-500",
+      "value": "oklch(55.4% 0.046 257.417)"
+    },
+    {
+      "name": "--color-slate-600",
+      "value": "oklch(44.6% 0.043 257.281)"
+    },
+    {
+      "name": "--color-slate-700",
+      "value": "oklch(37.2% 0.044 257.287)"
+    },
+    {
+      "name": "--color-slate-800",
+      "value": "oklch(27.9% 0.041 260.031)"
+    },
+    {
+      "name": "--color-slate-900",
+      "value": "oklch(20.8% 0.042 265.755)"
+    },
+    {
+      "name": "--color-slate-950",
+      "value": "oklch(12.9% 0.042 264.695)"
+    },
+    {
+      "name": "--color-gray-50",
+      "value": "oklch(98.5% 0.002 247.839)"
+    },
+    {
+      "name": "--color-gray-100",
+      "value": "oklch(96.7% 0.003 264.542)"
+    },
+    {
+      "name": "--color-gray-200",
+      "value": "oklch(92.8% 0.006 264.531)"
+    },
+    {
+      "name": "--color-gray-300",
+      "value": "oklch(87.2% 0.01 258.338)"
+    },
+    {
+      "name": "--color-gray-400",
+      "value": "oklch(70.7% 0.022 261.325)"
+    },
+    {
+      "name": "--color-gray-500",
+      "value": "oklch(55.1% 0.027 264.364)"
+    },
+    {
+      "name": "--color-gray-600",
+      "value": "oklch(44.6% 0.03 256.802)"
+    },
+    {
+      "name": "--color-gray-700",
+      "value": "oklch(37.3% 0.034 259.733)"
+    },
+    {
+      "name": "--color-gray-800",
+      "value": "oklch(27.8% 0.033 256.848)"
+    },
+    {
+      "name": "--color-gray-900",
+      "value": "oklch(21% 0.034 264.665)"
+    },
+    {
+      "name": "--color-gray-950",
+      "value": "oklch(13% 0.028 261.692)"
+    },
+    {
+      "name": "--color-zinc-50",
+      "value": "oklch(98.5% 0 none)"
+    },
+    {
+      "name": "--color-zinc-100",
+      "value": "oklch(96.7% 0.001 286.375)"
+    },
+    {
+      "name": "--color-zinc-200",
+      "value": "oklch(92% 0.004 286.32)"
+    },
+    {
+      "name": "--color-zinc-300",
+      "value": "oklch(87.1% 0.006 286.286)"
+    },
+    {
+      "name": "--color-zinc-400",
+      "value": "oklch(70.5% 0.015 286.067)"
+    },
+    {
+      "name": "--color-zinc-500",
+      "value": "oklch(55.2% 0.016 285.938)"
+    },
+    {
+      "name": "--color-zinc-600",
+      "value": "oklch(44.2% 0.017 285.786)"
+    },
+    {
+      "name": "--color-zinc-700",
+      "value": "oklch(37% 0.013 285.805)"
+    },
+    {
+      "name": "--color-zinc-800",
+      "value": "oklch(27.4% 0.006 286.033)"
+    },
+    {
+      "name": "--color-zinc-900",
+      "value": "oklch(21% 0.006 285.885)"
+    },
+    {
+      "name": "--color-zinc-950",
+      "value": "oklch(14.1% 0.005 285.823)"
+    },
+    {
+      "name": "--color-neutral-50",
+      "value": "oklch(98.5% 0 none)"
+    },
+    {
+      "name": "--color-neutral-100",
+      "value": "oklch(97% 0 none)"
+    },
+    {
+      "name": "--color-neutral-200",
+      "value": "oklch(92.2% 0 none)"
+    },
+    {
+      "name": "--color-neutral-300",
+      "value": "oklch(87% 0 none)"
+    },
+    {
+      "name": "--color-neutral-400",
+      "value": "oklch(70.8% 0 none)"
+    },
+    {
+      "name": "--color-neutral-500",
+      "value": "oklch(55.6% 0 none)"
+    },
+    {
+      "name": "--color-neutral-600",
+      "value": "oklch(43.9% 0 none)"
+    },
+    {
+      "name": "--color-neutral-700",
+      "value": "oklch(37.1% 0 none)"
+    },
+    {
+      "name": "--color-neutral-800",
+      "value": "oklch(26.9% 0 none)"
+    },
+    {
+      "name": "--color-neutral-900",
+      "value": "oklch(20.5% 0 none)"
+    },
+    {
+      "name": "--color-neutral-950",
+      "value": "oklch(14.5% 0 none)"
+    },
+    {
+      "name": "--color-stone-50",
+      "value": "oklch(98.5% 0.001 106.423)"
+    },
+    {
+      "name": "--color-stone-100",
+      "value": "oklch(97% 0.001 106.424)"
+    },
+    {
+      "name": "--color-stone-200",
+      "value": "oklch(92.3% 0.003 48.717)"
+    },
+    {
+      "name": "--color-stone-300",
+      "value": "oklch(86.9% 0.005 56.366)"
+    },
+    {
+      "name": "--color-stone-400",
+      "value": "oklch(70.9% 0.01 56.259)"
+    },
+    {
+      "name": "--color-stone-500",
+      "value": "oklch(55.3% 0.013 58.071)"
+    },
+    {
+      "name": "--color-stone-600",
+      "value": "oklch(44.4% 0.011 73.639)"
+    },
+    {
+      "name": "--color-stone-700",
+      "value": "oklch(37.4% 0.01 67.558)"
+    },
+    {
+      "name": "--color-stone-800",
+      "value": "oklch(26.8% 0.007 34.298)"
+    },
+    {
+      "name": "--color-stone-900",
+      "value": "oklch(21.6% 0.006 56.043)"
+    },
+    {
+      "name": "--color-stone-950",
+      "value": "oklch(14.7% 0.004 49.25)"
+    },
+    {
+      "name": "--color-mauve-50",
+      "value": "oklch(98.5% 0 none)"
+    },
+    {
+      "name": "--color-mauve-100",
+      "value": "oklch(96% 0.003 325.6)"
+    },
+    {
+      "name": "--color-mauve-200",
+      "value": "oklch(92.2% 0.005 325.62)"
+    },
+    {
+      "name": "--color-mauve-300",
+      "value": "oklch(86.5% 0.012 325.68)"
+    },
+    {
+      "name": "--color-mauve-400",
+      "value": "oklch(71.1% 0.019 323.02)"
+    },
+    {
+      "name": "--color-mauve-500",
+      "value": "oklch(54.2% 0.034 322.5)"
+    },
+    {
+      "name": "--color-mauve-600",
+      "value": "oklch(43.5% 0.029 321.78)"
+    },
+    {
+      "name": "--color-mauve-700",
+      "value": "oklch(36.4% 0.029 323.89)"
+    },
+    {
+      "name": "--color-mauve-800",
+      "value": "oklch(26.3% 0.024 320.12)"
+    },
+    {
+      "name": "--color-mauve-900",
+      "value": "oklch(21.2% 0.019 322.12)"
+    },
+    {
+      "name": "--color-mauve-950",
+      "value": "oklch(14.5% 0.008 326)"
+    },
+    {
+      "name": "--color-olive-50",
+      "value": "oklch(98.8% 0.003 106.5)"
+    },
+    {
+      "name": "--color-olive-100",
+      "value": "oklch(96.6% 0.005 106.5)"
+    },
+    {
+      "name": "--color-olive-200",
+      "value": "oklch(93% 0.007 106.5)"
+    },
+    {
+      "name": "--color-olive-300",
+      "value": "oklch(88% 0.011 106.6)"
+    },
+    {
+      "name": "--color-olive-400",
+      "value": "oklch(73.7% 0.021 106.9)"
+    },
+    {
+      "name": "--color-olive-500",
+      "value": "oklch(58% 0.031 107.3)"
+    },
+    {
+      "name": "--color-olive-600",
+      "value": "oklch(46.6% 0.025 107.3)"
+    },
+    {
+      "name": "--color-olive-700",
+      "value": "oklch(39.4% 0.023 107.4)"
+    },
+    {
+      "name": "--color-olive-800",
+      "value": "oklch(28.6% 0.016 107.4)"
+    },
+    {
+      "name": "--color-olive-900",
+      "value": "oklch(22.8% 0.013 107.4)"
+    },
+    {
+      "name": "--color-olive-950",
+      "value": "oklch(15.3% 0.006 107.1)"
+    },
+    {
+      "name": "--color-mist-50",
+      "value": "oklch(98.7% 0.002 197.1)"
+    },
+    {
+      "name": "--color-mist-100",
+      "value": "oklch(96.3% 0.002 197.1)"
+    },
+    {
+      "name": "--color-mist-200",
+      "value": "oklch(92.5% 0.005 214.3)"
+    },
+    {
+      "name": "--color-mist-300",
+      "value": "oklch(87.2% 0.007 219.6)"
+    },
+    {
+      "name": "--color-mist-400",
+      "value": "oklch(72.3% 0.014 214.4)"
+    },
+    {
+      "name": "--color-mist-500",
+      "value": "oklch(56% 0.021 213.5)"
+    },
+    {
+      "name": "--color-mist-600",
+      "value": "oklch(45% 0.017 213.2)"
+    },
+    {
+      "name": "--color-mist-700",
+      "value": "oklch(37.8% 0.015 216)"
+    },
+    {
+      "name": "--color-mist-800",
+      "value": "oklch(27.5% 0.011 216.9)"
+    },
+    {
+      "name": "--color-mist-900",
+      "value": "oklch(21.8% 0.008 223.9)"
+    },
+    {
+      "name": "--color-mist-950",
+      "value": "oklch(14.8% 0.004 228.8)"
+    },
+    {
+      "name": "--color-taupe-50",
+      "value": "oklch(98.6% 0.002 67.8)"
+    },
+    {
+      "name": "--color-taupe-100",
+      "value": "oklch(96% 0.002 17.2)"
+    },
+    {
+      "name": "--color-taupe-200",
+      "value": "oklch(92.2% 0.005 34.3)"
+    },
+    {
+      "name": "--color-taupe-300",
+      "value": "oklch(86.8% 0.007 39.5)"
+    },
+    {
+      "name": "--color-taupe-400",
+      "value": "oklch(71.4% 0.014 41.2)"
+    },
+    {
+      "name": "--color-taupe-500",
+      "value": "oklch(54.7% 0.021 43.1)"
+    },
+    {
+      "name": "--color-taupe-600",
+      "value": "oklch(43.8% 0.017 39.3)"
+    },
+    {
+      "name": "--color-taupe-700",
+      "value": "oklch(36.7% 0.016 35.7)"
+    },
+    {
+      "name": "--color-taupe-800",
+      "value": "oklch(26.8% 0.011 36.5)"
+    },
+    {
+      "name": "--color-taupe-900",
+      "value": "oklch(21.4% 0.009 43.1)"
+    },
+    {
+      "name": "--color-taupe-950",
+      "value": "oklch(14.7% 0.004 49.3)"
+    }
+  ],
+  "shadcn": [
+    {
+      "block": ":root",
+      "name": "--background",
+      "value": "oklch(1 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--foreground",
+      "value": "oklch(0% 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--card",
+      "value": "oklch(1 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--card-foreground",
+      "value": "oklch(0% 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--popover",
+      "value": "oklch(1 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--popover-foreground",
+      "value": "oklch(0% 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--primary",
+      "value": "oklch(0% 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--primary-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--secondary",
+      "value": "oklch(0.97 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--secondary-foreground",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--muted",
+      "value": "oklch(0.97 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--muted-foreground",
+      "value": "oklch(0.556 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--accent",
+      "value": "oklch(0.97 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--accent-foreground",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--destructive",
+      "value": "oklch(0.577 0.245 27.325)"
+    },
+    {
+      "block": ":root",
+      "name": "--destructive-foreground",
+      "value": "oklch(0.97 0.01 17)"
+    },
+    {
+      "block": ":root",
+      "name": "--border",
+      "value": "oklch(0.922 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--input",
+      "value": "oklch(0.922 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--ring",
+      "value": "oklch(0.708 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-foreground",
+      "value": "oklch(0% 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-primary",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-primary-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-accent",
+      "value": "oklch(0.97 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-accent-foreground",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-border",
+      "value": "oklch(0.922 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--sidebar-ring",
+      "value": "oklch(0.708 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--surface",
+      "value": "oklch(0.98 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--code-highlight",
+      "value": "oklch(0.96 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--code-number",
+      "value": "oklch(0.56 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--selection",
+      "value": "oklch(0% 0 0)"
+    },
+    {
+      "block": ":root",
+      "name": "--selection-foreground",
+      "value": "oklch(1 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--background",
+      "value": "oklch(0.145 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--card",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--card-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--popover",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--popover-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--primary",
+      "value": "oklch(0.922 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--primary-foreground",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--secondary",
+      "value": "oklch(0.269 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--secondary-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--muted",
+      "value": "oklch(0.269 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--muted-foreground",
+      "value": "oklch(0.708 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--accent",
+      "value": "oklch(0.371 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--accent-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--destructive",
+      "value": "oklch(0.704 0.191 22.216)"
+    },
+    {
+      "block": ".dark",
+      "name": "--destructive-foreground",
+      "value": "oklch(0.58 0.22 27)"
+    },
+    {
+      "block": ".dark",
+      "name": "--border",
+      "value": "oklch(1 0 0 / 10%)"
+    },
+    {
+      "block": ".dark",
+      "name": "--input",
+      "value": "oklch(1 0 0 / 15%)"
+    },
+    {
+      "block": ".dark",
+      "name": "--ring",
+      "value": "oklch(0.556 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar",
+      "value": "oklch(0.205 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-primary",
+      "value": "oklch(0.488 0.243 264.376)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-primary-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-accent",
+      "value": "oklch(0.269 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-accent-foreground",
+      "value": "oklch(0.985 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-border",
+      "value": "oklch(1 0 0 / 10%)"
+    },
+    {
+      "block": ".dark",
+      "name": "--sidebar-ring",
+      "value": "oklch(0.439 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--surface",
+      "value": "oklch(0.2 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--surface-foreground",
+      "value": "oklch(0.708 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--code-highlight",
+      "value": "oklch(0.27 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--code-number",
+      "value": "oklch(0.72 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--selection",
+      "value": "oklch(0.922 0 0)"
+    },
+    {
+      "block": ".dark",
+      "name": "--selection-foreground",
+      "value": "oklch(0.205 0 0)"
+    }
+  ],
+  "out_of_gamut": [
+    {
+      "source": "tailwind",
+      "name": "--color-red-200",
+      "value": "oklch(88.5% 0.062 18.334)",
+      "srgb_on_white": 1.449,
+      "p3_on_white": 1.446,
+      "srgb_on_black": 14.493,
+      "p3_on_black": 14.522
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-red-300",
+      "value": "oklch(80.8% 0.114 19.571)",
+      "srgb_on_white": 1.921,
+      "p3_on_white": 1.904,
+      "srgb_on_black": 10.933,
+      "p3_on_black": 11.028
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-red-400",
+      "value": "oklch(70.4% 0.191 22.216)",
+      "srgb_on_white": 2.892,
+      "p3_on_white": 2.871,
+      "srgb_on_black": 7.261,
+      "p3_on_black": 7.316
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-red-600",
+      "value": "oklch(57.7% 0.245 27.325)",
+      "srgb_on_white": 4.765,
+      "p3_on_white": 4.914,
+      "srgb_on_black": 4.407,
+      "p3_on_black": 4.273
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-red-700",
+      "value": "oklch(50.5% 0.213 27.518)",
+      "srgb_on_white": 6.42,
+      "p3_on_white": 6.567,
+      "srgb_on_black": 3.271,
+      "p3_on_black": 3.198
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-orange-300",
+      "value": "oklch(83.7% 0.128 66.29)",
+      "srgb_on_white": 1.703,
+      "p3_on_white": 1.688,
+      "srgb_on_black": 12.329,
+      "p3_on_black": 12.439
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-orange-400",
+      "value": "oklch(75% 0.183 55.934)",
+      "srgb_on_white": 2.379,
+      "p3_on_white": 2.346,
+      "srgb_on_black": 8.828,
+      "p3_on_black": 8.951
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-orange-500",
+      "value": "oklch(70.5% 0.213 47.604)",
+      "srgb_on_white": 2.892,
+      "p3_on_white": 2.833,
+      "srgb_on_black": 7.262,
+      "p3_on_black": 7.412
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-orange-600",
+      "value": "oklch(64.6% 0.222 41.116)",
+      "srgb_on_white": 3.591,
+      "p3_on_white": 3.609,
+      "srgb_on_black": 5.848,
+      "p3_on_black": 5.819
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-orange-700",
+      "value": "oklch(55.3% 0.195 38.402)",
+      "srgb_on_white": 5.229,
+      "p3_on_white": 5.246,
+      "srgb_on_black": 4.016,
+      "p3_on_black": 4.003
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-orange-800",
+      "value": "oklch(47% 0.157 37.304)",
+      "srgb_on_white": 7.355,
+      "p3_on_white": 7.356,
+      "srgb_on_black": 2.855,
+      "p3_on_black": 2.855
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-amber-300",
+      "value": "oklch(87.9% 0.169 91.605)",
+      "srgb_on_white": 1.446,
+      "p3_on_white": 1.443,
+      "srgb_on_black": 14.521,
+      "p3_on_black": 14.55
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-amber-400",
+      "value": "oklch(82.8% 0.189 84.429)",
+      "srgb_on_white": 1.717,
+      "p3_on_white": 1.725,
+      "srgb_on_black": 12.229,
+      "p3_on_black": 12.171
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-amber-500",
+      "value": "oklch(76.9% 0.188 70.08)",
+      "srgb_on_white": 2.145,
+      "p3_on_white": 2.158,
+      "srgb_on_black": 9.788,
+      "p3_on_black": 9.733
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-amber-600",
+      "value": "oklch(66.6% 0.179 58.318)",
+      "srgb_on_white": 3.193,
+      "p3_on_white": 3.21,
+      "srgb_on_black": 6.578,
+      "p3_on_black": 6.543
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-amber-700",
+      "value": "oklch(55.5% 0.163 48.998)",
+      "srgb_on_white": 5.051,
+      "p3_on_white": 5.069,
+      "srgb_on_black": 4.158,
+      "p3_on_black": 4.143
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-amber-800",
+      "value": "oklch(47.3% 0.137 46.201)",
+      "srgb_on_white": 7.131,
+      "p3_on_white": 7.139,
+      "srgb_on_black": 2.945,
+      "p3_on_black": 2.942
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-yellow-300",
+      "value": "oklch(90.5% 0.182 98.111)",
+      "srgb_on_white": 1.323,
+      "p3_on_white": 1.32,
+      "srgb_on_black": 15.876,
+      "p3_on_black": 15.912
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-yellow-400",
+      "value": "oklch(85.2% 0.199 91.936)",
+      "srgb_on_white": 1.568,
+      "p3_on_white": 1.578,
+      "srgb_on_black": 13.39,
+      "p3_on_black": 13.306
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-yellow-500",
+      "value": "oklch(79.5% 0.184 86.047)",
+      "srgb_on_white": 1.914,
+      "p3_on_white": 1.925,
+      "srgb_on_black": 10.971,
+      "p3_on_black": 10.908
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-yellow-600",
+      "value": "oklch(68.1% 0.162 75.834)",
+      "srgb_on_white": 2.931,
+      "p3_on_white": 2.947,
+      "srgb_on_black": 7.165,
+      "p3_on_black": 7.125
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-yellow-700",
+      "value": "oklch(55.4% 0.135 66.442)",
+      "srgb_on_white": 4.924,
+      "p3_on_white": 4.942,
+      "srgb_on_black": 4.265,
+      "p3_on_black": 4.249
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-yellow-800",
+      "value": "oklch(47.6% 0.114 61.907)",
+      "srgb_on_white": 6.875,
+      "p3_on_white": 6.884,
+      "srgb_on_black": 3.055,
+      "p3_on_black": 3.051
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-lime-400",
+      "value": "oklch(84.1% 0.238 128.85)",
+      "srgb_on_white": 1.535,
+      "p3_on_white": 1.54,
+      "srgb_on_black": 13.677,
+      "p3_on_black": 13.634
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-lime-500",
+      "value": "oklch(76.8% 0.233 130.85)",
+      "srgb_on_white": 1.955,
+      "p3_on_white": 1.965,
+      "srgb_on_black": 10.74,
+      "p3_on_black": 10.688
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-lime-600",
+      "value": "oklch(64.8% 0.2 131.684)",
+      "srgb_on_white": 3.058,
+      "p3_on_white": 3.073,
+      "srgb_on_black": 6.866,
+      "p3_on_black": 6.833
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-lime-700",
+      "value": "oklch(53.2% 0.157 131.589)",
+      "srgb_on_white": 4.964,
+      "p3_on_white": 4.977,
+      "srgb_on_black": 4.231,
+      "p3_on_black": 4.22
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-lime-800",
+      "value": "oklch(45.3% 0.124 130.933)",
+      "srgb_on_white": 7.051,
+      "p3_on_white": 7.052,
+      "srgb_on_black": 2.978,
+      "p3_on_black": 2.978
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-green-500",
+      "value": "oklch(72.3% 0.219 149.579)",
+      "srgb_on_white": 2.223,
+      "p3_on_white": 2.255,
+      "srgb_on_black": 9.446,
+      "p3_on_black": 9.313
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-green-600",
+      "value": "oklch(62.7% 0.194 149.214)",
+      "srgb_on_white": 3.216,
+      "p3_on_white": 3.266,
+      "srgb_on_black": 6.529,
+      "p3_on_black": 6.429
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-green-700",
+      "value": "oklch(52.7% 0.154 150.069)",
+      "srgb_on_white": 4.943,
+      "p3_on_white": 4.987,
+      "srgb_on_black": 4.248,
+      "p3_on_black": 4.211
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-400",
+      "value": "oklch(76.5% 0.177 163.223)",
+      "srgb_on_white": 1.933,
+      "p3_on_white": 1.957,
+      "srgb_on_black": 10.863,
+      "p3_on_black": 10.73
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-500",
+      "value": "oklch(69.6% 0.17 162.48)",
+      "srgb_on_white": 2.464,
+      "p3_on_white": 2.513,
+      "srgb_on_black": 8.522,
+      "p3_on_black": 8.357
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-600",
+      "value": "oklch(59.6% 0.145 163.225)",
+      "srgb_on_white": 3.665,
+      "p3_on_white": 3.737,
+      "srgb_on_black": 5.73,
+      "p3_on_black": 5.62
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-700",
+      "value": "oklch(50.8% 0.118 165.612)",
+      "srgb_on_white": 5.367,
+      "p3_on_white": 5.451,
+      "srgb_on_black": 3.913,
+      "p3_on_black": 3.853
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-800",
+      "value": "oklch(43.2% 0.095 166.913)",
+      "srgb_on_white": 7.579,
+      "p3_on_white": 7.643,
+      "srgb_on_black": 2.771,
+      "p3_on_black": 2.747
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-900",
+      "value": "oklch(37.8% 0.077 168.94)",
+      "srgb_on_white": 9.685,
+      "p3_on_white": 9.702,
+      "srgb_on_black": 2.168,
+      "p3_on_black": 2.165
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-emerald-950",
+      "value": "oklch(26.2% 0.051 172.552)",
+      "srgb_on_white": 15.136,
+      "p3_on_white": 15.144,
+      "srgb_on_black": 1.387,
+      "p3_on_black": 1.387
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-teal-400",
+      "value": "oklch(77.7% 0.152 181.912)",
+      "srgb_on_white": 1.866,
+      "p3_on_white": 1.895,
+      "srgb_on_black": 11.256,
+      "p3_on_black": 11.085
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-teal-500",
+      "value": "oklch(70.4% 0.14 182.503)",
+      "srgb_on_white": 2.423,
+      "p3_on_white": 2.468,
+      "srgb_on_black": 8.667,
+      "p3_on_black": 8.509
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-teal-600",
+      "value": "oklch(60% 0.118 184.704)",
+      "srgb_on_white": 3.658,
+      "p3_on_white": 3.722,
+      "srgb_on_black": 5.741,
+      "p3_on_black": 5.642
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-teal-700",
+      "value": "oklch(51.1% 0.096 186.391)",
+      "srgb_on_white": 5.39,
+      "p3_on_white": 5.444,
+      "srgb_on_black": 3.896,
+      "p3_on_black": 3.857
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-teal-800",
+      "value": "oklch(43.7% 0.078 188.216)",
+      "srgb_on_white": 7.529,
+      "p3_on_white": 7.554,
+      "srgb_on_black": 2.789,
+      "p3_on_black": 2.78
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-cyan-400",
+      "value": "oklch(78.9% 0.154 211.53)",
+      "srgb_on_white": 1.81,
+      "p3_on_white": 1.847,
+      "srgb_on_black": 11.604,
+      "p3_on_black": 11.37
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-cyan-500",
+      "value": "oklch(71.5% 0.143 215.221)",
+      "srgb_on_white": 2.364,
+      "p3_on_white": 2.415,
+      "srgb_on_black": 8.882,
+      "p3_on_black": 8.697
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-cyan-600",
+      "value": "oklch(60.9% 0.126 221.723)",
+      "srgb_on_white": 3.601,
+      "p3_on_white": 3.667,
+      "srgb_on_black": 5.832,
+      "p3_on_black": 5.727
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-cyan-700",
+      "value": "oklch(52% 0.105 223.128)",
+      "srgb_on_white": 5.277,
+      "p3_on_white": 5.337,
+      "srgb_on_black": 3.979,
+      "p3_on_black": 3.935
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-cyan-800",
+      "value": "oklch(45% 0.085 224.283)",
+      "srgb_on_white": 7.251,
+      "p3_on_white": 7.254,
+      "srgb_on_black": 2.896,
+      "p3_on_black": 2.895
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-sky-300",
+      "value": "oklch(82.8% 0.111 230.318)",
+      "srgb_on_white": 1.666,
+      "p3_on_white": 1.662,
+      "srgb_on_black": 12.606,
+      "p3_on_black": 12.633
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-sky-400",
+      "value": "oklch(74.6% 0.16 232.661)",
+      "srgb_on_white": 2.183,
+      "p3_on_white": 2.195,
+      "srgb_on_black": 9.619,
+      "p3_on_black": 9.566
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-sky-500",
+      "value": "oklch(68.5% 0.169 237.323)",
+      "srgb_on_white": 2.713,
+      "p3_on_white": 2.765,
+      "srgb_on_black": 7.739,
+      "p3_on_black": 7.594
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-sky-600",
+      "value": "oklch(58.8% 0.158 241.966)",
+      "srgb_on_white": 4.016,
+      "p3_on_white": 4.091,
+      "srgb_on_black": 5.229,
+      "p3_on_black": 5.133
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-sky-700",
+      "value": "oklch(50% 0.134 242.749)",
+      "srgb_on_white": 5.854,
+      "p3_on_white": 5.937,
+      "srgb_on_black": 3.588,
+      "p3_on_black": 3.537
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-sky-800",
+      "value": "oklch(44.3% 0.11 240.79)",
+      "srgb_on_white": 7.516,
+      "p3_on_white": 7.575,
+      "srgb_on_black": 2.794,
+      "p3_on_black": 2.772
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-blue-300",
+      "value": "oklch(80.9% 0.105 251.813)",
+      "srgb_on_white": 1.811,
+      "p3_on_white": 1.804,
+      "srgb_on_black": 11.594,
+      "p3_on_black": 11.642
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-blue-400",
+      "value": "oklch(70.7% 0.165 254.624)",
+      "srgb_on_white": 2.637,
+      "p3_on_white": 2.614,
+      "srgb_on_black": 7.963,
+      "p3_on_black": 8.033
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-blue-500",
+      "value": "oklch(62.3% 0.214 259.815)",
+      "srgb_on_white": 3.761,
+      "p3_on_white": 3.711,
+      "srgb_on_black": 5.583,
+      "p3_on_black": 5.659
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-indigo-200",
+      "value": "oklch(87% 0.065 274.039)",
+      "srgb_on_white": 1.493,
+      "p3_on_white": 1.492,
+      "srgb_on_black": 14.068,
+      "p3_on_black": 14.079
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-indigo-300",
+      "value": "oklch(78.5% 0.115 274.713)",
+      "srgb_on_white": 2.009,
+      "p3_on_white": 2,
+      "srgb_on_black": 10.452,
+      "p3_on_black": 10.499
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-indigo-400",
+      "value": "oklch(67.3% 0.182 276.935)",
+      "srgb_on_white": 3.12,
+      "p3_on_white": 3.094,
+      "srgb_on_black": 6.732,
+      "p3_on_black": 6.787
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-indigo-500",
+      "value": "oklch(58.5% 0.233 277.117)",
+      "srgb_on_white": 4.577,
+      "p3_on_white": 4.552,
+      "srgb_on_black": 4.588,
+      "p3_on_black": 4.613
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-violet-300",
+      "value": "oklch(81.1% 0.111 293.571)",
+      "srgb_on_white": 1.86,
+      "p3_on_white": 1.853,
+      "srgb_on_black": 11.29,
+      "p3_on_black": 11.335
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-violet-400",
+      "value": "oklch(70.2% 0.183 293.541)",
+      "srgb_on_white": 2.851,
+      "p3_on_white": 2.825,
+      "srgb_on_black": 7.365,
+      "p3_on_black": 7.434
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-violet-500",
+      "value": "oklch(60.6% 0.25 292.717)",
+      "srgb_on_white": 4.402,
+      "p3_on_white": 4.318,
+      "srgb_on_black": 4.771,
+      "p3_on_black": 4.863
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-purple-200",
+      "value": "oklch(90.2% 0.063 306.703)",
+      "srgb_on_white": 1.365,
+      "p3_on_white": 1.364,
+      "srgb_on_black": 15.381,
+      "p3_on_black": 15.397
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-purple-300",
+      "value": "oklch(82.7% 0.119 306.383)",
+      "srgb_on_white": 1.782,
+      "p3_on_white": 1.773,
+      "srgb_on_black": 11.784,
+      "p3_on_black": 11.842
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-purple-400",
+      "value": "oklch(71.4% 0.203 305.504)",
+      "srgb_on_white": 2.789,
+      "p3_on_white": 2.757,
+      "srgb_on_black": 7.531,
+      "p3_on_black": 7.618
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-purple-500",
+      "value": "oklch(62.7% 0.265 303.9)",
+      "srgb_on_white": 4.115,
+      "p3_on_white": 4.043,
+      "srgb_on_black": 5.103,
+      "p3_on_black": 5.194
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-purple-700",
+      "value": "oklch(49.6% 0.265 301.924)",
+      "srgb_on_white": 7.075,
+      "p3_on_white": 7.145,
+      "srgb_on_black": 2.968,
+      "p3_on_black": 2.939
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-fuchsia-300",
+      "value": "oklch(83.3% 0.145 321.434)",
+      "srgb_on_white": 1.773,
+      "p3_on_white": 1.769,
+      "srgb_on_black": 11.847,
+      "p3_on_black": 11.87
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-fuchsia-400",
+      "value": "oklch(74% 0.238 322.16)",
+      "srgb_on_white": 2.583,
+      "p3_on_white": 2.574,
+      "srgb_on_black": 8.131,
+      "p3_on_black": 8.159
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-fuchsia-600",
+      "value": "oklch(59.1% 0.293 322.896)",
+      "srgb_on_white": 4.658,
+      "p3_on_white": 4.84,
+      "srgb_on_black": 4.508,
+      "p3_on_black": 4.339
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-fuchsia-700",
+      "value": "oklch(51.8% 0.253 323.949)",
+      "srgb_on_white": 6.273,
+      "p3_on_white": 6.447,
+      "srgb_on_black": 3.347,
+      "p3_on_black": 3.257
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-pink-600",
+      "value": "oklch(59.2% 0.249 0.584)",
+      "srgb_on_white": 4.544,
+      "p3_on_white": 4.671,
+      "srgb_on_black": 4.622,
+      "p3_on_black": 4.495
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-pink-700",
+      "value": "oklch(52.5% 0.223 3.958)",
+      "srgb_on_white": 5.894,
+      "p3_on_white": 6.112,
+      "srgb_on_black": 3.563,
+      "p3_on_black": 3.436
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-pink-800",
+      "value": "oklch(45.9% 0.187 3.815)",
+      "srgb_on_white": 7.9,
+      "p3_on_white": 7.955,
+      "srgb_on_black": 2.658,
+      "p3_on_black": 2.64
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-rose-300",
+      "value": "oklch(81% 0.117 11.638)",
+      "srgb_on_white": 1.921,
+      "p3_on_white": 1.898,
+      "srgb_on_black": 10.93,
+      "p3_on_black": 11.067
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-rose-400",
+      "value": "oklch(71.2% 0.194 13.428)",
+      "srgb_on_white": 2.859,
+      "p3_on_white": 2.799,
+      "srgb_on_black": 7.344,
+      "p3_on_black": 7.502
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-rose-500",
+      "value": "oklch(64.5% 0.246 16.439)",
+      "srgb_on_white": 3.755,
+      "p3_on_white": 3.733,
+      "srgb_on_black": 5.592,
+      "p3_on_black": 5.625
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-rose-600",
+      "value": "oklch(58.6% 0.253 17.585)",
+      "srgb_on_white": 4.51,
+      "p3_on_white": 4.777,
+      "srgb_on_black": 4.656,
+      "p3_on_black": 4.396
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-rose-700",
+      "value": "oklch(51.4% 0.222 16.935)",
+      "srgb_on_white": 6.055,
+      "p3_on_white": 6.382,
+      "srgb_on_black": 3.468,
+      "p3_on_black": 3.291
+    },
+    {
+      "source": "tailwind",
+      "name": "--color-rose-800",
+      "value": "oklch(45.5% 0.188 13.697)",
+      "srgb_on_white": 7.921,
+      "p3_on_white": 8.079,
+      "srgb_on_black": 2.651,
+      "p3_on_black": 2.599
+    },
+    {
+      "source": "shadcn",
+      "name": "--destructive",
+      "value": "oklch(0.577 0.245 27.325)",
+      "srgb_on_white": 4.765,
+      "p3_on_white": 4.914,
+      "srgb_on_black": 4.407,
+      "p3_on_black": 4.273
+    },
+    {
+      "source": "shadcn",
+      "name": "--destructive",
+      "value": "oklch(0.704 0.191 22.216)",
+      "srgb_on_white": 2.892,
+      "p3_on_white": 2.871,
+      "srgb_on_black": 7.261,
+      "p3_on_black": 7.316
+    }
+  ],
+  "v20_m7_baseline": [
+    {
+      "value": "oklch(97.1% 0.013 17.38)",
+      "on_white": 1.0924161478652696,
+      "on_black": 19.22344341122828
+    },
+    {
+      "value": "oklch(93.6% 0.032 17.717)",
+      "on_white": 1.220731611248245,
+      "on_black": 17.202798556618593
+    },
+    {
+      "value": "oklch(63.7% 0.237 25.331)",
+      "on_white": 3.8198965927199984,
+      "on_black": 5.497531016944813
+    },
+    {
+      "value": "oklch(44.4% 0.177 26.899)",
+      "on_white": 8.374401509998552,
+      "on_black": 2.5076418863995484
+    },
+    {
+      "value": "oklch(39.6% 0.141 25.723)",
+      "on_white": 10.056684242538768,
+      "on_black": 2.088163403915189
+    },
+    {
+      "value": "oklch(25.8% 0.092 26.042)",
+      "on_white": 16.142216168402296,
+      "on_black": 1.3009366112384624
+    },
+    {
+      "value": "oklch(98% 0.016 73.684)",
+      "on_white": 1.0610333167287993,
+      "on_black": 19.792026950429506
+    },
+    {
+      "value": "oklch(95.4% 0.038 75.164)",
+      "on_white": 1.1473099781537306,
+      "on_black": 18.30368461868826
+    },
+    {
+      "value": "oklch(90.1% 0.076 70.697)",
+      "on_white": 1.3564671690666323,
+      "on_black": 15.481392015149051
+    },
+    {
+      "value": "oklch(40.8% 0.123 38.172)",
+      "on_white": 9.41739674423422,
+      "on_black": 2.229915609412676
+    },
+    {
+      "value": "oklch(26.6% 0.079 36.259)",
+      "on_white": 15.662412727415678,
+      "on_black": 1.3407895938817487
+    },
+    {
+      "value": "oklch(98.7% 0.022 95.277)",
+      "on_white": 1.0369343104462425,
+      "on_black": 20.252006118847287
+    },
+    {
+      "value": "oklch(96.2% 0.059 95.617)",
+      "on_white": 1.1131419373128169,
+      "on_black": 18.86551866933978
+    },
+    {
+      "value": "oklch(92.4% 0.12 95.746)",
+      "on_white": 1.2464640283560589,
+      "on_black": 16.847658273537633
+    },
+    {
+      "value": "oklch(41.4% 0.112 45.904)",
+      "on_white": 9.089738704887676,
+      "on_black": 2.310297433380347
+    },
+    {
+      "value": "oklch(27.9% 0.077 45.635)",
+      "on_white": 14.998455176611426,
+      "on_black": 1.4001441983670009
+    },
+    {
+      "value": "oklch(98.7% 0.026 102.212)",
+      "on_white": 1.0352158010298043,
+      "on_black": 20.28562545037448
+    },
+    {
+      "value": "oklch(97.3% 0.071 103.193)",
+      "on_white": 1.073641853309429,
+      "on_black": 19.559595162268415
+    },
+    {
+      "value": "oklch(94.5% 0.129 101.54)",
+      "on_white": 1.1639240251448368,
+      "on_black": 18.042414750728078
+    },
+    {
+      "value": "oklch(42.1% 0.095 57.708)",
+      "on_white": 8.689129692061291,
+      "on_black": 2.4168128160391453
+    },
+    {
+      "value": "oklch(28.6% 0.066 53.813)",
+      "on_white": 14.56765310528852,
+      "on_black": 1.4415499770773876
+    },
+    {
+      "value": "oklch(98.6% 0.031 120.757)",
+      "on_white": 1.0342475349448819,
+      "on_black": 20.304616922407412
+    },
+    {
+      "value": "oklch(96.7% 0.067 122.328)",
+      "on_white": 1.0846526946663995,
+      "on_black": 19.3610361208376
+    },
+    {
+      "value": "oklch(93.8% 0.127 124.321)",
+      "on_white": 1.167104053115169,
+      "on_black": 17.993254280925484
+    },
+    {
+      "value": "oklch(89.7% 0.196 126.665)",
+      "on_white": 1.3029394131938088,
+      "on_black": 16.117403301604096
+    },
+    {
+      "value": "oklch(40.5% 0.101 131.063)",
+      "on_white": 8.72273208345625,
+      "on_black": 2.407502580507903
+    },
+    {
+      "value": "oklch(27.4% 0.072 132.109)",
+      "on_white": 14.6074492810168,
+      "on_black": 1.4376226537572634
+    },
+    {
+      "value": "oklch(98.2% 0.018 155.826)",
+      "on_white": 1.0465783344244481,
+      "on_black": 20.06538766307318
+    },
+    {
+      "value": "oklch(96.2% 0.044 156.743)",
+      "on_white": 1.0993509348920854,
+      "on_black": 19.102180508048054
+    },
+    {
+      "value": "oklch(92.5% 0.084 155.995)",
+      "on_white": 1.2105126968991144,
+      "on_black": 17.348021258921307
+    },
+    {
+      "value": "oklch(87.1% 0.15 154.449)",
+      "on_white": 1.3980695413436677,
+      "on_black": 15.020712045423116
+    },
+    {
+      "value": "oklch(79.2% 0.209 151.711)",
+      "on_white": 1.7754236475476255,
+      "on_black": 11.828162832576373
+    },
+    {
+      "value": "oklch(44.8% 0.119 151.328)",
+      "on_white": 7.094303346762214,
+      "on_black": 2.9601215191318597
+    },
+    {
+      "value": "oklch(39.3% 0.095 152.535)",
+      "on_white": 9.07108915201864,
+      "on_black": 2.3150472504535746
+    },
+    {
+      "value": "oklch(26.6% 0.065 152.934)",
+      "on_white": 14.912380424851504,
+      "on_black": 1.408225876869629
+    },
+    {
+      "value": "oklch(97.9% 0.021 166.113)",
+      "on_white": 1.0542651715230216,
+      "on_black": 19.91908731051297
+    },
+    {
+      "value": "oklch(95% 0.052 163.051)",
+      "on_white": 1.1351252453054814,
+      "on_black": 18.500161182080436
+    },
+    {
+      "value": "oklch(90.5% 0.093 164.15)",
+      "on_white": 1.280580866156674,
+      "on_black": 16.398808193211543
+    },
+    {
+      "value": "oklch(84.5% 0.143 164.978)",
+      "on_white": 1.517413431381668,
+      "on_black": 13.839339738069029
+    },
+    {
+      "value": "oklch(98.4% 0.014 180.72)",
+      "on_white": 1.0417369496095576,
+      "on_black": 20.158639863807064
+    },
+    {
+      "value": "oklch(95.3% 0.051 180.801)",
+      "on_white": 1.1251503275398853,
+      "on_black": 18.664172676300065
+    },
+    {
+      "value": "oklch(91% 0.096 180.426)",
+      "on_white": 1.2589675998933814,
+      "on_black": 16.68033395122991
+    },
+    {
+      "value": "oklch(85.5% 0.138 181.071)",
+      "on_white": 1.471201780602135,
+      "on_black": 14.274044714250618
+    },
+    {
+      "value": "oklch(38.6% 0.063 188.416)",
+      "on_white": 9.458560931795922,
+      "on_black": 2.220210891638531
+    },
+    {
+      "value": "oklch(27.7% 0.046 192.524)",
+      "on_white": 14.47566005889299,
+      "on_black": 1.4507110497596165
+    },
+    {
+      "value": "oklch(98.4% 0.019 200.873)",
+      "on_white": 1.0405754420899436,
+      "on_black": 20.181141271047636
+    },
+    {
+      "value": "oklch(95.6% 0.045 203.388)",
+      "on_white": 1.1201202175931708,
+      "on_black": 18.747987644686212
+    },
+    {
+      "value": "oklch(91.7% 0.08 205.041)",
+      "on_white": 1.2456958436158196,
+      "on_black": 16.858047739040646
+    },
+    {
+      "value": "oklch(86.5% 0.127 207.078)",
+      "on_white": 1.4446390809224428,
+      "on_black": 14.536502768975978
+    },
+    {
+      "value": "oklch(39.8% 0.07 227.392)",
+      "on_white": 9.115302274499788,
+      "on_black": 2.3038182791532713
+    },
+    {
+      "value": "oklch(30.2% 0.056 229.695)",
+      "on_white": 13.385612214359313,
+      "on_black": 1.5688486760039568
+    },
+    {
+      "value": "oklch(97.7% 0.013 236.62)",
+      "on_white": 1.0664648058578572,
+      "on_black": 19.691226456467767
+    },
+    {
+      "value": "oklch(95.1% 0.026 236.824)",
+      "on_white": 1.148701506617196,
+      "on_black": 18.281511671245887
+    },
+    {
+      "value": "oklch(90.1% 0.058 230.902)",
+      "on_white": 1.3279615364516402,
+      "on_black": 15.813711032710133
+    },
+    {
+      "value": "oklch(39.1% 0.09 240.876)",
+      "on_white": 9.46641645045107,
+      "on_black": 2.218368493496751
+    },
+    {
+      "value": "oklch(29.3% 0.066 243.157)",
+      "on_white": 13.900578796273338,
+      "on_black": 1.5107284601436866
+    },
+    {
+      "value": "oklch(97% 0.014 254.604)",
+      "on_white": 1.0898258048810627,
+      "on_black": 19.26913448548029
+    },
+    {
+      "value": "oklch(93.2% 0.032 255.585)",
+      "on_white": 1.2197372378340103,
+      "on_black": 17.216822893176122
+    },
+    {
+      "value": "oklch(88.2% 0.059 254.128)",
+      "on_white": 1.4225952790414869,
+      "on_black": 14.761752909899528
+    },
+    {
+      "value": "oklch(54.6% 0.245 262.881)",
+      "on_white": 5.256181575858799,
+      "on_black": 3.9952957668835563
+    },
+    {
+      "value": "oklch(48.8% 0.243 264.376)",
+      "on_white": 6.823868552767065,
+      "on_black": 3.077433253236471
+    },
+    {
+      "value": "oklch(42.4% 0.199 265.638)",
+      "on_white": 8.839351198435761,
+      "on_black": 2.375739975544384
+    },
+    {
+      "value": "oklch(37.9% 0.146 265.522)",
+      "on_white": 10.401354055893254,
+      "on_black": 2.0189679042895103
+    },
+    {
+      "value": "oklch(28.2% 0.091 267.935)",
+      "on_white": 14.724270994144533,
+      "on_black": 1.42621661937295
+    },
+    {
+      "value": "oklch(96.2% 0.018 272.314)",
+      "on_white": 1.1179469245215055,
+      "on_black": 18.784433803946683
+    },
+    {
+      "value": "oklch(93% 0.034 272.788)",
+      "on_white": 1.2323413215624714,
+      "on_black": 17.040733466093904
+    },
+    {
+      "value": "oklch(51.1% 0.262 276.966)",
+      "on_white": 6.44144521025966,
+      "on_black": 3.2601379526681518
+    },
+    {
+      "value": "oklch(45.7% 0.24 277.023)",
+      "on_white": 8.067271824346372,
+      "on_black": 2.60311050095321
+    },
+    {
+      "value": "oklch(39.8% 0.195 277.366)",
+      "on_white": 10.086165668329643,
+      "on_black": 2.0820597926464344
+    },
+    {
+      "value": "oklch(35.9% 0.144 278.697)",
+      "on_white": 11.470189441161315,
+      "on_black": 1.830832882728206
+    },
+    {
+      "value": "oklch(25.7% 0.09 281.288)",
+      "on_white": 16.02703879126903,
+      "on_black": 1.3102857161261794
+    },
+    {
+      "value": "oklch(96.9% 0.016 293.756)",
+      "on_white": 1.097240222973379,
+      "on_black": 19.13892651792578
+    },
+    {
+      "value": "oklch(94.3% 0.029 294.588)",
+      "on_white": 1.1886627702188162,
+      "on_black": 17.666911529612552
+    },
+    {
+      "value": "oklch(89.4% 0.057 293.283)",
+      "on_white": 1.3905956820877272,
+      "on_black": 15.10144197231528
+    },
+    {
+      "value": "oklch(54.1% 0.281 293.009)",
+      "on_white": 5.881466489624772,
+      "on_black": 3.570538068531912
+    },
+    {
+      "value": "oklch(49.1% 0.27 292.581)",
+      "on_white": 7.2897216444150095,
+      "on_black": 2.880768433193751
+    },
+    {
+      "value": "oklch(43.2% 0.232 292.759)",
+      "on_white": 9.158669540313149,
+      "on_black": 2.2929094567246477
+    },
+    {
+      "value": "oklch(38% 0.189 293.745)",
+      "on_white": 11.033494892035131,
+      "on_black": 1.9032953932991348
+    },
+    {
+      "value": "oklch(28.3% 0.141 291.089)",
+      "on_white": 15.27763417127325,
+      "on_black": 1.3745583749797199
+    },
+    {
+      "value": "oklch(97.7% 0.014 308.299)",
+      "on_white": 1.0725507787511972,
+      "on_black": 19.57949256673043
+    },
+    {
+      "value": "oklch(94.6% 0.033 307.174)",
+      "on_white": 1.1815455942705853,
+      "on_black": 17.773330205648243
+    },
+    {
+      "value": "oklch(55.8% 0.288 302.321)",
+      "on_white": 5.533689044990829,
+      "on_black": 3.7949367644735097
+    },
+    {
+      "value": "oklch(43.8% 0.218 303.724)",
+      "on_white": 8.87326684805373,
+      "on_black": 2.3666593555231756
+    },
+    {
+      "value": "oklch(38.1% 0.176 304.987)",
+      "on_white": 10.944287490360708,
+      "on_black": 1.918809243497666
+    },
+    {
+      "value": "oklch(29.1% 0.149 302.717)",
+      "on_white": 15.028200528366966,
+      "on_black": 1.3973728897455666
+    },
+    {
+      "value": "oklch(97.7% 0.017 320.058)",
+      "on_white": 1.074285586623821,
+      "on_black": 19.54787466338176
+    },
+    {
+      "value": "oklch(95.2% 0.037 318.852)",
+      "on_white": 1.164251997115396,
+      "on_black": 18.03733216866328
+    },
+    {
+      "value": "oklch(90.3% 0.076 319.62)",
+      "on_white": 1.3707645212191897,
+      "on_black": 15.319917954487263
+    },
+    {
+      "value": "oklch(66.7% 0.295 322.15)",
+      "on_white": 3.5347349410852185,
+      "on_black": 5.941039526305379
+    },
+    {
+      "value": "oklch(45.2% 0.211 324.591)",
+      "on_white": 8.342563383266814,
+      "on_black": 2.51721192099313
+    },
+    {
+      "value": "oklch(40.1% 0.17 325.612)",
+      "on_white": 10.081634653331044,
+      "on_black": 2.0829955381354206
+    },
+    {
+      "value": "oklch(29.3% 0.136 325.661)",
+      "on_white": 14.853446886817306,
+      "on_black": 1.413813248872076
+    },
+    {
+      "value": "oklch(97.1% 0.014 343.198)",
+      "on_white": 1.0931468969230513,
+      "on_black": 19.210592884734893
+    },
+    {
+      "value": "oklch(94.8% 0.028 342.258)",
+      "on_white": 1.176437385085299,
+      "on_black": 17.850503789011576
+    },
+    {
+      "value": "oklch(89.9% 0.061 343.231)",
+      "on_white": 1.3852386833389023,
+      "on_black": 15.159842309184413
+    },
+    {
+      "value": "oklch(82.3% 0.12 346.018)",
+      "on_white": 1.8210174294160169,
+      "on_black": 11.532014829058776
+    },
+    {
+      "value": "oklch(71.8% 0.202 349.761)",
+      "on_white": 2.758936473624909,
+      "on_black": 7.611628684008276
+    },
+    {
+      "value": "oklch(65.6% 0.241 354.308)",
+      "on_white": 3.582825078917039,
+      "on_black": 5.861296473437536
+    },
+    {
+      "value": "oklch(40.8% 0.153 2.432)",
+      "on_white": 9.68860956515534,
+      "on_black": 2.167493679952341
+    },
+    {
+      "value": "oklch(28.4% 0.109 3.907)",
+      "on_white": 15.081663881303118,
+      "on_black": 1.3924193089884398
+    },
+    {
+      "value": "oklch(96.9% 0.015 12.422)",
+      "on_white": 1.0997987211177072,
+      "on_black": 19.09440300008537
+    },
+    {
+      "value": "oklch(94.1% 0.03 12.58)",
+      "on_white": 1.2020178663889127,
+      "on_black": 17.470622182254196
+    },
+    {
+      "value": "oklch(89.2% 0.058 10.001)",
+      "on_white": 1.4139446102281807,
+      "on_black": 14.852066939603132
+    },
+    {
+      "value": "oklch(41% 0.159 10.272)",
+      "on_white": 9.627737238940222,
+      "on_black": 2.181197874310868
+    },
+    {
+      "value": "oklch(27.1% 0.105 12.094)",
+      "on_white": 15.655222702814402,
+      "on_black": 1.341405382641075
+    },
+    {
+      "value": "oklch(98.4% 0.003 247.858)",
+      "on_white": 1.0467804315677378,
+      "on_black": 20.061513729817058
+    },
+    {
+      "value": "oklch(96.8% 0.007 247.896)",
+      "on_white": 1.09633876311289,
+      "on_black": 19.154663418425194
+    },
+    {
+      "value": "oklch(92.9% 0.013 255.508)",
+      "on_white": 1.2318639401245806,
+      "on_black": 17.047337222872383
+    },
+    {
+      "value": "oklch(86.9% 0.022 252.894)",
+      "on_white": 1.484410451048307,
+      "on_black": 14.147030550188843
+    },
+    {
+      "value": "oklch(70.4% 0.04 256.788)",
+      "on_white": 2.628202916775685,
+      "on_black": 7.9902506256111625
+    },
+    {
+      "value": "oklch(55.4% 0.046 257.417)",
+      "on_white": 4.766994125225056,
+      "on_black": 4.405291772623816
+    },
+    {
+      "value": "oklch(44.6% 0.043 257.281)",
+      "on_white": 7.56353743781998,
+      "on_black": 2.776478621629297
+    },
+    {
+      "value": "oklch(37.2% 0.044 257.287)",
+      "on_white": 10.344245573239474,
+      "on_black": 2.030114216770619
+    },
+    {
+      "value": "oklch(27.9% 0.041 260.031)",
+      "on_white": 14.657447700627,
+      "on_black": 1.4327187399141588
+    },
+    {
+      "value": "oklch(20.8% 0.042 265.755)",
+      "on_white": 17.844838151527835,
+      "on_black": 1.1768108974528315
+    },
+    {
+      "value": "oklch(12.9% 0.042 264.695)",
+      "on_white": 20.171543375572078,
+      "on_black": 1.0410705620786158
+    },
+    {
+      "value": "oklch(98.5% 0.002 247.839)",
+      "on_white": 1.0438613135169312,
+      "on_black": 20.117614982059
+    },
+    {
+      "value": "oklch(96.7% 0.003 264.542)",
+      "on_white": 1.1003720597199946,
+      "on_black": 19.08445403943076
+    },
+    {
+      "value": "oklch(92.8% 0.006 264.531)",
+      "on_white": 1.2365195472101222,
+      "on_black": 16.98315246805513
+    },
+    {
+      "value": "oklch(87.2% 0.01 258.338)",
+      "on_white": 1.471978262795132,
+      "on_black": 14.266515023206393
+    },
+    {
+      "value": "oklch(70.7% 0.022 261.325)",
+      "on_white": 2.602301901362957,
+      "on_black": 8.069778525313009
+    },
+    {
+      "value": "oklch(55.1% 0.027 264.364)",
+      "on_white": 4.835705562898935,
+      "on_black": 4.342696164365061
+    },
+    {
+      "value": "oklch(44.6% 0.03 256.802)",
+      "on_white": 7.560807620504289,
+      "on_black": 2.777481064727758
+    },
+    {
+      "value": "oklch(37.3% 0.034 259.733)",
+      "on_white": 10.305829997433225,
+      "on_black": 2.0376815846205756
+    },
+    {
+      "value": "oklch(27.8% 0.033 256.848)",
+      "on_white": 14.684581197042805,
+      "on_black": 1.4300714278612863
+    },
+    {
+      "value": "oklch(21% 0.034 264.665)",
+      "on_white": 17.74672170574231,
+      "on_black": 1.1833171415092978
+    },
+    {
+      "value": "oklch(13% 0.028 261.692)",
+      "on_white": 20.127894889243134,
+      "on_black": 1.043328182880314
+    },
+    {
+      "value": "oklch(96.7% 0.001 286.375)",
+      "on_white": 1.1005184591113992,
+      "on_black": 19.081915279236846
+    },
+    {
+      "value": "oklch(92% 0.004 286.32)",
+      "on_white": 1.2678162201407337,
+      "on_black": 16.56391491636611
+    },
+    {
+      "value": "oklch(87.1% 0.006 286.286)",
+      "on_white": 1.4786404377253048,
+      "on_black": 14.202235691799256
+    },
+    {
+      "value": "oklch(70.5% 0.015 286.067)",
+      "on_white": 2.629667533273729,
+      "on_black": 7.985800385137148
+    },
+    {
+      "value": "oklch(55.2% 0.016 285.938)",
+      "on_white": 4.828457198404782,
+      "on_black": 4.349215316009832
+    },
+    {
+      "value": "oklch(44.2% 0.017 285.786)",
+      "on_white": 7.7295431216849435,
+      "on_black": 2.7168488058608906
+    },
+    {
+      "value": "oklch(37% 0.013 285.805)",
+      "on_white": 10.460014559937308,
+      "on_black": 2.007645388987476
+    },
+    {
+      "value": "oklch(27.4% 0.006 286.033)",
+      "on_white": 14.892855704380851,
+      "on_black": 1.4100720786425591
+    },
+    {
+      "value": "oklch(21% 0.006 285.885)",
+      "on_white": 17.73014194004,
+      "on_black": 1.1844236820561305
+    },
+    {
+      "value": "oklch(14.1% 0.005 285.823)",
+      "on_white": 19.890854935618492,
+      "on_black": 1.0557615581618547
+    },
+    {
+      "value": "oklch(98.5% 0.001 106.423)",
+      "on_white": 1.0439330050296665,
+      "on_black": 20.116233416150322
+    },
+    {
+      "value": "oklch(97% 0.001 106.424)",
+      "on_white": 1.0905591895287452,
+      "on_black": 19.256176282439622
+    },
+    {
+      "value": "oklch(92.3% 0.003 48.717)",
+      "on_white": 1.256342924049792,
+      "on_black": 16.715181498620606
+    },
+    {
+      "value": "oklch(86.9% 0.005 56.366)",
+      "on_white": 1.4881961856433767,
+      "on_black": 14.111042752687396
+    },
+    {
+      "value": "oklch(70.9% 0.01 56.259)",
+      "on_white": 2.589534473652595,
+      "on_black": 8.109565720659837
+    },
+    {
+      "value": "oklch(55.3% 0.013 58.071)",
+      "on_white": 4.807349915744141,
+      "on_black": 4.368311100305949
+    },
+    {
+      "value": "oklch(44.4% 0.011 73.639)",
+      "on_white": 7.644276804488752,
+      "on_black": 2.7471532673527355
+    },
+    {
+      "value": "oklch(37.4% 0.01 67.558)",
+      "on_white": 10.279187684263858,
+      "on_black": 2.042962989395393
+    },
+    {
+      "value": "oklch(26.8% 0.007 34.298)",
+      "on_white": 15.195420669176,
+      "on_black": 1.3819953035323742
+    },
+    {
+      "value": "oklch(21.6% 0.006 56.043)",
+      "on_white": 17.49270145289634,
+      "on_black": 1.2005006806151681
+    },
+    {
+      "value": "oklch(14.7% 0.004 49.25)",
+      "on_white": 19.752998728400822,
+      "on_black": 1.063129719631189
+    },
+    {
+      "value": "oklch(96% 0.003 325.6)",
+      "on_white": 1.124431850716982,
+      "on_black": 18.676098499530738
+    },
+    {
+      "value": "oklch(92.2% 0.005 325.62)",
+      "on_white": 1.2614962344096028,
+      "on_black": 16.646898680461206
+    },
+    {
+      "value": "oklch(86.5% 0.012 325.68)",
+      "on_white": 1.512575796117237,
+      "on_black": 13.883601769846333
+    },
+    {
+      "value": "oklch(71.1% 0.019 323.02)",
+      "on_white": 2.5846191905536613,
+      "on_black": 8.12498803566552
+    },
+    {
+      "value": "oklch(54.2% 0.034 322.5)",
+      "on_white": 5.099681600244095,
+      "on_black": 4.117904145034239
+    },
+    {
+      "value": "oklch(43.5% 0.029 321.78)",
+      "on_white": 8.046213580997428,
+      "on_black": 2.6099232624889868
+    },
+    {
+      "value": "oklch(36.4% 0.029 323.89)",
+      "on_white": 10.832961360602294,
+      "on_black": 1.938528099654593
+    },
+    {
+      "value": "oklch(26.3% 0.024 320.12)",
+      "on_white": 15.522063722901994,
+      "on_black": 1.3529128841943612
+    },
+    {
+      "value": "oklch(21.2% 0.019 322.12)",
+      "on_white": 17.723831523774855,
+      "on_black": 1.1848453858202428
+    },
+    {
+      "value": "oklch(14.5% 0.008 326)",
+      "on_white": 19.8146856800393,
+      "on_black": 1.0598199910460728
+    },
+    {
+      "value": "oklch(98.8% 0.003 106.5)",
+      "on_white": 1.0346330983212597,
+      "on_black": 20.297050262623028
+    },
+    {
+      "value": "oklch(96.6% 0.005 106.5)",
+      "on_white": 1.1028272884227939,
+      "on_black": 19.04196624480802
+    },
+    {
+      "value": "oklch(93% 0.007 106.5)",
+      "on_white": 1.2277521936398077,
+      "on_black": 17.10442881616295
+    },
+    {
+      "value": "oklch(88% 0.011 106.6)",
+      "on_white": 1.4330942032581528,
+      "on_black": 14.6536075243737
+    },
+    {
+      "value": "oklch(73.7% 0.021 106.9)",
+      "on_white": 2.323528867869274,
+      "on_black": 9.03797679916818
+    },
+    {
+      "value": "oklch(58% 0.031 107.3)",
+      "on_white": 4.259506871902678,
+      "on_black": 4.930148167743069
+    },
+    {
+      "value": "oklch(46.6% 0.025 107.3)",
+      "on_white": 6.9114957187797215,
+      "on_black": 3.038416119240209
+    },
+    {
+      "value": "oklch(39.4% 0.023 107.4)",
+      "on_white": 9.405417354747385,
+      "on_black": 2.232755784026984
+    },
+    {
+      "value": "oklch(28.6% 0.016 107.4)",
+      "on_white": 14.272385899416935,
+      "on_black": 1.47137277172823
+    },
+    {
+      "value": "oklch(22.8% 0.013 107.4)",
+      "on_white": 16.95120677474685,
+      "on_black": 1.2388498517571538
+    },
+    {
+      "value": "oklch(15.3% 0.006 107.1)",
+      "on_white": 19.589262683096308,
+      "on_black": 1.072015845605104
+    },
+    {
+      "value": "oklch(98.7% 0.002 197.1)",
+      "on_white": 1.0373513258404685,
+      "on_black": 20.243864809239692
+    },
+    {
+      "value": "oklch(96.3% 0.002 197.1)",
+      "on_white": 1.1126279242082908,
+      "on_black": 18.874234182952854
+    },
+    {
+      "value": "oklch(92.5% 0.005 214.3)",
+      "on_white": 1.2459854621243922,
+      "on_black": 16.85412923213022
+    },
+    {
+      "value": "oklch(87.2% 0.007 219.6)",
+      "on_white": 1.4695936131622576,
+      "on_black": 14.28966471541231
+    },
+    {
+      "value": "oklch(72.3% 0.014 214.4)",
+      "on_white": 2.4415070404806083,
+      "on_black": 8.601244908090116
+    },
+    {
+      "value": "oklch(56% 0.021 213.5)",
+      "on_white": 4.6144709923216665,
+      "on_black": 4.550900858395975
+    },
+    {
+      "value": "oklch(45% 0.017 213.2)",
+      "on_white": 7.387194122743137,
+      "on_black": 2.8427572974354067
+    },
+    {
+      "value": "oklch(37.8% 0.015 216)",
+      "on_white": 10.037010240809128,
+      "on_black": 2.0922565082794113
+    },
+    {
+      "value": "oklch(27.5% 0.011 216.9)",
+      "on_white": 14.783067986680338,
+      "on_black": 1.4205440994332954
+    },
+    {
+      "value": "oklch(21.8% 0.008 223.9)",
+      "on_white": 17.36909602867363,
+      "on_black": 1.2090439229152927
+    },
+    {
+      "value": "oklch(14.8% 0.004 228.8)",
+      "on_white": 19.714313714184392,
+      "on_black": 1.065215878394517
+    },
+    {
+      "value": "oklch(98.6% 0.002 67.8)",
+      "on_white": 1.0412815651726204,
+      "on_black": 20.16745585668626
+    },
+    {
+      "value": "oklch(96% 0.002 17.2)",
+      "on_white": 1.1240946795217344,
+      "on_black": 18.68170037859695
+    },
+    {
+      "value": "oklch(92.2% 0.005 34.3)",
+      "on_white": 1.2612202671253847,
+      "on_black": 16.65054118410569
+    },
+    {
+      "value": "oklch(86.8% 0.007 39.5)",
+      "on_white": 1.4945728116627697,
+      "on_black": 14.050837694977666
+    },
+    {
+      "value": "oklch(71.4% 0.014 41.2)",
+      "on_white": 2.5478998311271543,
+      "on_black": 8.242082260631848
+    },
+    {
+      "value": "oklch(54.7% 0.021 43.1)",
+      "on_white": 4.951859843107552,
+      "on_black": 4.240830852518919
+    },
+    {
+      "value": "oklch(43.8% 0.017 39.3)",
+      "on_white": 7.887262726803266,
+      "on_black": 2.662520664949546
+    },
+    {
+      "value": "oklch(36.7% 0.016 35.7)",
+      "on_white": 10.627512610536746,
+      "on_black": 1.9760033010150801
+    },
+    {
+      "value": "oklch(26.8% 0.011 36.5)",
+      "on_white": 15.212869489362598,
+      "on_black": 1.3804101859076605
+    },
+    {
+      "value": "oklch(21.4% 0.009 43.1)",
+      "on_white": 17.589868796244943,
+      "on_black": 1.1938690528767928
+    },
+    {
+      "value": "oklch(14.7% 0.004 49.3)",
+      "on_white": 19.75299016537571,
+      "on_black": 1.0631301805035132
+    },
+    {
+      "value": "oklch(1 0 0)",
+      "on_white": 1,
+      "on_black": 21
+    },
+    {
+      "value": "oklch(0% 0 0)",
+      "on_white": 21,
+      "on_black": 1
+    },
+    {
+      "value": "oklch(0.985 0 0)",
+      "on_white": 1.044078378963909,
+      "on_black": 20.1134325
+    },
+    {
+      "value": "oklch(0.97 0 0)",
+      "on_white": 1.090713045862925,
+      "on_black": 19.253460000000008
+    },
+    {
+      "value": "oklch(0.205 0 0)",
+      "on_white": 17.913465167906747,
+      "on_black": 1.1723025
+    },
+    {
+      "value": "oklch(0.556 0 0)",
+      "on_white": 4.732295913113532,
+      "on_black": 4.437592320000001
+    },
+    {
+      "value": "oklch(0.97 0.01 17)",
+      "on_white": 1.094498668390875,
+      "on_black": 19.186866650896953
+    },
+    {
+      "value": "oklch(0.922 0 0)",
+      "on_white": 1.2593288563017118,
+      "on_black": 16.67554896
+    },
+    {
+      "value": "oklch(0.708 0 0)",
+      "on_white": 2.593265484156047,
+      "on_black": 8.09789824
+    },
+    {
+      "value": "oklch(0.98 0 0)",
+      "on_white": 1.0593305837819518,
+      "on_black": 19.823839999999993
+    },
+    {
+      "value": "oklch(0.96 0 0)",
+      "on_white": 1.1233118228034442,
+      "on_black": 18.694719999999997
+    },
+    {
+      "value": "oklch(0.56 0 0)",
+      "on_white": 4.653925253528118,
+      "on_black": 4.512320000000001
+    },
+    {
+      "value": "oklch(0.145 0 0)",
+      "on_white": 19.79344176917106,
+      "on_black": 1.060957474950526
+    },
+    {
+      "value": "oklch(0.269 0 0)",
+      "on_white": 15.11550208609044,
+      "on_black": 1.38930218
+    },
+    {
+      "value": "oklch(0.371 0 0)",
+      "on_white": 10.389372815430288,
+      "on_black": 2.02129622
+    },
+    {
+      "value": "oklch(0.58 0.22 27)",
+      "on_white": 4.784785739598918,
+      "on_black": 4.388911258074497
+    },
+    {
+      "value": "oklch(0.488 0.243 264.376)",
+      "on_white": 6.823868552767065,
+      "on_black": 3.077433253236471
+    },
+    {
+      "value": "oklch(0.439 0 0)",
+      "on_white": 7.800629635621667,
+      "on_black": 2.6920903800000007
+    },
+    {
+      "value": "oklch(0.2 0 0)",
+      "on_white": 18.103448275862068,
+      "on_black": 1.16
+    },
+    {
+      "value": "oklch(0.27 0 0)",
+      "on_white": 15.06823759023004,
+      "on_black": 1.3936600000000001
+    },
+    {
+      "value": "oklch(0.72 0 0)",
+      "on_white": 2.4808150304313306,
+      "on_black": 8.464960000000001
+    }
+  ]
+}

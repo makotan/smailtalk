@@ -111,7 +111,9 @@ test("限定1【反転】$defs/field.properties から writable_by が消えた(
   // `expect(keys).toContain("writable_by");`**
   // **本 ADR が足した1キー(`writable_by`)は廃止され、14 → 12 になった**
   // (もう1キーは `audience`。`J-G28` は2つを同じ行で廃止した)。
-  expect(keys).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行11 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(keys).toHaveLength(13);
   expect(keys).not.toContain("writable_by");
 });
 
@@ -155,7 +157,9 @@ test("限定9【反転】diff.schema.json の field_changes から writable_by �
   // `expect(keys).toContain("writable_by");`**
   // **差分の側の1キーも廃止され、13 → 12 になった。** **面の規則を書き込む差分操作は
   // `change_field` ではなく `set_roles`(全体差し替え)である。**
-  expect(keys).toHaveLength(12);
+  // **【`V23-M2-T02` / `ADR-0498` 限定1 / 授権 `ADR-0517` 行11 で 12 → 13 に更新した】** `unique` の直後に
+  // 13本目 `unique_message`(一意違反の文言)が足された。 **旧値の逐語は 12。**
+  expect(keys).toHaveLength(13);
   expect(keys).not.toContain("writable_by");
 });
 
@@ -599,5 +603,6 @@ test("限定8: 本 ADR の増分として予約規約フィールドを1本も�
   // **【`V8-M20` / 台帳 `J-G30` / `ADR-0301` による更新。旧値をここに残す】**
   // **旧: `expect(declared.length).toBeLessThanOrEqual(5);`(`st_admin_readable` を含んでいた)。**
   // **予約規約フィールドは 5本 → 4本になった**(`st_admin_readable` の1本だけが廃止)。
-  expect(declared.length).toBeLessThanOrEqual(4);
+  // **【2026-09-30。`V23-M4-T05` / 授権 `ADR-0525` 行4(定数の段)】予約規約フィールドの5本目 `st_updated_by`**(門A `ADR-0500`・`ADR-0524`。定数 `UPDATED_BY_FIELD`)。 **旧の期待値を逐語で残す: `expect(declared.length).toBeLessThanOrEqual(4);`。** 新しい値は `owner-scope.ts` を検査の外の python で数え直して得た(5)。 **題名の本数は T05 の前の数のまま(題名は変えていない)。**
+  expect(declared.length).toBeLessThanOrEqual(5);
 });

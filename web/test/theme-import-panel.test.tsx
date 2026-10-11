@@ -43,6 +43,7 @@ import type { Manifest } from "../../src/kernel/types.ts";
 import { App } from "../src/App.tsx";
 import { parseImportedTheme, themeImportDiff } from "../src/ThemeImportPanel.tsx";
 import { THEME_CANDIDATES } from "../src/theme-candidates.ts";
+import { THEME_ROLE_TO_CSS_PROPERTY } from "../src/theme-role-map.ts";
 import { ADMIN_ROLES, grantRules, tableCan, viewRead } from "./role-rules.ts";
 
 const APP_ID = "sample-app";
@@ -59,6 +60,21 @@ function themeSlotNames(): string[] {
   return Object.keys(schema.$defs.theme.properties);
 }
 
+/** スロット名(役割名)が写る CSS カスタムプロパティ名。**写像の表から引く**(書き下さない)。 */
+function cssNameOf(slot: string): string {
+  const name = THEME_ROLE_TO_CSS_PROPERTY[slot];
+  if (name === undefined) throw new Error(`写像に無いスロット: ${slot}`);
+  return name;
+}
+
+/**
+ * スロット(役割名)を、枠の inline style に立つはずの形(CSS 名 → 値)に写す。
+ * **写像の表から引く**(V20-M8 / ADR-0473。プレビューは `AppThemeScope` 経由で写像を通る)。
+ */
+function asInjected(slots: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(slots).map(([slot, value]) => [cssNameOf(slot), value]));
+}
+
 /**
  * 貼り付ける25スロットの実値。
  *
@@ -70,31 +86,36 @@ function themeSlotNames(): string[] {
  * (T01 と同型の非循環な根拠。**テストがテストを参照する形にしない**)。
  */
 const IMPORTED_SLOTS: Record<string, string> = {
-  "--color-text": "#14281d",
-  "--color-text-secondary": "#405146",
-  "--color-text-label": "#33443a",
-  "--color-text-placeholder": "#4d5e53",
-  "--color-danger": "#8c1d18",
-  "--color-page-background": "#fffdf8",
-  "--color-surface-highlight": "#eef2ea",
-  "--color-border": "#6b7a70",
-  "--focus-outline-color": "#1a5fb4",
-  "--focus-outline-width": "2px",
-  "--font-family-base": "Hiragino Sans, Yu Gothic, sans-serif",
-  "--font-size-secondary": "0.875rem",
-  "--font-size-note": "0.75rem",
-  "--line-height-base": "1.7",
-  "--space-1": "0.25rem",
-  "--space-2": "0.5rem",
-  "--space-3": "0.75rem",
-  "--space-4": "1rem",
-  "--space-5": "1.5rem",
-  "--space-6": "2.5rem",
-  "--border-width": "1px",
-  "--control-border-radius": "6px",
-  "--surface-shadow": "0 1px 2px #14281d1a",
-  "--detail-label-width": "9rem",
-  "--login-max-width": "24rem",
+  body_text: "#14281d",
+  secondary_text: "#405146",
+  label_text: "#33443a",
+  placeholder_text: "#4d5e53",
+  danger: "#8c1d18",
+  page_background: "#fffdf8",
+  highlight_surface: "#eef2ea",
+  // 【V20-M9 / ADR-0474 §1-2】足した4枠(今日の見た目と同じ値 = ページ地色の地に本文の文字色)。
+  primary_fill: "#fffdf8",
+  on_primary: "#14281d",
+  overlay_background: "#fffdf8",
+  overlay_text: "#14281d",
+  border_color: "#6b7a70",
+  focus_ring: "#1a5fb4",
+  focus_ring_width: "2px",
+  body_font: "Hiragino Sans, Yu Gothic, sans-serif",
+  secondary_font_size: "0.875rem",
+  note_font_size: "0.75rem",
+  body_line_height: "1.7",
+  space_1: "0.25rem",
+  space_2: "0.5rem",
+  space_3: "0.75rem",
+  space_4: "1rem",
+  space_5: "1.5rem",
+  space_6: "2.5rem",
+  border_width: "1px",
+  control_radius: "6px",
+  surface_shadow: "0 1px 2px #14281d1a",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--detail-label-width": "9rem",
+  // 【V20-M9 / ADR-0474 §1-3】語彙から外した枠。旧(逐語): "--login-max-width": "24rem",
 };
 
 /**
@@ -103,13 +124,13 @@ const IMPORTED_SLOTS: Record<string, string> = {
  */
 const UNREADABLE_SLOTS: Record<string, string> = {
   ...IMPORTED_SLOTS,
-  "--color-text": "#fffcf5",
-  "--color-text-secondary": "#fffcf5",
-  "--color-text-label": "#fffcf5",
-  "--color-text-placeholder": "#fffcf5",
-  "--color-danger": "#fffcf5",
-  "--color-border": "#fffdf8",
-  "--focus-outline-color": "#fffdf8",
+  body_text: "#fffcf5",
+  secondary_text: "#fffcf5",
+  label_text: "#fffcf5",
+  placeholder_text: "#fffcf5",
+  danger: "#fffcf5",
+  border_color: "#fffdf8",
+  focus_ring: "#fffdf8",
 };
 
 function sampleManifest(): Manifest {
@@ -298,17 +319,17 @@ describe("入口(完了条件1。出口と対になる位置に置く)", () => {
 // ---------------------------------------------------------------------------
 
 describe("適用の前にプレビューが見られる(完了条件2。新しいレンダラーを作らない)", () => {
-  test("25スロットちょうどが枠の inline style に立ち、名前の集合が $defs/theme と完全一致する", async () => {
+  test("25スロットちょうどが枠の inline style に立ち、名前の集合が $defs/theme を写像に通した集合と完全一致する", async () => {
     await openImportPanel();
     paste(JSON.stringify(IMPORTED_SLOTS));
 
     const frame = await screen.findByTestId("theme-import-preview");
     const injected = injectedProperties(frame);
-    expect(Object.keys(injected).sort()).toEqual(themeSlotNames().sort());
+    expect(Object.keys(injected).sort()).toEqual(themeSlotNames().map(cssNameOf).sort());
     expect(Object.keys(injected)).toHaveLength(Object.keys(IMPORTED_SLOTS).length);
-    // 値は貼ったものそのまま(恒等写像。**2本目の変換規則を作っていない**)。
+    // 値は貼ったものそのまま、名前は製品と同じ写像で CSS 名へ(**2本目の変換規則を作っていない**)。
     for (const [slot, value] of Object.entries(IMPORTED_SLOTS)) {
-      expect(injected[slot]).toBe(value);
+      expect(injected[cssNameOf(slot)]).toBe(value);
     }
   });
 
@@ -317,7 +338,7 @@ describe("適用の前にプレビューが見られる(完了条件2。新し�
     paste(JSON.stringify({ slots: IMPORTED_SLOTS }));
 
     const frame = await screen.findByTestId("theme-import-preview");
-    expect(injectedProperties(frame)).toEqual(IMPORTED_SLOTS);
+    expect(injectedProperties(frame)).toEqual(asInjected(IMPORTED_SLOTS));
   });
 
   test("枠の中身は製品と同じ ViewHost であり、レコードはこのアプリの実データである", async () => {
@@ -369,10 +390,10 @@ describe("読めない提案は理由を出して止まる(黙って落ちない
 
   test("値が文字列でないスロットは、どのスロットかを名指しして拒否する", async () => {
     await openImportPanel();
-    paste(JSON.stringify({ ...IMPORTED_SLOTS, "--line-height-base": 1.7 }));
+    paste(JSON.stringify({ ...IMPORTED_SLOTS, body_line_height: 1.7 }));
 
     const errors = await screen.findByTestId("errors");
-    expect(errors.textContent).toContain("--line-height-base");
+    expect(errors.textContent).toContain("body_line_height");
     expect(screen.queryByTestId("theme-import-preview")).toBeNull();
   });
 
@@ -511,7 +532,7 @@ describe("コントラスト検査に落ちる値は理由が見える形で拒�
 
     // **プレビューは検査ではない。** ここで止めると web に2本目の判定規則が住むことになる。
     const frame = await screen.findByTestId("theme-import-preview");
-    expect(injectedProperties(frame)).toEqual(UNREADABLE_SLOTS);
+    expect(injectedProperties(frame)).toEqual(asInjected(UNREADABLE_SLOTS));
     expect(screen.getByTestId("theme-import-preface").textContent).toContain("コントラスト");
   });
 
@@ -663,4 +684,24 @@ describe("貼る25値は資産の中に実在する(テストが自分で作っ�
     const named = Object.keys(IMPORTED_SLOTS).filter((slot) => guide.includes(slot));
     expect(named).toEqual([]);
   });
+});
+
+// 【V20-M9-T05】取り込みの画面の文言の「25スロットの JSON」は、役割の枠が27個になり生の色も書けるようになった
+// V20-M9 で偽になった。数を画面の文言に焼かない形へ直した。
+test("V20-M9: 取り込みの案内と誤りの文言が「25スロット」と数を名乗らない", () => {
+  const empty = parseImportedTheme("");
+  expect(empty.ok).toBe(false);
+  const texts = JSON.stringify(empty);
+  expect(texts).not.toContain("25スロット");
+  expect(texts).toContain("テーマの JSON");
+  const notObject = parseImportedTheme('{"slots": 1}');
+  expect(JSON.stringify(notObject)).not.toContain("25スロット");
+  const source = readFileSync(
+    join(dirname(import.meta.dir), "src", "ThemeImportPanel.tsx"),
+    "utf8",
+  );
+  const liveStrings = source
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("*") && !line.trim().startsWith("//"));
+  expect(liveStrings.filter((line) => line.includes("25スロット"))).toEqual([]);
 });

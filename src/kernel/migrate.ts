@@ -158,12 +158,22 @@ export function applyAddField(db: Database, tableId: ResourceId, field: Field): 
  * ただし**マニフェスト(ファイル)はこのトランザクションの外にある** ―― そちらの
  * 原子性はスナップショット + 復元が担保する(§7b。M1 でこの構造は変えない)。
  */
-export function applyMigrationPlan(db: Database, plan: MigrationPlan): void {
+export function applyMigrationPlan(
+  db: Database,
+  plan: MigrationPlan,
+  /**
+   * **【`V23-M1-T03`。`ADR-0510` §Decision 1 の1】同じトランザクションの最後に呼ぶ後段。**
+   * 省略したときの挙動は今日と1バイトも変わらない。 後段が投げたらトランザクションごと巻き戻る。
+   * カーネルは後段の中身を知らない(呼び手が渡す)。
+   */
+  afterSteps?: () => void,
+): void {
   db.transaction(() => {
     if (plan.steps !== undefined) {
       for (const step of plan.steps) {
         applyStep(db, step);
       }
+      afterSteps?.();
       return;
     }
     // v0 経路(operations を伴わない差し替え)。順序も含めて挙動を変えない。
@@ -173,6 +183,7 @@ export function applyMigrationPlan(db: Database, plan: MigrationPlan): void {
     for (const step of plan.add_fields) {
       applyAddField(db, step.table, step.field);
     }
+    afterSteps?.();
   })();
 }
 
@@ -351,6 +362,14 @@ function planFromOperations(
       // 1バイトも書き換えていない。** **代わりに立つのは `set_roles` である**(同じく
       // MigrationStep を1つも生まない)。
       case "set_roles":
+      // **【`V20-M15-T01A`。18種目 `remember_design`。`ADR-0479` §Decision 2 の 6】**
+      // **`set_theme` / `set_roles` と同じ側 —— MigrationStep を1つも生まない。** 動くのは
+      // `app.design_memory`(選んだ記録と型)の中身だけで、表・列・行に1バイトも触らない。
+      case "remember_design":
+      // **【`V22-M2-T02`。19種目 `set_workspace`。`ADR-0486` §Decision 1 の 4】**
+      // **`set_theme` / `set_roles` / `remember_design` と同じ側 —— MigrationStep を1つも生まない。** 動くのは
+      // `app.workspace`(メニューの位置)だけで、表・列・行に1バイトも触らない。
+      case "set_workspace":
         // ビューは SQLite スキーマに影響しない。**`remove_view`(ADR-0012)も同じ扱いで、
         // MigrationStep を1つも生まない** —— 消えるのはマニフェストの画面定義だけで、
         // テーブルも列もレコードも1バイトも動かない。だから変換不能値の事前検証
@@ -940,7 +959,7 @@ function collectViewChanges(
         path: `/app/views/${index}/type`,
         message:
           `ビュー "${nextView.id}" の type を "${currentView.type}" から "${nextView.type}" へ変更することはできません。` +
-          `update_view で変更できるのは name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / custom_css / menu_listed / field_groups / preset_list_shape / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / report / after_delete / flow のみです。`,
+          `update_view で変更できるのは name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / custom_css / menu_listed / field_sections / preset_list_shape / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / report / after_delete / flow / field_width / group_by / layout / history のみです。`,
         hint: `type を "${currentView.type}" に戻すか、別IDの新しいビューとして追加してください。`,
       });
       continue;
@@ -950,7 +969,7 @@ function collectViewChanges(
         path: `/app/views/${index}/table`,
         message:
           `ビュー "${nextView.id}" の対象テーブルを "${currentView.table}" から "${nextView.table}" へ変更することはできません。` +
-          `update_view で変更できるのは name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / custom_css / menu_listed / field_groups / preset_list_shape / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / report / after_delete / flow のみです。`,
+          `update_view で変更できるのは name / columns / sort / filter / fields / preset_column_align / preset_column_width / preset_pager_position / preset_label_placement / preset_field_columns / preset_image_size / preset_text_preview / custom_css / menu_listed / field_sections / preset_list_shape / modal / search_fields / page_size / preset_density / after_save / sum_field / actions / reference_pickers / report / after_delete / flow / field_width / group_by / layout / history のみです。`,
         hint: `table を "${currentView.table}" に戻すか、別IDの新しいビューとして追加してください。`,
       });
     }

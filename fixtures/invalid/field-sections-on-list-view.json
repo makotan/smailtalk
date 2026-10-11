@@ -1,0 +1,25 @@
+{
+  "app": {
+    "id": "member-desk",
+    "name": "会員受付",
+    "tables": [
+      {
+        "id": "members",
+        "name": "会員",
+        "fields": [
+          { "id": "full_name", "name": "氏名", "type": "text", "required": true },
+          { "id": "email", "name": "メール", "type": "text" }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "id": "member-list",
+        "type": "list_view",
+        "table": "members",
+        "columns": ["full_name", "email"],
+        "field_sections": { "基本情報": ["full_name", "email"] }
+      }
+    ]
+  }
+}

@@ -59,6 +59,7 @@
  */
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { applyInitialColorScheme } from "./color-scheme.ts";
 import { ErrorList } from "./ErrorList.tsx";
 import { RunnerShell } from "./runner-app.tsx";
 
@@ -87,6 +88,9 @@ declare const __GP_RUNNER_APP_ID__: string;
 function readAppId(): string {
   return __GP_RUNNER_APP_ID__.trim();
 }
+
+// **【V20-M10-T03】最初の描画の前に明暗のモードを1度当てる。**
+applyInitialColorScheme();
 
 const container = document.getElementById("root");
 if (container === null) {

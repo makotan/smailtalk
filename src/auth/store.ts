@@ -834,6 +834,20 @@ export class AuthStore {
     this.db.close();
   }
 
+  /**
+   * **この接続の上の外側のトランザクション1つで `fn` を走らせる**(`V23-M1-T04`。ユーザ決定
+   * `D-V23-24` の案A。`docs/adr/0510-v23-m1-guard-authorization-and-pre-start-decisions.md` §Decision 3 の2)。
+   *
+   * 利用者の作成・最初の1人の役割・招待の役割・名簿の行を同じトランザクションで書くために使う。
+   * `fn` が投げたら全部が巻き戻る。 中で呼ぶ本ファイルのトランザクション(招待の消費ほか)は
+   * 入れ子の SAVEPOINT になる。 外側は既定の開き方(deferred)で開く —— 招待の消費は今日どおり
+   * 本ファイルの IMMEDIATE の1本が持ち、その1本を2本に増やさない
+   * (`src/server/registration-default-and-lockout.test.ts` の `(T02-a)`)。
+   */
+  runInTransaction<T>(fn: (db: Database) => T): T {
+    return this.db.transaction((): T => fn(this.db))();
+  }
+
   // --- users -----------------------------------------------------------------
 
   /**

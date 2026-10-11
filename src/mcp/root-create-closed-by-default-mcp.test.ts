@@ -41,6 +41,9 @@
  *    (AI の口に数値コードは無い)。
  *  - **付与の行(作った人への権限)が AI の口では1行も作られないこと**は、
  *    着手前から今日までの既知の食い違いであり、本葉は1ミリも直していない。
+ *    【2026-09-29。`V23-M2-T06` の訂正。上の2行を消していない】上の2行は今日は偽である。
+ *    `write_records` と `insert_sample_data` の作成は作った本人に付与を1件書く(`D-V23-13`)。
+ *    本ファイルの期待値は1つも変えていない(注記だけ)。
  */
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";

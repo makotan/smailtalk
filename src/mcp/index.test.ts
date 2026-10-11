@@ -212,11 +212,11 @@ async function readUntil(
 }
 
 /** `src/mcp/index.ts` を実プロセスとして起動し、待機開始(または終了)まで待つ。 */
-async function startMcp(): Promise<Started> {
+async function startMcp(extraEnv: Record<string, string> = {}): Promise<Started> {
   const proc = Bun.spawn({
     cmd: ["bun", "run", ENTRY],
     cwd: REPO_ROOT,
-    env: { ...process.env, ST_DATA_ROOT: dataRoot },
+    env: { ...process.env, ST_DATA_ROOT: dataRoot, ...extraEnv },
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -275,4 +275,16 @@ test("復旧に失敗したら起動しない(壊れたまま静かに起動し�
   expect(started.stderr).toContain("起動時の整合性チェックに失敗したため起動を中止します");
   expect(started.stdout).toBe("");
   expect(markerExists()).toBe(true);
+});
+
+// **【`V20-M13` 点検の処置 軽4】** 起動時に下見の置き場の根(絶対パス)を1行印字する。
+// Web サーバと食い違うと、作った直後の下見が「期限切れ」に見えるため。
+test("起動時に下見の置き場の根を絶対パスで1行印字する(ST_PREVIEW_ROOT / 既定)", async () => {
+  const probe = `${dataRoot}-pv-root-probe`;
+  const declared = await startMcp({ ST_PREVIEW_ROOT: probe });
+  expect(declared.stderr).toContain(`下見の置き場(ST_PREVIEW_ROOT)= ${probe}`);
+  const byDefault = await startMcp();
+  expect(byDefault.stderr).toContain(`下見の置き場(ST_PREVIEW_ROOT)= ${dataRoot}.previews`);
+  // 印字だけで、根は作らない。
+  expect(existsSync(probe)).toBe(false);
 });
